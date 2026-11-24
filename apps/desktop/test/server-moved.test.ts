@@ -710,8 +710,8 @@ describe("createServerMovedWatcher", () => {
       expect(harness.fakeWatch.close).toHaveBeenCalledOnce();
       expect(harness.logWarning.mock.calls[0]?.[0]).toContain("EMFILE");
       await writeServerMovedFile(harness.dataDir, movedFile());
-      harness.timers.flush();
       await vi.waitFor(() => {
+        harness.timers.flush();
         expect(harness.onMove).toHaveBeenCalledExactlyOnceWith(CONNECT_MOVE);
       });
     } finally {

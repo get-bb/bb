@@ -1,11 +1,11 @@
 import { performance } from "node:perf_hooks";
 import { Buffer } from "node:buffer";
-import { and, desc, eq, sql } from "drizzle-orm";
 import {
   appendDaemonEventsInTransaction,
   deriveStoredEventItemFields,
   findLastCompletedRootStoredTurn,
   findLatestUnresolvedClientTurnRequestIdAfterSequence,
+  getLatestStoredThreadProvisioningStatus,
   getThread,
   getLatestThreadSequence,
   hasRootStoredTurnStarted,
@@ -13,7 +13,6 @@ import {
   listStoredTurnCompletedKeys,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
-  events as storedEvents,
 } from "@bb/db";
 import type {
   AcceptedDaemonEvent,
@@ -128,22 +127,10 @@ function preserveTerminalProvisioningStatus(
   if (event.type !== "system/thread-provisioning") {
     return entry;
   }
-  const latest = deps.db
-    .select({
-      status: sql<unknown>`json_extract(${storedEvents.data}, '$.status')`,
-    })
-    .from(storedEvents)
-    .where(
-      and(
-        eq(storedEvents.threadId, entry.envelope.threadId),
-        eq(storedEvents.type, "system/thread-provisioning"),
-        sql`json_extract(${storedEvents.data}, '$.provisioningId') = ${event.provisioningId}`,
-      ),
-    )
-    .orderBy(desc(storedEvents.sequence))
-    .limit(1)
-    .get();
-  const status = latest?.status;
+  const status = getLatestStoredThreadProvisioningStatus(deps.db, {
+    provisioningId: event.provisioningId,
+    threadId: entry.envelope.threadId,
+  });
   if (status !== "completed" && status !== "failed" && status !== "cancelled") {
     return entry;
   }
@@ -336,6 +323,7 @@ function notifyInsertedEventThreads(
 async function applyEventEffects(
   deps: LoggedPendingInteractionWorkSessionDeps,
   events: HostDaemonEventEnvelope[],
+  hostId: string,
 ): Promise<TurnEndFollowUp[]> {
   const followUps: TurnEndFollowUp[] = [];
   const failedParentNotificationThreadIds = new Set<string>();
@@ -475,10 +463,19 @@ async function applyEventEffects(
         (event.code === "provider_process_exited" ||
           event.code === "provider_turn_start_failed")
       ) {
-        if (getThread(deps.db, entry.threadId) === null) {
+        const thread = getThread(deps.db, entry.threadId);
+        if (thread === null) {
           continue;
         }
         if (event.code === "provider_process_exited") {
+          deps.providerRegistry.get(thread.providerId)?.reportBridgeFailure({
+            hostId,
+            operation: `session for thread ${thread.id}`,
+            message:
+              event.detail === undefined
+                ? event.message
+                : `${event.message}\n${event.detail}`,
+          });
           deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
             threadIds: [entry.threadId],
             reason:
@@ -944,6 +941,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           events: postableEvents,
           insertedEventIndexes: appendResult.insertedInputIndexes,
         }),
+        session.hostId,
       );
       for (const candidate of resolveActivePruneCandidates({
         acceptedEvents: appendResult.acceptedEvents,

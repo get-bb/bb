@@ -18,6 +18,7 @@ import {
   listRunningThreads,
   type ClaimedQueuedThreadMessageRow,
   type RunningThreadRow,
+  FORK_HISTORY_COPY_MARK,
 } from "@bb/db";
 import {
   createStandaloneBuiltinCompactCommandInput,
@@ -78,7 +79,6 @@ import {
   scheduleThreadProvisioningAdvance,
 } from "./thread-provisioning.js";
 import {
-  FORK_HISTORY_COPY_MARK,
   threadForkDescriptorSchema,
   threadProvisionEnvironmentIntentSchema,
 } from "./thread-startup-store.js";
@@ -455,13 +455,13 @@ async function runDispatchAttempt(
     payload,
     args.executionDefaults ?? { threadId: thread.id },
   );
-  if (payload.compactFirst) {
-    const { compactFirst, ...request } = payload;
-    await compactThreadContext(deps, thread);
-    payload = request;
-    args = { ...args, payload };
-  }
-  const resolvedPayload = resolveExecutionIntoPayload(payload, execution);
+  const executionInputSources =
+    claimed?.[0]?.executionInputSources ?? payload.executionInputSources ?? {};
+  const { compactFirst: _compactFirst, ...messagePayload } = payload;
+  const resolvedPayload = resolveExecutionIntoPayload(
+    messagePayload,
+    execution,
+  );
   const queuedMessage: QueuedDispatchMessage = {
     input: payload.input,
     execution,
@@ -472,20 +472,29 @@ async function runDispatchAttempt(
     payload: args.queuePayload,
     systemNotice,
     deliveryMode: run.deliveryMode,
+    executionInputSources,
+    compactFirst: payload.compactFirst === true,
   };
 
   const retriesGoFirst = getAppSettings(deps.db).resumeThreadsAfterRestart;
   const waitOn = (
     waitingOn: QueuedMessageWaitingOn,
-    sendAt: number | null,
+    recheckAt: number | null = null,
   ): DispatchAttemptOutcome => {
     const entry = recordQueuedMessageWait(deps, {
       thread,
-      message: queuedMessage,
+      message: {
+        ...queuedMessage,
+        compactFirst: payload.compactFirst === true,
+      },
       placement:
         retriesGoFirst && args.queuePayload.kind === "retry" ? "front" : "back",
       waitingOn,
-      sendAt,
+      sendAt:
+        waitingOn.kind === "time"
+          ? (payload.sendAt ?? null)
+          : futureSendAt(payload.sendAt, sendNow),
+      recheckAt,
       claimed,
     });
     if (entry === null) {
@@ -513,12 +522,12 @@ async function runDispatchAttempt(
   const continueThroughCoreWaits = async (): Promise<void> => {
     const sendAt = payload.sendAt ?? null;
     if (!sendNow && sendAt !== null && sendAt > Date.now()) {
-      continued.outcome = waitOn({ kind: "time" }, sendAt);
+      continued.outcome = waitOn({ kind: "time" });
       return;
     }
 
     if (isAppUpdateSendHoldSet(deps.db)) {
-      continued.outcome = waitOn({ kind: "app-update" }, null);
+      continued.outcome = waitOn({ kind: "app-update" });
       return;
     }
 
@@ -529,12 +538,12 @@ async function runDispatchAttempt(
       retriesGoFirst &&
       hasLiveQueuedRetry(deps.db, thread.id)
     ) {
-      continued.outcome = waitOn({ kind: "thread-busy" }, null);
+      continued.outcome = waitOn({ kind: "thread-busy" });
       return;
     }
 
     if (thread.status === "stopping") {
-      continued.outcome = waitOn({ kind: "stopping" }, null);
+      continued.outcome = waitOn({ kind: "stopping" });
       return;
     }
 
@@ -553,7 +562,7 @@ async function runDispatchAttempt(
     }
 
     if (systemNotice !== null && thread.environmentId === null) {
-      continued.outcome = waitOn({ kind: "provisioning" }, null);
+      continued.outcome = waitOn({ kind: "provisioning" });
       return;
     }
 
@@ -572,10 +581,10 @@ async function runDispatchAttempt(
       isMachineWaitingForExecution(deps, dispatchHost.id)
     ) {
       cancelPreparingMachinePause(deps, dispatchHost.id);
-      continued.outcome = waitOn(
-        { kind: "host-offline", hostName: dispatchHost.name },
-        null,
-      );
+      continued.outcome = waitOn({
+        kind: "host-offline",
+        hostName: dispatchHost.name,
+      });
       requestQueuedMachineReadiness(deps, dispatchHost.id);
       return;
     }
@@ -586,7 +595,7 @@ async function runDispatchAttempt(
         (run.deliveryMode === "queue" &&
           !isActiveTurnMainRunIdle(deps, currentThread)))
     ) {
-      continued.outcome = waitOn({ kind: "thread-busy" }, null);
+      continued.outcome = waitOn({ kind: "thread-busy" });
       return;
     }
 
@@ -596,15 +605,15 @@ async function runDispatchAttempt(
       dispatchHost !== null &&
       !deps.hub.hasDaemonForHost(dispatchHost.id)
     ) {
-      continued.outcome = waitOn(
-        { kind: "host-offline", hostName: dispatchHost.name },
-        null,
-      );
+      continued.outcome = waitOn({
+        kind: "host-offline",
+        hostName: dispatchHost.name,
+      });
       return;
     }
 
     if (payload.mode !== "start" && isManualCompactionActive(deps, thread)) {
-      continued.outcome = waitOn({ kind: "thread-busy" }, null);
+      continued.outcome = waitOn({ kind: "thread-busy" });
       return;
     }
     if (
@@ -627,14 +636,27 @@ async function runDispatchAttempt(
       }
     }
     if (!firstDispatch && isPreStartThreadStatus(thread.status)) {
-      continued.outcome = waitOn({ kind: "provisioning" }, null);
+      continued.outcome = waitOn({ kind: "provisioning" });
       return;
     }
     if (
       payload.mode !== "start" &&
       deps.pendingInteractions.hasTurnBoundPendingThreadInteraction(thread.id)
     ) {
-      continued.outcome = waitOn({ kind: "interaction" }, null);
+      continued.outcome = waitOn({ kind: "interaction" });
+      return;
+    }
+
+    if (payload.compactFirst === true) {
+      await compactThreadContext(deps, thread);
+      const { compactFirst: _compacted, ...request } = payload;
+      payload = request;
+      args = { ...args, payload };
+      continued.outcome = waitOn({ kind: "thread-busy" });
+      requestQueuedMessageDispatch(deps, {
+        kind: "thread-ready",
+        threadId: thread.id,
+      });
       return;
     }
 
@@ -684,9 +706,7 @@ async function runDispatchAttempt(
         serviceTier: execution.serviceTier,
         permissionMode: execution.permissionMode,
       },
-      executionSources: dispatchExecutionSources(
-        payload.executionInputSources ?? {},
-      ),
+      executionSources: dispatchExecutionSources(executionInputSources),
       attempt,
       initiator: author.initiator,
       senderThreadId: author.senderThreadId,
@@ -708,7 +728,7 @@ async function runDispatchAttempt(
           pluginId: outcome.waiter.pluginId,
           reason: dispatchWaitReasonForPass(outcome),
         },
-        outcome.waiter.sendAt,
+        outcome.waiter.recheckAt,
       );
     }
   } else {
@@ -784,29 +804,35 @@ async function runDispatchAttempt(
     );
   }
   if (claimed !== null) {
-    settleQueueRowDispatched({ row: claimed[0]! });
+    settleQueueRowDispatched({ rows: claimed });
   }
   return { kind: "dispatched", messageSequence };
 }
 
 class DispatchThreadStatusChangedError extends Error {}
 
+function futureSendAt(
+  sendAt: number | undefined,
+  sendNow: boolean,
+): number | null {
+  return !sendNow && sendAt !== undefined && sendAt > Date.now()
+    ? sendAt
+    : null;
+}
+
 async function reattemptDispatchForThreadChange(
   deps: LoggedPendingInteractionWorkSessionDeps,
   args: DispatchAttemptArgs,
   thread: Thread | null,
   run: DispatchAttemptRun,
-  waitOn: (
-    waitingOn: QueuedMessageWaitingOn,
-    sendAt: number | null,
-  ) => DispatchAttemptOutcome,
+  waitOn: (waitingOn: QueuedMessageWaitingOn) => DispatchAttemptOutcome,
 ): Promise<DispatchAttemptOutcome> {
   if (thread === null) {
     throw new ApiError(404, "thread_not_found", "Thread not found");
   }
   if (run.reattempted) {
     ensureThreadIsWritable(thread, true);
-    const outcome = waitOn({ kind: "thread-busy" }, null);
+    const outcome = waitOn({ kind: "thread-busy" });
     deps.logger.info(
       {
         queuedMessageId: outcome.kind === "queued" ? outcome.entry.id : null,
@@ -865,7 +891,7 @@ interface AdmitPendingThreadArgs {
 }
 
 interface PendingThreadAdmission {
-  claimedRow: ClaimedQueuedThreadMessageRow | null;
+  claimedRows: readonly ClaimedQueuedThreadMessageRow[];
   messageSequence: number;
   startingThread: Thread;
 }
@@ -916,8 +942,11 @@ async function admitPendingThread(
   const execution = await buildExecutionOptions(deps, args.payload, {
     threadId: args.thread.id,
   });
-  const claimedRow = args.claimed?.[0] ?? null;
-  let admitted: { messageSequence: number; startingThread: Thread };
+  const claimedRows = args.claimed ?? [];
+  let admitted: {
+    messageSequence: number;
+    startingThread: NonNullable<ReturnType<typeof getThread>>;
+  };
   try {
     admitted = deps.db.transaction(
       (tx) => {
@@ -980,7 +1009,7 @@ async function admitPendingThread(
     buildThreadStatusChangeMetadata(deps, startingThread),
   );
   return {
-    claimedRow,
+    claimedRows,
     messageSequence,
     startingThread,
   };
@@ -990,10 +1019,8 @@ async function launchAdmittedThread(
   deps: LoggedPendingInteractionWorkSessionDeps,
   admission: PendingThreadAdmission,
 ): Promise<void> {
-  const { claimedRow, startingThread } = admission;
-  if (claimedRow !== null) {
-    settleQueueRowDispatched({ row: claimedRow });
-  }
+  const { claimedRows, startingThread } = admission;
+  settleQueueRowDispatched({ rows: claimedRows });
   scheduleThreadProvisioningAdvance(deps, startingThread.id);
 }
 
@@ -1023,10 +1050,10 @@ function resolveExecutionIntoPayload(
   };
 }
 
-export async function compactThreadContext(
-  deps: LoggedPendingInteractionWorkSessionDeps,
+export function assertThreadCanCompact(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "providerRegistry">,
   thread: Thread,
-): Promise<void> {
+): void {
   ensureThreadIsWritable(thread);
   if (!deps.providerRegistry.supportsManualCompaction(thread.providerId)) {
     throw new ApiError(
@@ -1042,7 +1069,13 @@ export async function compactThreadContext(
       "Context can only be compacted while the thread is idle or errored",
     );
   }
+}
 
+export async function compactThreadContext(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  thread: Thread,
+): Promise<void> {
+  assertThreadCanCompact(deps, thread);
   const environment = await requireThreadCommandEnvironment(deps, { thread });
   await attemptDispatch(deps, {
     thread,

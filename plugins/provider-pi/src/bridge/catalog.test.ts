@@ -7,7 +7,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { experimental_trackChildProcesses } from "@get-bb/plugin-sdk/testing";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import { closeAllPiCatalogs, getPiCatalog } from "./catalog.js";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
@@ -114,11 +115,11 @@ function readLogLines(path: string): string[] {
     : [];
 }
 
-function processIds(path: string, step: "spawn" | "exit"): string[] {
+function spawnedProcessIds(path: string): number[] {
   return readLogLines(path)
     .map((line) => line.split(":"))
-    .filter(([entry]) => entry === step)
-    .map(([, pid]) => pid ?? "");
+    .filter(([entry]) => entry === "spawn")
+    .map(([, pid]) => Number(pid));
 }
 
 function modelIds(result: { models: { id: string }[] }): string[] {
@@ -219,6 +220,8 @@ describe("pi catalog freshness", () => {
     "replaces the child when the model refresh %s",
     async (_label, failure) => {
       const paths = setUpFakeCatalog({ FAKE_PI_REFRESH_FAILURE: failure });
+      const children = experimental_trackChildProcesses();
+      onTestFinished(() => children.dispose());
 
       const catalog = await getPiCatalog(
         paths.workspace,
@@ -244,9 +247,11 @@ describe("pi catalog freshness", () => {
           "fake-provider/fake-model",
           "added-provider/added-model",
         ]);
-        const spawned = processIds(paths.processLogPath, "spawn");
+        const spawned = spawnedProcessIds(paths.processLogPath);
         expect(spawned).toHaveLength(2);
-        expect(processIds(paths.processLogPath, "exit")).toEqual([spawned[0]]);
+        expect(children.running().map((child) => child.pid)).toEqual([
+          spawned[1],
+        ]);
       } finally {
         vi.useRealTimers();
       }

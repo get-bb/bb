@@ -41,7 +41,10 @@ import type {
   ThreadTimelineResponse,
   TimelineWorkflowWorkRow,
 } from "@bb/server-contract";
-import type { ExperimentalComposerSelection } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalComposerSelection,
+  PluginComposerScope,
+} from "@get-bb/plugin-sdk";
 import type { ComposerSubmitExtras } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
   readExecutionSelection,
@@ -63,7 +66,6 @@ import {
 import {
   ThreadChildThreadsBanner,
   ThreadPromptContextBanner,
-  type ThreadPromptParentThreadSection,
   type ThreadPromptChildThreadsSection,
 } from "@/components/promptbox/banner/ThreadPromptContextBanner";
 import { ThreadTodoCard } from "@/components/promptbox/banner/ThreadTodoCard";
@@ -133,7 +135,6 @@ import {
 } from "@/lib/mutation-errors";
 import { promptHistoryEntriesToDrafts } from "@/lib/prompt-history";
 import { usePromptHistoryEnabled } from "@/hooks/usePromptHistoryEnabled";
-import { getThreadRoutePath } from "@/lib/route-paths";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import {
   buildThreadHandoffCreateRequest,
@@ -168,6 +169,7 @@ import {
   shouldQueueFollowUpMessage,
   type FollowUpExecutionSelection,
 } from "@bb/client-core";
+import { openThread } from "@/lib/split-layout/openThread";
 
 const ignoreReportedSubmitError = () => {};
 const ignorePermissionModeChange = () => {};
@@ -221,7 +223,6 @@ interface ThreadDetailPromptAreaProps {
   modelFallback: ThreadTimelineModelFallback | null;
   activeWorkflows: TimelineWorkflowWorkRow[];
   activeBackgroundCommands: TimelineWorkflowWorkRow[];
-  parentThreadSection: ThreadPromptParentThreadSection | null;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   contextEnvironmentId: string | null;
   sendMessage: SendMessageMutationLike;
@@ -511,7 +512,6 @@ export function ThreadDetailPromptArea({
   modelFallback,
   activeWorkflows,
   activeBackgroundCommands,
-  parentThreadSection,
   childThreadsSection,
   contextEnvironmentId,
   sendMessage,
@@ -1238,9 +1238,18 @@ export function ThreadDetailPromptArea({
     },
     [applySelection],
   );
+  const threadComposerScope = useMemo<PluginComposerScope>(
+    () => ({
+      kind: "thread",
+      threadId: thread.id,
+      projectId: thread.projectId,
+      environmentId: thread.environmentId,
+    }),
+    [thread.environmentId, thread.id, thread.projectId],
+  );
   const normalPluginComposerHost = useMemo<PluginComposerHost>(
     () => ({
-      scope: { kind: "thread", threadId: thread.id },
+      scope: threadComposerScope,
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
       subscribeDraft: promptDraft.subscribe,
@@ -1260,7 +1269,7 @@ export function ThreadDetailPromptArea({
       promptDraft.subscribe,
       setSelection,
       subscribeSelection,
-      thread.id,
+      threadComposerScope,
     ],
   );
 
@@ -1337,12 +1346,11 @@ export function ThreadDetailPromptArea({
             submittedDraft,
             () => createThread.mutateAsync(request),
           );
-          navigate(
-            getThreadRoutePath({
-              projectId: created.projectId,
-              threadId: created.id,
-            }),
-          );
+          openThread({
+            navigate,
+            projectId: created.projectId,
+            threadId: created.id,
+          });
         },
       );
       return true;
@@ -1966,6 +1974,8 @@ export function ThreadDetailPromptArea({
           kind: "queued-message",
           threadId: thread.id,
           queuedMessageId: inlineEditQueuedMessageId,
+          projectId: thread.projectId,
+          environmentId: thread.environmentId,
         },
         textEffectKey: `queued-message:${thread.id}:${inlineEditQueuedMessageId}:${inlineEditSessionId}`,
         getCurrent: () =>
@@ -1999,7 +2009,9 @@ export function ThreadDetailPromptArea({
       inlineEditingQueuedMessageRef,
       queuedMessageComposerSelection,
       subscribeInlineQueuedDraft,
+      thread.environmentId,
       thread.id,
+      thread.projectId,
     ]);
   const queuedMessageEditor = useMemo(() => {
     if (
@@ -2115,7 +2127,7 @@ export function ThreadDetailPromptArea({
       }
       const operationId = sentMessageEditOperationId;
       return {
-        scope: { kind: "thread", threadId: thread.id },
+        scope: threadComposerScope,
         textEffectKey: `sent-message:${thread.id}:${operationId}`,
         getCurrent: () =>
           readSentMessageEditDraft(
@@ -2139,6 +2151,7 @@ export function ThreadDetailPromptArea({
       sentMessageEditRef,
       subscribeSentMessageEditDraft,
       thread.id,
+      threadComposerScope,
     ]);
   const sentMessageEditorPortal = useMemo(() => {
     if (!sentMessageEdit?.hostElement || !sentMessagePluginComposerHost) {
@@ -2297,9 +2310,6 @@ export function ThreadDetailPromptArea({
                 ? null
                 : { id: contextEnvironmentId },
           }}
-          core={{
-            parentThread: parentThreadSection,
-          }}
           expandedSegment={expandedBannerSegment}
           onToggleSegment={handleToggleBannerSegment}
         />
@@ -2377,7 +2387,6 @@ export function ThreadDetailPromptArea({
       activeBackgroundCommands,
       isBackgroundCommandsExpanded,
       modelFallback,
-      parentThreadSection,
       childThreadsSection,
       pendingTodos,
       displayedProcessingQueuedMessage,

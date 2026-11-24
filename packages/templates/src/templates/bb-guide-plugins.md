@@ -85,16 +85,18 @@ under `<bb-data-dir>/plugins/<id>/` (SQLite database, secrets, logs).
                                  Show or change a plugin's declared settings.
                                  Running plugins receive changes live; a
                                  plugin waiting for configuration retries
-  bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's log
+  bb plugin logs <id> [-n N] [-f]  Print (or follow) a plugin's log: bb.log
+                                 output plus its load, handler, service and
+                                 host-worker failures
   bb plugin run <id> [args...]   Run a plugin command explicitly (also works
                                  when a core command owns its name)
   bb plugin token <id> [--rotate]  Print the token for a plugin's
                                  token-authenticated HTTP routes; --rotate
                                  replaces it
   bb plugin remove <id>          Uninstall and delete the plugin's settings,
-                                 secrets, and schedules (local path sources
-                                 stay on disk; builtin removals are
-                                 remembered)
+                                 secrets, stored files, and schedules (local
+                                 path sources stay on disk; builtin removals
+                                 are remembered)
   bb plugin prune [--dry-run]    Delete cached git:/npm: plugin versions no
                                  installed plugin uses (left by earlier bb
                                  releases, rolled-back updates, or
@@ -165,6 +167,9 @@ Each bundled plugin documents its commands and behavior in its own skill.
   or `bb keep-awake hosts <host-id>...`.
 - GitHub Star (builtin): asks once for a GitHub star after more than five
   prompts. `bb plugin disable bb--github-star` stops it from asking.
+- Server switcher (builtin, off by default): a Servers item in the sidebar
+  footer of bb Desktop and the mobile app to switch servers, add one, or sign
+  in to bb Connect. `bb plugin enable bb--server-switcher` adds it.
 - Concurrency limit (builtin): caps running threads overall and per host.
   `bb concurrency-limit status|global|host`; see the `concurrency-limit`
   skill.
@@ -316,7 +321,7 @@ Exact npm versions, Git tags and commits, path sources, and bundled official
 plugins are pinned. npm ranges, dist-tags, and omitted specs, omitted Git refs
 (the default branch), Git branches, and Git semver ranges track compatible
 updates. Change a pinned git:/npm: source with `bb plugin remove` (which
-deletes settings, secrets, and schedules) and a fresh install. Edit a local
+deletes settings, secrets, stored files, and schedules) and a fresh install. Edit a local
 path plugin in place and `bb plugin reload <id>`, or move it with
 `bb plugin install path:<new dir>`; both keep its configuration. Before bb
 deletes a thread's storage folder or removes a bb-managed workspace (such as

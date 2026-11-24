@@ -14,7 +14,7 @@ import {
   getThreadExecutionOverride,
   hasActiveThreadAttention,
   setThreadExecutionOverride,
-  listHostThreadIds,
+  listRuntimeHostThreadIds,
   listActiveVisiblePinnedThreadRoots,
   listThreadMentionRowsByIds,
   listThreadEnvironmentAssignmentsOnHost,
@@ -1325,7 +1325,7 @@ describe("threads", () => {
     ]);
   });
 
-  it("lists host thread ids only for environments on that host", () => {
+  it("lists the live and still-running threads on a host", () => {
     const { db, project, host } = setup();
     const otherHost = upsertHost(db, noopNotifier, {
       name: "other-host",
@@ -1334,88 +1334,72 @@ describe("threads", () => {
       providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      path: "/tmp/thread-host-match",
-      status: "ready",
-    });
-    const otherEnvironment = createEnvironment(db, noopNotifier, {
-      providerOwnsPath: false,
-      projectId: project.id,
-      hostId: otherHost.id,
-      path: "/tmp/thread-host-other",
-      status: "ready",
-    });
-    const activeThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-    });
-    const stoppingThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-    });
-    createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: otherEnvironment.id,
-      providerId: "codex",
-    });
-    db.update(threads)
-      .set({ status: "stopping" })
-      .where(eq(threads.id, stoppingThread.id))
-      .run();
-    expect(getThread(db, stoppingThread.id)?.status).toBe("stopping");
-
-    expect(listHostThreadIds(db, { hostId: host.id })).toEqual([
-      activeThread.id,
-      stoppingThread.id,
-    ]);
-  });
-
-  it("lists every host thread id including archived, deleted, and destroyed-environment threads", () => {
-    const { db, project, host } = setup();
-    const environment = createEnvironment(db, noopNotifier, {
-      providerOwnsPath: false,
-      projectId: project.id,
-      hostId: host.id,
-      path: "/tmp/thread-storage-targets",
+      path: "/tmp/runtime-host-threads",
       status: "ready",
     });
     const destroyedEnvironment = createEnvironment(db, noopNotifier, {
       providerOwnsPath: false,
       projectId: project.id,
       hostId: host.id,
-      path: "/tmp/destroyed-thread-storage-targets",
+      path: "/tmp/destroyed-runtime-host-threads",
       status: "destroyed",
     });
-    const activeThread = createThread(db, noopNotifier, {
+    const otherEnvironment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
       projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
+      hostId: otherHost.id,
+      path: "/tmp/other-runtime-host-threads",
+      status: "ready",
     });
-    const destroyedEnvironmentThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: destroyedEnvironment.id,
-      providerId: "codex",
-    });
-    const archivedThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-    });
-    const deletedThread = createThread(db, noopNotifier, {
-      projectId: project.id,
-      environmentId: environment.id,
-      providerId: "codex",
-    });
-    archiveThread(db, noopNotifier, archivedThread.id);
-    markThreadDeleted(db, noopNotifier, { threadId: deletedThread.id });
+    const createHostThread = (
+      environmentId: string,
+      status: ThreadStatus,
+      state: "live" | "archived" | "deleted",
+    ) => {
+      const thread = createThread(db, noopNotifier, {
+        projectId: project.id,
+        environmentId,
+        providerId: "codex",
+      });
+      db.update(threads)
+        .set({ status })
+        .where(eq(threads.id, thread.id))
+        .run();
+      if (state === "archived") archiveThread(db, noopNotifier, thread.id);
+      if (state === "deleted") {
+        markThreadDeleted(db, noopNotifier, { threadId: thread.id });
+      }
+      return thread.id;
+    };
+    const liveIdle = createHostThread(environment.id, "idle", "live");
+    const liveActive = createHostThread(environment.id, "active", "live");
+    const liveOnDestroyedEnvironment = createHostThread(
+      destroyedEnvironment.id,
+      "idle",
+      "live",
+    );
+    const archivedActive = createHostThread(
+      environment.id,
+      "active",
+      "archived",
+    );
+    const archivedStopping = createHostThread(
+      environment.id,
+      "stopping",
+      "archived",
+    );
+    createHostThread(environment.id, "idle", "archived");
+    createHostThread(environment.id, "error", "archived");
+    createHostThread(environment.id, "active", "deleted");
+    createHostThread(otherEnvironment.id, "active", "live");
 
-    expect([...listHostThreadIds(db, { hostId: host.id })].sort()).toEqual(
+    expect(listRuntimeHostThreadIds(db, { hostId: host.id })).toEqual(
       [
-        activeThread.id,
-        archivedThread.id,
-        deletedThread.id,
-        destroyedEnvironmentThread.id,
+        liveIdle,
+        liveActive,
+        liveOnDestroyedEnvironment,
+        archivedActive,
+        archivedStopping,
       ].sort(),
     );
   });

@@ -18,10 +18,12 @@ import {
   getProjectExecutionDefaults,
   getPublicProjectByLocalPathSource,
   deleteProjectSource,
+  deleteProjectSourceFolder,
   getProjectSourceByHost,
   getProjectSourceForProject,
   listProjectExecutionDefaultsByProjectIds,
   listPublicProjects,
+  listProjectSourceFolders,
   listProjectSourcesByProjectIds,
   listThreadSections,
   listThreadsWithPendingInteractionStateForProjects,
@@ -67,6 +69,10 @@ import {
   projectSourceHostConflict,
 } from "../services/projects/project-source-setup.js";
 import {
+  addProjectSourceFolder,
+  updateProjectSourceFolder,
+} from "../services/projects/project-source-folders.js";
+import {
   deleteProjectSkill,
   listProjectSkillFiles,
   listProjectSkills,
@@ -101,7 +107,7 @@ import {
 import { resolveSharedSkills } from "../services/skills/shared-skills.js";
 import {
   providerHasNativeRootSurface,
-  scanProviderNativeRoots,
+  listProviderNativeCommands,
 } from "../services/providers/native-roots.js";
 import { assertUsableHostId } from "../services/hosts/primary-host.js";
 import { listProviderLiveCommands } from "../services/providers/provider-live-commands.js";
@@ -671,6 +677,77 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     return context.json(operationComplete());
   });
 
+  get(routes.listSourceFolders, (context) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    return context.json(listProjectSourceFolders(deps.db, source.id));
+  });
+
+  post(routes.addSourceFolder, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    assertUsableHostId(deps, { hostId: source.hostId });
+    assertPathMatchesHostPlatform(deps, {
+      hostId: source.hostId,
+      path: payload.path,
+    });
+    return context.json(
+      await addProjectSourceFolder(deps, { path: payload.path, source }),
+      201,
+    );
+  });
+
+  patch(routes.updateSourceFolder, async (context, payload) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    assertUsableHostId(deps, { hostId: source.hostId });
+    assertPathMatchesHostPlatform(deps, {
+      hostId: source.hostId,
+      path: payload.path,
+    });
+    return context.json(
+      await updateProjectSourceFolder(deps, {
+        folderId: context.req.param("folderId"),
+        path: payload.path,
+        source,
+      }),
+    );
+  });
+
+  del(routes.removeSourceFolder, (context) => {
+    const projectId = context.req.param("id");
+    requirePublicStandardProject(deps.db, projectId);
+    const source = requireProjectSource(deps, {
+      projectId,
+      sourceId: context.req.param("sourceId"),
+    });
+    const deleted = deleteProjectSourceFolder(deps.db, deps.hub, {
+      projectId,
+      projectSourceId: source.id,
+      folderId: context.req.param("folderId"),
+    });
+    if (!deleted) {
+      throw new ApiError(
+        404,
+        "invalid_request",
+        "Project source folder not found",
+      );
+    }
+    return context.json(operationComplete());
+  });
+
   get(routes.files, async (context, query) => {
     const projectId = context.req.param("id");
     requirePublicProject(deps.db, projectId);
@@ -752,8 +829,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
       if (!providerHasNativeRootSurface(registration)) {
         return { commands: [] };
       }
-      return scanProviderNativeRoots(deps, {
-        type: "host.list_commands",
+      return listProviderNativeCommands(deps, {
         registration,
         hostId: workspace.hostId,
         cwd: workspace.cwd,
@@ -774,6 +850,7 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
             hostId: workspace.hostId,
             workspacePath: workspace.cwd,
             includeAgentInstructions: false,
+            folderPaths: [],
           });
     const [result, liveCommands, workspaceSkills] = await Promise.all([
       listProviderCommands(),
@@ -885,16 +962,16 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
     });
     const branchQuery = normalizeBranchQuery(query.query);
     const selectedBranch = normalizeBranchQuery(query.selectedBranch);
-    const inspectionPromise = callHostRetryableOnlineRpc(deps, {
-      hostId: source.hostId,
-      timeoutMs: COMMAND_TIMEOUT_MS,
-      command: {
-        type: "host.inspect_git_source",
-        path: source.path,
-        remoteRefresh,
-      },
-    });
-    const readBranchOptions = () =>
+    const [inspection, branchOptions] = await Promise.all([
+      callHostRetryableOnlineRpc(deps, {
+        hostId: source.hostId,
+        timeoutMs: COMMAND_TIMEOUT_MS,
+        command: {
+          type: "host.inspect_git_source",
+          path: source.path,
+          remoteRefresh,
+        },
+      }),
       callHostRetryableOnlineRpc(deps, {
         hostId: source.hostId,
         timeoutMs: COMMAND_TIMEOUT_MS,
@@ -904,16 +981,9 @@ export function registerProjectRoutes(app: Hono, deps: AppDeps): void {
           ...(branchQuery ? { query: branchQuery } : {}),
           ...(selectedBranch ? { selectedBranch } : {}),
           limit: parseBranchListLimit(query.limit),
-          remoteRefresh: "none",
+          remoteRefresh,
         },
-      });
-    const branchOptionsPromise =
-      remoteRefresh === "background"
-        ? readBranchOptions()
-        : inspectionPromise.then(readBranchOptions);
-    const [inspection, branchOptions] = await Promise.all([
-      inspectionPromise,
-      branchOptionsPromise,
+      }),
     ]);
     return { ...inspection, ...branchOptions };
   };

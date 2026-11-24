@@ -1,0 +1,1 @@
+ALTER TABLE `environments` ADD `setup_folder_paths` text DEFAULT '[]' NOT NULL;

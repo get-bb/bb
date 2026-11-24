@@ -133,7 +133,12 @@ function ThreadComposerHostPublisher({
   });
   const host = useMemo<PluginComposerHost>(
     () => ({
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
       subscribeDraft: promptDraft.subscribe,
@@ -458,7 +463,12 @@ function ThreadPaneFixture({
   const composerHost = useMemo<PluginComposerHost>(() => {
     const draft = { attachments: [], mentions: [], text: "" };
     return {
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: `test-draft-${threadId}`,
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -1291,7 +1301,12 @@ describe("SplitThreadArea", () => {
     await screen.findByTestId("pane-thr-a");
 
     expect(commandHandlers.get("pane.focus.right")?.()).toBe(true);
-    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-2"));
+    await waitFor(() => {
+      expect(store.get(maximizedPaneIdAtom)).toBe("pane-2");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
 
     const opened = applyThreadOpenToLayout(
       store.get(splitLayoutAtom),
@@ -2391,6 +2406,31 @@ describe("SplitThreadArea", () => {
     });
     expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("false");
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(2);
+  });
+
+  it("focuses the pane keyboard focus moves into, but not one hidden by maximize", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const draftB = await screen.findByTestId("draft-thr-b");
+
+    act(() => draftB.focus());
+    await waitFor(() => {
+      expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("true");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
+    expect(screen.getByTestId("pane-thr-a").dataset.focused).toBe("false");
+
+    act(() => screen.getByTestId("draft-thr-a").focus());
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+
+    act(() => draftB.focus());
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-1");
   });
 
   it("leaves uninvolved panes unrendered and pane callbacks stable when focus moves in a four-pane split", async () => {

@@ -39,7 +39,12 @@ import {
 } from "@/components/thread/timeline";
 import type { HostConnectionNotice } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ThreadTimelinePanelLoadingSkeleton } from "@/components/thread/timeline/ThreadChatLoading";
-import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
+import { PluginThreadRail } from "@/components/plugin/PluginThreadRail";
+import { collectConversationRows } from "@/lib/conversation-outline";
+import {
+  TimelineViewportProvider,
+  TimelineViewportScrollSource,
+} from "@/lib/timeline-viewport";
 import {
   ThreadContextCard,
   useThreadContextCardTranscriptCenteredMinWidth,
@@ -62,8 +67,7 @@ import {
   subscribeComposerFocusRequests,
 } from "@/lib/composer-focus-requests";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { useParentThreadSection } from "./useParentThreadSection";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -230,7 +234,7 @@ function useChildThreadsSection(
       .map((entry) => ({
         id: entry.id,
         title: getThreadDisplayTitle(entry),
-        href: getThreadRoutePath({
+        href: getThreadLocationPath({
           projectId: entry.projectId,
           threadId: entry.id,
         }),
@@ -538,7 +542,6 @@ export function ThreadScreen({
     }),
     [sendMessageMutation.isPending, sendMessageMutation.mutateAsync],
   );
-  const parentThreadSection = useParentThreadSection(thread, composer !== null);
   const childThreadsSection = useChildThreadsSection(
     thread.id,
     composer !== null,
@@ -558,9 +561,11 @@ export function ThreadScreen({
     draftStorageKey,
     composer?.focusRequest ?? undefined,
   );
-  const [timelineNavigationTargetRowId, setTimelineNavigationTargetRowId] =
-    useState<string | null>(null);
   const { timelineLoading, timelineRows } = timeline;
+  const messageRowIds = useMemo(
+    () => new Set(collectConversationRows(timelineRows).map((row) => row.id)),
+    [timelineRows],
+  );
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
 
   const { handleEditSentMessage, inlineMessageEditor, sentMessageEdit } =
@@ -624,7 +629,6 @@ export function ThreadScreen({
             !isThreadTimelinePending
           }
           timelineRows={timelineRows}
-          timelineNavigationTargetRowId={timelineNavigationTargetRowId}
           isStopping={thread.status === "stopping"}
           stoppingAnchorAt={thread.updatedAt}
           threadId={thread.id}
@@ -676,7 +680,6 @@ export function ThreadScreen({
       modelFallback={timeline.modelFallback}
       activeWorkflows={timeline.activeWorkflows}
       activeBackgroundCommands={timeline.activeBackgroundCommands}
-      parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
       contextEnvironmentId={composer.contextEnvironmentId}
       thread={thread}
@@ -690,34 +693,35 @@ export function ThreadScreen({
           data-thread-window=""
           className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
         >
-          <PageShell
+          <TimelineViewportProvider
             key={thread.id}
-            scrollBehavior="bottom-anchor"
-            scrollAnchorThreadId={thread.id}
-            scrollContentCenteredMinWidthPx={transcriptCenteredMinWidth}
-            shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
-            scrollAreaClassName="scroll-pt-4"
-            contentClassName="gap-2 pt-4"
-            footerClassName="chat-prompt-box"
-            footer={promptArea}
-            scrollOverlay={
-              <>
-                <ThreadContextCard />
-                <div className="pointer-events-auto my-auto">
-                  <ThreadTableOfContents
-                    contextBoundarySeq={timeline.contextBoundarySeq}
-                    threadId={thread.id}
-                    timelineRows={timelineRows}
-                    hasOlderTimelineRows={timeline.hasOlderTimelineRows}
-                    loadOlderTimelineRows={timeline.loadOlderTimelineRows}
-                    onNavigateToRow={setTimelineNavigationTargetRowId}
-                  />
-                </div>
-              </>
-            }
+            messageIds={messageRowIds}
+            threadId={thread.id}
           >
-            {surface}
-          </PageShell>
+            <PageShell
+              scrollBehavior="bottom-anchor"
+              scrollAnchorThreadId={thread.id}
+              scrollContentCenteredMinWidthPx={transcriptCenteredMinWidth}
+              shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
+              scrollAreaClassName="scroll-pt-4"
+              contentClassName="gap-2 pt-4"
+              footerClassName="chat-prompt-box"
+              footer={promptArea}
+              scrollOverlay={
+                <>
+                  <ThreadContextCard />
+                  <TimelineViewportScrollSource />
+                  <PluginThreadRail
+                    threadId={thread.id}
+                    projectId={projectId}
+                    environmentId={thread.environmentId}
+                  />
+                </>
+              }
+            >
+              {surface}
+            </PageShell>
+          </TimelineViewportProvider>
         </div>
       );
     case "panel":

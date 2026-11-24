@@ -134,6 +134,11 @@
       "types": "./src/components/ui/menu-item-hover.tsx",
       "default": "./src/components/ui/menu-item-hover.tsx"
     },
+    "./message-time": {
+      "source": "./src/components/ui/message-time.tsx",
+      "types": "./src/components/ui/message-time.tsx",
+      "default": "./src/components/ui/message-time.tsx"
+    },
     "./motion": {
       "source": "./src/components/ui/motion.ts",
       "types": "./src/components/ui/motion.ts",
@@ -163,11 +168,6 @@
       "source": "./src/components/ui/resource-list.tsx",
       "types": "./src/components/ui/resource-list.tsx",
       "default": "./src/components/ui/resource-list.tsx"
-    },
-    "./resource-edit-prompt": {
-      "source": "./src/components/ui/resource-edit-prompt.ts",
-      "types": "./src/components/ui/resource-edit-prompt.ts",
-      "default": "./src/components/ui/resource-edit-prompt.ts"
     },
     "./resource-pagination": {
       "source": "./src/components/ui/resource-pagination.tsx",
@@ -389,6 +389,11 @@
       "types": "./src/components/ui/thread-list-empty-state.tsx",
       "default": "./src/components/ui/thread-list-empty-state.tsx"
     },
+    "./use-scroll-overflow-state": {
+      "source": "./src/components/ui/use-scroll-overflow-state.ts",
+      "types": "./src/components/ui/use-scroll-overflow-state.ts",
+      "default": "./src/components/ui/use-scroll-overflow-state.ts"
+    },
     "./use-dialog-state": {
       "source": "./src/components/ui/use-dialog-state.ts",
       "types": "./src/components/ui/use-dialog-state.ts",
@@ -558,6 +563,11 @@
       "source": "./src/components/ui/list-loading-placeholder.tsx",
       "types": "./src/components/ui/list-loading-placeholder.tsx",
       "default": "./src/components/ui/list-loading-placeholder.tsx"
+    },
+    "./settings-section": {
+      "source": "./src/components/ui/settings-section.tsx",
+      "types": "./src/components/ui/settings-section.tsx",
+      "default": "./src/components/ui/settings-section.tsx"
     }
   },
   "scripts": {

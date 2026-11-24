@@ -19,7 +19,6 @@ import {
   type QueryClient,
 } from "@tanstack/react-query";
 import type {
-  BbContext,
   ComposerView,
   PluginComposerApi,
   PluginComposerScope,
@@ -46,8 +45,14 @@ import {
   composerScopeIdentity,
   useOptionalPluginComposerView,
   usePluginComposerHost,
+  usePluginComposerHostDraft,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
+import {
+  activeComposerHandle,
+  getActiveComposer,
+  subscribeActiveComposer,
+} from "@/lib/active-composer";
 import {
   getComposerEditorBridges,
   subscribeComposerEditorBridges,
@@ -60,6 +65,7 @@ import {
   type ComposerSource,
 } from "@/lib/plugin-composer-handle";
 import { useProviderDirectory } from "@/hooks/queries/system-queries";
+import { useThread } from "@/hooks/queries/thread-queries";
 import { useSystemEnvironmentProviders } from "@/hooks/queries/environment-provider-queries";
 import { requestComposerFocus } from "@/lib/composer-focus-requests";
 import { setComposerTextEffect } from "@/lib/composer-text-effects";
@@ -72,8 +78,6 @@ import {
 } from "@/hooks/usePromptDraftStorage";
 import { emptyPromptDraftState, isPromptDraftEmpty } from "@bb/client-core";
 import { useRouteState } from "@/hooks/useRouteState";
-import { useLocation } from "react-router-dom";
-import { paneContentForPathname } from "@/views/thread-detail/splitThreadNavigation";
 import { useServerConnectionState } from "@/hooks/useServerConnectionState";
 import { wsManager } from "@/lib/ws";
 import { pluginSdkSettingsQueryKey } from "@/hooks/queries/query-keys";
@@ -88,7 +92,6 @@ import {
   useAppFixedTabTarget,
 } from "@/lib/app-fixed-tab-navigation";
 export {
-  isAutomationEditRoutePath,
   useSdk,
   useBbNavigate,
 } from "./plugin-navigation-hooks";
@@ -329,24 +332,6 @@ export function useEnvironmentProviders(): PluginEnvironmentProvidersState {
   );
 }
 
-export function useBbContext(): BbContext {
-  const { projectId, threadId } = useRouteState();
-  const content = paneContentForPathname(useLocation().pathname);
-  const pluginPanel = content?.kind === "plugin-panel" ? content : null;
-  const pluginId = pluginPanel?.pluginId ?? null;
-  const path = pluginPanel?.panelPath ?? null;
-  const subPath = pluginPanel?.subPath ?? "";
-  return useMemo(
-    () => ({
-      projectId: projectId ?? null,
-      threadId: threadId ?? null,
-      experimental_pluginPanel:
-        pluginId === null || path === null ? null : { pluginId, path, subPath },
-    }),
-    [path, pluginId, projectId, subPath, threadId],
-  );
-}
-
 function useExperimentalAppPanel(): ExperimentalPanelController {
   const pluginId = usePluginId();
   const { panel } = useAppNavigationHost();
@@ -563,6 +548,23 @@ function useComposerDraftSource(
   );
 }
 
+function useFallbackComposerScope(
+  hostScope: PluginComposerScope | undefined,
+): PluginComposerScope {
+  const { projectId, threadId } = useRouteState();
+  const { data: routeThread } = useThread(threadId ?? "", {
+    enabled: hostScope === undefined,
+  });
+  const environmentId = routeThread?.environmentId ?? null;
+  return useMemo(() => {
+    if (hostScope !== undefined) return hostScope;
+    if (threadId === undefined || projectId === undefined) {
+      return { kind: "new-thread", projectId: projectId ?? null };
+    }
+    return { kind: "thread", threadId, projectId, environmentId };
+  }, [environmentId, hostScope, projectId, threadId]);
+}
+
 export function useComposerView(): ComposerView {
   const providedView = useOptionalPluginComposerView();
   const composerHost = usePluginComposerHost();
@@ -579,13 +581,12 @@ export function useComposerView(): ComposerView {
   const draft = usePromptDraftSnapshot(
     providedView === undefined ? draftSource : NO_COMPOSER_DRAFT_SOURCE,
   );
+  const scope = useFallbackComposerScope(
+    providedView?.scope ?? composerHost?.scope,
+  );
   const fallback = useMemo<ComposerView>(
     () => ({
-      scope:
-        composerHost?.scope ??
-        (threadId !== undefined
-          ? { kind: "thread", threadId }
-          : { kind: "new-thread", projectId: projectId ?? null }),
+      scope,
       layout: "expanded",
       draft: {
         text: draft.text,
@@ -594,7 +595,7 @@ export function useComposerView(): ComposerView {
       },
       run: { isRunning: false, isSubmitting: false },
     }),
-    [composerHost?.scope, draft, projectId, threadId],
+    [draft, scope],
   );
   return providedView ?? fallback;
 }
@@ -648,15 +649,7 @@ export function useComposer(): PluginComposerApi {
   const textEffectKey = composerHost?.textEffectKey ?? routeDraft.storageKey;
   useComposerEditorBridge(textEffectKey);
 
-  const composerScope = composerHost?.scope;
-  const scope: PluginComposerScope = useMemo(
-    () =>
-      composerScope ??
-      (threadId !== undefined
-        ? { kind: "thread", threadId }
-        : { kind: "new-thread", projectId: projectId ?? null }),
-    [composerScope, projectId, threadId],
-  );
+  const scope = useFallbackComposerScope(composerHost?.scope);
   const scopeOwnershipKey = [
     pluginId,
     composerScopeIdentity(scope),
@@ -845,6 +838,18 @@ export function useComposers(): readonly PluginComposerApi[] {
     () => listedComposerHandles(pluginId, hosts),
     [hosts, pluginId],
   );
+}
+
+export function useActiveComposer(): PluginComposerApi | null {
+  const pluginId = usePluginId();
+  const active = useSyncExternalStore(
+    subscribeActiveComposer,
+    getActiveComposer,
+    getActiveComposer,
+  );
+  const host = active?.host ?? null;
+  usePluginComposerHostDraft(host);
+  return useMemo(() => activeComposerHandle(pluginId, host), [host, pluginId]);
 }
 
 const rpcQueryHosts = new WeakMap<

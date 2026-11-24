@@ -23,14 +23,16 @@ import {
 import type { ThreadListEntry } from "@bb/domain";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { appToast } from "@/components/ui/app-toast";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import type { SplitLayout } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { threadRequestsAtom } from "@/lib/thread-requests";
 import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
 import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
 import {
@@ -52,9 +54,9 @@ import {
   ThreadActionsMenu,
 } from "./ThreadActionsMenu";
 
-const hostActions = vi.hoisted(() => ({
-  requestArchiveThreads: vi.fn(),
-  requestDeleteThreads: vi.fn(),
+const threadRequests = vi.hoisted(() => ({
+  requestArchive: vi.fn(async (_threadIds: readonly string[]) => {}),
+  requestDelete: vi.fn(async (_threadIds: readonly string[]) => {}),
 }));
 const sdkThreads = vi.hoisted(() => ({
   pin: vi.fn(),
@@ -66,13 +68,10 @@ const sdkThreads = vi.hoisted(() => ({
   get: vi.fn(),
   experimental_regenerateTitle: vi.fn(),
 }));
-const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
+const copyToClipboard = vi.hoisted(() => vi.fn(async () => true));
 
 vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
-vi.mock("@/lib/clipboard", () => ({ copyToClipboardWithToast }));
-vi.mock("./ThreadActionsProvider", () => ({
-  useThreadActions: () => hostActions,
-}));
+vi.mock("@/lib/clipboard", () => ({ copyToClipboard }));
 
 const moveRun = vi.fn();
 const moveAction: PluginThreadActionRegistration = {
@@ -82,7 +81,9 @@ const moveAction: PluginThreadActionRegistration = {
   group: experimental_THREAD_ACTION_GROUPS.organize,
   order: 50,
   item: ({ thread }) =>
-    thread.parentThreadId !== null || thread.archivedAt !== null
+    thread.parentThreadId !== null ||
+    thread.archivedAt !== null ||
+    thread.isHidden
       ? null
       : {
           label: "Move to section",
@@ -277,6 +278,7 @@ function renderSurface(
 ) {
   const queryClient = new QueryClient();
   const store = createStore();
+  store.set(threadRequestsAtom, threadRequests);
   if (layout !== null) store.set(splitLayoutAtom, layout);
   if (cached) {
     queryClient.setQueryData(threadQueryKey(options.thread.id), options.thread);
@@ -350,6 +352,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetThreadActionRegistryForTest();
   vi.resetAllMocks();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -472,9 +475,47 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       ],
     },
     {
+      state: "a hidden side chat",
+      thread: makeThreadListEntry({ ...baseThread, visibility: "hidden" }),
+      route: "/",
+      layout: null,
+      desktop: [
+        "Open in split",
+        "Copy link",
+        "---",
+        "Mark unread",
+        "---",
+        "Rename",
+        "Regenerate title",
+        "---",
+        "Customize actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "Copy link",
+        "New thread in environment",
+        "---",
+        "Mark unread",
+        "---",
+        "Rename",
+        "Regenerate title",
+        "---",
+        "Customize actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+    },
+    {
       state: "the thread already in view",
       thread: baseThread,
-      route: getThreadRoutePath({
+      route: getThreadLocationPath({
         projectId: baseThread.projectId,
         threadId: baseThread.id,
       }),
@@ -518,7 +559,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     {
       state: "a thread open in another split pane",
       thread: baseThread,
-      route: getThreadRoutePath({ projectId: "proj_a", threadId: "thr_other" }),
+      route: getThreadLocationPath({
+        projectId: "proj_a",
+        threadId: "thr_other",
+      }),
       layout: twoPaneLayout("pane_other"),
       desktop: [
         "Focus split",
@@ -560,7 +604,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     {
       state: "the thread in the focused split pane",
       thread: baseThread,
-      route: getThreadRoutePath({
+      route: getThreadLocationPath({
         projectId: baseThread.projectId,
         threadId: baseThread.id,
       }),
@@ -690,16 +734,16 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     await waitFor(() =>
-      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
+      expect(threadRequests.requestArchive).toHaveBeenCalledWith([
+        baseThread.id,
       ]),
     );
 
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await waitFor(() =>
-      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
+      expect(threadRequests.requestDelete).toHaveBeenCalledWith([
+        baseThread.id,
       ]),
     );
 
@@ -709,14 +753,14 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       expect.objectContaining({ value: "sec_building" }),
     );
 
+    const copiedToast = vi.spyOn(appToast, "success");
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
-    expect(copyToClipboardWithToast).toHaveBeenCalledWith(
-      `${window.location.origin}/projects/proj_a/threads/thr_target`,
-      {
-        successMessage: "Thread link copied",
-        errorMessage: "Failed to copy thread link",
-      },
+    expect(copyToClipboard).toHaveBeenCalledWith({
+      text: `${window.location.origin}/projects/proj_a/threads/thr_target`,
+    });
+    await waitFor(() =>
+      expect(copiedToast).toHaveBeenCalledWith("Thread link copied", {}),
     );
   });
 
@@ -879,28 +923,6 @@ describe("thread action registrations", () => {
 describe("thread actions outside bb's own surfaces", () => {
   const [surface] = SURFACES;
   if (surface === undefined) throw new Error("no surface");
-
-  it("fetches a thread bb has not cached before archiving or deleting it", async () => {
-    sdkThreads.get.mockResolvedValue(baseThread);
-    renderSurface(surface, { thread: baseThread }, { cached: false });
-
-    await surface.open();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-    await waitFor(() =>
-      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
-      ]),
-    );
-
-    await surface.open();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
-    await waitFor(() =>
-      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
-      ]),
-    );
-    expect(sdkThreads.get).toHaveBeenCalledWith({ threadId: baseThread.id });
-  });
 
   it("opens a plugin's thread panel in the focused thread view, through panel and the retired experimental_panel and openThreadPanel", async () => {
     const open = vi.fn(() => true);
@@ -1165,6 +1187,8 @@ describe.each([
 
   function renderSelection(threads: readonly ThreadListEntry[]) {
     const queryClient = new QueryClient();
+    const store = createStore();
+    store.set(threadRequestsAtom, threadRequests);
     for (const thread of threads) {
       queryClient.setQueryData(threadQueryKey(thread.id), thread);
     }
@@ -1181,7 +1205,7 @@ describe.each([
     );
     return render(
       <QueryClientProvider client={queryClient}>
-        <Provider store={createStore()}>
+        <Provider store={store}>
           <MemoryRouter>
             <CompactViewportOverrideProvider isCompactViewport={compact}>
               <ThreadActionCollectors
@@ -1270,9 +1294,9 @@ describe.each([
       await screen.findByRole("menuitem", { name: "Archive 2 threads" }),
     );
     await waitFor(() =>
-      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: "thr_read" }),
-        expect.objectContaining({ id: "thr_unread" }),
+      expect(threadRequests.requestArchive).toHaveBeenCalledWith([
+        "thr_read",
+        "thr_unread",
       ]),
     );
 
@@ -1281,9 +1305,9 @@ describe.each([
       await screen.findByRole("menuitem", { name: "Delete 2 threads" }),
     );
     await waitFor(() =>
-      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: "thr_read" }),
-        expect.objectContaining({ id: "thr_unread" }),
+      expect(threadRequests.requestDelete).toHaveBeenCalledWith([
+        "thr_read",
+        "thr_unread",
       ]),
     );
 

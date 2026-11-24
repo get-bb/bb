@@ -8,10 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  SIDEBAR_CONTENT_SELECTOR,
-  useSidebarContentElementRef,
-} from "../ui/sidebar.js";
+import { useSidebarScrollArea } from "../ui/sidebar.js";
 import {
   encodeSidebarWindowedNavigationEntries,
   SIDEBAR_WINDOWED_NAV_ATTRIBUTE,
@@ -89,8 +86,10 @@ export function SidebarWindowedItems({
   getNavigationEntries,
   renderItem,
 }: SidebarWindowedItemsProps) {
-  const scrollElementRef = useSidebarContentElementRef();
-  const windowingEnabled = itemKeys.length > 0 && scrollElementRef !== null;
+  const scrollArea = useSidebarScrollArea();
+  const windowingEnabled = itemKeys.length > 0 && scrollArea.kind === "sidebar";
+  const scrollElement =
+    scrollArea.kind === "sidebar" ? scrollArea.element : null;
 
   const [realizedKeys, setRealizedKeys] =
     useState<ReadonlySet<string>>(EMPTY_KEY_SET);
@@ -142,17 +141,6 @@ export function SidebarWindowedItems({
     return callback;
   }, []);
 
-  const resolveScrollElement = useCallback((): Element | null => {
-    const fromRef = scrollElementRef?.current ?? null;
-    if (fromRef) {
-      return fromRef;
-    }
-    const firstWrapper = wrapperByKeyRef.current.values().next();
-    return firstWrapper.done
-      ? null
-      : firstWrapper.value.closest(SIDEBAR_CONTENT_SELECTOR);
-  }, [scrollElementRef]);
-
   const recordMeasuredHeight = useCallback((key: string, height: number) => {
     if (height <= 0) {
       return;
@@ -188,9 +176,10 @@ export function SidebarWindowedItems({
       }
     }
 
-    const scrollElement = resolveScrollElement();
-    const promoteAll =
-      !scrollElement || typeof IntersectionObserver === "undefined";
+    if (scrollElement === null) {
+      return;
+    }
+    const promoteAll = typeof IntersectionObserver === "undefined";
 
     const promoted = new Set<string>();
     if (promoteAll) {
@@ -223,14 +212,14 @@ export function SidebarWindowedItems({
       }
     }
     // oxlint-disable-next-line react/exhaustive-deps
-  }, [windowingEnabled, keySignature]);
+  }, [windowingEnabled, keySignature, scrollElement]);
 
   useEffect(() => {
-    if (!windowingEnabled || typeof IntersectionObserver === "undefined") {
-      return;
-    }
-    const scrollElement = resolveScrollElement();
-    if (!scrollElement) {
+    if (
+      !windowingEnabled ||
+      scrollElement === null ||
+      typeof IntersectionObserver === "undefined"
+    ) {
       return;
     }
 
@@ -299,7 +288,7 @@ export function SidebarWindowedItems({
       observerRef.current = null;
       observer?.disconnect();
     };
-  }, [windowingEnabled, resolveScrollElement, recordMeasuredHeight]);
+  }, [windowingEnabled, scrollElement, recordMeasuredHeight]);
 
   return (
     <>

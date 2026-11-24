@@ -125,8 +125,15 @@ export interface RuntimeEntry {
   skillRoots: readonly AgentRuntimeSkillRoot[];
   retainedSkillCatalogHashes: Set<string>;
   workspace: HostWorkspace;
+  workspaceWriteRoots: readonly string[];
   path: string;
   terminals: Set<string>;
+}
+
+export interface ResolveThreadWorkspaceWriteRootsArgs {
+  additionalWorkspaceFolders: readonly string[];
+  entry: RuntimeEntry;
+  threadId: string;
 }
 
 interface InjectedSkillsChangedNotification {
@@ -203,11 +210,6 @@ interface ReleaseThreadFromOtherEnvironmentsResult {
   activeTurnEnvironmentIds: string[];
   providerCheckpointId: string | null;
   releasedEnvironmentIds: string[];
-}
-
-interface RuntimeWorkspaceWriteRootsArgs {
-  threadStorageRootPath: string | null | undefined;
-  workspaceRoots: readonly string[];
 }
 
 interface PendingEnvironmentProvision {
@@ -294,6 +296,7 @@ export class RuntimeManager {
   >();
   private readonly threadControlTails = new Map<string, Promise<void>>();
   private providerMaintenanceSlot: ProviderMaintenanceRuntimeSlot | null = null;
+  private readonly pendingMaintenanceShutdowns = new Set<Promise<void>>();
   private readonly retiredProviderMaintenanceSlots =
     new Set<ProviderMaintenanceRuntimeSlot>();
   private providerMaintenanceIdleTimer: ReturnType<typeof setTimeout> | null =
@@ -312,14 +315,49 @@ export class RuntimeManager {
     this.ensureDataDirSkillsWatcher();
   }
 
-  private runtimeWorkspaceWriteRoots(
-    args: RuntimeWorkspaceWriteRootsArgs,
-  ): string[] {
-    const roots = [...args.workspaceRoots];
-    if (args.threadStorageRootPath) {
-      roots.push(args.threadStorageRootPath);
+  async resolveThreadWorkspaceWriteRoots(
+    args: ResolveThreadWorkspaceWriteRootsArgs,
+  ): Promise<string[]> {
+    for (const folderPath of args.additionalWorkspaceFolders) {
+      if (!path.isAbsolute(folderPath)) {
+        throw new WorkspaceError(
+          "invalid_path",
+          `Additional workspace folder must be an absolute path: ${folderPath}`,
+        );
+      }
     }
-    return [...new Set(roots)];
+    const folderGitRoots = await Promise.all(
+      args.additionalWorkspaceFolders.map((folderPath) =>
+        this.folderGitWriteRoots(folderPath),
+      ),
+    );
+    const threadStorageRootPath = this.options.threadStorageRootPath;
+    const threadStoragePath = threadStorageRootPath
+      ? path.join(threadStorageRootPath, args.threadId)
+      : null;
+    if (threadStoragePath) {
+      await mkdir(threadStoragePath, { recursive: true });
+    }
+    return [
+      ...new Set([
+        ...args.entry.workspaceWriteRoots,
+        ...args.additionalWorkspaceFolders,
+        ...folderGitRoots.flat(),
+        ...(threadStoragePath ? [threadStoragePath] : []),
+      ]),
+    ];
+  }
+
+  private async folderGitWriteRoots(folderPath: string): Promise<string[]> {
+    try {
+      const folder = await this.provisionHostWorkspace({ path: folderPath });
+      return await folder.getAdditionalWorkspaceWriteRoots();
+    } catch (error) {
+      if (error instanceof WorkspaceError && error.code === "path_not_found") {
+        return [];
+      }
+      throw error;
+    }
   }
 
   get(environmentId: string): RuntimeEntry | undefined {
@@ -710,6 +748,28 @@ export class RuntimeManager {
     ]);
   }
 
+  private async applySkillCatalogInPlace(
+    entry: RuntimeEntry,
+    skillConfig: RuntimeSkillConfig,
+  ): Promise<boolean> {
+    const result = await entry.runtime.reconfigureSkillRoots({
+      skillRoots: skillConfig.skillRoots,
+    });
+    if (!result.appliedToEveryProvider) {
+      return false;
+    }
+    const previousCatalogHash = entry.skillCatalogHash;
+    entry.retainedSkillCatalogHashes.clear();
+    if (previousCatalogHash !== null) {
+      entry.retainedSkillCatalogHashes.add(previousCatalogHash);
+    }
+    entry.retainedSkillCatalogHashes.add(skillConfig.catalogHash);
+    entry.skillCatalogHash = skillConfig.catalogHash;
+    entry.skillRoots = skillConfig.skillRoots;
+    await this.cleanupUnusedInjectedSkillStagingDirs([skillConfig.catalogHash]);
+    return true;
+  }
+
   private async ensureCompatibleEntry(
     args: EnsureCompatibleEntryArgs,
   ): Promise<RuntimeEntry | null> {
@@ -732,6 +792,10 @@ export class RuntimeManager {
       (args.entry.skillCatalogHash === null &&
         args.skillConfig.skillRoots.length === 0)
     ) {
+      return args.entry;
+    }
+
+    if (await this.applySkillCatalogInPlace(args.entry, args.skillConfig)) {
       return args.entry;
     }
 
@@ -785,8 +849,15 @@ export class RuntimeManager {
   private async shutdownProviderMaintenanceSlot(
     slot: ProviderMaintenanceRuntimeSlot,
   ): Promise<void> {
-    const runtime = await slot.runtime.catch(() => null);
-    await runtime?.shutdown();
+    const stopped = slot.runtime
+      .catch(() => null)
+      .then((runtime) => runtime?.shutdown());
+    this.pendingMaintenanceShutdowns.add(stopped);
+    try {
+      await stopped;
+    } finally {
+      this.pendingMaintenanceShutdowns.delete(stopped);
+    }
   }
 
   private async shutdownAllProviderMaintenanceRuntimes(): Promise<void> {
@@ -797,9 +868,10 @@ export class RuntimeManager {
     ].filter((slot) => slot !== null);
     this.providerMaintenanceSlot = null;
     this.retiredProviderMaintenanceSlots.clear();
-    await Promise.all(
-      slots.map((slot) => this.shutdownProviderMaintenanceSlot(slot)),
-    );
+    await Promise.all([
+      ...this.pendingMaintenanceShutdowns,
+      ...slots.map((slot) => this.shutdownProviderMaintenanceSlot(slot)),
+    ]);
   }
 
   private clearProviderMaintenanceIdleTimer(): void {
@@ -1178,7 +1250,6 @@ export class RuntimeManager {
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath,
-      additionalWorkspaceWriteRoots: [],
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
       threadStorageRootPath: this.options.threadStorageRootPath ?? undefined,
@@ -1228,17 +1299,12 @@ export class RuntimeManager {
     });
     const workspaceWriteRoots =
       await workspace.getAdditionalWorkspaceWriteRoots();
-    const additionalWorkspaceWriteRoots = this.runtimeWorkspaceWriteRoots({
-      threadStorageRootPath: this.options.threadStorageRootPath,
-      workspaceRoots: workspaceWriteRoots,
-    });
     let runtime: AgentRuntime | null = null;
     const shellEnv = this.getShellEnv();
     const shellEnvGeneration = this.shellEnvGeneration;
     const providerProcessEnv = providerProcessEnvFromShellEnv(shellEnv);
     runtime = this.createRuntime({
       workspacePath: workspace.path,
-      additionalWorkspaceWriteRoots,
       ...(args.skillConfig ? { skillRoots: args.skillConfig.skillRoots } : {}),
       ...(providerProcessEnv ? { env: providerProcessEnv } : {}),
       shellEnv,
@@ -1303,6 +1369,7 @@ export class RuntimeManager {
       ),
       terminals: new Set<string>(),
       workspace,
+      workspaceWriteRoots,
       path: workspace.path,
     };
   }

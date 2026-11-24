@@ -59,8 +59,6 @@ export interface AgentRuntimeProcessExitInfo {
 export interface AgentRuntimeOptions {
   workspacePath: string;
 
-  additionalWorkspaceWriteRoots?: readonly string[];
-
   env?: Record<string, string>;
 
   shellEnv?: AgentRuntimeShellEnvironment;
@@ -124,6 +122,7 @@ export interface EnsureProviderArgs {
 }
 
 export interface StartThreadArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -148,6 +147,7 @@ export interface StartThreadResult {
 }
 
 interface PrepareThreadRewindArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -173,6 +173,7 @@ interface DiscardThreadRewindArgs {
 }
 
 export interface ResumeThreadArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -192,6 +193,7 @@ export interface ResumeThreadResult {
 }
 
 export interface RunTurnArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   threadId: string;
   input: PromptInput[];
   clientRequestId: ClientTurnRequestId;
@@ -203,6 +205,7 @@ export interface RunTurnArgs {
 export type RunTurnResult = { status: "started" } | { status: "unconfirmed" };
 
 export interface SteerTurnArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   threadId: string;
   expectedTurnId: string;
   input: PromptInput[];
@@ -265,6 +268,14 @@ export interface ReapedIdleProviderSession {
 
 export interface ReapIdleProviderSessionsResult {
   reapedSessions: ReapedIdleProviderSession[];
+}
+
+export interface ReconfigureSkillRootsArgs {
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+}
+
+export interface ReconfigureSkillRootsResult {
+  appliedToEveryProvider: boolean;
 }
 
 export interface RenameThreadArgs {
@@ -388,6 +399,10 @@ export interface AgentRuntime {
   getLiveThreadIds(): string[];
 
   hasOpenBackgroundWork(): boolean;
+
+  reconfigureSkillRoots(
+    args: ReconfigureSkillRootsArgs,
+  ): Promise<ReconfigureSkillRootsResult>;
 
   listOpenBackgroundWork(): RuntimeOpenBackgroundWork[];
 

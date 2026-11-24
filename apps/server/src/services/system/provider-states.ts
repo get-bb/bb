@@ -65,6 +65,16 @@ function unknownProviderState(
   };
 }
 
+function readinessCheckFailedMessage(error: unknown): string {
+  const reason = (error instanceof Error ? error.message : String(error)).split(
+    "\n",
+    1,
+  )[0];
+  return reason === undefined || reason.length === 0
+    ? "Provider readiness could not be checked."
+    : `Provider readiness could not be checked: ${reason}`;
+}
+
 async function toProviderState(
   deps: LoggedWorkSessionDeps,
   args: {
@@ -144,11 +154,11 @@ async function getProviderState(
       timeoutMs: COMMAND_TIMEOUT_MS,
     });
     return await toProviderState(deps, { ...args, result });
-  } catch {
+  } catch (error) {
     return unknownProviderState(
       deps,
       args.provider,
-      "Provider readiness could not be checked.",
+      readinessCheckFailedMessage(error),
     );
   }
 }
@@ -202,19 +212,16 @@ async function getInstalledOnlyProviderState(
       return unknownProviderState(
         deps,
         provider,
-        "Provider readiness could not be checked.",
+        readinessCheckFailedMessage(error),
       );
     }
     omitInstalledProviderAfterError(deps, key, error);
     return null;
   }
   if (!isInstalledProviderHealth(result)) return null;
-  return await toProviderState(deps, { ...args, result }).catch(() =>
-    unknownProviderState(
-      deps,
-      provider,
-      "Provider readiness could not be checked.",
-    ),
+  return await toProviderState(deps, { ...args, result }).catch(
+    (error: unknown) =>
+      unknownProviderState(deps, provider, readinessCheckFailedMessage(error)),
   );
 }
 

@@ -255,6 +255,237 @@ const forkablePluginImports = {
   },
 };
 
+const coreContributionRoot = `${path.join(repoRoot, "apps", "app", "src", "core-contributions")}${path.sep}`;
+const sharedUiDir = path.join(repoRoot, "packages", "shared-ui");
+const registrySourceFiles = new Set(
+  readdirSync(registryDir)
+    .filter((name) => name.endsWith(".json") && name !== "index.json")
+    .flatMap(
+      (name) =>
+        JSON.parse(readFileSync(path.join(registryDir, name), "utf8")).files,
+    )
+    .map((file) => path.join(sharedUiDir, "src", file.target)),
+);
+const registrySharedUiSpecifiers = new Set(
+  Object.entries(
+    JSON.parse(readFileSync(path.join(sharedUiDir, "package.json"), "utf8"))
+      .exports,
+  )
+    .filter(([, target]) =>
+      registrySourceFiles.has(
+        path.join(
+          sharedUiDir,
+          typeof target === "string" ? target : target.source,
+        ),
+      ),
+    )
+    .map(([subpath]) => `@bb/shared-ui/${subpath.slice(2)}`),
+);
+const hostContextPackages = new Set([
+  "jotai",
+  "@tanstack/react-query",
+  "react-router",
+  "react-router-dom",
+]);
+
+function packageName(specifier) {
+  const segments = specifier.split("/");
+  return specifier.startsWith("@")
+    ? segments.slice(0, 2).join("/")
+    : segments[0];
+}
+
+const coreContributionImports = {
+  create(context) {
+    const filename = path.resolve(context.filename);
+    if (!filename.startsWith(coreContributionRoot)) return {};
+    const boundary =
+      "Core contributions use only what a plugin gets: @get-bb/plugin-sdk public entry points, registry components (@bb/shared-ui subpaths that packages/plugin-registry publishes), React, npm packages, and other files in apps/app/src/core-contributions.";
+
+    function check(node) {
+      if (node?.type !== "Literal" || typeof node.value !== "string") return;
+      const specifier = node.value;
+      if (specifier.startsWith("@get-bb/plugin-sdk/internal/")) {
+        context.report({
+          node,
+          message: `${specifier} is an internal SDK module. ${boundary}`,
+        });
+        return;
+      }
+      if (packageName(specifier) === "@get-bb/plugin-sdk") return;
+      if (registrySharedUiSpecifiers.has(specifier)) return;
+      if (specifier.startsWith("@/")) {
+        context.report({
+          node,
+          message: `${specifier} is a private app module. ${boundary}`,
+        });
+        return;
+      }
+      if (isWorkspacePackage(specifier)) {
+        context.report({
+          node,
+          message: `${specifier} is a bb workspace module that plugins cannot import. ${boundary}`,
+        });
+        return;
+      }
+      if (hostContextPackages.has(packageName(specifier))) {
+        context.report({
+          node,
+          message: `${specifier} reads bb's own provider state (store, query cache, router), which a plugin's copy of the library cannot see. ${boundary}`,
+        });
+        return;
+      }
+      if (
+        specifier.startsWith(".") &&
+        !path
+          .resolve(path.dirname(filename), specifier)
+          .startsWith(coreContributionRoot)
+      ) {
+        context.report({
+          node,
+          message: `${specifier} reaches outside apps/app/src/core-contributions. ${boundary}`,
+        });
+      }
+    }
+
+    function checkExport(node) {
+      context.report({
+        node,
+        message:
+          "A core contribution exports only its default definePluginApp definition, so core cannot pass private state into it or reuse its internals.",
+      });
+    }
+
+    return {
+      ImportDeclaration(node) {
+        check(node.source);
+      },
+      ExportNamedDeclaration(node) {
+        if (node.source !== null) check(node.source);
+        checkExport(node);
+      },
+      ExportAllDeclaration(node) {
+        check(node.source);
+        checkExport(node);
+      },
+      ImportExpression(node) {
+        check(node.source);
+      },
+      TSImportType(node) {
+        check(node.source);
+      },
+      CallExpression(node) {
+        if (moduleLoaderCalls.has(calleeName(node.callee))) {
+          check(node.arguments[0]);
+        }
+      },
+    };
+  },
+};
+
+const corePluginSdkAppSpecifier = "@get-bb/plugin-sdk/app";
+const corePluginSdkAppBindingPath = path.join(
+  repoRoot,
+  "apps",
+  "app",
+  "src",
+  "lib",
+  "core-plugin-sdk-app.ts",
+);
+
+function readCorePluginSdkAppBindingExports() {
+  const source = readFileSync(corePluginSdkAppBindingPath, "utf8");
+  const statement = /export\s*\{([^}]*)\}\s*from\s*"[^"]+";/gu;
+  const unparsed = source.replace(statement, "").trim();
+  if (unparsed !== "") {
+    throw new Error(
+      `${corePluginSdkAppBindingPath} may contain only \`export { ... } from "...";\` statements so bb/core-plugin-sdk-app-binding can read its exports. Unparsed: ${unparsed}`,
+    );
+  }
+  return new Set(
+    [...source.matchAll(statement)].flatMap((match) =>
+      match[1]
+        .split(",")
+        .map((specifier) => specifier.trim())
+        .filter((specifier) => specifier !== "")
+        .map((specifier) => specifier.split(/\s+as\s+/u).at(-1)),
+    ),
+  );
+}
+
+const corePluginSdkAppBindingExports = readCorePluginSdkAppBindingExports();
+
+const corePluginSdkAppBinding = {
+  create(context) {
+    const binding =
+      "apps/app/vite-core-plugin-sdk-app.ts resolves @get-bb/plugin-sdk/app in app source to apps/app/src/lib/core-plugin-sdk-app.ts, so every other member is undefined at runtime even though it typechecks. Re-export the member there from the implementation pluginSdkAppImplementation serves, or import it as a type.";
+
+    function isBindingSource(node) {
+      return (
+        node?.type === "Literal" && node.value === corePluginSdkAppSpecifier
+      );
+    }
+
+    function checkName(node, name) {
+      if (corePluginSdkAppBindingExports.has(name)) return;
+      context.report({
+        node,
+        message: `${name} is not exported by the core binding of ${corePluginSdkAppSpecifier}. ${binding}`,
+      });
+    }
+
+    function reportWholeModule(node) {
+      context.report({
+        node,
+        message: `Import named members of ${corePluginSdkAppSpecifier}; a default, namespace or dynamic import reaches past the members the core binding exports. ${binding}`,
+      });
+    }
+
+    return {
+      ImportDeclaration(node) {
+        if (!isBindingSource(node.source) || node.importKind === "type") {
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (specifier.type !== "ImportSpecifier") {
+            reportWholeModule(specifier);
+          } else if (specifier.importKind !== "type") {
+            checkName(
+              specifier,
+              specifier.imported.type === "Identifier"
+                ? specifier.imported.name
+                : specifier.imported.value,
+            );
+          }
+        }
+      },
+      ExportNamedDeclaration(node) {
+        if (!isBindingSource(node.source) || node.exportKind === "type") {
+          return;
+        }
+        for (const specifier of node.specifiers) {
+          if (specifier.exportKind !== "type") {
+            checkName(
+              specifier,
+              specifier.local.type === "Identifier"
+                ? specifier.local.name
+                : specifier.local.value,
+            );
+          }
+        }
+      },
+      ExportAllDeclaration(node) {
+        if (isBindingSource(node.source) && node.exportKind !== "type") {
+          reportWholeModule(node);
+        }
+      },
+      ImportExpression(node) {
+        if (isBindingSource(node.source)) reportWholeModule(node);
+      },
+    };
+  },
+};
+
 const noComments = {
   meta: {
     fixable: "whitespace",
@@ -386,6 +617,8 @@ const imeSafeKeyHandlers = {
 };
 
 export const rules = {
+  "core-contribution-imports": coreContributionImports,
+  "core-plugin-sdk-app-binding": corePluginSdkAppBinding,
   "forkable-plugin-imports": forkablePluginImports,
   "ime-safe-key-handlers": imeSafeKeyHandlers,
   "no-blocking-child-process-call": noBlockingChildProcessCall,

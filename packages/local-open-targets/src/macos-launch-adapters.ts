@@ -293,6 +293,24 @@ export const LAUNCH_ADAPTERS: LaunchAdapter[] = [
   },
   {
     capabilities: FULL_FILE_OPEN_CAPABILITIES,
+    icon: { kind: "builtin", name: "vscodium" },
+    id: "vscodium",
+    kind: "editor",
+    label: "VSCodium",
+    fileOpenBehavior: "direct",
+    macos: {
+      openMode: "application",
+      appName: "VSCodium",
+      bundleIds: ["com.vscodium"],
+      builtIn: false,
+      ...vsCodeFamilyCommands({
+        bundledExecutable: resourcesAppBinExecutable("codium"),
+        executable: "codium",
+      }),
+    },
+  },
+  {
+    capabilities: FULL_FILE_OPEN_CAPABILITIES,
     icon: { kind: "builtin", name: "cursor" },
     id: "cursor",
     kind: "editor",

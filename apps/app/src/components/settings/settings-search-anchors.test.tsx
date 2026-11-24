@@ -13,9 +13,9 @@ import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { FullPage } from "@/views/SettingsView.stories";
 import { SETTINGS_SEARCH_INDEX } from "./settings-search";
 import {
-  getSettingsSectionRoutePath,
   SETTINGS_NAV_SECTIONS,
   type SettingsNavSection,
+  getSettingsTargetPath,
 } from "./settings-sections";
 
 const LOCAL_URL = "http://localhost:3000/";
@@ -26,42 +26,55 @@ const sectionsWithSettings = SETTINGS_NAV_SECTIONS.filter(
 );
 
 function registerReplacementPlugin() {
-  setPluginSlotRegistrations(
-    "inkwell",
-    makePluginRegistrationSet({
-      threadLists: [{ id: "inbox", title: "Inbox", component: () => null }],
-      experimentalSidebarNavigations: [
-        {
-          id: "nav",
-          title: "Inkwell nav",
-          placement: "list",
-          component: () => null,
-        },
-      ],
-      sourceCodeRenderers: [
-        { id: "source", title: "Inkwell source", component: () => null },
-      ],
-      diffRenderers: [
-        { id: "diffs", title: "Inkwell diffs", component: () => null },
-      ],
-      composers: [
-        { id: "composer", title: "Inkwell composer", component: () => null },
-      ],
-      fileOpeners: [
-        {
-          id: "editor",
-          title: "Inkwell editor",
-          extensions: ["md"],
-          component: () => null,
-        },
-      ],
-    }),
-  );
+  for (const pluginId of ["inkwell", "quill"]) {
+    setPluginSlotRegistrations(
+      pluginId,
+      makePluginRegistrationSet({
+        threadLists: [{ id: "inbox", title: "Inbox", component: () => null }],
+        experimentalSidebarNavigations: [
+          {
+            id: "nav",
+            title: `${pluginId} nav`,
+            placement: "list",
+            component: () => null,
+          },
+        ],
+        sourceCodeRenderers: [
+          { id: "source", title: `${pluginId} source`, component: () => null },
+        ],
+        diffRenderers: [
+          { id: "diffs", title: `${pluginId} diffs`, component: () => null },
+        ],
+        composers: [
+          {
+            id: "composer",
+            title: `${pluginId} composer`,
+            component: () => null,
+          },
+        ],
+        threadHeaderTitles: [{ id: "title", component: () => null }],
+        threadRailOutlines: [{ id: "outline", component: () => null }],
+        fileOpeners: [
+          {
+            id: "editor",
+            title: `${pluginId} editor`,
+            extensions: ["md"],
+            component: () => null,
+          },
+        ],
+        codeFenceRenderers: [
+          { id: "shell", languages: ["bash"], component: () => null },
+        ],
+      }),
+    );
+  }
 }
 
 function renderSection(section: SettingsNavSection) {
   render(
-    <MemoryRouter initialEntries={[getSettingsSectionRoutePath(section.id)]}>
+    <MemoryRouter
+      initialEntries={[getSettingsTargetPath({ section: section.id })]}
+    >
       <TooltipProvider>
         <FullPage />
       </TooltipProvider>

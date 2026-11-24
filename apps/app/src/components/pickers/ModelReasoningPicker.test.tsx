@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { useLayoutEffect, useRef, type ReactNode } from "react";
+
 import {
   act,
   cleanup,
@@ -25,6 +27,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { systemExecutionOptionsQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
+import { registerActiveComposerCandidate } from "@/lib/active-composer";
 import { expectNonmodalPicker } from "@/test/nonmodal-picker";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
@@ -162,6 +165,24 @@ function executionOptions({
   };
 }
 
+function ComposerShell({ children }: { children: ReactNode }) {
+  const shellRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(
+    () =>
+      registerActiveComposerCandidate({
+        shell: () => shellRef.current,
+        surface: null,
+        host: null,
+      }),
+    [],
+  );
+  return (
+    <div ref={shellRef} data-app-composer>
+      {children}
+    </div>
+  );
+}
+
 function renderPicker({
   onSelectedProviderChange = vi.fn(),
   onModelChange = vi.fn(),
@@ -237,7 +258,7 @@ function renderPicker({
   );
 
   const picker = (
-    <div data-app-composer>
+    <ComposerShell>
       <ModelReasoningPicker
         providerOptions={pickerProviderOptions}
         providerRouting={providerRouting}
@@ -264,7 +285,7 @@ function renderPicker({
         onAgentOptionChange={onAgentOptionChange}
       />
       <button type="button">Composer action</button>
-    </div>
+    </ComposerShell>
   );
   const pickerWithPane = splitPane ? (
     <PaneContext.Provider value={splitPaneContext}>

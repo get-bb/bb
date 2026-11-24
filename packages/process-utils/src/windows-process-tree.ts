@@ -94,7 +94,7 @@ function waitForRootExit(child: ChildProcess): Promise<void> {
     const timer = setTimeout(() => {
       child.off("exit", onExit);
       reject(new Error(`Process did not exit after termination: ${child.pid}`));
-    }, 1_000);
+    }, 5_000);
     child.once("exit", onExit);
   });
 }

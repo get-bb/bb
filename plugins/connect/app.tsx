@@ -19,6 +19,7 @@ import {
   type InternalDoNotUseSetupFailureDetail,
   type InternalDoNotUseSetupGuideSectionProps,
 } from "@get-bb/plugin-sdk/app";
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { mobileAppDownloads } from "@bb/domain";
 import {
   encodeMobilePairingPayload,
@@ -147,10 +148,8 @@ const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
 
 function isUnavailableError(error: unknown): boolean {
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "status" in error &&
-    (error.status === 503 || error.status === 404)
+    error instanceof experimental_BbHttpError &&
+    (error.code === "plugin_not_found" || error.code === "plugin_not_running")
   );
 }
 

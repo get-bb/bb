@@ -1,7 +1,9 @@
-import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
+import {
+  experimental_makeActionContext,
+  experimental_makePanelController,
+} from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
 
 const app = await loadPluginApp(() => import("./app"));
 const { parsePanelParams } = await import("./app");
@@ -38,22 +40,6 @@ const message = {
   sourceSeqEnd: 42,
   experimental_messageSeq: 42,
 };
-
-function unusedLauncherServices(): {
-  sdk: PluginBrowserBbSdk;
-  navigate: BbNavigate;
-} {
-  const unused = <T extends object>(name: string): T =>
-    new Proxy({} as T, {
-      get() {
-        throw new Error(`${name} is not used by this test`);
-      },
-    });
-  return {
-    sdk: unused<PluginBrowserBbSdk>("sdk"),
-    navigate: unused<BbNavigate>("navigate"),
-  };
-}
 
 describe("parsePanelParams", () => {
   it("narrows persisted params and rejects malformed values", () => {
@@ -94,11 +80,10 @@ describe("reply-in-side-chat message action", () => {
     const panel = panelStub();
 
     await app.messageActions[0]!.run({
+      ...experimental_makeActionContext({ panel }),
       threadId: "thr_src",
       message,
-      panel,
       composer: null,
-      ...unusedLauncherServices(),
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -140,11 +125,10 @@ describe("reply-in-side-chat message action", () => {
     vi.stubGlobal("fetch", fetchMock);
     const panel = panelStub();
     const context = {
+      ...experimental_makeActionContext({ panel }),
       threadId: "thr_src",
       message,
-      panel,
       composer: null,
-      ...unusedLauncherServices(),
     };
 
     const first = app.messageActions[0]!.run(context);
@@ -166,12 +150,11 @@ describe("reply-in-side-chat message action", () => {
     const panel = panelStub();
 
     await app.messageActions[0]!.run({
+      ...experimental_makeActionContext({ panel }),
       threadId: "thr_src",
       message,
       selectedText: "just this part",
-      panel,
       composer: null,
-      ...unusedLauncherServices(),
     });
 
     expect(panel.openTab).toHaveBeenCalledWith(

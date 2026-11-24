@@ -1,4 +1,5 @@
 import { isPathWithinDirectory } from "@bb/process-utils";
+import { homedir } from "node:os";
 import path from "node:path";
 import { toOptionalString } from "@bb/provider-bridge-protocol/bridge-kit";
 import { z } from "zod";
@@ -38,10 +39,30 @@ export interface AcpToolCallPathOptions {
   existedBefore?: ReadonlyMap<string, boolean | undefined> | undefined;
 }
 
+const URL_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
+const HOME_RELATIVE_PATTERN = /^~[\\/]/;
+
+function isAcpUrl(value: string): boolean {
+  return (
+    value.startsWith("//") ||
+    (!path.isAbsolute(value) && URL_SCHEME_PATTERN.test(value))
+  );
+}
+
+export function isAcpLocalAbsolutePath(value: string): boolean {
+  return path.isAbsolute(value) && !isAcpUrl(value);
+}
+
 export function resolveAcpToolCallPath(
   value: string,
   options: AcpToolCallPathOptions | undefined,
 ): string {
+  if (isAcpUrl(value)) {
+    return value;
+  }
+  if (HOME_RELATIVE_PATTERN.test(value)) {
+    return path.join(homedir(), value.slice(2));
+  }
   const cwd = options?.cwd;
   if (cwd === undefined || path.isAbsolute(value) || value.startsWith("~")) {
     return value;

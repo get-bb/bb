@@ -32,6 +32,11 @@ import {
   startMachineAuthProxy,
   type MachineAuthProxy,
 } from "./machine-auth-proxy.js";
+import {
+  ServerRouteResolver,
+  persistServerRoutes,
+  readPersistedServerRoutes,
+} from "./server-routes.js";
 
 interface StartHostDaemonOptions {
   enrollKey?: string;
@@ -133,10 +138,16 @@ export async function startHostDaemon(
       dataDir,
     });
     lockDiagnosticsLogger = logger;
-    if (options.serverHeaders !== undefined) {
+    const routes = new ServerRouteResolver({
+      anchorUrl: serverUrl,
+      anchorHeaders: options.serverHeaders ?? {},
+      persisted: await readPersistedServerRoutes(dataDir, logger),
+      persist: persistServerRoutes(dataDir),
+      logger,
+    });
+    if (options.serverHeaders !== undefined || routes.candidates().length > 1) {
       machineAuthProxy = await startMachineAuthProxy({
-        serverHeaders: options.serverHeaders,
-        serverUrl,
+        target: () => routes.active(),
       });
     }
     setParcelWatcherBackend(
@@ -169,9 +180,8 @@ export async function startHostDaemon(
     const runtimeShellEnvResolvedAtMs = Date.now();
     app = await createHostDaemonApp({
       dataDir,
-      serverUrl,
+      routes,
       hostKey,
-      serverHeaders: options.serverHeaders,
       autoUpdate: options.autoUpdate,
       supervised: options.supervised,
       bridgeBundleDir: options.bridgeBundleDir,

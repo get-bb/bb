@@ -1,6 +1,8 @@
 import { useThreadFixedTabs } from "./PluginThreadFixedTabs";
 // @vitest-environment jsdom
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 
 import {
   MemoryRouter,
@@ -18,13 +20,8 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { render } from "@/test/render-with-query-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -410,7 +407,12 @@ describe("useComposer", () => {
       }),
     );
     const staticView: ComposerView = {
-      scope: { kind: "thread", threadId: "thr_quiet" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_quiet",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       layout: "expanded",
       draft: { text: "", isEmpty: true, attachmentCount: 0 },
       run: { isRunning: false, isSubmitting: false },
@@ -464,7 +466,12 @@ describe("useComposer", () => {
       }),
     );
     const staticView: ComposerView = {
-      scope: { kind: "thread", threadId: "thr_navigated" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_navigated",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       layout: "expanded",
       draft: { text: "", isEmpty: true, attachmentCount: 0 },
       run: { isRunning: false, isSubmitting: false },
@@ -527,7 +534,12 @@ describe("useComposer", () => {
       }),
     );
     const staticView: ComposerView = {
-      scope: { kind: "thread", threadId: "thr_late" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_late",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       layout: "expanded",
       draft: { text: "", isEmpty: true, attachmentCount: 0 },
       run: { isRunning: false, isSubmitting: false },
@@ -579,6 +591,34 @@ describe("useComposer", () => {
     );
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+
+  it("scopes a composer outside any composer host to the route thread's project and environment", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(
+      threadQueryKey("thr_route"),
+      makeThreadResponse({
+        id: "thr_route",
+        projectId: "proj_route",
+        environmentId: "env_route",
+      }),
+    );
+    registerComposerProbe("route");
+    render(
+      <MemoryRouter initialEntries={["/projects/proj_route/threads/thr_route"]}>
+        <ComposerCustomizationMount />
+      </MemoryRouter>,
+      { queryClient },
+    );
+
+    expect(
+      JSON.parse(screen.getByTestId("route-scope-details").textContent ?? ""),
+    ).toEqual({
+      kind: "thread",
+      threadId: "thr_route",
+      projectId: "proj_route",
+      environmentId: "env_route",
+    });
   });
 
   it("keeps the withdrawn thread-row status method callable for prebuilt 0.4.1 bundles", () => {
@@ -729,6 +769,8 @@ describe("useComposer", () => {
             kind: "queued-message",
             threadId: "thr_queue",
             queuedMessageId,
+            projectId: "proj_test",
+            environmentId: null,
           },
           textEffectKey: `queued-message:thr_queue:${queuedMessageId}:1`,
           getCurrent: () => draftRef.current,
@@ -826,6 +868,8 @@ describe("useComposer", () => {
                   kind: "queued-message",
                   threadId: "thr_queue",
                   queuedMessageId: "qmsg_1",
+                  projectId: "proj_test",
+                  environmentId: null,
                 },
                 textEffectKey:
                   "queued-message:thr_queue:qmsg_1:sibling-surface",
@@ -1173,6 +1217,8 @@ describe("useComposer", () => {
             kind: "queued-message",
             threadId: "thr_scope_owner",
             queuedMessageId,
+            projectId: "proj_test",
+            environmentId: null,
           },
           textEffectKey: "shared-scope-effect",
           getCurrent: () => draft,
@@ -1355,7 +1401,12 @@ describe("useComposer", () => {
     function Harness() {
       const host = useMemo<PluginComposerHost>(
         () => ({
-          scope: { kind: "thread", threadId: "thr_submit", environment: null },
+          scope: {
+            kind: "thread",
+            threadId: "thr_submit",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           textEffectKey: "thread:thr_submit",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
@@ -1376,7 +1427,12 @@ describe("useComposer", () => {
       closePopup: () => false,
       isPopupOpen: () => false,
       host: {
-        scope: { kind: "thread", threadId: "thr_submit" },
+        scope: {
+          kind: "thread",
+          threadId: "thr_submit",
+          projectId: "proj_test",
+          environmentId: null,
+        },
         textEffectKey: "thread:thr_submit",
         getCurrent: () => draft,
         subscribeDraft: () => () => {},
@@ -1515,7 +1571,12 @@ describe("useComposer().experimental_setSelection", () => {
       });
     });
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "thr_selection" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_selection",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "thread:thr_selection",
       getCurrent: () => emptyDraft,
       subscribeDraft: () => () => {},
@@ -1597,7 +1658,8 @@ describe("useComposer().experimental_setSelection", () => {
       scope: {
         kind: "thread",
         threadId: "thr_own_selection",
-        environment: null,
+        projectId: "proj_test",
+        environmentId: null,
       },
       textEffectKey: "thread:thr_own_selection",
       getSelection: () => selection,
@@ -1639,7 +1701,12 @@ describe("useComposer().experimental_setSelection", () => {
       <MemoryRouter initialEntries={["/threads/thr_selection"]}>
         <Harness
           host={{
-            scope: { kind: "thread", threadId: "thr_selection" },
+            scope: {
+              kind: "thread",
+              threadId: "thr_selection",
+              projectId: "proj_test",
+              environmentId: null,
+            },
             textEffectKey: "thread:thr_selection",
             setSelection,
           }}
@@ -1685,6 +1752,8 @@ describe("useComposer().experimental_setSelection", () => {
         kind: "queued-message" as const,
         threadId: "thr_selection",
         queuedMessageId: "qmsg_1",
+        projectId: "proj_test",
+        environmentId: null,
       },
     ]) {
       const view = render(

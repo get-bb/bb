@@ -5,7 +5,10 @@ import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonBridgeLaunch,
+  HostNativeRootScan,
+} from "@bb/host-daemon-contract";
 import { buildPluginHost, resolvePluginBuildToolchain } from "@bb/plugin-build";
 import {
   validatePluginProviderDeclaration,
@@ -13,12 +16,10 @@ import {
 } from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   EMPTY_PROVIDER_NATIVE_ROOTS,
-  EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
   type JsonValue,
   parseNamespacedGlyph,
   pluginPackageJsonSchema,
   type ProviderInfo,
-  type ProviderNativeRootSet,
 } from "@bb/domain";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
@@ -118,6 +119,7 @@ export async function registerFirstPartyProviders(
         icons,
       });
       registry.register({
+        reportBridgeFailure: () => undefined,
         ...buildPluginProviderRegistration({
           available: !unavailable.has(pluginId),
           pluginId,
@@ -156,6 +158,7 @@ export function minimalProviderRegistration(args: {
     nativeCommandRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
     resolvesNativeRoots: false,
     deriveProviderOptions: () => ({}),
+    reportBridgeFailure: () => undefined,
     iconNames: new Set<string>(),
   };
 }
@@ -224,18 +227,37 @@ async function hasHostEntry(rootDir: string): Promise<boolean> {
   );
 }
 
-export function declaredNativeRootSet(
-  registry: ProviderRegistryService,
+export function declaredNativeRootScan(
+  deps: {
+    providerRegistry: ProviderRegistryService;
+    pluginHostArtifacts: PluginHostArtifactRegistry;
+  },
   providerId: string,
-): ProviderNativeRootSet {
-  const registration = registry.get(providerId);
+): HostNativeRootScan {
+  const registration = deps.providerRegistry.get(providerId);
   if (registration === null) {
     throw new Error(`provider "${providerId}" is not registered`);
   }
+  const artifact = registration.resolvesNativeRoots
+    ? deps.pluginHostArtifacts.get(registration.pluginId)
+    : undefined;
   return {
-    skills: registration.nativeSkillRoots,
-    commands: registration.nativeCommandRoots,
-    resolved: EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
+    providerId,
+    declaredRoots: {
+      skills: registration.nativeSkillRoots,
+      commands: registration.nativeCommandRoots,
+    },
+    resolver:
+      artifact === undefined
+        ? null
+        : {
+            pluginId: registration.pluginId,
+            generation: artifact.generation,
+            artifact: {
+              digest: artifact.digest,
+              byteLength: artifact.byteLength,
+            },
+          },
   };
 }
 
@@ -299,6 +321,7 @@ export async function registerFakeProviders(
   for (const providerId of FAKE_PROVIDER_IDS) {
     const pluginId = `provider-${providerId}`;
     registry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         iconHash: null,
         available: true,
@@ -370,6 +393,7 @@ export async function registerConfiguredAcpProvider(
   const pluginId = "provider-acp";
   for (const declaration of await acpProviderDeclarationsFromSetting([entry])) {
     registry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         available: true,
         pluginId,

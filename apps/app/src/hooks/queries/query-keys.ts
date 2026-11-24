@@ -25,6 +25,7 @@ export const PROJECT_SOURCE_BRANCHES_QUERY_KEY = "projectSourceBranches";
 const PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY =
   "projectDefaultExecutionOptions";
 const PROJECT_PROMPT_HISTORY_QUERY_KEY = "projectPromptHistory";
+const PROJECT_SOURCE_FOLDERS_QUERY_KEY = "projectSourceFolders";
 export const SIDEBAR_NAVIGATION_QUERY_KEY = "sidebarNavigation";
 export const THREADS_QUERY_KEY = "threads";
 const THREAD_SEARCH_QUERY_KEY = "threadSearch";
@@ -109,7 +110,8 @@ export interface ArchivedThreadsListFilters {
 export const ARCHIVED_THREADS_LIST_KIND = "archivedList";
 
 type HostsQueryKey =
-  readonly [typeof HOSTS_QUERY_KEY] | readonly [typeof HOSTS_QUERY_KEY, true];
+  | readonly [typeof HOSTS_QUERY_KEY]
+  | readonly [typeof HOSTS_QUERY_KEY, true];
 type HostQueryId = string | null | undefined;
 type HostQueryKey = readonly [typeof HOST_QUERY_KEY, HostQueryId];
 type AllHostQueryKeyPrefix = readonly [typeof HOST_QUERY_KEY];
@@ -131,6 +133,18 @@ type AllProjectSourceBranchesQueryKeyPrefix = readonly [
 type ProjectSourceBranchesQueryKeyPrefix = readonly [
   typeof PROJECT_SOURCE_BRANCHES_QUERY_KEY,
   string,
+];
+type ProjectSourceFoldersQueryKey = readonly [
+  typeof PROJECT_SOURCE_FOLDERS_QUERY_KEY,
+  string,
+  string,
+];
+type ProjectSourceFoldersQueryKeyPrefix = readonly [
+  typeof PROJECT_SOURCE_FOLDERS_QUERY_KEY,
+  string,
+];
+type AllProjectSourceFoldersQueryKeyPrefix = readonly [
+  typeof PROJECT_SOURCE_FOLDERS_QUERY_KEY,
 ];
 type ProjectDefaultExecutionOptionsQueryKey = readonly [
   typeof PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY,
@@ -610,6 +624,23 @@ export function projectDefaultExecutionOptionsQueryKey({
   projectId,
 }: ProjectDefaultExecutionOptionsQueryKeyArgs): ProjectDefaultExecutionOptionsQueryKey {
   return [PROJECT_DEFAULT_EXECUTION_OPTIONS_QUERY_KEY, projectId];
+}
+
+export function projectSourceFoldersQueryKey(
+  projectId: string,
+  sourceId: string,
+): ProjectSourceFoldersQueryKey {
+  return [PROJECT_SOURCE_FOLDERS_QUERY_KEY, projectId, sourceId];
+}
+
+export function projectSourceFoldersQueryKeyPrefix(
+  projectId: string,
+): ProjectSourceFoldersQueryKeyPrefix {
+  return [PROJECT_SOURCE_FOLDERS_QUERY_KEY, projectId];
+}
+
+export function allProjectSourceFoldersQueryKeyPrefix(): AllProjectSourceFoldersQueryKeyPrefix {
+  return [PROJECT_SOURCE_FOLDERS_QUERY_KEY];
 }
 
 export function projectPromptHistoryQueryKeyPrefix(): ProjectPromptHistoryQueryKeyPrefix {

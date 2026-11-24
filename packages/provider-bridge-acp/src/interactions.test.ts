@@ -125,6 +125,30 @@ describe("buildAcpPermissionInteractionPayload", () => {
     });
   });
 
+  it("asks to read an image as a file read, since the image row carries no label", () => {
+    const payload = buildAcpPermissionInteractionPayload({
+      toolCall: {
+        toolCallId: "call-image",
+        title: "File ../../../tmp/shot.png",
+        kind: "read",
+        locations: [{ path: "/tmp/shot.png" }],
+      },
+      options: allowDenyOptions,
+    });
+
+    expect(payload).toMatchObject({
+      subject: {
+        kind: "tool_use",
+        tool: "read",
+        presentation: {
+          label: { pending: "Reading file", completed: "Read file" },
+          icon: { glyph: "FileText" },
+          title: "shot.png",
+        },
+      },
+    });
+  });
+
   it("asks as the bound bb tool with its definition's presentation", () => {
     const payload = buildAcpPermissionInteractionPayload({
       toolCall: {

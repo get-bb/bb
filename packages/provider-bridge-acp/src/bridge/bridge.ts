@@ -2001,7 +2001,10 @@ function handleElicitationRequest(
     answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
-  const plan = planAcpElicitation(params);
+  const plan = planAcpElicitation(params, {
+    descriptionIsHeading:
+      session.dialect.elicitationDescriptionIsHeading === true,
+  });
   if (plan.kind === "unsupported") {
     answerWithoutUser(session, responder, {
       kind: "unshowable-request",
@@ -3475,10 +3478,18 @@ function reconcileExecutionSettings(
       dialectLaunchEnv(session.dialect.id, construction.permissionMode),
     ) ||
     launchModelChanged;
+  const additionalDirectoriesChanged =
+    session.capabilities !== undefined &&
+    session.supportsLoadSession &&
+    !isDeepStrictEqual(
+      additionalSessionDirectories(session.construction, session.capabilities),
+      additionalSessionDirectories(construction, session.capabilities),
+    );
   const restart =
     session.connection.exited ||
     session.rebuildBeforeNextPrompt !== null ||
     launchArgsChanged ||
+    additionalDirectoriesChanged ||
     !isDeepStrictEqual(envVars ?? {}, session.construction.envVars ?? {});
   withdrawPendingQuestions(session, "a new prompt started before you answered");
   session.policy = {

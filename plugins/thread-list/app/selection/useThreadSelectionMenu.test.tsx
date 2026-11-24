@@ -30,7 +30,7 @@ function Selection() {
   const selected = useMultiSelectionContaining("a");
   const menu = useThreadSelectionMenu(selected);
   return (
-    <div data-sidebar="content">
+    <div>
       <a href="#a" data-sidebar-thread-id="a">
         First
       </a>
@@ -44,6 +44,7 @@ function Selection() {
           pinnedAt: null,
           sectionId: null,
           isUnread: false,
+          isHidden: false,
           status: "idle",
           environment: null,
         }}

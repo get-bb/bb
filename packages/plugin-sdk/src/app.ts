@@ -207,6 +207,9 @@ export const experimental_useTabVisible = runtimeFunction(
 export const experimental_useServers = runtimeFunction(
   "experimental_useServers",
 );
+export const experimental_hasServers = runtimeFunction(
+  "experimental_hasServers",
+);
 export const experimental_useAppPanel = runtimeFunction(
   "experimental_useAppPanel",
 );
@@ -215,6 +218,9 @@ export const experimental_useFixedTabTarget = runtimeFunction(
 );
 export const useComposer = runtimeFunction("useComposer");
 export const useComposers = runtimeFunction("useComposers");
+export const experimental_useActiveComposer = runtimeFunction(
+  "experimental_useActiveComposer",
+);
 export const experimental_useComposerRenderer = runtimeFunction(
   "experimental_useComposerRenderer",
 );
@@ -251,6 +257,9 @@ export const experimental_ImageLightbox = runtimeComponent(
 export const experimental_PromptMentionIcon = runtimeComponent(
   "experimental_PromptMentionIcon",
 );
+export const experimental_useCommandShortcut = runtimeFunction(
+  "experimental_useCommandShortcut",
+);
 export const experimental_matchesShortcutKey = runtimeFunction(
   "experimental_matchesShortcutKey",
 );
@@ -279,12 +288,24 @@ export const useComposerView = runtimeFunction("useComposerView");
 export const experimental_useSidebarThreads = runtimeFunction(
   "experimental_useSidebarThreads",
 );
-/** @internal Superseded by the thread action registry, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
+export const experimental_useThread = runtimeFunction(
+  "experimental_useThread",
+);
+export const experimental_useConversationOutline = runtimeFunction(
+  "experimental_useConversationOutline",
+);
+export const experimental_useTimelineViewport = runtimeFunction(
+  "experimental_useTimelineViewport",
+);
+/** @internal Superseded by the thread action registry, `experimental_useThreadRequests()`, `useSdk().threads`, and `useBbNavigate()`; kept for plugins built against older SDKs. */
 export const experimental_useSidebarThreadActions = runtimeFunction(
   "experimental_useSidebarThreadActions",
 );
 export const experimental_useThreadActions = runtimeFunction(
   "experimental_useThreadActions",
+);
+export const experimental_useThreadRequests = runtimeFunction(
+  "experimental_useThreadRequests",
 );
 export const experimental_useArchiveEnvironmentThreads = runtimeFunction(
   "experimental_useArchiveEnvironmentThreads",
@@ -368,6 +389,9 @@ export const experimental_useCodeTheme = runtimeFunction(
 // see docs/api_to_audit.md).
 export const experimental_copyToClipboard = runtimeFunction(
   "experimental_copyToClipboard",
+);
+export const experimental_showErrorToast = runtimeFunction(
+  "experimental_showErrorToast",
 );
 export const experimental_saveFile = runtimeFunction("experimental_saveFile");
 

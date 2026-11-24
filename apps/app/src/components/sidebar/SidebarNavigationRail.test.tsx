@@ -41,7 +41,7 @@ import {
   AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
   getRootComposeRoutePath,
-  getThreadRoutePath,
+  getThreadLocationPath,
   SETTINGS_ROUTE_PATH,
 } from "@/lib/route-paths";
 import {
@@ -156,7 +156,7 @@ vi.mock("@/components/provider-cli/provider-cli-install", async (original) => ({
   }),
 }));
 
-const THREAD_PATH = getThreadRoutePath({
+const THREAD_PATH = getThreadLocationPath({
   projectId: "proj_one",
   threadId: "thr_one",
 });

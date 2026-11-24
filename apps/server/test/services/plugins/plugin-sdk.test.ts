@@ -33,6 +33,7 @@ import {
 } from "../../helpers/commands.js";
 import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
+import { installDefaultEnvironmentProviders } from "../../helpers/environment-provider.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
@@ -445,6 +446,7 @@ describe("plugin bb.sdk bind gate", () => {
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: "stale-generation",
+      reason: "host plugin worker exited (1)",
     });
     service.handleHostSignal({
       authenticatedHostId: "host-1",
@@ -464,6 +466,7 @@ describe("plugin bb.sdk bind gate", () => {
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: artifact.generation,
+      reason: "host plugin worker exited (1)",
     });
     await vi.waitFor(() => expect(workerExitHandler).toHaveBeenCalledOnce());
     expect(workerExitHandler).toHaveBeenCalledWith({ hostId: "host-1" });
@@ -1159,6 +1162,60 @@ describe("plugin bb.sdk against a running server", () => {
     }
   });
 
+  it('holds environments a plugin creates with hold "plugin" for that plugin, whatever plugin id it passes', async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-hold-"));
+    try {
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-holder",
+        serverSource: `export default function plugin() {}`,
+      });
+      expect((await server.pluginService.installPath(rootDir)).status).toBe(
+        "running",
+      );
+      const heldBy: string[] = [];
+      const realFetch = globalThis.fetch;
+      vi.stubGlobal(
+        "fetch",
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (
+            !String(input).endsWith("/api/v1/environments") ||
+            init?.method !== "POST"
+          )
+            return realFetch(input, init);
+          heldBy.push(
+            z
+              .object({ heldBy: z.string() })
+              .parse(JSON.parse(String(init.body))).heldBy,
+          );
+          return Response.json({ message: "refused" }, { status: 409 });
+        },
+      );
+      const { sdk } = requireApi(server.pluginService, "holder");
+      await expect(
+        sdk.environments.experimental_create({
+          projectId: PERSONAL_PROJECT_ID,
+          hold: "plugin",
+          // @ts-expect-error a plugin cannot name another plugin as the holder
+          pluginId: "other",
+        }),
+      ).rejects.toThrow();
+      await expect(
+        sdk.environments.experimental_create({
+          projectId: PERSONAL_PROJECT_ID,
+          hold: "plugin",
+        }),
+      ).rejects.toThrow();
+      expect(heldBy).toEqual(["plugin:holder", "plugin:holder"]);
+    } finally {
+      vi.unstubAllGlobals();
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
   it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));
@@ -1175,6 +1232,7 @@ describe("plugin bb.sdk against a running server", () => {
         path: "/tmp/plugin-sdk-live-source",
       });
 
+      installDefaultEnvironmentProviders();
       server.pluginService.bindSdk({ baseUrl: server.baseUrl });
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-spawner",
@@ -1258,11 +1316,12 @@ describe("plugin bb.sdk against a running server", () => {
         }),
       ).resolves.toMatchObject({ matched: true, threadId: thread.id });
       await expect(
-        api.sdk.threads.list({ projectId: project.id }),
+        api.sdk.threads.list({ limit: 10, projectId: project.id }),
       ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
       const allThreads = await api.sdk.threads.list({
         projectId: project.id,
         includeHidden: true,
+        limit: 10,
       });
       expect(allThreads).toContainEqual(
         expect.objectContaining({ id: thread.id }),

@@ -1236,6 +1236,7 @@ function AppShellWireframeBody({
             )}
           >
             {mobile ? null : <ThreadContextCardMark compact={false} />}
+            {mobile ? null : <ThreadRailMark />}
             <div className={cn("flex justify-end", !mobile && "mr-44")}>
               <span className="max-w-[70%] rounded-xl border border-border-seam bg-surface-recessed px-2.5 py-2 leading-snug text-foreground">
                 Fix the flaky checkout tests
@@ -1423,6 +1424,32 @@ function AppShellWireframeBody({
         </span>
       </Mark>
     </WindowFrame>
+  );
+}
+
+function ThreadRailMark() {
+  return (
+    <Mark
+      id="thread-rail"
+      label="The thread outline and plugin rail items beside the conversation"
+      chip="side"
+      className="absolute right-5 top-1/2 flex w-6 -translate-y-1/2 flex-col items-center gap-2 py-2"
+    >
+      {[3, 3, 5, 3, 3, 3].map((width, index) => (
+        <span
+          key={index}
+          className={cn(
+            "h-[3px] shrink-0 rounded-full",
+            width === 5 ? "w-5 bg-foreground/30" : "w-3 bg-foreground/10",
+          )}
+        />
+      ))}
+      <span className="mt-1 flex h-12 w-4 flex-col gap-0.5 rounded-sm border border-border-seam p-0.5">
+        <span className="h-1 rounded-full bg-foreground/15" />
+        <span className="h-2 rounded-full bg-foreground/10" />
+        <span className="h-1 rounded-full bg-foreground/15" />
+      </span>
+    </Mark>
   );
 }
 

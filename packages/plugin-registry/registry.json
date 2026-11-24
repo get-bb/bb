@@ -1,5 +1,5 @@
 {
-  "$comment": "Source manifest for the BB plugin component registry (plugin design \u00a75.5). `uiItems` lists the shadcn-shaped components under packages/shared-ui/src/components/ui that are published as registry:ui items; every file in their transitive import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. Non-registry shared-ui components (e.g. pill) are excluded until deliberately listed. `pluginFlavors` replaces a shared-ui file with a plugin-side version: the app's icon module carries the full glyph map, while a plugin's icon draws from the host's icon registry through the SDK.",
+  "$comment": "Source manifest for the BB plugin component registry (plugin design §5.5). `uiItems` lists the shadcn-shaped components under packages/shared-ui/src/components/ui that are published as registry:ui items; every file in their transitive import closure becomes its own item automatically (scripts/build-registry.mjs), so this list is the only thing to edit when adding a component. Non-registry shared-ui components (e.g. pill) are excluded until deliberately listed. `pluginFlavors` replaces a shared-ui file with a plugin-side version: the app's icon module carries the full glyph map, while a plugin's icon draws from the host's icon registry through the SDK.",
   "uiItems": [
     "accordion",
     "action-menu-items",
@@ -39,6 +39,7 @@
     "input-otp",
     "label",
     "menubar",
+    "message-time",
     "navigation-menu",
     "option-display",
     "overflow-fade",
@@ -59,6 +60,7 @@
     "scroll-area",
     "select",
     "separator",
+    "settings-section",
     "sheet",
     "shortcut-pill",
     "sidebar-customize-panel",
@@ -79,6 +81,7 @@
     "tooltip",
     "truncate-start",
     "use-dialog-state",
+    "use-scroll-overflow-state",
     "use-drag-click-suppression",
     "use-reorder-dnd",
     "use-sidebar-reorder-dnd",
@@ -87,7 +90,6 @@
   ],
   "pluginFlavors": {
     "components/ui/icon.tsx": "flavors/components/ui/icon.tsx",
-    "components/ui/question-form-host.tsx": "flavors/components/ui/question-form-host.tsx",
     "components/ui/voice-input-textarea.tsx": "flavors/components/ui/voice-input-textarea.tsx"
   }
 }

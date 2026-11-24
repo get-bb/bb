@@ -28,11 +28,7 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "turn/input/accepted is one per turn; measured 0.04 ms vs 0.01 ms",
   ),
   acceptedEventsIndex(
-    `${EVENTS}#listStoredTurnCompletedRowsByTurnIds`,
-    "turn/completed is one per turn, so the type index reads at most one row per turn",
-  ),
-  acceptedEventsIndex(
-    "apps/server/src/services/threads/environment-directory-continuation.ts#findEnvironmentDirectoryContinuation",
+    `${EVENTS}#getLatestStoredTurnSystemOperationData`,
     "system/operation events are rare per thread",
   ),
   acceptedEventsIndex(
@@ -64,10 +60,6 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
     "Outer rows are requests after the last completed turn, and each search starts at its request's sequence; check:query-costs measures it",
   ),
   boundedCorrelatedEvents(
-    `${EVENTS}#listLatestTurnFinalAgentMessageEventRows`,
-    "LIMIT keeps the outer rows to the newest replies, so each later-reply search covers only the newest turns; check:query-costs measures it",
-  ),
-  boundedCorrelatedEvents(
     `${EVENTS}#getStoredConversationOutlineProjectionState`,
     "LIMIT 1: the root-request search runs only for nested turns, and the first nested turn with a matching root ends the query; check:query-costs measures it",
   ),
@@ -93,9 +85,17 @@ export const QUERY_PLAN_ALLOWLIST: readonly QueryPlanAllowlistEntry[] = [
       "The unfiltered unscoped listing runs only in tests; production's unscoped caller filters by visible status through the status index",
   },
   {
-    rule: "automatic-index",
-    table: "ordered_threads",
-    caller: "packages/db/src/data/threads.ts#listThreadSearchMatchRows",
-    reason: "Automatic index over the search CTE, bounded by matching threads",
+    rule: "correlated-subquery",
+    table: "thread_search_segments",
+    caller: `${THREADS}#listThreadSearchMatchRows`,
+    reason:
+      "Thread search walks threads in result order and stops once the page and 101 counted matches are found; each probe stops at the thread's first matching segment, and a query whose rarest token matches at most 1,000 segments walks only those segments' threads; check:query-costs measures it",
+  },
+  {
+    rule: "nested-loop",
+    table: "thread_search_segments",
+    caller: `${THREADS}#listThreadSearchMatchRows`,
+    reason:
+      "query_tokens holds one row per distinct search token, so each segment probe scans only those few rows",
   },
 ];

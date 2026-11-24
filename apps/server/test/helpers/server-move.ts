@@ -35,6 +35,8 @@ export interface RegisterFakeDaemonArgs {
   hostId: string;
 }
 
+export const SERVER_MOVE_STEP_POLL = { timeout: 10_000 } as const;
+
 export const TEST_SERVER_MOVE_TIMINGS: ServerMoveTimings = {
   abortTimeoutMs: 1_000,
   activateAttemptTimeoutMs: 2_000,

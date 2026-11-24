@@ -1,9 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
+import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 import type {
   ComposerSubmitOptions,
-  ExperimentalPluginActionContext,
   PluginComposerApi,
 } from "@get-bb/plugin-sdk/app";
 
@@ -13,20 +12,6 @@ const sendMenuItem = customization.sendMenu![0]!;
 
 function fakeComposer(fields: Partial<PluginComposerApi>): PluginComposerApi {
   return fields as PluginComposerApi;
-}
-
-function unusedActionContext(): ExperimentalPluginActionContext {
-  const unused = <T extends object>(name: string): T =>
-    new Proxy({} as T, {
-      get() {
-        throw new Error(`${name} is not used by this test`);
-      },
-    });
-  return {
-    sdk: unused("sdk"),
-    navigate: unused("navigate"),
-    panel: experimental_makePanelController(),
-  };
 }
 
 describe("availability", () => {
@@ -43,7 +28,7 @@ describe("saving", () => {
   it("submits the active composer with draft metadata", async () => {
     const submits: ComposerSubmitOptions[] = [];
     await sendMenuItem.run({
-      ...unusedActionContext(),
+      ...experimental_makeActionContext(),
       composer: fakeComposer({
         isEmpty: false,
         submit: async (options = {}) => {
@@ -62,7 +47,7 @@ describe("saving", () => {
   it("does not submit an empty draft", async () => {
     const submit = vi.fn(async () => {});
     await sendMenuItem.run({
-      ...unusedActionContext(),
+      ...experimental_makeActionContext(),
       composer: fakeComposer({ isEmpty: true, submit }),
     });
     expect(submit).not.toHaveBeenCalled();

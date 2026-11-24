@@ -62,6 +62,7 @@ function installHooks(registry: HookRegistry): void {
       value: await run(),
     }),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 
@@ -332,6 +333,7 @@ describe("the requested queue drain", () => {
       vi.useFakeTimers();
       let attempts = 0;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",
@@ -381,6 +383,7 @@ describe("the requested queue drain", () => {
       let released = false;
       let attempts = 0;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",
@@ -440,6 +443,7 @@ describe("the requested queue drain", () => {
         let released = first === "plugin-first";
         let attempts = 0;
         installHooks({
+          "thread.delete_finalize": [],
           "message.dispatch": [
             {
               pluginId: "limiter",
@@ -523,6 +527,7 @@ describe("the requested queue drain", () => {
     async (kind) => {
       await withTestHarness(async (harness) => {
         installHooks({
+          "thread.delete_finalize": [],
           "message.dispatch": [
             {
               pluginId: "limiter",
@@ -595,6 +600,7 @@ describe("the requested queue drain", () => {
       await withTestHarness(async (harness) => {
         let attempts = 0;
         installHooks({
+          "thread.delete_finalize": [],
           "message.dispatch": [
             {
               pluginId: "limiter",
@@ -657,7 +663,10 @@ describe("the requested queue drain", () => {
   it("leaves rows on core waits alone", async () => {
     await withTestHarness(async (harness) => {
       const seen: string[] = [];
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = {
+        "message.dispatch": [],
+        "thread.delete_finalize": [],
+      };
       const { thread } = seedRunnableThread(harness, {
         hostId: "host-core-wait",
         status: "active",
@@ -690,7 +699,10 @@ describe("the requested queue drain", () => {
   it("honours the re-queue pacing so a plugin that stays full is not re-asked in a loop", async () => {
     await withTestHarness(async (harness) => {
       let passes = 0;
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = {
+        "message.dispatch": [],
+        "thread.delete_finalize": [],
+      };
       registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: () => {
@@ -720,7 +732,10 @@ describe("the requested queue drain", () => {
     await withTestHarness(async (harness) => {
       let admit = false;
       const seen: string[] = [];
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = {
+        "message.dispatch": [],
+        "thread.delete_finalize": [],
+      };
       registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: (context) => {
@@ -801,7 +816,10 @@ describe("requesting a drain", () => {
   it("coalesces a burst of requests into one walk", async () => {
     await withTestHarness(async (harness) => {
       let passes = 0;
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = {
+        "message.dispatch": [],
+        "thread.delete_finalize": [],
+      };
       registry["message.dispatch"].push({
         pluginId: "limiter",
         handler: () => {
@@ -969,6 +987,7 @@ describe("a thread-ready wake during a running drain", () => {
       });
       let wokeDuringDrain = false;
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",
@@ -1021,6 +1040,7 @@ describe("a targeted attempt that holds its claim while the turn completes", () 
         status: "active",
       });
       installHooks({
+        "thread.delete_finalize": [],
         "message.dispatch": [
           {
             pluginId: "limiter",

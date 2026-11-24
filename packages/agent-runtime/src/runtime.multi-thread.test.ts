@@ -83,12 +83,14 @@ describe("createAgentRuntime multi-thread routing", () => {
 
     await Promise.all([
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222b",
         threadId: "t1",
         input: [promptTextInput({ text: "thread 1" })],
         options: fullRuntimeOptions,
       }),
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222c",
         threadId: "t2",
         input: [promptTextInput({ text: "thread 2" })],
@@ -182,12 +184,14 @@ describe("createAgentRuntime multi-thread routing", () => {
 
     await Promise.all([
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222d",
         threadId: "t1",
         input: [promptTextInput({ text: "delay:500 thread A should stop" })],
         options: fullRuntimeOptions,
       }),
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222e",
         threadId: "t2",
         input: [promptTextInput({ text: "delay:500 thread B should survive" })],
@@ -222,6 +226,7 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222222f",
       threadId: "t2",
       input: [promptTextInput({ text: "thread B still accepts turns" })],
@@ -259,6 +264,7 @@ describe("createAgentRuntime multi-thread routing", () => {
 
     await runtime.startThread({
       bridgeLaunch: launchA,
+      additionalWorkspaceWriteRoots: [],
       environmentId: "env-1",
       threadId: "t1",
       projectId: "p1",
@@ -267,6 +273,7 @@ describe("createAgentRuntime multi-thread routing", () => {
     });
     await runtime.startThread({
       bridgeLaunch: launchB,
+      additionalWorkspaceWriteRoots: [],
       environmentId: "env-1",
       threadId: "t2",
       projectId: "p1",
@@ -280,12 +287,14 @@ describe("createAgentRuntime multi-thread routing", () => {
 
     await Promise.all([
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222m",
         threadId: "t1",
         input: [promptTextInput({ text: "from a" })],
         options: fullRuntimeOptions,
       }),
       runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222n",
         threadId: "t2",
         input: [promptTextInput({ text: "from b" })],

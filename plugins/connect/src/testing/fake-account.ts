@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import type { AccountFetchRequest } from "bb-plugin-bb-account/src/client.js";
 import type {
   AccountFetchResult,
@@ -93,10 +94,12 @@ export class FakeAccount {
 
   readonly callRpc = async (args: FakeRpcArgs): Promise<unknown> => {
     if (args.pluginId !== "bb-account" || !this.available) {
-      throw Object.assign(
-        new Error(`HTTP 503: plugin "${args.pluginId}" is not running`),
-        { status: 503 },
-      );
+      throw new experimental_BbHttpError({
+        status: 503,
+        code: "plugin_not_running",
+        message: `plugin "${args.pluginId}" is not running`,
+        body: null,
+      });
     }
     return args.outputSchema.parse(
       await this.handle(args.method, args.input, args.signal),

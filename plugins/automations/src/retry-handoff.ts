@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const RETRY_DECISION_WAIT_MS = 60_000;
@@ -34,14 +34,8 @@ const providerRetryDecisionSchema = z
   .passthrough()
   .nullable();
 
-const threadGoneErrorSchema = z
-  .object({ status: z.literal(404) })
-  .passthrough();
-
 function isThreadGoneError(error: unknown): boolean {
-  return (
-    error instanceof Error && threadGoneErrorSchema.safeParse(error).success
-  );
+  return error instanceof experimental_BbHttpError && error.status === 404;
 }
 
 async function readProviderRetryDecision(

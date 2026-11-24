@@ -215,6 +215,12 @@ async function resumeThreadRuntimeIfMissing(
     options,
   );
   await entry.runtime.resumeThread({
+    additionalWorkspaceWriteRoots:
+      await options.runtimeManager.resolveThreadWorkspaceWriteRoots({
+        additionalWorkspaceFolders: resumeContext.additionalWorkspaceFolders,
+        entry,
+        threadId: command.threadId,
+      }),
     bridgeLaunch,
     skillRoots: entry.skillRoots,
     environmentId: command.environmentId,
@@ -255,6 +261,12 @@ export async function startThread(
       options,
     );
     const result = await entry.runtime.startThread({
+      additionalWorkspaceWriteRoots:
+        await options.runtimeManager.resolveThreadWorkspaceWriteRoots({
+          additionalWorkspaceFolders: command.additionalWorkspaceFolders,
+          entry,
+          threadId: command.threadId,
+        }),
       bridgeLaunch,
       skillRoots: entry.skillRoots,
       environmentId: command.environmentId,
@@ -287,6 +299,12 @@ export async function prepareThreadRewind(
     options,
   );
   return entry.runtime.prepareThreadRewind({
+    additionalWorkspaceWriteRoots:
+      await options.runtimeManager.resolveThreadWorkspaceWriteRoots({
+        additionalWorkspaceFolders: command.additionalWorkspaceFolders,
+        entry,
+        threadId: command.threadId,
+      }),
     bridgeLaunch,
     skillRoots: entry.skillRoots,
     environmentId: command.environmentId,
@@ -351,8 +369,10 @@ export async function ensureThreadRuntime(
 async function runSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
+  additionalWorkspaceWriteRoots: readonly string[],
 ): Promise<void> {
   const result = await entry.runtime.runTurn({
+    additionalWorkspaceWriteRoots,
     threadId: command.threadId,
     input: command.input,
     clientRequestId: command.requestId,
@@ -372,11 +392,13 @@ async function steerSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
   expectedTurnId: string,
+  additionalWorkspaceWriteRoots: readonly string[],
 ): Promise<void> {
   let targetTurnId = expectedTurnId;
   let activeTurnId: string | null = null;
   for (let attempt = 0; attempt < TURN_SUBMIT_STEER_ATTEMPTS; attempt += 1) {
     const result = await entry.runtime.steerTurn({
+      additionalWorkspaceWriteRoots,
       threadId: command.threadId,
       expectedTurnId: targetTurnId,
       input: command.input,
@@ -401,7 +423,7 @@ async function steerSubmittedTurn(
     }
     const liveTurnId = await resolveLiveSubmittedTurnTarget(command, entry);
     if (liveTurnId === null) {
-      return runSubmittedTurn(command, entry);
+      return runSubmittedTurn(command, entry, additionalWorkspaceWriteRoots);
     }
     if (liveTurnId === targetTurnId) {
       break;
@@ -470,12 +492,25 @@ async function resolveSubmittedTurnTarget(
 async function deliverSubmittedTurn(
   command: TurnSubmitCommand,
   entry: RuntimeEntry,
+  options: CommandDispatchOptions,
 ): Promise<void> {
+  const additionalWorkspaceWriteRoots =
+    await options.runtimeManager.resolveThreadWorkspaceWriteRoots({
+      additionalWorkspaceFolders:
+        command.resumeContext.additionalWorkspaceFolders,
+      entry,
+      threadId: command.threadId,
+    });
   const resolvedTurnId = await resolveSubmittedTurnTarget(command, entry);
   if (command.target.mode === "start" || resolvedTurnId === null) {
-    return runSubmittedTurn(command, entry);
+    return runSubmittedTurn(command, entry, additionalWorkspaceWriteRoots);
   }
-  return steerSubmittedTurn(command, entry, resolvedTurnId);
+  return steerSubmittedTurn(
+    command,
+    entry,
+    resolvedTurnId,
+    additionalWorkspaceWriteRoots,
+  );
 }
 
 export async function submitTurn(
@@ -500,7 +535,7 @@ export async function submitTurn(
       entry,
       options,
     });
-    await deliverSubmittedTurn(stagedCommand, entry);
+    await deliverSubmittedTurn(stagedCommand, entry, options);
   } catch (error) {
     if (!isUnconfirmedSubmitError(error)) {
       await cleanupAfterPostStagingFailure(staged.cleanup);

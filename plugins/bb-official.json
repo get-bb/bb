@@ -78,6 +78,10 @@
     "category": "utilities",
     "screenshots": []
   },
+  "server-switcher": {
+    "category": "cloud-and-remote",
+    "screenshots": []
+  },
   "plugin-api-docs": {
     "category": "plugin-development",
     "screenshots": [

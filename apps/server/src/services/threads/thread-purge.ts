@@ -1,39 +1,121 @@
 import {
   deleteThread,
   deleteThreadPurgeBatch,
-  listRunningThreads,
+  getThread,
+  isThreadPurgeRequested,
+  markThreadPurgeStarted,
   nextThreadPurge,
+  type PendingThreadPurge,
 } from "@bb/db";
+import { z } from "zod";
+import { ApiError } from "../../errors.js";
 import type { AppDeps } from "../../types.js";
 import { NotificationBuffer } from "../lib/notification-buffer.js";
-import { isServerMoveFrozen } from "../server-move/freeze-state.js";
+import { pluginHookProvider } from "../plugins/plugin-hook-registry.js";
 import { defineScanSweep, type ItemSweep } from "../system/item-sweep.js";
+import { startPacedRun } from "../system/paced-run.js";
+import { decideWithinBox } from "./dispatch-hooks.js";
 
-const THREAD_PURGE_SLICE_MS = 10;
-const THREAD_PURGE_RUN_BUDGET_MS = 30_000;
-const BUSY_REST_FACTOR = 9;
-const IDLE_REST_FACTOR = 1;
 const PURGE_EVENT_ROWS = 64;
 const PURGE_EVENT_BYTES = 512 * 1024;
 const PURGE_ROWS = 128;
-const STEP_COST_SMOOTHING = 0.2;
 
 type ThreadPurgeDeps = Pick<AppDeps, "db" | "hub" | "logger">;
 
+const threadPurgeHookDecisionSchema = z.discriminatedUnion("action", [
+  z.object({ action: z.literal("proceed") }),
+  z.object({ action: z.literal("wait") }),
+]);
+
+const purgeHolds = new Map<string, { exclusive: boolean; count: number }>();
+
+export function holdThreadPurge(
+  threadId: string,
+  mode: "exclusive" | "shared",
+): () => void {
+  const current = purgeHolds.get(threadId);
+  if (current !== undefined && (mode === "exclusive" || current.exclusive)) {
+    throw new ApiError(
+      409,
+      "thread_transfer_busy",
+      `Thread ${threadId} is being imported or exported; try again in a moment`,
+    );
+  }
+  purgeHolds.set(threadId, {
+    exclusive: mode === "exclusive",
+    count: (current?.count ?? 0) + 1,
+  });
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    const held = purgeHolds.get(threadId);
+    if (held === undefined) return;
+    if (held.count <= 1) purgeHolds.delete(threadId);
+    else purgeHolds.set(threadId, { ...held, count: held.count - 1 });
+  };
+}
+
+async function pluginsLetPurge(
+  deps: ThreadPurgeDeps,
+  threadId: string,
+): Promise<boolean> {
+  const provider = pluginHookProvider();
+  if (provider === undefined) return true;
+  const hooks = provider.listHooks("thread.delete_finalize");
+  if (hooks.length === 0) return true;
+  const thread = getThread(deps.db, threadId);
+  if (thread === null) return true;
+  const context = { threadId, projectId: thread.projectId };
+  let proceed = true;
+  for (const hook of hooks) {
+    const invocation = await provider.invokeHook(
+      hook,
+      "thread.delete_finalize hook",
+      () =>
+        decideWithinBox(
+          async () => hook.handler(context),
+          provider.decisionTimeoutMs,
+        ),
+    );
+    const decision =
+      invocation.ok && invocation.value.ok
+        ? threadPurgeHookDecisionSchema.safeParse(invocation.value.value)
+        : null;
+    if (decision?.success && decision.data.action === "proceed") continue;
+    proceed = false;
+    if (decision === null || !decision.success) {
+      deps.logger.warn(
+        {
+          pluginId: hook.pluginId,
+          threadId,
+          error: !invocation.ok
+            ? invocation.error
+            : !invocation.value.ok
+              ? invocation.value.error
+              : "returned an invalid decision",
+        },
+        "thread.delete_finalize hook failed; keeping the thread until it answers",
+      );
+    }
+  }
+  return proceed;
+}
+
 function purgeThreadBatch(deps: ThreadPurgeDeps, threadId: string): boolean {
   const notifications = new NotificationBuffer();
-  let finished = false;
-  deps.db.transaction(
+  const finished = deps.db.transaction(
     (tx) => {
+      if (!isThreadPurgeRequested(tx, threadId)) return true;
       const deleted = deleteThreadPurgeBatch(tx, {
         maxEventBytes: PURGE_EVENT_BYTES,
         maxEventRows: PURGE_EVENT_ROWS,
         maxRows: PURGE_ROWS,
         threadId,
       });
-      if (deleted > 0) return;
+      if (deleted > 0) return false;
       deleteThread(tx, notifications, threadId);
-      finished = true;
+      return true;
     },
     { behavior: "immediate" },
   );
@@ -42,50 +124,36 @@ function purgeThreadBatch(deps: ThreadPurgeDeps, threadId: string): boolean {
 }
 
 export function threadPurgeSweep(deps: ThreadPurgeDeps): ItemSweep {
-  const startedAt = performance.now();
-  const mayContinue = () =>
-    performance.now() - startedAt < THREAD_PURGE_RUN_BUDGET_MS &&
-    !isServerMoveFrozen(deps.db);
-  let stepCostMs = 0;
-  let resumeAt = 0;
-  return defineScanSweep<string>({
+  const paced = startPacedRun(deps);
+  const waiting = new Set<string>();
+  return defineScanSweep<PendingThreadPurge>({
     name: "thread-purge",
     concurrency: 1,
     list: ({ excludedKeys }) => {
-      if (!mayContinue()) return [];
-      const threadId = nextThreadPurge(deps.db, {
-        excludedThreadIds: excludedKeys,
+      if (!paced.mayContinue()) return [];
+      if (pluginHookProvider()?.isLoadingPlugins() === true) return [];
+      const next = nextThreadPurge(deps.db, {
+        excludedThreadIds: new Set([
+          ...excludedKeys,
+          ...waiting,
+          ...purgeHolds.keys(),
+        ]),
       });
-      return threadId === null ? [] : [threadId];
+      return next === null ? [] : [next];
     },
-    key: (threadId) => threadId,
-    process: async (threadId) => {
-      for (;;) {
-        const restMs = resumeAt - performance.now();
-        if (restMs > 0)
-          await new Promise<void>((resolve) => setTimeout(resolve, restMs));
-        if (!mayContinue()) return;
-        const sliceStartedAt = performance.now();
-        let finished = false;
-        do {
-          const stepStartedAt = performance.now();
-          finished = purgeThreadBatch(deps, threadId);
-          stepCostMs +=
-            STEP_COST_SMOOTHING *
-            (performance.now() - stepStartedAt - stepCostMs);
-        } while (
-          !finished &&
-          performance.now() - sliceStartedAt + stepCostMs <=
-            THREAD_PURGE_SLICE_MS
-        );
-        const busy =
-          deps.hub.hasClients() || listRunningThreads(deps.db).length > 0;
-        const workedMs = performance.now() - sliceStartedAt;
-        resumeAt =
-          performance.now() +
-          Math.max(1, workedMs * (busy ? BUSY_REST_FACTOR : IDLE_REST_FACTOR));
-        if (finished) return;
+    key: (pending) => pending.threadId,
+    process: async ({ startedAt, threadId }) => {
+      if (startedAt === null) {
+        if (!(await pluginsLetPurge(deps, threadId))) {
+          waiting.add(threadId);
+          return;
+        }
+        if (purgeHolds.has(threadId)) return;
+        if (!markThreadPurgeStarted(deps.db, { now: Date.now(), threadId })) {
+          return;
+        }
       }
+      await paced.run(() => purgeThreadBatch(deps, threadId));
     },
   });
 }

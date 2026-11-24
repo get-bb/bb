@@ -44,6 +44,7 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
 
         await Promise.all([
           ctx.runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             clientRequestId: "creq_2222222245",
             threadId: threadA,
             input: [
@@ -52,6 +53,7 @@ describe.concurrent("cross-provider and multi-thread scenarios", () => {
             options,
           }),
           ctx.runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             clientRequestId: "creq_2222222246",
             threadId: threadB,
             input: [
@@ -124,6 +126,7 @@ describe.concurrent("multi-provider resume scenarios", () => {
 
       await Promise.all([
         ctx1.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_2222222249",
           threadId: codexThreadId1,
           input: [
@@ -134,6 +137,7 @@ describe.concurrent("multi-provider resume scenarios", () => {
           options: codexOptions,
         }),
         ctx1.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224a",
           threadId: claudeThreadId1,
           input: [
@@ -179,6 +183,7 @@ describe.concurrent("multi-provider resume scenarios", () => {
 
         await Promise.all([
           ctx2.runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             clientRequestId: "creq_222222224b",
             threadId: codexThreadId2,
             input: [
@@ -189,6 +194,7 @@ describe.concurrent("multi-provider resume scenarios", () => {
             options: codexOptions,
           }),
           ctx2.runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             clientRequestId: "creq_222222224c",
             threadId: claudeThreadId2,
             input: [

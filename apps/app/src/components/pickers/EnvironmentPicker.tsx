@@ -345,8 +345,8 @@ export function EnvironmentPickerUI({
       };
     }
     return {
-      modeLabel: "Environment",
-      compactModeLabel: "Env",
+      modeLabel: "Choose environment",
+      compactModeLabel: "Choose environment",
       icon: "Laptop" as const,
     };
   }, [

@@ -88,8 +88,9 @@ General keys: `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`; an unknown key or wrongly shaped value is rejected with the
 list of known keys. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset. Most appear in Settings →
-General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
-`machineGitCredentialsEnabled`) are covered in `bb guide machines`.
+General. Machine-related keys (`machineServerUrl`, `serverAccessOrder`,
+`localNetworkEnabled`, `machineGitCredentialsEnabled`) are covered
+in `bb guide machines`; prefer `bb server access` for the route keys.
 
 - `showDiagnosticEvents` (default false) shows provider environment resolution
   and unhandled provider events in the timeline. Warnings, errors, and model
@@ -160,8 +161,9 @@ already have `bb`. `bb settings cli-command` shows the state, and `install` or
 `remove` changes it. Install links the launcher at `~/.bb/bin/bb` into a PATH
 folder such as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user
 PATH). bb never replaces another `bb`: install is refused while one runs first
-in a new terminal. Only an installed bb (`npx bb-app` or the desktop app)
-offers this; a source checkout does not.
+in a new terminal. The exception is the `~/.local/bin/bb` a bb machine install
+added, which install replaces with the launcher. Only an installed bb
+(`npx bb-app` or the desktop app) offers this; a source checkout does not.
 
 Completed turns: `bb settings completed-turns` lists how each provider shows a
 finished turn: `collapse` folds the turn's work into one "Worked for" row and
@@ -183,7 +185,20 @@ viewing client's approvals; there is no CLI command that reads or modifies a
 remote client's localStorage.
 
 Reading a thread removes a thread's push, web, and desktop
-notifications once the thread is read on any client.
+notifications once the thread is read on any client, and a thread open in a
+visible, focused bb window or tab gets no web or desktop system notification.
+
+A running thread's changes, pull request, and parent and child threads sit in a
+card at the upper-right of its pane, opened or pinned from the header; phones
+keep them above the composer.
+
+bb runs agent processes and setup and teardown scripts at a lower CPU priority
+(and, on macOS, the bb server and daemon with application scheduling) so it
+stays responsive under heavy agent load; terminals keep normal priority.
+
+A machine stays connected through a network drop of under 30 seconds: its
+daemon resumes the same server session, so terminals and running requests carry
+on, instead of opening a new one.
 
 Thread row metadata adds Organize → Rows → Metadata to the built-in thread list,
 a line under each thread title where plugins show details such as the pull
@@ -198,38 +213,17 @@ Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
 experiment (Settings → Experiments). Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
-`agentCpuPriority` runs agent processes and setup and teardown scripts at a
-lower CPU priority (and, on macOS, the bb server and daemon with application
-scheduling) so bb stays responsive under heavy agent load; it takes full effect
-after restarting bb, and terminals keep normal priority. It defaults on for early adopters.
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
-`resumeDaemonSessions` keeps a machine connected through a network drop of
-under 30 seconds: its daemon resumes the same server session, so terminals and
-running requests carry on, instead of opening a new one. It defaults on for
-early adopters and applies from the next disconnect.
-`keyedPluginCss` loads plugin stylesheets so that style updates inside other
-plugins' UI, such as the sidebar and composer, skip them; it applies after a
-reload and defaults on for early adopters.
+`serverRoutes` lets machines learn every available server access route and
+connect over the first one that answers; see Server access in
+`bb guide machines`. It defaults on for early adopters.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
-`skipFocusedThreadNotifications` skips the web and desktop system notification
-for a thread open in a visible, focused bb window or tab. It defaults on for
-early adopters.
-`threadContextCard` moves a running thread's changes, pull request, and parent
-and child threads into a card at the upper-right of its pane, opened or pinned from
-the header. It defaults on for early adopters.
-
-`walCheckpointWorker` copies recent writes into bb's SQLite database files on a
-background thread instead of during a commit, so heavy writing does not stall
-the server. It applies live and defaults on for early adopters.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`agentCpuPriority`, `compactExpiredCache`, `keyedPluginCss`, `pluginUpdates`,
-`resumeDaemonSessions`, `skipFocusedThreadNotifications`, `threadContextCard`,
-and `walCheckpointWorker`; an
-experiment you set yourself keeps your value.
+`compactExpiredCache`, `pluginUpdates`, and `serverRoutes`; an experiment you set yourself keeps your value.
 
 Launcher settings
 
@@ -243,9 +237,11 @@ not close a previous `0.0.0.0` listener.
 
 `--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) listens on
 every interface for direct remote access; containers must also publish the
-port. BB accepts request hosts that are `localhost`, IP addresses (including
-LAN and Tailscale IPs), the address of an available machine access provider
-(such as the Tailscale plugin's Serve address), or the hostname in
+port. To reach bb from a trusted LAN without a restart, prefer
+`bb server access add local-network` (`bb guide machines`). BB accepts
+request hosts that are `localhost`, IP addresses (including LAN and Tailscale
+IPs), the hostname of an available server access route (such as the Tailscale
+plugin's Serve address), or the hostname in
 `BB_APP_URL`. For a custom DNS name
 or reverse proxy, run `npx bb-app config set BB_APP_URL https://bb.example.com`
 before connecting, including from the CLI or SDK; forwarded host headers cannot
@@ -282,6 +278,10 @@ on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
 `thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
 unbound and act on the focused pane's open thread; Mark read and Pin toggle
 like the matching thread menu item.
+
+`settings.search` (`/`) focuses the Settings search field. It works only on
+the Settings page, outside fields, editors and menus, so it can be rebound to
+another bare key; page commands on different pages never conflict.
 
 An open question card binds `question.select.1`–`9` (`1`–`9`),
 `question.submit` (`Mod+Enter`: Next, or Submit on the last question),
@@ -324,8 +324,8 @@ bb settings ui set <key> <value> [--json]
 bb settings ui reset <key> [--json]
 
 `list` prints every key with its value, revision, and a short description.
-`set` takes plain strings for enum and provider keys and JSON for lists and
-`null`; it retries once if another writer changed the key. `reset` writes the
+`set` takes plain strings for enum and provider keys and JSON for lists, maps
+and `null`; it retries once if another writer changed the key. `reset` writes the
 default. The SDK offers `sdk.system.uiPreferences.list()`, `.set()`, and
 `.reset()`.
 
@@ -347,6 +347,21 @@ Composer plugin (`bb--composer/composer`) when there is none. Pick one with
 restore Automatic. A selected composer whose plugin is disabled or
 uninstalled behaves as Automatic until it returns. With no composer plugin
 enabled, no composer is shown.
+
+Every surface only one plugin can draw follows the same rule, bb's own
+plugins included: your pick wins while its plugin is enabled, otherwise
+Automatic uses the first plugin you installed (by plugin id), then bb's own
+(bundled or from bb's official marketplace), then bb's built-in view. Besides the thread list, navigation and composer
+keys, the picks are `diff.provider`, `sourceCode.provider` and
+`threadHeader.titleProvider` (each also takes `__builtin__` for bb's own), and
+the JSON maps `fileOpener.byExtension`, `codeFence.byLanguage` and
+`messageDirective.byName`, where a missing key means Automatic. A message
+directive several plugins claim has no automatic winner: it shows a plugin
+picker in the message until you pick one there or, for example, with
+`bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`. Each
+choice sits with what it changes: Settings → Appearance for the composer,
+thread list, navigation, renderers and header title, Appearance → Markdown
+for code blocks and directives, and Settings → Files → File openers.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible

@@ -107,6 +107,8 @@ describe("bb thread show command output", () => {
         }),
       ),
       "v1.threads.:id.head-state.$get": fixtures.makeEmptyHeadStateGetMock(),
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(["thread", "show", "thread-archived-1"], register);
@@ -133,6 +135,8 @@ describe("bb thread show command output", () => {
     stubServerApi({
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(["thread", "show", "thread-pinned-1"], register);
@@ -146,6 +150,53 @@ describe("bb thread show command output", () => {
     const lines = collectLogLines(vi.mocked(console.log));
     expect(lines).toContain("  Status: idle");
     expect(lines.some((line) => line.includes("Pinned:"))).toBe(true);
+  });
+
+  it("bb thread show prints the provider, and the model and reasoning level the next turn uses", async () => {
+    const thread: domain.Thread = fixtures.makeThread({
+      id: "thread-execution-1",
+      projectId: "proj-1",
+      providerId: "claude-code",
+      status: "idle",
+    });
+    const executionOptions: domain.ResolvedThreadExecutionOptions = {
+      model: "claude-haiku-5-5",
+      reasoningLevel: "low",
+      serviceTier: "default",
+      permissionMode: "auto",
+      source: "client/turn/requested",
+    };
+    const executionOptionsGet =
+      fixtures.makeDefaultExecutionOptionsGetMock(executionOptions);
+    stubServerApi({
+      "v1.threads.:id.$get": vi.fn(async () => thread),
+      "v1.threads.:id.head-state.$get": fixtures.makeEmptyHeadStateGetMock(),
+      "v1.threads.:id.default-execution-options.$get": executionOptionsGet,
+    });
+
+    await runCommand(["thread", "show", "thread-execution-1"], register);
+
+    expect(executionOptionsGet).toHaveBeenCalledWith({
+      param: { id: "thread-execution-1" },
+    });
+    const lines = collectLogLines(vi.mocked(console.log));
+    expect(lines).toEqual(
+      expect.arrayContaining([
+        "  Provider: claude-code",
+        "  Model: claude-haiku-5-5",
+        "  Reasoning level: low",
+      ]),
+    );
+
+    vi.mocked(console.log).mockClear();
+    await runCommand(
+      ["thread", "show", "thread-execution-1", "--json"],
+      register,
+    );
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toMatchObject({ thread, executionOptions });
   });
 
   it("bb thread show --self resolves from BB_THREAD_ID", async () => {
@@ -163,6 +214,8 @@ describe("bb thread show command output", () => {
     stubServerApi({
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(["thread", "show", "--self"], register);
@@ -203,6 +256,8 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(
@@ -287,6 +342,8 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(
@@ -332,6 +389,8 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": vi.fn(async () => environment),
       "v1.threads.:id.$get": vi.fn(async () => thread),
       "v1.threads.:id.head-state.$get": fixtures.makeEmptyHeadStateGetMock(),
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(
@@ -397,6 +456,8 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(
@@ -457,6 +518,8 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(["thread", "show", "thread-show-pr"], register);
@@ -510,6 +573,8 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(["thread", "show", "thread-show-pr-down"], register);
@@ -549,6 +614,8 @@ describe("bb thread show command output", () => {
       "v1.environments.:id.$get": environmentGet,
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(
@@ -560,6 +627,7 @@ describe("bb thread show command output", () => {
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual({
       thread,
+      executionOptions: null,
       environment: {
         ...environment,
         pullRequest: {
@@ -585,6 +653,8 @@ describe("bb thread show command output", () => {
     stubServerApi({
       "v1.threads.:id.$get": get,
       "v1.threads.:id.head-state.$get": headStateGet,
+      "v1.threads.:id.default-execution-options.$get":
+        fixtures.makeDefaultExecutionOptionsGetMock(),
     });
 
     await runCommand(
@@ -596,6 +666,7 @@ describe("bb thread show command output", () => {
       JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
     ).toEqual({
       thread,
+      executionOptions: null,
       environment: null,
       pendingTodos: null,
     });

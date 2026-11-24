@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -196,8 +197,11 @@ describe("connect settings section", () => {
     const account = fakeAccountSdk({
       "login.start": () => pendingLogin(),
       "login.poll": () => {
-        throw Object.assign(new Error("HTTP 503: tunnel offline"), {
+        throw new experimental_BbHttpError({
           status: 503,
+          code: null,
+          message: "tunnel offline",
+          body: null,
         });
       },
     });
@@ -231,8 +235,11 @@ describe("connect settings section", () => {
   it("explains when the bb account plugin is off", async () => {
     const account = fakeAccountSdk({
       "login.start": () => {
-        throw Object.assign(new Error("HTTP 503: not running"), {
+        throw new experimental_BbHttpError({
           status: 503,
+          code: "plugin_not_running",
+          message: "not running",
+          body: null,
         });
       },
     });

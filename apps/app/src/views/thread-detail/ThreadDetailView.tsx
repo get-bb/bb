@@ -24,10 +24,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  useSystemProviderInfo,
-  useSystemConfig,
-} from "@/hooks/queries/system-queries";
+import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { useAtom } from "jotai";
 import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
@@ -287,12 +284,9 @@ function ThreadDetailViewInternal(
   } = usePaneContext();
   const navigate = useImmediateRouteNavigate();
   useFixedPanelTabsStorageMaintenance();
-  const systemConfigQuery = useSystemConfig();
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
-  const threadContextCardEnabled =
-    systemConfigQuery.data?.experiments.threadContextCard === true &&
-    !(isCompactViewport && isPointerCoarse);
+  const threadContextCardEnabled = !(isCompactViewport && isPointerCoarse);
   const {
     hasThreadDetailBootstrapSettled,
     threadDetailBootstrapQuery,

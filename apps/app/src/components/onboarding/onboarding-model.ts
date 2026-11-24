@@ -10,6 +10,7 @@ import type {
   ServerAccessStatus,
   SystemProviderState,
 } from "@bb/server-contract";
+import { OFFICIAL_PLUGIN_MARKETPLACE } from "@/lib/official-plugins";
 
 export type OnboardingStepId = "agent" | "projects" | "plugins" | "devices";
 
@@ -23,7 +24,7 @@ export const ONBOARDING_STEPS: readonly {
   { id: "devices", label: "Devices" },
 ];
 
-export const ONBOARDING_PLUGIN_MARKETPLACE = "bb-official";
+export const ONBOARDING_PLUGIN_MARKETPLACE = OFFICIAL_PLUGIN_MARKETPLACE;
 
 export const ONBOARDING_PLUGIN_ENTRY_IDS: readonly string[] = [
   "browser-automation",
@@ -501,7 +502,7 @@ export function connectAccessUrl(
   );
   if (provider === undefined) return { status: "unavailable" };
   if (
-    provider.availability?.status === "available" &&
+    provider.availability.status === "available" &&
     provider.availability.serverUrl !== undefined
   ) {
     return { status: "on", url: provider.availability.serverUrl };

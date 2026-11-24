@@ -13,7 +13,6 @@ import { OverflowFade } from "@bb/shared-ui/overflow-fade";
 import {
   Sidebar,
   SidebarCollapsibleBody,
-  SidebarContent,
   SidebarFooter,
   SidebarMenu,
   useCloseMobileSidebar,
@@ -21,7 +20,7 @@ import {
   useIsSidebarFramed,
 } from "@/components/ui/sidebar.js";
 import { ThreadActionSurfaceVisibility } from "@/lib/thread-actions/thread-action-registry";
-import { PluginThreadList } from "./PluginThreadList";
+import { SidebarThreadListContent } from "./PluginThreadList";
 import { useThreadListReplacement } from "./threadListProvider";
 import {
   PluginSidebarFooterDisclosure,
@@ -32,7 +31,7 @@ import { SidebarPluginAttentionGlyph } from "./SidebarPluginAttentionGlyph";
 import { SidebarUpdatesBadge } from "./SidebarUpdatesBadge";
 import { SidebarResizeHandle, SidebarTopReserveRow } from "./SidebarChrome";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 import {
   EMPTY_SIDEBAR_THREAD_SHORTCUT_KEYS,
@@ -72,6 +71,8 @@ import {
 } from "./sidebarNavigationProvider";
 
 import { NAV_RAIL_WIDTH_CLASS } from "./navRailWidth";
+import { openThread } from "@/lib/split-layout/openThread";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const BUG_REPORT_NEW_ISSUE_URL = "https://github.com/get-bb/bb/issues/new";
 
@@ -110,6 +111,7 @@ export function AppSidebar({
   const threadListReplacement = useThreadListReplacement();
   const { threadId: activeThreadId } = useRouteState();
   const navigate = useNavigate();
+  const openNewThread = useOpenNewThread();
   const closeOnMobile = useCloseMobileSidebar();
   const { isCompactViewport, open, openMobile } = useSidebar();
   const isThreadListVisible =
@@ -132,10 +134,8 @@ export function AppSidebar({
 
   const handleNewChat = useCallback(() => {
     closeOnMobile();
-    void navigate(getRootComposeRoutePath(), {
-      state: { focusPrompt: true },
-    });
-  }, [closeOnMobile, navigate]);
+    openNewThread({ focusPrompt: true });
+  }, [closeOnMobile, openNewThread]);
 
   const showThreadShortcuts = useCallback(() => {
     const targets = getSidebarThreadShortcutTargets(sidebarRef.current);
@@ -191,12 +191,11 @@ export function AppSidebar({
       }
       if (!target.projectId) return false;
       closeOnMobile();
-      void navigate(
-        getThreadRoutePath({
-          projectId: target.projectId,
-          threadId: target.threadId,
-        }),
-      );
+      openThread({
+        navigate,
+        projectId: target.projectId,
+        threadId: target.threadId,
+      });
       return true;
     },
     [activeThreadId, closeOnMobile, navigate],
@@ -314,10 +313,10 @@ export function AppSidebar({
               : []),
             {
               id: "mobile",
-              href: "/settings/mobile",
+              href: getSettingsTargetPath({ section: "mobile" }),
               onActivate: () => {
                 closeOnMobile();
-                void navigate("/settings/mobile");
+                void navigate(getSettingsTargetPath({ section: "mobile" }));
               },
             },
             {
@@ -350,14 +349,12 @@ export function AppSidebar({
         }
       />
       {placement === "list" ? navigationRegion("shrink-0") : null}
-      <SidebarContent>
-        <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
-          <PluginThreadList
-            replacement={threadListReplacement}
-            onNavigate={closeOnMobile}
-          />
-        </ThreadActionSurfaceVisibility>
-      </SidebarContent>
+      <ThreadActionSurfaceVisibility visible={isThreadListVisible}>
+        <SidebarThreadListContent
+          replacement={threadListReplacement}
+          onNavigate={closeOnMobile}
+        />
+      </ThreadActionSurfaceVisibility>
       <div
         className={cn(
           "relative flex flex-col gap-2",

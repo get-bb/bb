@@ -15,6 +15,7 @@ import {
 import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
+import { CLI_LAUNCHER_MARKER } from "@bb/config/cli-command";
 import {
   createProcessLifeline,
   killProcessesReferencingPath,
@@ -685,6 +686,85 @@ exec '${process.execPath}' "$@"
     });
     expect(selected.status).toBe(0);
     expect(selected.stdout.trim()).toBe("current-installation");
+  });
+
+  it("routes the machine shim to the launcher bb maintains after in-app updates", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    writeExecutable(join(fixture.binDir, "npm"), "#!/bin/sh\nexit 19\n");
+    runScript(BOOTSTRAP_ARGS, fixture, { BB_INSTALL_SKIP_SERVICE: "1" });
+    const writeCli = (path: string, output: string) => {
+      mkdirSync(dirname(path), { recursive: true });
+      writeExecutable(path, `#!/bin/sh\necho ${output}\n`);
+    };
+    writeCli(join(fixture.dataDir, "npm", "bin", "bb"), "enrollment-package");
+    const launcher = join(fixture.dataDir, "bin", "bb");
+    writeCli(launcher, "updated-launcher");
+    const otherDir = join(fixture.homeDir, ".bb-machines", "other");
+    writeCli(join(otherDir, "npm", "bin", "bb"), "other-package");
+    writeCli(join(otherDir, "bin", "bb"), "other-launcher");
+    const shim = join(fixture.homeDir, ".local", "bin", "bb");
+    const env = createScriptEnv(fixture, {});
+    delete env.BB_DATA_DIR;
+    const runShim = (extraEnv: NodeJS.ProcessEnv) => {
+      const result = spawnSync(shim, ["--version"], {
+        env: { ...env, ...extraEnv },
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(0);
+      return result.stdout.trim();
+    };
+
+    expect(runShim({})).toBe("updated-launcher");
+    expect(runShim({ BB_DATA_DIR: otherDir })).toBe("other-launcher");
+    rmSync(launcher);
+    rmSync(join(fixture.dataDir, "npm"), { recursive: true });
+    expect(runShim({})).toBe("other-launcher");
+  });
+
+  it("points the data dir's bb launcher at the machine package unless a running bb owns it", () => {
+    const fixture = createFixture();
+    writeServerInstallTools(fixture, 200);
+    const install = () => {
+      const result = runScript(BOOTSTRAP_ARGS, fixture, {
+        BB_INSTALL_SKIP_SERVICE: "1",
+      });
+      expect(result.status, result.stderr).toBe(0);
+    };
+    const launcher = join(fixture.dataDir, "bin", "bb");
+    const shim = join(fixture.homeDir, ".local", "bin", "bb");
+    const runShim = () => {
+      const result = spawnSync(shim, ["--version"], {
+        env: createScriptEnv(fixture, {}),
+        encoding: "utf8",
+      });
+      expect(result.status, result.stderr).toBe(0);
+      return result.stdout.trim();
+    };
+
+    install();
+    writeExecutable(
+      join(fixture.dataDir, "npm", "bin", "bb"),
+      "#!/bin/sh\necho machine-package\n",
+    );
+    expect(readFileSync(launcher, "utf8")).toContain(CLI_LAUNCHER_MARKER);
+    expect(runShim()).toBe("machine-package");
+
+    writeExecutable(
+      launcher,
+      `#!/bin/sh\n# ${CLI_LAUNCHER_MARKER}\necho running-app\n`,
+    );
+    install();
+    expect(runShim()).toBe("running-app");
+
+    writeFileSync(join(fixture.dataDir, "server-moved.json"), "{}\n");
+    install();
+    expect(runShim()).toBe("machine-package");
+
+    const foreign = "#!/bin/sh\necho someone-else\n";
+    writeExecutable(launcher, foreign);
+    install();
+    expect(readFileSync(launcher, "utf8")).toBe(foreign);
   });
 
   it("publishes cleanup before package installation can fail", () => {

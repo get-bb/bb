@@ -1,13 +1,28 @@
 import { useMemo, type ReactNode } from "react";
 import type { ExperimentalThreadHeaderTitleProps } from "@get-bb/plugin-sdk";
+import { useAtomValue } from "jotai";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
+import {
+  createPickPreferenceAtom,
+  REPLACEMENT_RULE,
+  useExclusiveResolution,
+  type ExclusiveResolution,
+} from "@/lib/plugin-replacement-preference";
 import {
   usePluginSlotKind,
   type PluginThreadHeaderTitleSlot,
 } from "@/lib/plugin-slots";
 
-export function usePluginThreadHeaderTitleSlot(): PluginThreadHeaderTitleSlot | null {
-  return usePluginSlotKind("threadHeaderTitles")[0] ?? null;
+export const threadHeaderTitleProviderAtom = createPickPreferenceAtom(
+  "threadHeader.titleProvider",
+);
+
+export function usePluginThreadHeaderTitle(): ExclusiveResolution<PluginThreadHeaderTitleSlot> {
+  return useExclusiveResolution(
+    usePluginSlotKind("threadHeaderTitles"),
+    useAtomValue(threadHeaderTitleProviderAtom),
+    REPLACEMENT_RULE,
+  );
 }
 
 interface PluginThreadHeaderTitleProps {

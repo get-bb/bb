@@ -6,8 +6,10 @@ import type {
   PluginPendingInteractionSlot,
 } from "./plugin-slots";
 import {
-  BUILT_IN_FILE_OPENER_PREFERENCE,
-  buildFileOpenerRef,
+  BUILT_IN_REPLACEMENT_PROVIDER,
+  replacementProviderKey,
+} from "./plugin-replacement-preference";
+import {
   resolveComposerActions,
   resolveComposerBanners,
   resolveComposerDraftObservers,
@@ -18,6 +20,24 @@ import {
   resolvePendingInteraction,
   resolveReplacement,
 } from "./plugin-slot-resolvers";
+
+const SETTLED_BOOT = {
+  bbPluginIds: new Set<string>(),
+  settledOnce: true,
+};
+
+function openerFor(
+  args: Omit<
+    Parameters<typeof resolveFileOpenerReplacement>[0],
+    "boot" | "picks"
+  > & { picks?: Readonly<Record<string, string>> },
+) {
+  return resolveFileOpenerReplacement({
+    picks: {},
+    boot: SETTLED_BOOT,
+    ...args,
+  });
+}
 
 function Component() {
   return null;
@@ -131,7 +151,11 @@ describe("keyed renderer resolvers", () => {
     const chart = { ...alpha, id: "chart" };
 
     expect(
-      resolveMessageDirectiveRegistry([alpha, beta, chart]).get("card"),
+      resolveMessageDirectiveRegistry(
+        [alpha, beta, chart],
+        {},
+        SETTLED_BOOT,
+      ).get("card"),
     ).toEqual({ status: "collision", pluginIds: ["alpha", "zeta"] });
   });
 });
@@ -173,41 +197,41 @@ describe("replacement resolvers", () => {
     };
 
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [markdown, text],
         path: "README.MD",
       }),
     ).toEqual({ kind: "plugin", registration: markdown });
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [markdown, alternate],
-        preference: { md: BUILT_IN_FILE_OPENER_PREFERENCE },
+        picks: { md: BUILT_IN_REPLACEMENT_PROVIDER },
         path: "README.md",
       }),
     ).toEqual({ kind: "owner" });
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [markdown, alternate],
-        preference: { md: buildFileOpenerRef(alternate) },
+        picks: { md: replacementProviderKey(alternate) },
         path: "README.md",
       }),
     ).toEqual({ kind: "plugin", registration: alternate });
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [markdown, text],
         path: "README.md",
         override: { pluginId: "docs", openerId: "text" },
       }),
     ).toEqual({ kind: "plugin", registration: text });
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [markdown],
         path: "README.md",
         override: "builtin",
       }),
     ).toEqual({ kind: "owner" });
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [],
         path: "README.md",
       }),
@@ -226,23 +250,23 @@ describe("replacement resolvers", () => {
     const second = { ...first, pluginId: "beta", title: "Beta Markdown" };
 
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [first, second],
         path: "README.md",
       }),
     ).toEqual({ kind: "plugin", registration: first });
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [second],
         path: "README.md",
       }),
     ).toEqual({ kind: "plugin", registration: second });
     expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations: [second],
-        preference: { md: buildFileOpenerRef(first) },
+        picks: { md: replacementProviderKey(first) },
         path: "README.md",
       }),
-    ).toEqual({ kind: "owner" });
+    ).toEqual({ kind: "plugin", registration: second });
   });
 });

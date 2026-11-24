@@ -263,7 +263,9 @@ await bb.sdk.threads.update({ threadId, title: "Fix the flaky test" });
 `threads.list` filters on `projectId`, `environmentId`, `hostId`,
 `parentThreadId`, `sourceThreadId`, `sectionId`, `originKind`,
 `originPluginId`, `archived`, `unsectioned`, `hasParent`, and `includeHidden`,
-and it pages with `limit` and `offset`. `threadIds` (at most 200) narrows it to
+and it returns one page of a required `limit`, so a caller that needs every
+match pages with `offset` until a page comes back shorter than its `limit`
+(`environments.list` pages the same way). `threadIds` (at most 200) narrows it to
 those threads and leaves out unknown or deleted IDs, so it also answers which
 of a set of threads still exist.
 `threads.update` writes `title`, `sectionId`, `parentThreadId`, `model`,
@@ -401,5 +403,42 @@ preview URLs expire and never reveal the host id or absolute root.
 Caller-gated RPC handlers can throw `new experimental_PluginRpcRefusal({
 code: "forbidden", message: "Only the connect plugin can call this method" })`
 from `@get-bb/plugin-sdk`. `bb.sdk.plugins.callRpc` rejects with a `BbHttpError`
-whose `code` is `forbidden` and `status` is 403. See `backend-events.md` for
-the refusal codes, optional validation issues and mutation rollback behavior.
+whose `code` is `forbidden` and `status` is 403.
+
+Every `bb.sdk` call rejects a non-2xx response with that error. Import it as
+`experimental_BbHttpError` from `@get-bb/plugin-sdk` and narrow with
+`error instanceof experimental_BbHttpError`, which also matches errors thrown
+by the host's copy of the SDK; then read `status`, `code` (the server's error
+code, such as `thread_not_found`, or null) and `body`. A `callRpc` to a plugin
+that isn't installed or isn't running has `code` `plugin_not_found` or
+`plugin_not_running`. See `backend-events.md` for the refusal codes, optional
+validation issues and mutation rollback behavior.
+
+### Thread files and the delete_finalize hook
+
+`threads.experimental_export({ threadId })` returns the thread as a
+self-contained `.jsonl.zst` file: its rows, every event and its attachments.
+`threads.experimental_import({ file })` recreates a deleted thread in its
+project, and refuses a thread that still exists.
+
+A deleted thread stays in bb's database, hidden and unchanging, until core
+finishes the delete by removing its rows.
+`bb.experimental_hooks.on("thread.delete_finalize", handler)` runs before that
+starts, so a plugin can keep a copy first:
+
+```ts
+bb.experimental_hooks.on("thread.delete_finalize", ({ threadId }) => {
+  if (!wantsCopy(threadId) || hasCopy(threadId)) return { action: "proceed" };
+  void bb.sdk.threads
+    .experimental_export({ threadId })
+    .then((file) => storeCopy(threadId, file));
+  return { action: "wait" };
+});
+```
+
+`wait` keeps the rows; core asks again about every 10 seconds and after every
+restart, until every plugin answers `proceed`. Decide in milliseconds and
+export in the background, as above. A throw, a timeout or any other answer
+counts as `wait`. A disabled or uninstalled plugin is not asked, so its threads
+are removed without a copy. Core removes nothing while plugins are still
+loading and never asks again once the removal has started.

@@ -22,6 +22,7 @@ Listing:
     --section <id>                         Filter by section
     --unsectioned                          Show only threads outside sections
     --include-hidden                       Include hidden threads
+    --limit <n> / --offset <n>             Page through the threads (default 200)
 
   Like `bb thread count`, the list leaves out archived threads unless you
   pass --archived, --include-archived, or --thread IDs. The table prints ID,
@@ -29,6 +30,11 @@ Listing:
   title from the first prompt, then "-". Long titles are cut at 60
   characters. Project shows the project name; the personal project shows
   "-". Use --json for the full thread records.
+
+  The list prints one page: 200 threads unless --limit says otherwise.
+  When a page is full, the table is followed by a note on stderr
+  naming the --offset of the next page; --json prints only the page
+  (SDK: `threads.list({ limit, offset })`, where `limit` is required).
 
   bb thread search <query> [--limit <1-50>]
                                              Search threads and messages
@@ -67,6 +73,11 @@ Inspecting:
     --self                                 Target current thread
 
   Shows pull request status for the attached environment branch when available.
+  `Provider:` is the thread's agent provider. `Model:` and `Reasoning level:`
+  are what the thread's next turn uses: the sticky choice from `bb thread
+  update --model`, else the last turn's, else the project default. `--json`
+  prints them with service tier and permission mode as `executionOptions`
+  (`null` when no model resolves).
   An archived thread's status line names the archive time, as in `Status: idle
   (archived 11/6/2026, 4:18:02 PM)`; status alone is the run state, so check
   `thread.archivedAt` in `--json`.
@@ -162,7 +173,7 @@ Persisted panel tabs:
   bb thread tabs show <thread-id>
   bb thread tabs set <thread-id> --expected-revision <n> --tabs-json '<json>'
 
-Core Info uses plugin id `core` and tab id `info`; Diff belongs to the Git plugin, plugin id `bb--git` and tab id `diff`. Legacy `thread-info`, `git-diff` and `core` `diff` entries convert automatically without changing their order.
+Core Info uses plugin id `bb--core` and tab id `info`; Diff belongs to the Git plugin, plugin id `bb--git` and tab id `diff`. Legacy `thread-info`, `git-diff`, `core` `info` and `core` `diff` entries convert automatically without changing their order.
 
 Pinned plugin tabs use `{ "id": "plugin-fixed:<plugin-id>:<tab-id>", "kind": "plugin-fixed", "pluginId": "<plugin-id>", "tabId": "<tab-id>" }`.
 The id encodes each plugin/tab id with percent escapes. The app shows registered,

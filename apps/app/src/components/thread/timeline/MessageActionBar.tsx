@@ -28,7 +28,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
 import type { ThreadTimelinePluginMessageAction } from "./types.js";
-import { formatDayMessageTime, MessageTime } from "./message-time.js";
+import { formatDayMessageTime, MessageTime } from "@bb/shared-ui/message-time";
 
 function PluginActionIcon({
   pluginId,

@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { createScriptRunScope } from "./script-runner.js";
@@ -158,7 +159,12 @@ describe("target thread read failures", () => {
     {
       cause: "a verified missing thread",
       readThread: async () => {
-        throw Object.assign(new Error("thread not found"), { status: 404 });
+        throw new experimental_BbHttpError({
+          status: 404,
+          code: null,
+          message: "thread not found",
+          body: null,
+        });
       },
       error: "Target thread thr_target no longer exists",
     },

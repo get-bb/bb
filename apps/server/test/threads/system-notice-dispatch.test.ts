@@ -68,12 +68,14 @@ function installDispatchHook(
     | Promise<{ action: "proceed" }>,
 ): void {
   const registry: HookRegistry = {
+    "thread.delete_finalize": [],
     "message.dispatch": [{ pluginId: "notice-test", handler }],
   };
   setPluginHookProvider({
     listHooks: (hook) => registry[hook],
     invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 
@@ -183,7 +185,7 @@ describe("system notices", () => {
         environment: {
           type: "host",
           hostId: host.id,
-          workspace: { type: "unmanaged", path: WORKSPACE_PATH },
+          workspace: { type: "unmanaged", path: `${WORKSPACE_PATH}-parent` },
         },
         input: textInput("Created first"),
         origin: "app",

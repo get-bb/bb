@@ -3,9 +3,9 @@ import {
   PluginSlotMount,
   resetCrashedPluginSlots,
 } from "@/components/plugin/PluginSlotMount";
-import { useSidebar } from "@/components/ui/sidebar.js";
+import { SidebarContent, useSidebar } from "@/components/ui/sidebar.js";
 import { useRouteState } from "@/hooks/useRouteState";
-import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
+import type { ExclusiveResolution } from "@/lib/plugin-replacement-preference";
 import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import { appToast } from "@/components/ui/app-toast";
 import {
@@ -18,12 +18,37 @@ import { ThreadListPlaceholder } from "./ThreadListPlaceholder";
 const THREAD_LIST_SLOT_KIND = "threadList";
 
 interface PluginThreadListProps {
-  replacement: ResolvedReplacement<PluginThreadListSlot>;
+  replacement: ExclusiveResolution<PluginThreadListSlot>;
+  scrollElement: HTMLElement;
   onNavigate: () => void;
 }
 
-export function PluginThreadList({
+interface SidebarThreadListContentProps {
+  replacement: ExclusiveResolution<PluginThreadListSlot>;
+  onNavigate: () => void;
+}
+
+export function SidebarThreadListContent({
   replacement,
+  onNavigate,
+}: SidebarThreadListContentProps) {
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
+  return (
+    <SidebarContent ref={setScrollElement}>
+      {scrollElement === null ? null : (
+        <PluginThreadList
+          replacement={replacement}
+          scrollElement={scrollElement}
+          onNavigate={onNavigate}
+        />
+      )}
+    </SidebarContent>
+  );
+}
+
+function PluginThreadList({
+  replacement,
+  scrollElement,
   onNavigate,
 }: PluginThreadListProps) {
   const { projectId, threadId } = useRouteState();
@@ -33,27 +58,33 @@ export function PluginThreadList({
   const [attempt, setAttempt] = useState(0);
   const registration =
     replacement.kind === "plugin" ? replacement.registration : null;
+  const fallback = replacement.kind === "plugin" ? replacement.fallback : null;
   const pluginId = registration?.pluginId ?? null;
   const title = registration?.title ?? "Thread list";
 
-  const handleCrash = useCallback(
-    (crashedPluginId: string) => {
-      appToast.error("Thread list plugin crashed", {
-        description: `${title} (${crashedPluginId}) stopped working.`,
-      });
-    },
-    [title],
-  );
   const handleReload = useCallback(() => {
     if (pluginId !== null) resetCrashedPluginSlots(pluginId);
     setAttempt((current) => current + 1);
   }, [pluginId]);
+  const handleCrash = useCallback(
+    (crashedPluginId: string) => {
+      appToast.error(`${title} crashed`, {
+        description:
+          fallback === null
+            ? `The ${crashedPluginId} plugin's thread list stopped working.`
+            : `The ${crashedPluginId} plugin's thread list stopped working; showing ${fallback.title} until you reload it.`,
+        action: { label: "Reload", onClick: handleReload },
+        duration: Number.POSITIVE_INFINITY,
+      });
+    },
+    [fallback, handleReload, title],
+  );
 
   if (registration === null) {
     return (
       <ThreadListPlaceholder
         state={
-          !bootSettled
+          replacement.kind === "loading" || !bootSettled
             ? { kind: "loading" }
             : loadFailed
               ? { kind: "failed", onRetry: schedulePluginFrontendReconcile }
@@ -62,7 +93,25 @@ export function PluginThreadList({
       />
     );
   }
+  const listProps = {
+    activeThreadId: threadId ?? null,
+    activeProjectId: projectId ?? null,
+    isCompactViewport,
+    onNavigate,
+    experimental_scrollElement: scrollElement,
+    searchQuery: "",
+  };
   const List = registration.component;
+  const FallbackList = fallback?.component;
+  const crashedPlaceholder = (
+    <ThreadListPlaceholder
+      state={{
+        kind: "crashed",
+        pluginTitle: title,
+        onReload: handleReload,
+      }}
+    />
+  );
   return (
     <PluginSlotMount
       key={`${registration.pluginId}/${registration.id}/${registration.generation}/${attempt}`}
@@ -70,23 +119,23 @@ export function PluginThreadList({
       slotKind={THREAD_LIST_SLOT_KIND}
       slotId={registration.id}
       crashFallback={
-        <ThreadListPlaceholder
-          state={{
-            kind: "crashed",
-            pluginTitle: title,
-            onReload: handleReload,
-          }}
-        />
+        fallback === null || FallbackList === undefined ? (
+          crashedPlaceholder
+        ) : (
+          <PluginSlotMount
+            key={`${fallback.pluginId}/${fallback.id}/${fallback.generation}`}
+            pluginId={fallback.pluginId}
+            slotKind={THREAD_LIST_SLOT_KIND}
+            slotId={fallback.id}
+            crashFallback={crashedPlaceholder}
+          >
+            <FallbackList {...listProps} />
+          </PluginSlotMount>
+        )
       }
       onCrash={handleCrash}
     >
-      <List
-        activeThreadId={threadId ?? null}
-        activeProjectId={projectId ?? null}
-        isCompactViewport={isCompactViewport}
-        onNavigate={onNavigate}
-        searchQuery=""
-      />
+      <List {...listProps} />
     </PluginSlotMount>
   );
 }

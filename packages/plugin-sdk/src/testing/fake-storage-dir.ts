@@ -1,10 +1,11 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import Database from "better-sqlite3";
 
 export interface FakeStorageDir {
   openDatabase(): Database.Database;
+  filesDirectory(): string;
   remove(): void;
 }
 
@@ -85,19 +86,28 @@ export function createFakeStorageDir(): FakeStorageDir {
     root = null;
     if (owner !== null) releaseRoot(owner, remove);
   };
+  const hostDir = (): string => {
+    if (path === null) {
+      root = acquireRoot();
+      path = mkdtempSync(join(root.path, "host-"));
+      root.removers.add(remove);
+    }
+    return path;
+  };
   return {
     openDatabase() {
-      if (path === null) {
-        root = acquireRoot();
-        path = mkdtempSync(join(root.path, "host-"));
-        root.removers.add(remove);
-      }
+      const dir = hostDir();
       for (const database of databases) {
         if (!database.open) databases.delete(database);
       }
-      const database = new Database(join(path, "data.db"));
+      const database = new Database(join(dir, "data.db"));
       databases.add(database);
       return database;
+    },
+    filesDirectory() {
+      const directory = join(hostDir(), "files");
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      return directory;
     },
     remove,
   };

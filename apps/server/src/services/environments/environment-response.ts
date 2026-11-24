@@ -93,6 +93,7 @@ function toEnvironmentResponseWithHostLifecycle(
     projectId: row.projectId,
     hostId: row.hostId,
     path: row.path,
+    additionalPaths: row.additionalPaths,
     isGitRepo: row.isGitRepo,
     isWorktree: row.isWorktree,
     branchName: row.branchName,
@@ -100,6 +101,10 @@ function toEnvironmentResponseWithHostLifecycle(
     defaultBranch: row.defaultBranch,
     mergeBaseBranch: row.mergeBaseBranch,
     status: row.status,
+    statusMessage:
+      row.status === "ready" || row.status === "destroyed"
+        ? null
+        : row.statusMessage,
     environmentProviderId: row.environmentProviderId,
     lifecycle: {
       phase:
@@ -127,6 +132,7 @@ function toEnvironmentResponseWithHostLifecycle(
     environmentProviderSelection: row.environmentProviderSelection,
     environmentProviderInstanceKey: row.environmentProviderInstanceKey,
     managed: row.providerOwnsPath,
+    heldBy: row.heldBy,
     workspaceProvisionType: resolveDeprecatedWorkspaceProvisionType(
       row.environmentProviderId,
     ),

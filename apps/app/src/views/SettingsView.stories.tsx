@@ -20,7 +20,7 @@ import { VoiceInputSettingsSectionContent } from "@/components/settings/VoiceInp
 import { AiServicesSettingsSection } from "@/components/settings/AiServicesSettingsSection";
 import { ArchivedThreadsSettingsSection } from "@/components/settings/ArchivedThreadsSettingsSection";
 import { CommunitySettingsSection } from "@/components/settings/CommunitySettingsSection";
-import { FileOpenersSettingsSection } from "@/components/settings/FileOpenersSettingsSection";
+import { FileOpenerChoicesSection } from "@/components/settings/PluginChoiceSettings";
 import { KeyboardSettingsSection } from "@/components/settings/KeyboardSettingsSection";
 import { MarketplacesSettingsSection } from "@/components/settings/MarketplacesSettingsSection";
 import { MachineEnvironmentSettings } from "@/components/settings/MachineEnvironmentSettings";
@@ -308,7 +308,7 @@ function FilePreferencesStory() {
         onRequestAccess={async () => true}
         targets={connectedTargets}
       />
-      <FileOpenersSettingsSection />
+      <FileOpenerChoicesSection />
     </>
   );
 }

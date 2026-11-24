@@ -45,21 +45,39 @@ export type DispatchAttemptKind = PluginDispatchAttemptKind;
  * guarantee: everything a handler returns is validated here and a malformed
  * decision fails the attempt with the plugin named, exactly like a throw.
  */
+const waitDecisionTimeSchema = z
+  .number()
+  .int()
+  .nonnegative()
+  .nullable()
+  .optional();
+
 const messageDispatchHookDecisionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("proceed") }),
-  z.object({
-    action: z.literal("wait"),
-    reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
-    sendAt: z.number().int().nonnegative().nullable().optional(),
-  }),
+  z
+    .object({
+      action: z.literal("wait"),
+      reason: z.string().min(1).max(QUEUED_MESSAGE_WAIT_REASON_MAX_LENGTH),
+      recheckAt: waitDecisionTimeSchema,
+      sendAt: waitDecisionTimeSchema,
+    })
+    .refine(
+      (decision) =>
+        decision.recheckAt === undefined || decision.sendAt === undefined,
+      {
+        message:
+          "and recheckAt are both set; sendAt is the old name of recheckAt",
+        path: ["sendAt"],
+      },
+    ),
   z.object({ action: z.literal("reject"), message: z.string().min(1) }),
 ]);
 
 export interface MessageDispatchWaitDecision {
   pluginId: string;
   reason: string;
-  /** Becomes the queued row's `sendAt`, so core's due sweep re-attempts then. */
-  sendAt: number | null;
+  /** Becomes the queued row's `recheckAt`, so core's due sweep re-asks then. */
+  recheckAt: number | null;
 }
 
 export type MessageDispatchHookPassOutcome =
@@ -463,7 +481,7 @@ export async function runMessageDispatchHookPass(
         waits.push({
           pluginId: hook.pluginId,
           reason: decision.reason,
-          sendAt: decision.sendAt ?? null,
+          recheckAt: decision.recheckAt ?? decision.sendAt ?? null,
         });
         continue;
       }

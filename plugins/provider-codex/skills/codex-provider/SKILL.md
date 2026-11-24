@@ -29,6 +29,15 @@ BB retains the thread, workspace, visible history, and original native session.
 A copied Goal waits for the next explicit turn. A failed migration stops the
 turn and reports the provider error. This recovery applies to BB sessions.
 
+The Codex app-server process receives the thread environment: machine and
+project variables, GitHub credentials, and plugin contributions such as the
+Account Pooler token. Codex's own `shell_environment_policy` decides which of
+them reach the agent's commands. Codex's default passes all of them, and an
+`exclude` such as `["*TOKEN*"]` removes the matching ones. bb always sets its
+non-secret context variables there, so the `bb` CLI works under any policy:
+`BB_THREAD_ID`, `BB_PROJECT_ID`, `BB_ENVIRONMENT_ID`, `BB_THREAD_STORAGE`,
+`BB_CLI`, `BB_SERVER_URL` and `BB_HOST_DAEMON_PORT`.
+
 Codex questions from `request_user_input` pause the turn until answered.
 Questions from `request_user_input_async` do not pause it: the plugin opens a
 question card for each one that stays open for up to an hour after the turn

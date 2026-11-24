@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   type ExperimentalFakeHostRpcCall,
@@ -30,6 +30,8 @@ const ENVIRONMENT = {
   environmentProviderSelection: null,
   environmentProviderInstanceKey: null,
   managed: true,
+  heldBy: null,
+  statusMessage: null,
   workspaceProvisionType: "worktree",
 } as Environment;
 
@@ -685,8 +687,11 @@ describe("bb git errors", () => {
       sdk: {
         environments: {
           get: async () => {
-            throw Object.assign(new Error("HTTP 404: Environment not found"), {
+            throw new experimental_BbHttpError({
               status: 404,
+              code: null,
+              message: "Environment not found",
+              body: null,
             });
           },
         },

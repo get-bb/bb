@@ -3,6 +3,7 @@ import { LIST_HOVER_TRANSITION } from "@/components/ui/motion";
 import { cn } from "@/lib/utils";
 import {
   SIDEBAR_HOVER_ACTIONS_CLASS,
+  SIDEBAR_HOVER_ACTIONS_COLLAPSE_CLASS,
   SIDEBAR_HOVER_ACTIONS_MOBILE_ALWAYS_VALUE,
 } from "@/components/ui/sidebar-hover-actions";
 import { SIDEBAR_CONTROL_STATE_CLASS } from "@/components/ui/sidebar-row-classes";
@@ -17,6 +18,7 @@ interface SidebarChildToggleChevronProps {
   collapseLabel: string;
   onToggle: () => void;
   revealOnHover?: boolean;
+  collapseAtRest?: boolean;
   className?: string;
 }
 
@@ -27,6 +29,7 @@ export function SidebarChildToggleChevron({
   collapseLabel,
   onToggle,
   revealOnHover = false,
+  collapseAtRest = false,
   className,
 }: SidebarChildToggleChevronProps) {
   return (
@@ -46,7 +49,8 @@ export function SidebarChildToggleChevron({
       }}
       className={cn(
         revealOnHover ? SIDEBAR_HOVER_ACTIONS_CLASS : "pointer-events-auto",
-        "relative z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
+        collapseAtRest ? SIDEBAR_HOVER_ACTIONS_COLLAPSE_CLASS : "relative",
+        "z-10 inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-md outline-none ring-sidebar-ring focus-visible:ring-2",
         COARSE_POINTER_CHILD_TOGGLE_HIT_AREA_CLASS,
         SIDEBAR_CONTROL_STATE_CLASS,
         LIST_HOVER_TRANSITION,

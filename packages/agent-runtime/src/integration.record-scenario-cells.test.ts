@@ -263,6 +263,7 @@ async function runTurn(
 ): Promise<void> {
   note(ctx, `turn/start ${JSON.stringify(settings)}: ${text}`);
   await ctx.runtime.runTurn({
+    additionalWorkspaceWriteRoots: [],
     threadId,
     clientRequestId: nextClientRequestId(),
     input: [promptTextInput({ text })],
@@ -286,6 +287,7 @@ async function steer(
   const clientRequestId = nextClientRequestId();
   note(ctx, `turn/steer ${JSON.stringify(settings)}: ${text}`);
   const result = await ctx.runtime.steerTurn({
+    additionalWorkspaceWriteRoots: [],
     threadId,
     expectedTurnId,
     clientRequestId,
@@ -298,6 +300,7 @@ async function steer(
     if (result.activeTurnId !== null) {
       note(ctx, `re-steering into ${result.activeTurnId}`);
       const second = await ctx.runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId,
         expectedTurnId: result.activeTurnId,
         clientRequestId,
@@ -309,6 +312,7 @@ async function steer(
       return;
     }
     await ctx.runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       threadId,
       clientRequestId,
       input: [promptTextInput({ text })],

@@ -69,8 +69,9 @@ import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
 import { useOptionalPaneContext } from "@/views/thread-detail/PaneContext";
 import {
   APP_COMPOSER_SELECTOR,
-  resolveComposerCommandScope,
-} from "@/lib/composer-command-ownership";
+  composerHoldsCaret,
+  isActiveComposerShell,
+} from "@/lib/active-composer";
 import {
   ownsModelPickerCycleChord,
   resolveModelPickerToggle,
@@ -710,19 +711,20 @@ export function ModelReasoningPicker({
   const isSplitPane = paneContext?.isSplitPane ?? false;
   const resolveCommandScope = useCallback(
     (target: EventTarget | null): ModelPickerScope => {
-      const scope = resolveComposerCommandScope({
-        composer: triggerRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null,
-        target,
-        isFocusedPane,
-      });
+      const composer =
+        triggerRef.current?.closest(APP_COMPOSER_SELECTOR) ?? null;
       return {
-        ...scope,
         disabled: disabled ?? false,
+        isFocusedPane,
         isSplitPane,
+        isActiveComposer: isActiveComposerShell(composer, target),
+        caretInThisComposer: composerHoldsCaret(composer, target),
         editableOutsideComposer:
-          !scope.caretInThisComposer &&
-          !scope.caretInOtherComposer &&
-          isEditableKeyboardTarget(target),
+          isEditableKeyboardTarget(target) &&
+          !(
+            target instanceof Element &&
+            target.closest(APP_COMPOSER_SELECTOR) !== null
+          ),
       };
     },
     [disabled, isFocusedPane, isSplitPane],

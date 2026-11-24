@@ -1,11 +1,11 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
-  BbHttpError,
   createRequestTimeoutFetch,
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
   readJsonResponse,
   resolveResponse,
 } from "../src/response.js";
+import { BbHttpError } from "../src/http-error.js";
 import { createNodeTransport } from "../src/node.js";
 
 const REQUEST_TIMEOUT_ERROR_NAME = "BbRequestTimeoutError";

@@ -28,11 +28,7 @@ import {
   type ExperimentalThreadInfoProps,
 } from "@get-bb/plugin-sdk";
 import { Link } from "react-router-dom";
-import type {
-  Environment,
-  Thread,
-  ThreadListEntry,
-} from "@bb/domain";
+import type { Environment, Thread, ThreadListEntry } from "@bb/domain";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -67,7 +63,7 @@ import {
 import { OptionPicker } from "@/components/pickers/OptionPicker";
 import { PARENT_NOTIFICATIONS_OPTIONS } from "@/lib/parent-notifications";
 import { buildParentSelectorOptions } from "@/views/thread-detail/threadParentSelectorOptions";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import { ParentThreadPicker } from "@/components/pickers/ParentThreadPicker";
 
@@ -134,7 +130,7 @@ export function ParentSelectorRow({
           )}
         >
           <Link
-            to={getThreadRoutePath({
+            to={getThreadLocationPath({
               projectId: parentThreadProjectId ?? projectId,
               threadId: parentThreadId,
             })}

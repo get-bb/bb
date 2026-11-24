@@ -6,7 +6,7 @@ import {
   type DetailScrollSize,
 } from "../../ui/detail-scroll-size.js";
 import { useStickyBottomScroll } from "./useStickyBottomScroll.js";
-import { useScrollOverflowState } from "./useScrollOverflowState.js";
+import { useScrollOverflowState } from "@bb/shared-ui/use-scroll-overflow-state";
 import {
   TimelineWindowingScrollRootContext,
   type TimelineWindowingScrollRoot,

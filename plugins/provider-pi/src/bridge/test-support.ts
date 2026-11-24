@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -72,6 +73,14 @@ export interface FakePiBridgeHarness {
   readProcessLog(): { spawned: number[]; exited: number[] };
   runningChildPids(): number[];
   teardown(): Promise<void>;
+}
+
+function fakePiPids(children: readonly ChildProcess[]): number[] {
+  return children.flatMap((child) =>
+    child.spawnargs.includes(fakePiPath) && child.pid !== undefined
+      ? [child.pid]
+      : [],
+  );
 }
 
 export async function startFakePiBridge(
@@ -159,22 +168,18 @@ export async function startFakePiBridge(
       const lines = existsSync(processLogPath)
         ? readFileSync(processLogPath, "utf8").split("\n").filter(Boolean)
         : [];
-      const spawned: number[] = [];
-      const exited: number[] = [];
-      for (const line of lines) {
+      const spawned = lines.flatMap((line) => {
         const [step, pid] = line.split(":");
-        (step === "spawn" ? spawned : exited).push(Number(pid));
-      }
+        return step === "spawn" ? [Number(pid)] : [];
+      });
+      const running = new Set(bridge.runningChildPids());
+      const exited = fakePiPids(children.children).filter(
+        (pid) => !running.has(pid),
+      );
       return { spawned, exited };
     },
     runningChildPids() {
-      return children
-        .running()
-        .flatMap((child) =>
-          child.spawnargs.includes(fakePiPath) && child.pid !== undefined
-            ? [child.pid]
-            : [],
-        );
+      return fakePiPids(children.running());
     },
     async teardown() {
       try {

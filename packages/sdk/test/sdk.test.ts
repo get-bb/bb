@@ -3,7 +3,11 @@ import { z } from "zod";
 import type { Environment, JsonValue } from "@bb/domain";
 import { createBbSdk } from "../src/core.js";
 import { createHttpTransport } from "../src/transport-http.js";
-import { ThreadWaitTimeoutError } from "../src/areas/threads.js";
+import {
+  ThreadWaitTimeoutError,
+  type ThreadListArgs,
+} from "../src/areas/threads.js";
+import type { EnvironmentListArgs } from "../src/areas/environments.js";
 import type { FetchImplementation } from "../src/response.js";
 
 interface CapturedRequest {
@@ -31,6 +35,7 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     projectId: "proj_test",
     hostId: "host_test",
     path: "/workspace",
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: false,
     baseBranch: null,
@@ -38,12 +43,14 @@ function makeEnvironment(overrides: EnvironmentOverrides = {}): Environment {
     defaultBranch: null,
     mergeBaseBranch: null,
     status: "ready",
+    statusMessage: null,
     environmentProviderId: null,
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: false,
+    heldBy: null,
     workspaceProvisionType: null,
     createdAt: 1,
     updatedAt: 2,
@@ -157,6 +164,7 @@ describe("@bb/sdk", () => {
       },
       maxPermissionMode: "full",
       lastSeenAt: 1,
+      route: null,
       lastRejectedProtocolVersion: null,
       createdAt: 1,
       updatedAt: 1,
@@ -370,7 +378,7 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.threads.list({ signal: controller.signal }),
+      sdk.threads.list({ limit: 10, signal: controller.signal }),
     ).resolves.toEqual([]);
     expect(receivedSignal).toBe(controller.signal);
   });
@@ -874,6 +882,7 @@ describe("@bb/sdk", () => {
         hostId: "host_remote",
         projectId: "proj_remote",
         providerId: "acp-remote",
+        selectedModel: "model-remote",
       }),
     ).resolves.toMatchObject({ models: [], providers: [] });
 
@@ -891,7 +900,7 @@ describe("@bb/sdk", () => {
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/system/execution-options?hostId=host_remote&projectId=proj_remote&providerId=acp-remote",
+        url: "http://bb.test/api/v1/system/execution-options?hostId=host_remote&projectId=proj_remote&providerId=acp-remote&selectedModel=model-remote",
       },
     ]);
   });
@@ -1005,15 +1014,40 @@ describe("@bb/sdk", () => {
     });
 
     await expect(
-      sdk.threads.list({ archived: true, projectId: "proj_123" }),
+      sdk.threads.list({ archived: true, limit: 50, projectId: "proj_123" }),
     ).resolves.toEqual([]);
 
     expect(queue.requests).toEqual([
       {
         bodyText: undefined,
         method: "GET",
-        url: "http://bb.test/api/v1/threads?projectId=proj_123&archived=true",
+        url: "http://bb.test/api/v1/threads?projectId=proj_123&archived=true&limit=50",
       },
+    ]);
+  });
+
+  it("still lists when a plugin built before limit was required passes no arguments", async () => {
+    const queue = createFetchQueue([{ body: [] }, { body: [] }]);
+    const sdk = createBbSdk({
+      transport: createHttpTransport({
+        baseUrl: "http://bb.test",
+        fetch: queue.fetch,
+        runtime: "node",
+      }),
+    });
+    const listThreadsUntyped = sdk.threads.list as (
+      args?: ThreadListArgs,
+    ) => Promise<unknown>;
+    const listEnvironmentsUntyped = sdk.environments.list as (
+      args?: EnvironmentListArgs,
+    ) => Promise<unknown>;
+
+    await expect(listThreadsUntyped()).resolves.toEqual([]);
+    await expect(listEnvironmentsUntyped()).resolves.toEqual([]);
+
+    expect(queue.requests.map((request) => request.url)).toEqual([
+      "http://bb.test/api/v1/threads",
+      "http://bb.test/api/v1/environments",
     ]);
   });
 
@@ -1027,12 +1061,12 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await sdk.threads.list({ threadIds: ["thr_a", "thr_b"] });
-    await sdk.threads.list({ threadIds: [] });
+    await sdk.threads.list({ limit: 200, threadIds: ["thr_a", "thr_b"] });
+    await sdk.threads.list({ limit: 200, threadIds: [] });
 
     expect(queue.requests.map((request) => request.url)).toEqual([
-      "http://bb.test/api/v1/threads?threadIds=thr_a%2Cthr_b",
-      "http://bb.test/api/v1/threads?threadIds=",
+      "http://bb.test/api/v1/threads?threadIds=thr_a%2Cthr_b&limit=200",
+      "http://bb.test/api/v1/threads?threadIds=&limit=200",
     ]);
   });
 
@@ -1430,14 +1464,14 @@ describe("@bb/sdk", () => {
       }),
     });
 
-    await sdk.threads.list({ includeHidden: true });
+    await sdk.threads.list({ includeHidden: true, limit: 10 });
     await sdk.threads.update({
       threadId: "thr_hidden",
       visibility: "hidden",
     });
 
     expect(queue.requests[0]?.url).toBe(
-      "http://bb.test/api/v1/threads?includeHidden=true",
+      "http://bb.test/api/v1/threads?includeHidden=true&limit=10",
     );
     expect(JSON.parse(queue.requests[1]?.bodyText ?? "{}")).toEqual({
       visibility: "hidden",

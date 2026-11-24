@@ -24,6 +24,8 @@ import type * as z from "zod";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
+  EnvironmentCreateArgs,
+  EnvironmentCreateResult,
   PluginThreadMetadataListArgs,
   PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
@@ -202,6 +204,15 @@ export interface PluginStorage {
    * Append-only — never reorder or edit shipped statements.
    */
   migrate(db: Database.Database, statements: string[]): void;
+  /**
+   * The plugin's own directory for files, at
+   * <dataDir>/plugins/<id>/files. Created (mode 0700) on each call if it does
+   * not exist, so call it where the path is needed. bb snapshots it with
+   * `data.db` and secrets before a git: or npm: update, restores it on
+   * rollback, and deletes it when the plugin is uninstalled; `data.db` and
+   * logs survive uninstall. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_directory(): string;
 }
 
 // ---------------------------------------------------------------------------
@@ -372,11 +383,13 @@ export interface PluginThreadEventPayloads {
    *
    * A re-queue fires this again with the new wait, because a row that moved
    * from one wait to another is news to whoever was waiting on the old one.
+   * A grouped dispatch that is re-queued fires it once for every row.
    */
   "message.queued": { entry: ThreadQueuedMessage };
   /**
-   * Fired after a queued row's waits all cleared and it dispatched. The turn
-   * it carried runs after this, so a handler must not assume it has started.
+   * Fired after a queued row's waits all cleared and it dispatched. Rows
+   * grouped into one dispatch each fire it, in queue order. The turn it
+   * carried runs after this, so a handler must not assume it has started.
    */
   "message.dispatched": { entry: ThreadQueuedMessage };
   /**
@@ -392,7 +405,8 @@ export interface PluginThreadEventPayloads {
   "turn.failed": PluginTurnFailedEvent;
   /**
    * Fired after a queued row is removed before it ever dispatched — the user
-   * deleted it from the queued card or `bb thread queue`. This is the only
+   * deleted it from the queued card or `bb thread queue`, or an edit of an
+   * earlier message discarded a queued retry of a turn it replaced. This is the only
    * signal for that removal: a plugin holding external resources for a
    * waiting message (a sandbox mid-provision, a reserved slot) releases them
    * here. Rows that dispatch fire `message.dispatched` instead, and rows that
@@ -472,7 +486,9 @@ export type PluginEnvironmentProviderDeclaration<
 export interface PluginEnvironments {
   /**
    * Offer a place threads can run. Registering an id this plugin already
-   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   * registered replaces it. Providers receive the environment being created,
+   * so core can also create environments before any thread exists.
+   * Experimental: see docs/api_to_audit.md.
    */
   register<
     const Requires extends PluginEnvironmentProviderRequirements,
@@ -517,10 +533,25 @@ export interface ServerAccessGrant {
   headers?: Record<string, string>;
 }
 
+export type ServerAccessRouteKind =
+  | "local-network"
+  | "private-overlay"
+  | "relay"
+  | "custom";
+
 export interface ServerAccessProviderDeclaration {
   id: string;
   displayName: string;
   description: string;
+  /**
+   * How machines and apps travel to this server over the provider's address.
+   * Core ranks enabled routes by kind (local network, private overlay such as
+   * a tailnet, relay, then custom) until the user orders them in Settings.
+   * New machines install on a `"relay"` or `"custom"` route before a
+   * `"local-network"` or `"private-overlay"` one. Plugins built against an SDK
+   * before 0.6.188 may omit it; core treats those as `"custom"`.
+   */
+  routeKind: ServerAccessRouteKind;
   availability():
     | (import("./machine-provider.js").PluginMachineProviderAvailability & {
         serverUrl?: string;
@@ -595,19 +626,21 @@ export type PluginDispatchEnvironmentIntent =
  *
  * `proceed` lets the attempt continue. `wait` QUEUES the message as a row
  * whose `waitingOn` names this plugin and carries `reason` verbatim; the
- * row stays queued until `sendAt` comes due, capacity frees, the user sends
+ * row stays queued until `recheckAt` comes due, capacity frees, the user sends
  * it now, or the orphan sweep clears it because this plugin is no longer
- * running. `sendAt` (epoch ms) sets the row's own `sendAt`, so core's due sweep
- * re-attempts at that instant without the plugin holding a timer of its own —
- * which is what a rate-limit window wants. `reject` refuses the attempt
- * outright: `message` is shown to the user verbatim.
+ * running. `recheckAt` (epoch ms) is when core's due sweep re-asks, without
+ * the plugin holding a timer of its own — which is what a rate-limit window
+ * wants. It is not the message's schedule: the row's `sendAt` stays the
+ * sender's time, and a message the sender scheduled never dispatches before
+ * that time, even when this hook proceeds earlier. `reject` refuses the attempt outright:
+ * `message` is shown to the user verbatim.
  *
  * There is deliberately no "handled it myself" answer and no amendment arm —
  * a hook is a decision, never an owner or an author of the work.
  */
 export type MessageDispatchHookDecision =
   | { action: "proceed" }
-  | { action: "wait"; reason: string; sendAt?: number | null }
+  | { action: "wait"; reason: string; recheckAt?: number | null }
   | { action: "reject"; message: string };
 
 /**
@@ -673,7 +706,9 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  * of core's own notices to a thread (a child finished, needs attention, or
  * changed owner), which arrives with `initiator: "system"`. Compaction and an
  * edited message's re-send operate on the existing conversation and do not
- * pass through it. A handler must therefore be idempotent for one logical
+ * pass through it. A send that asks to compact first is decided before the
+ * compaction runs: a `wait` holds the compaction with the message, and a
+ * `reject` leaves the context uncompacted. A handler must therefore be idempotent for one logical
  * dispatch: passes re-run on every drain, on restart, and on retry.
  */
 export interface MessageDispatchHookContext {
@@ -702,7 +737,10 @@ export interface MessageDispatchHookContext {
   environmentIntent: PluginDispatchEnvironmentIntent | null;
   input: PluginDispatchInput;
   requestedExecution: PluginDispatchExecution;
-  /** Where each execution value came from. */
+  /**
+   * Where each execution value came from. A queued re-attempt reports what
+   * its first attempt was sent with.
+   */
   executionSources: PluginDispatchExecutionSources;
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
@@ -763,19 +801,50 @@ export interface MessageDispatchHookContext {
  * derive from this map — and so does the server's hook registry — so a
  * half-added hook does not compile.
  *
- * One hook today: `message.dispatch`, THE admission checkpoint, run identically
- * for a thread's first message, a follow-up, a steer, a retry, and every
- * re-attempt a drain makes. It replaced the earlier `thread.create` +
- * `turn.submit` pair, whose split was an accident of where the code happened to
- * branch rather than a difference a plugin needed to see — the attempt's own
- * `attempt` kind carries what actually differs.
+ * `message.dispatch` is THE admission checkpoint, run identically for a
+ * thread's first message, a follow-up, a steer, a retry, and every re-attempt a
+ * drain makes. It replaced the earlier `thread.create` + `turn.submit` pair,
+ * whose split was an accident of where the code happened to branch rather than
+ * a difference a plugin needed to see — the attempt's own `attempt` kind
+ * carries what actually differs.
+ *
+ * `thread.delete_finalize` runs before core finishes deleting a thread by
+ * removing its rows from the database, so a plugin can copy the thread first.
  */
 export interface PluginHookSignatures {
   "message.dispatch": {
     context: MessageDispatchHookContext;
     decision: MessageDispatchHookDecision;
   };
+  "thread.delete_finalize": {
+    context: ThreadDeleteFinalizeHookContext;
+    decision: ThreadDeleteFinalizeHookDecision;
+  };
 }
+
+/**
+ * A deleted thread core is about to remove from the database. The thread is
+ * already hidden and can no longer change, and every read that works on a
+ * thread id, such as `bb.sdk.threads.experimental_export`, still works until
+ * the removal starts.
+ */
+export interface ThreadDeleteFinalizeHookContext {
+  threadId: string;
+  projectId: string;
+}
+
+/**
+ * `proceed` lets core remove the rows. `wait` keeps them: core asks again
+ * about every 10 seconds and on every restart, until every plugin answers
+ * `proceed`. Once the removal starts core never asks about that thread again.
+ *
+ * A handler that throws, times out or returns something else counts as
+ * `wait`. A plugin that is disabled or uninstalled is not asked, so its
+ * threads are removed without it.
+ */
+export type ThreadDeleteFinalizeHookDecision =
+  | { action: "proceed" }
+  | { action: "wait" };
 
 export type PluginHookName = keyof PluginHookSignatures;
 
@@ -796,6 +865,9 @@ export interface PluginHooks {
    * pre-commit and post-commit hooks, and the reason the two live in separate
    * namespaces rather than behind one `on`.
    *
+   * The rules below describe `message.dispatch`; `thread.delete_finalize`
+   * has its own, on {@link ThreadDeleteFinalizeHookDecision}.
+   *
    * Handlers for a hook run as a deterministic chain in plugin install order,
    * a `reject` short-circuits the pass, and `wait` decisions are COLLECTED
    * across the whole pass rather than short-circuiting. The attempt proceeds
@@ -807,7 +879,7 @@ export interface PluginHooks {
    *
    * Fail-closed: a handler that throws or exceeds the 10 second decision box
    * FAILS THE ATTEMPT with this plugin named. Decide in milliseconds — if the
-   * answer needs real work, return `wait` with a `sendAt` and answer again on
+   * answer needs real work, return `wait` with a `recheckAt` and answer again on
    * the re-attempt.
    *
    * The whole pass runs under one server-wide lock, so a counting handler never
@@ -827,7 +899,7 @@ export interface PluginHooks {
    *
    * **The pair to `on`.** `on` answers the question core asks; `recheck`
    * asks core to ask it again. Core owns the re-draining and the clock — the
-   * `sendAt` due sweep is still core's — and a plugin owns every other
+   * `recheckAt` due sweep is still core's — and a plugin owns every other
    * condition its own waits depend on. When that condition changes, say so
    * here and answer the hook again on the re-attempt; there is no way to
    * release a specific row, and there does not need to be.
@@ -847,6 +919,9 @@ export interface PluginHooks {
    * rows, exactly as the due sweep's do. Awaiting completion would also mean
    * awaiting a full hook pass from inside whatever called this, which for a
    * handler holding the evaluation lock could not complete. Fire and forget.
+   *
+   * `thread.delete_finalize` needs no recheck: core asks it again about every
+   * 10 seconds.
    */
   recheck(hook: PluginHookName): Promise<void>;
 }
@@ -985,9 +1060,19 @@ export interface PluginBackground {
   ): void;
   /**
    * Register a cron schedule (5-field expression, server-local time). The
-   * durable row keyed (pluginId, name) is upserted at load; the periodic
-   * sweep claims due rows with a CAS on next_run_at, but only while this
-   * plugin is loaded. Failures land in last_status/last_error, visible in
+   * durable row keyed (pluginId, name) is upserted at load and keeps its
+   * next due time across reloads and server restarts while the cron is
+   * unchanged; a changed cron starts from the next time it matches. The
+   * periodic sweep (every 10 s) claims due rows with a CAS on next_run_at,
+   * but only while this plugin is loaded.
+   *
+   * Missed runs are caught up once: due times that pass while the server is
+   * down, the plugin is not loaded, or this schedule's previous run is still
+   * going produce a single run at the next sweep, not one per missed time.
+   * Runs of one schedule never overlap. Runs are not awaited by the sweep,
+   * so a slow run delays neither other schedules nor core's own sweeps;
+   * there is no time limit, and a reload or disable releases a run still
+   * going. Failures land in last_status/last_error, visible in
    * `bb plugin list`.
    */
   schedule(name: string, cron: string, fn: () => void | Promise<void>): void;
@@ -1157,7 +1242,11 @@ export interface PluginAgentToolContext {
    * and request cancellation no longer aborts this signal. The tool's eventual
    * result is delivered as a system message (success steers a running turn or
    * starts a new one; an `isError` result only steers). Thread stop/delete and
-   * plugin disposal still abort the signal after detachment.
+   * plugin disposal still abort the signal after detachment. When this plugin
+   * is disposed (reloaded, updated, disabled or removed), BB ignores the
+   * tool's later result and tells the agent at once that the call failed,
+   * starting a new turn if the agent is idle, so it can call the tool again.
+   * When BB shuts down, it tells the agent the same when BB next starts.
    */
   signal: AbortSignal;
 }
@@ -1863,6 +1952,14 @@ export interface PluginMentionSearchContext {
   query: string;
   projectId: string | null;
   threadId: string | null;
+  /**
+   * Aborts when the search is no longer wanted: the person typed past it and
+   * the composer cancelled the request, the 2s time box ran out, or this
+   * plugin instance is reloaded, disabled or removed. Pass it to `fetch` or
+   * check it between steps; the host ignores whatever a search returns after
+   * its signal aborts.
+   */
+  experimental_signal: AbortSignal;
 }
 
 /** One row a mention provider returns from `search`. `id` is the provider's
@@ -1901,7 +1998,11 @@ export interface PluginMentionProviderRegistration {
    * Runs server-side as the user types after one of this provider's triggers
    * in the composer. Each call is time-boxed (2s) and failure-isolated: a slow
    * or throwing provider contributes an empty list — it can never break the
-   * mention menu.
+   * mention menu. A provider runs one search at a time: a query typed while a
+   * search is running waits for it, and only the newest waiting query runs.
+   * A search still running after its time box keeps the provider out of
+   * results until it settles. Stop work when `ctx.experimental_signal` aborts
+   * so the next query starts sooner.
    */
   search(
     ctx: PluginMentionSearchContext,
@@ -1989,9 +2090,10 @@ export interface PluginServerApi {
    * its repo root and instance id, so a plugin that guesses `~/.bb` reads the
    * production file while the dev server reads another one.
    *
-   * For reading bb-managed files a plugin is migrating away from. A plugin's
-   * OWN storage is `bb.storage`, which is scoped for it; this is deliberately
-   * not a place to write.
+   * Read-only, for migrating off files bb used to manage, or comparing paths
+   * against it. Never write under it: a plugin's own files go in
+   * `bb.storage.experimental_directory()`, and its other state in
+   * `bb.storage`.
    */
   readonly experimental_dataDir: string;
 }
@@ -2149,9 +2251,17 @@ export interface PluginStatusApi {
  * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
  * `set` that is over 256 KiB on its own rejects before any request is sent. A
  * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
- * leaves the namespace unchanged.
+ * leaves the namespace unchanged. `environments.experimental_create` with
+ * `hold: "plugin"` always holds the environment for the calling plugin.
  */
-export type PluginBbSdk = Omit<BbSdk, "threads"> & {
+export type PluginBbSdk = Omit<BbSdk, "threads" | "environments"> & {
+  environments: Omit<BbSdk["environments"], "experimental_create"> & {
+    experimental_create(
+      args:
+        | Extract<EnvironmentCreateArgs, { hold: "user" }>
+        | Omit<Extract<EnvironmentCreateArgs, { hold: "plugin" }>, "pluginId">,
+    ): Promise<EnvironmentCreateResult>;
+  };
   threads: Omit<
     BbSdk["threads"],
     | "getPluginMetadata"

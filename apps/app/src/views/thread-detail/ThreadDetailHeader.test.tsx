@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { CORE_PLUGIN_ID } from "@bb/domain";
 import {
   act,
   cleanup,
@@ -137,6 +138,7 @@ const THREAD_TARGET: PluginThreadActionTarget = {
   pinnedAt: null,
   sectionId: null,
   isUnread: false,
+  isHidden: false,
   status: "idle",
   environment: null,
 };
@@ -175,7 +177,11 @@ function HeaderActionCollectors({
     <QueryClientProvider client={new QueryClient()}>
       <MemoryRouter>
         <ThreadActionCollectors
-          coreRegistrations={registrations}
+          coreRegistrations={registrations.map((registration) => ({
+            ...registration,
+            pluginId: CORE_PLUGIN_ID,
+            generation: 0,
+          }))}
           requestRename={vi.fn()}
         />
       </MemoryRouter>

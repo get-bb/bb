@@ -14,9 +14,11 @@ import {
   pluginHookAlreadyRegisteredMessage,
   coerceStoredPluginSettingValue,
   enforcePluginCliOutputLimit,
+  pluginCliFailureResult,
   isStandardSchema,
   storePluginHook,
   validatePluginEnvironmentProviderDeclaration,
+  type AnyPluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
   type NormalizedPluginEnvironmentProvider,
   type NormalizedPluginMachineProvider,
@@ -151,9 +153,12 @@ import {
  * Deliberately different from the real host:
  * - storage is process-local: kv in a Map, `storage.database()` one shared
  *   better-sqlite3 handle in a temp directory (same data across calls, like
- *   the host's shared file), secret settings alongside plain values (no files).
- *   The directory is created on the first `database()` call and removed by
- *   `dispose()`. Every host directory in a process sits under one root,
+ *   the host's shared file), `storage.experimental_directory()` a `files`
+ *   folder in that temp directory rather than under `server.experimental_dataDir`,
+ *   secret settings alongside plain values (no files).
+ *   The directory is created on the first `database()` or
+ *   `experimental_directory()` call and removed by `dispose()`. Every host
+ *   directory in a process sits under one root,
  *   `bb-fake-plugin-host-<pid>-*` in `os.tmpdir()`, which is removed when its
  *   last host is disposed or when the process exits normally or calls
  *   `process.exit()`. A process killed by a signal, such as a Vitest worker
@@ -792,6 +797,10 @@ function createFakePluginHostInternal(
       assertLive();
       runPluginStorageMigrations(database, statements);
     },
+    experimental_directory() {
+      assertLive();
+      return storageDir.filesDirectory();
+    },
   };
 
   // --- settings ---
@@ -1284,6 +1293,7 @@ function createFakePluginHostInternal(
     [K in PluginHookName]: PluginHookHandler<K> | null;
   } = {
     "message.dispatch": null,
+    "thread.delete_finalize": null,
   };
   const environmentCompositions = new Map<
     string,
@@ -1568,7 +1578,7 @@ function createFakePluginHostInternal(
   const experimental_environments: PluginEnvironments = {
     register(
       declaration:
-        | import("@get-bb/plugin-sdk").PluginEnvironmentProviderDeclaration
+        | AnyPluginEnvironmentProviderDeclaration
         | NormalizedPluginEnvironmentComposition,
     ) {
       assertLive();
@@ -1660,12 +1670,12 @@ function createFakePluginHostInternal(
     experimental_serverAccess: {
       register(declaration) {
         assertLive();
-        validateServerAccessProviderDeclaration(declaration);
+        const provider = validateServerAccessProviderDeclaration(declaration);
         if (serverAccessProviders.has(declaration.id))
           throw new Error(
             `Server access provider "${declaration.id}" is already registered`,
           );
-        serverAccessProviders.set(declaration.id, declaration);
+        serverAccessProviders.set(provider.id, provider);
       },
       recheck() {
         assertLive();
@@ -2023,11 +2033,10 @@ function createFakePluginHostInternal(
           argv.includes("--json"),
         );
       } catch (error) {
-        return enforcePluginCliOutputLimit(
+        return pluginCliFailureResult(
           {
-            exitCode: 1,
-            stdout: "",
-            stderr: `bb ${registration.name} failed: ${errorMessage(error)}`,
+            code: "command_failed",
+            message: `bb ${registration.name} failed: ${errorMessage(error)}`,
           },
           argv.includes("--json"),
         );

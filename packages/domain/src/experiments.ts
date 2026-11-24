@@ -1,16 +1,11 @@
 import { z } from "zod";
 
 export const experimentKeys = [
-  "agentCpuPriority",
   "compactExpiredCache",
-  "keyedPluginCss",
   "serverMove",
   "performanceDiagnostics",
   "pluginUpdates",
-  "resumeDaemonSessions",
-  "skipFocusedThreadNotifications",
-  "threadContextCard",
-  "walCheckpointWorker",
+  "serverRoutes",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
 export type ExperimentKey = z.infer<typeof experimentKeySchema>;
@@ -25,27 +20,17 @@ export const experimentUpdatesSchema = z.partialRecord(
 export type ExperimentUpdates = z.infer<typeof experimentUpdatesSchema>;
 
 export const defaultExperiments: Experiments = {
-  agentCpuPriority: false,
   compactExpiredCache: false,
-  keyedPluginCss: false,
   serverMove: false,
   performanceDiagnostics: false,
   pluginUpdates: false,
-  resumeDaemonSessions: false,
-  skipFocusedThreadNotifications: false,
-  threadContextCard: false,
-  walCheckpointWorker: false,
+  serverRoutes: false,
 };
 
 export const earlyAdopterExperiments: Experiments = {
-  agentCpuPriority: true,
   compactExpiredCache: true,
-  keyedPluginCss: true,
   serverMove: false,
   performanceDiagnostics: false,
   pluginUpdates: true,
-  resumeDaemonSessions: true,
-  skipFocusedThreadNotifications: true,
-  threadContextCard: true,
-  walCheckpointWorker: true,
+  serverRoutes: true,
 };

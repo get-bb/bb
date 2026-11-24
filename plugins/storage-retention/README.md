@@ -1,9 +1,14 @@
 # Storage & retention
 
 A bundled, default-disabled plugin. Enable the `bb--storage-retention` plugin. Open Storage & retention in the sidebar.
-Both retention policies default to Never. The plugin owns policy, previews,
-hourly scheduling, run summaries, UI, and CLI commands. It uses public SDK thread
-rows to reconstruct archive/delete relationships and ordinary lifecycle actions.
+The archive, cold storage and delete policies default to Never. The plugin owns
+policy, previews, hourly scheduling, run summaries, UI, and CLI commands. It uses
+public SDK thread rows to reconstruct archive/delete relationships and ordinary
+lifecycle actions. Moving a thread to cold storage deletes it through
+`threads.delete` and answers core's `thread.delete_finalize` hook with `wait`
+until it has written the thread from `threads.experimental_export` to a file in
+the plugin's own folder, `<dataDir>/plugins/bb--storage-retention/cold-storage/`;
+restoring hands that file to `threads.experimental_import`.
 The plugin also owns disk measurement in its host worker, scan caching in its own
 SQLite database, report assembly, orphan classification, and file deletion.
 Core supplies ordinary thread lifecycle actions, machine storage paths, and
@@ -12,7 +17,9 @@ Disabling the plugin stops retention; it does not stop core orphan maintenance.
 
 The machine page offers Clear archived files for whole storage folders, including
 small files, from archived, stopped, unpinned threads in the scan. Bulk clearing
-keeps conversations and uploaded attachments and requires confirmation. The
+keeps conversations and uploaded attachments and requires confirmation. A folder holding an
+environment's workspace is cleared only once no unarchived or running thread
+uses that environment and nothing holds it; the environment is deleted first. The
 matching CLI command is `bb storage clear-archived-files --machine HOST_ID --yes`.
 
 The Clean up section offers Remove instances for `~/.bb-dev` entries whose

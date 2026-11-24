@@ -1,5 +1,4 @@
-import { eq } from "drizzle-orm";
-import { getSessionById, hostDaemonSessions } from "@bb/db";
+import { getSessionById } from "@bb/db";
 import type { DbConnection, HostDaemonSessionRow } from "@bb/db";
 import { ApiError } from "../errors.js";
 import { getAuthenticatedDaemon } from "./auth.js";
@@ -70,12 +69,7 @@ export function getInactiveSessionLogFields(
   db: DbConnection,
   args: GetInactiveSessionLogFieldsArgs,
 ): InactiveSessionLogFields {
-  const session =
-    db
-      .select()
-      .from(hostDaemonSessions)
-      .where(eq(hostDaemonSessions.id, args.sessionId))
-      .get() ?? null;
+  const session = getSessionById(db, { sessionId: args.sessionId });
 
   if (!session) {
     return {

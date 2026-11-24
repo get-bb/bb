@@ -60,7 +60,6 @@ export interface ThreadTimelineSurfaceProps {
   stoppingAnchorAt?: number;
   timelineErrorClassName?: string;
   timelineRows: TimelineRow[];
-  timelineNavigationTargetRowId?: string | null;
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -156,7 +155,6 @@ export function ThreadTimelineSurface({
   stoppingAnchorAt = 0,
   timelineErrorClassName = "mt-6 text-destructive",
   timelineRows,
-  timelineNavigationTargetRowId,
   threadId,
   threadRuntimeDisplayStatus,
   unreadDividerAutoScroll,
@@ -230,10 +228,10 @@ export function ThreadTimelineSurface({
             resolveMentionLink={resolveMentionLink}
             resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
             hasOlderTimelineRows={hasOlderTimelineRows}
+            isCatchingUpTimeline={isCatchingUpTimeline}
             isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
             onLoadOlderRows={onLoadOlderRows}
             timelineRows={timelineRowsWithPendingStop}
-            timelineNavigationTargetRowId={timelineNavigationTargetRowId}
             threadId={threadId}
             threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
             unreadDividerAutoScroll={unreadDividerAutoScroll}

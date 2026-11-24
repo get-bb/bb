@@ -414,9 +414,13 @@ describe("connectAccessUrl", () => {
   ): ServerAccessStatus {
     return {
       providers,
-      defaultProviderId: "connect",
       effectiveUrl: null,
       urlSource: null,
+      localNetwork: {
+        bindHost: "127.0.0.1",
+        addresses: [],
+        listenerError: null,
+      },
     };
   }
   const connect = {
@@ -424,6 +428,8 @@ describe("connectAccessUrl", () => {
     displayName: "bb connect",
     description: "",
     pluginId: "connect",
+    routeKind: "relay" as const,
+    urls: [],
   };
 
   it("is on only when bb connect is available with an address", () => {
@@ -466,6 +472,8 @@ describe("connectAccessUrl", () => {
             displayName: "Direct",
             description: "",
             pluginId: null,
+            routeKind: "custom",
+            urls: ["https://bb.example.com"],
             availability: {
               status: "available",
               serverUrl: "https://bb.example.com",

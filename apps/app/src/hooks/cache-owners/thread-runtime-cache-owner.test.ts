@@ -87,9 +87,10 @@ function makeSearchResponse(thread: ThreadListEntry): ThreadSearchResponse {
   return {
     active: {
       total: 1,
+      totalCapped: false,
       results: [{ thread, matches: [] }],
     },
-    archived: { total: 0, results: [] },
+    archived: { total: 0, totalCapped: false, results: [] },
   };
 }
 
@@ -239,9 +240,9 @@ describe("thread runtime cache owner", () => {
     });
     expect(
       queryClient
-        .getQueryData<
-          ThreadQueuedMessage[]
-        >(threadQueuedMessagesQueryKey("thread-1"))
+        .getQueryData<ThreadQueuedMessage[]>(
+          threadQueuedMessagesQueryKey("thread-1"),
+        )
         ?.map((queuedMessage) => ({
           content: queuedMessage.content,
           groupWithNext: queuedMessage.groupWithNext,
@@ -269,9 +270,9 @@ describe("thread runtime cache owner", () => {
     });
     expect(
       queryClient
-        .getQueryData<
-          ThreadQueuedMessage[]
-        >(threadQueuedMessagesQueryKey("thread-1"))
+        .getQueryData<ThreadQueuedMessage[]>(
+          threadQueuedMessagesQueryKey("thread-1"),
+        )
         ?.map((queuedMessage) => queuedMessage.id),
     ).toEqual(["qmsg-first", "qmsg-edit", "qmsg-last"]);
 
@@ -886,9 +887,9 @@ describe("thread runtime cache owner", () => {
 
     expect(
       queryClient
-        .getQueryData<
-          ThreadQueuedMessage[]
-        >(threadQueuedMessagesQueryKey("thread-1"))
+        .getQueryData<ThreadQueuedMessage[]>(
+          threadQueuedMessagesQueryKey("thread-1"),
+        )
         ?.map((queuedMessage) => queuedMessage.id),
     ).toEqual(["qmsg-3"]);
     const timeline = queryClient.getQueryData<ThreadTimelineResponse>(

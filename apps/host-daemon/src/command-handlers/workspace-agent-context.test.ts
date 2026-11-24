@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,15 +7,19 @@ import {
   normalizeProviderNativeRoots,
 } from "@bb/domain";
 import { afterEach, describe, expect, it } from "vitest";
+import { promisify } from "node:util";
 import { readWorkspaceAgentContext } from "./workspace-agent-context.js";
+
+const execFileAsync = promisify(execFile);
 
 const tempDirs: string[] = [];
 const readOptions = {
   includeAgentInstructions: true,
+  folderPaths: [],
   projectSkillRead: {
     limit: 1_000,
     maxFileBytes: 10 * 1024 * 1024,
-    maxContentBytes: 32 * 1024 * 1024,
+    maxFrontmatterBytes: 4 * 1024 * 1024,
     excludeNames: ["venv"],
   },
 };
@@ -38,11 +43,39 @@ async function writeFile(filePath: string, content: string): Promise<void> {
   await fs.writeFile(filePath, content);
 }
 
+function skillFrontmatter(name: string): string {
+  return `---\nname: ${name}\ndescription: ${name} skill\n---`;
+}
+
 function skillMarkdown(name: string): string {
-  return `---\nname: ${name}\ndescription: ${name} skill\n---\n\nBody\n`;
+  return `${skillFrontmatter(name)}\n\nBody\n`;
 }
 
 describe("readWorkspaceAgentContext", () => {
+  it("reports whether each requested folder is a git repository", async () => {
+    const root = await makeWorkspace();
+    const repo = await makeWorkspace();
+    await execFileAsync("git", ["init", "-q"], { cwd: repo });
+    const nested = path.join(repo, "packages", "app");
+    await fs.mkdir(nested, { recursive: true });
+    const missing = path.join(root, "missing");
+
+    const context = await readWorkspaceAgentContext({
+      type: "host.read_workspace_agent_context",
+      ...readOptions,
+      folderPaths: [root, repo, nested, missing],
+      rootPath: root,
+      sharedSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
+    });
+
+    expect(context.folders).toEqual([
+      { path: root, exists: true, isGitRepo: false },
+      { path: repo, exists: true, isGitRepo: true },
+      { path: nested, exists: true, isGitRepo: true },
+      { path: missing, exists: false, isGitRepo: false },
+    ]);
+  });
+
   it("reads the instructions and each direct project skill the way the server listed them", async () => {
     const root = await makeWorkspace();
     const skillsRoot = path.join(root, ".bb", "skills");
@@ -91,9 +124,13 @@ describe("readWorkspaceAgentContext", () => {
         {
           kind: "file",
           directoryName: "alpha",
-          content: skillMarkdown("alpha"),
+          frontmatter: skillFrontmatter("alpha"),
         },
-        { kind: "file", directoryName: "beta", content: skillMarkdown("beta") },
+        {
+          kind: "file",
+          directoryName: "beta",
+          frontmatter: skillFrontmatter("beta"),
+        },
         {
           kind: "oversized",
           directoryName: "huge",
@@ -102,6 +139,7 @@ describe("readWorkspaceAgentContext", () => {
       ],
       projectSkillsTruncated: false,
       sharedSkills: [],
+      folders: [],
     });
   });
 
@@ -121,6 +159,7 @@ describe("readWorkspaceAgentContext", () => {
       projectSkills: [],
       projectSkillsTruncated: false,
       sharedSkills: [],
+      folders: [],
     });
   });
 
@@ -172,16 +211,17 @@ describe("readWorkspaceAgentContext", () => {
     ]);
   });
 
-  it("budgets JSON-encoded content and still admits smaller later files", async () => {
+  it("returns only frontmatter, budgeted by its JSON encoding, and still admits smaller later files", async () => {
     const root = await makeWorkspace();
-    for (const [name, content] of [
-      ["a", "\u0001".repeat(10)],
-      ["b", "b".repeat(10)],
-      ["c", "c"],
-    ] as const) {
+    const frontmatters = {
+      a: `---\n${"\u0001".repeat(10)}\n---`,
+      b: `---\n${"b".repeat(30)}\n---`,
+      c: "---\nc\n---",
+    };
+    for (const [name, frontmatter] of Object.entries(frontmatters)) {
       await writeFile(
         path.join(root, ".bb", "skills", name, "SKILL.md"),
-        content,
+        `${frontmatter}\n${"body ".repeat(1_000)}`,
       );
     }
     const result = await readWorkspaceAgentContext({
@@ -189,15 +229,17 @@ describe("readWorkspaceAgentContext", () => {
       ...readOptions,
       projectSkillRead: {
         ...readOptions.projectSkillRead,
-        maxContentBytes: 65,
+        maxFrontmatterBytes:
+          JSON.stringify(frontmatters.a).length +
+          JSON.stringify(frontmatters.c).length,
       },
       rootPath: root,
       sharedSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
     });
     expect(result.projectSkills).toEqual([
-      { kind: "file", directoryName: "a", content: "\u0001".repeat(10) },
+      { kind: "file", directoryName: "a", frontmatter: frontmatters.a },
       { kind: "budget-exceeded", directoryName: "b" },
-      { kind: "file", directoryName: "c", content: "c" },
+      { kind: "file", directoryName: "c", frontmatter: frontmatters.c },
     ]);
   });
 
@@ -256,8 +298,12 @@ describe("readWorkspaceAgentContext", () => {
       sharedSkillRoots: EMPTY_PROVIDER_NATIVE_ROOTS,
     });
     expect(result.projectSkills).toEqual([
-      { kind: "file", directoryName: "a", content: skillMarkdown("linked") },
-      { kind: "file", directoryName: "b", content: skillMarkdown("b") },
+      {
+        kind: "file",
+        directoryName: "a",
+        frontmatter: skillFrontmatter("linked"),
+      },
+      { kind: "file", directoryName: "b", frontmatter: skillFrontmatter("b") },
     ]);
     expect(result.projectSkillsTruncated).toBe(true);
   });

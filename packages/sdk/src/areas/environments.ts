@@ -7,7 +7,9 @@ import { createRetiredEnvironmentMembers } from "./retired-environment-members.j
 import {
   environmentSchema,
   type Environment,
+  type EnvironmentHolder,
   type EnvironmentStatus,
+  type JsonValue,
 } from "@bb/domain";
 import {
   commitActionResponseSchema,
@@ -73,9 +75,16 @@ export type EnvironmentPathsResult = WorkspacePathListResponse;
 export type EnvironmentUpdateResult = Environment;
 export interface EnvironmentListArgs {
   environmentProviderId?: string;
+  /** Only environments with this holder: `"user"` or `"plugin:<pluginId>"`. */
+  heldBy?: EnvironmentHolder;
   hostId?: string;
   instanceKey?: string;
-  limit?: number;
+  /**
+   * Page size. A caller that needs every row pages with `offset` until a
+   * page comes back shorter than its `limit`.
+   */
+  limit: number;
+  /** Rows to skip, in the list's own order; defaults to 0. */
   offset?: number;
   path?: string;
   projectId?: string;
@@ -83,6 +92,24 @@ export interface EnvironmentListArgs {
   status?: EnvironmentStatus;
 }
 export type EnvironmentListResult = Environment[];
+interface EnvironmentCreateBaseArgs {
+  projectId: string;
+  /** Defaults to the project's default checkout machine. */
+  hostId?: string;
+  /** Defaults to the Worktree provider (Personal workspace for the personal project). */
+  provider?: { id: string; inputs?: JsonValue };
+  name?: string;
+}
+/**
+ * `hold: "user"` keeps the environment until the user deletes it and lets
+ * threads join it. `hold: "plugin"` keeps it for plugin `pluginId`: threads
+ * cannot join it, and it loses the hold when that plugin's provider hands it
+ * to a new thread from `create`, or when that plugin is disabled or
+ * uninstalled.
+ */
+export type EnvironmentCreateArgs = EnvironmentCreateBaseArgs &
+  ({ hold: "user" } | { hold: "plugin"; pluginId: string });
+export type EnvironmentCreateResult = Environment;
 export interface EnvironmentDeleteArgs {
   environmentId: string;
 }
@@ -95,6 +122,10 @@ export interface EnvironmentListProvidersArgs {
 export type EnvironmentListProvidersResult = SystemEnvironmentProvider[];
 
 export interface EnvironmentsArea {
+  /** Create an environment before any thread exists; setup runs as for a thread. Experimental: see docs/api_to_audit.md. */
+  experimental_create(
+    args: EnvironmentCreateArgs,
+  ): Promise<EnvironmentCreateResult>;
   experimental_cleanup(
     args: EnvironmentActionArgs & { recover?: boolean },
   ): Promise<OperationResponse>;
@@ -103,7 +134,7 @@ export interface EnvironmentsArea {
   ): Promise<EnvironmentArchiveThreadsResult>;
   commit(args: EnvironmentCommitArgs): Promise<EnvironmentCommitResult>;
   get(args: EnvironmentGetArgs): Promise<EnvironmentGetResult>;
-  list(args?: EnvironmentListArgs): Promise<EnvironmentListResult>;
+  list(args: EnvironmentListArgs): Promise<EnvironmentListResult>;
   listProviders(
     args?: EnvironmentListProvidersArgs,
   ): Promise<EnvironmentListProvidersResult>;
@@ -171,6 +202,7 @@ export function createEnvironmentsArea(
               ...(input?.environmentProviderId === undefined
                 ? {}
                 : { environmentProviderId: input.environmentProviderId }),
+              ...(input?.heldBy === undefined ? {} : { heldBy: input.heldBy }),
               ...(input?.instanceKey === undefined
                 ? {}
                 : { instanceKey: input.instanceKey }),
@@ -203,6 +235,22 @@ export function createEnvironmentsArea(
         ),
       );
       return response.providers;
+    },
+    async experimental_create(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments.$post({
+          json: {
+            projectId: input.projectId,
+            ...(input.hostId === undefined ? {} : { hostId: input.hostId }),
+            ...(input.provider === undefined
+              ? {}
+              : { provider: input.provider }),
+            ...(input.name === undefined ? {} : { name: input.name }),
+            heldBy: input.hold === "user" ? "user" : `plugin:${input.pluginId}`,
+          },
+        }),
+      );
+      return environmentSchema.parse(body);
     },
     async experimental_cleanup(input) {
       return transport.readJson(

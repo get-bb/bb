@@ -53,11 +53,7 @@ import {
 } from "@/components/ui/confirm-delete-dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  SidebarContentElementProvider,
-  SidebarGroupContent,
-  SidebarStickyStack,
-} from "../ui/sidebar.js";
+import { SidebarGroupContent, SidebarStickyStack } from "../ui/sidebar.js";
 import {
   ChronologicalSectionThreadSections,
   ProjectThreadTree,
@@ -320,8 +316,8 @@ export function getSidebarThreadComparator(
     normalizedSort === "created"
       ? compareByCreatedAtDescending
       : compareStandardThreads;
-  return (left, right) => {
-    const comparison = base(left, right);
+  return (left, right, level) => {
+    const comparison = base(left, right, level);
     if (
       normalizedSort === "updated" &&
       (left.status === "active") !== (right.status === "active")
@@ -376,11 +372,9 @@ function ProjectListNavigationLoadingRow({
 export function ProjectListShell({ children }: ProjectListShellProps) {
   return (
     <ThreadRowNavigationProvider>
-      <SidebarContentElementProvider>
-        <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
-          <SidebarGroupContent>{children}</SidebarGroupContent>
-        </SidebarStickyStack>
-      </SidebarContentElementProvider>
+      <SidebarStickyStack data-sidebar-sticky-density="compact-actions">
+        <SidebarGroupContent>{children}</SidebarGroupContent>
+      </SidebarStickyStack>
     </ThreadRowNavigationProvider>
   );
 }
@@ -502,7 +496,7 @@ interface ProjectModeSectionsProps
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
   effectivePinnedThreadIds: ReadonlySet<string>;
-  onCreateProjectThread: (projectId: string) => void;
+  onCreateProjectThread: (projectId: string, split: boolean) => void;
   onProjectSelect?: () => void;
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
   onToggleThreadCollapsed: ToggleCollapsedId;
@@ -715,7 +709,7 @@ function ProjectModeSections({
       onNewThread:
         personalProjectId === null
           ? undefined
-          : () => onCreateProjectThread(personalProjectId),
+          : (split: boolean) => onCreateProjectThread(personalProjectId, split),
       renderContent: (close: () => void) => (
         <ProjectThreadTree
           projectId={personalProjectId ?? undefined}
@@ -744,7 +738,8 @@ function ProjectModeSections({
         id,
         title: row.project.name,
         threads: getProjectThreadItemDescendants(items),
-        onNewThread: () => onCreateProjectThread(row.project.id),
+        onNewThread: (split: boolean) =>
+          onCreateProjectThread(row.project.id, split),
         renderContent: (close: () => void) => (
           <ProjectThreadTree
             projectId={row.project.id}
@@ -831,8 +826,8 @@ interface SectionModeSectionsProps extends BuiltInSectionRenderState {
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
   sections: readonly SidebarSectionDefinition[];
-  onCreateThread: () => void;
-  onCreateThreadInSection: (sectionId: string) => void;
+  onCreateThread: (split: boolean) => void;
+  onCreateThreadInSection: (sectionId: string, split: boolean) => void;
   onProjectSelect?: () => void;
   onRemoveSection: (section: SidebarSectionDefinition) => void;
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
@@ -937,7 +932,7 @@ interface MachineModeSectionsProps
   collapsedThreadIds: Set<string>;
   compareThreads: ThreadComparator;
   effectivePinnedThreadIds: ReadonlySet<string>;
-  onCreateThread?: () => void;
+  onCreateThread?: (split: boolean) => void;
   onProjectSelect?: () => void;
   onToggleEnvironmentCollapsed: ToggleCollapsedId;
   onToggleThreadCollapsed: ToggleCollapsedId;
@@ -1364,35 +1359,46 @@ function ProjectListComponent({
     latestComposeTarget.current = { navigate, onProjectSelect };
   });
   const openRootComposeForProject = useCallback(
-    (
-      projectId: string | null,
-      sectionId?: string,
-      hostId?: string,
+    ({
+      projectId,
+      sectionId = null,
+      hostId,
       pinned = false,
-    ) => {
+      split,
+    }: {
+      projectId: string | null;
+      sectionId?: string | null;
+      hostId?: string;
+      pinned?: boolean;
+      split: boolean;
+    }) => {
       const target = latestComposeTarget.current;
       target.onProjectSelect?.();
       target.navigate.toCompose({
         ...(projectId !== null ? { projectId } : {}),
-        placement: { sectionId: sectionId ?? null, pinned },
+        placement: { sectionId, pinned },
         ...(hostId ? { hostId } : {}),
         focusPrompt: true,
+        ...(split ? { split: true } : {}),
       });
     },
     [],
   );
   const handleCreateProjectThread = useCallback(
-    (projectId: string) => {
-      openRootComposeForProject(projectId);
+    (projectId: string, split: boolean) => {
+      openRootComposeForProject({ projectId, split });
     },
     [openRootComposeForProject],
   );
-  const handleCreateProjectlessThread = useCallback(() => {
-    openRootComposeForProject(personalProjectId);
-  }, [openRootComposeForProject, personalProjectId]);
+  const handleCreateProjectlessThread = useCallback(
+    (split: boolean) => {
+      openRootComposeForProject({ projectId: personalProjectId, split });
+    },
+    [openRootComposeForProject, personalProjectId],
+  );
   const handleCreateThreadInSection = useCallback(
-    (sectionId: string) => {
-      openRootComposeForProject(null, sectionId);
+    (sectionId: string, split: boolean) => {
+      openRootComposeForProject({ projectId: null, sectionId, split });
     },
     [openRootComposeForProject],
   );
@@ -1523,17 +1529,16 @@ function ProjectListComponent({
       <SidebarHeaderControls
         label={label}
         sectionId={sectionId}
-        onNewThread={
-          hostId
-            ? () =>
-                openRootComposeForProject(personalProjectId, undefined, hostId)
-            : () =>
-                openRootComposeForProject(
-                  sectionId === "pinned" ? null : personalProjectId,
-                  undefined,
-                  undefined,
-                  sectionId === "pinned",
-                )
+        onNewThread={(split) =>
+          openRootComposeForProject(
+            hostId
+              ? { projectId: personalProjectId, hostId, split }
+              : {
+                  projectId: sectionId === "pinned" ? null : personalProjectId,
+                  pinned: sectionId === "pinned",
+                  split,
+                },
+          )
         }
         open={openSidebarMenu === menuId}
         onOpenChange={(open) => setSidebarMenuOpen(menuId, open)}

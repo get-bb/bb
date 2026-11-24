@@ -46,6 +46,7 @@ export default {
     "../../plugins/git/ui/commit/*.stories.tsx",
     ".ladle/workflows.stories.tsx",
     "../../plugins/provider-usage/*.stories.tsx",
+    "../../plugins/environment-git-worktree/*.stories.tsx",
     "../../plugins/composer/src/**/*.stories.tsx",
   ],
   defaultStory: "",

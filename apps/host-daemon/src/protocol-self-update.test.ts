@@ -13,6 +13,10 @@ import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
 import {
+  type PersistedServerRoutes,
+  ServerRouteResolver,
+} from "./server-routes.js";
+import {
   createProtocolSelfUpdater,
   SELF_UPDATE_INITIAL_RETRY_DELAY_MS,
   SELF_UPDATE_MAX_RETRY_DELAY_MS,
@@ -75,6 +79,7 @@ async function createFixture(
     now?: () => number;
     serverHeaders?: Record<string, string>;
     serverUrl?: string;
+    persistedRoutes?: PersistedServerRoutes;
     useDefaultInstaller?: boolean;
   } = {},
 ) {
@@ -89,21 +94,29 @@ async function createFixture(
     if (args.installFailure) throw args.installFailure;
   });
   const runProcess = vi.fn(async () => undefined);
-  const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
-    const url = String(input);
-    if (url.endsWith("/install/version")) {
-      return Response.json({
-        version: "9.0.0-test",
-        protocolVersion:
-          args.protocolVersion ?? HOST_DAEMON_PROTOCOL_VERSION + 1,
-      });
-    }
-    if (url.endsWith("/install/bb-app.tgz")) {
-      return tarballResponse("tarball");
-    }
-    throw new Error(`Unexpected URL: ${url}`);
-  });
+  const fetchFn = vi.fn(
+    async (input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/install/version")) {
+        return Response.json({
+          version: "9.0.0-test",
+          protocolVersion:
+            args.protocolVersion ?? HOST_DAEMON_PROTOCOL_VERSION + 1,
+        });
+      }
+      if (url.endsWith("/install/bb-app.tgz")) {
+        return tarballResponse("tarball");
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    },
+  );
   const testLogger = logger();
+  const routes = new ServerRouteResolver({
+    anchorUrl: args.serverUrl ?? "https://server.example.test",
+    anchorHeaders: args.serverHeaders ?? {},
+    persisted: args.persistedRoutes ?? null,
+    logger: testLogger,
+  });
   const updater = createProtocolSelfUpdater({
     dataDir,
     enabled: args.enabled ?? true,
@@ -111,8 +124,7 @@ async function createFixture(
     ...(args.useDefaultInstaller ? { runProcess } : { installTarball }),
     logger: testLogger,
     now: args.now,
-    serverHeaders: args.serverHeaders ?? {},
-    serverUrl: args.serverUrl ?? "https://server.example.test",
+    downloadTarget: () => routes.guardedDownloadTarget(),
   });
   return {
     dataDir,
@@ -325,7 +337,8 @@ describe("protocol self-update", () => {
             statusText: "Unauthorized",
           });
         }
-        if (String(input).endsWith("/install/version")) return versionResponse();
+        if (String(input).endsWith("/install/version"))
+          return versionResponse();
         downloadConditions.push(headers.get("if-none-match"));
         return headers.has("if-none-match")
           ? new Response(null, { status: 304 })
@@ -434,9 +447,50 @@ describe("protocol self-update", () => {
     expect(test.fetchFn).not.toHaveBeenCalled();
     expect(test.installTarball).not.toHaveBeenCalled();
     expect(test.logger.error).toHaveBeenCalledWith(
-      { serverUrl: "http://server.example.test" },
+      {},
       expect.stringContaining("insecure transport"),
     );
+  });
+
+  it("downloads over the encrypted route while the daemon uses a LAN route", async () => {
+    const test = await createFixture({
+      serverUrl: "http://192.168.1.5:38886",
+      persistedRoutes: {
+        anchorUrl: "http://192.168.1.5:38886",
+        serverId: "srv_test",
+        routes: [
+          {
+            providerId: "local-network",
+            kind: "local-network",
+            url: "http://192.168.1.5:38886",
+            headers: {},
+          },
+          {
+            providerId: "connect",
+            kind: "relay",
+            url: "https://owner.getbb.app",
+            headers: { "x-bb-connect-machine": "bbcm_machine" },
+          },
+        ],
+      },
+    });
+    await expect(test.updater.handleProtocolMismatch()).resolves.toBe(
+      "updated",
+    );
+    const requests = test.fetchFn.mock.calls.map(([input, init]) => ({
+      url: String(input),
+      headers: init?.headers,
+    }));
+    expect(requests).toEqual([
+      {
+        url: "https://owner.getbb.app/install/version",
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      },
+      {
+        url: "https://owner.getbb.app/install/bb-app.tgz",
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      },
+    ]);
   });
 
   it("allows auto-update over loopback HTTP", async () => {

@@ -6,7 +6,8 @@ Router, NativeWind v5).
 Status: a native shell around the web interface (#2515). `app/webview.tsx`
 loads the active server's web app in `react-native-webview` and talks to it
 over `@bb/mobile-bridge` (handshake, haptics, app-icon badge, share, open
-external links, open native screens, save files on iOS). Threads, projects, plugins and server
+external links, open native screens, save files on iOS). The shell locks
+page zoom so a pinch or double-tap cannot scale the UI. Threads, projects, plugins and server
 settings run in the page. The native screens cover what the page cannot
 own: first-run pairing (Direct URL and bb connect QR / code enrollment),
 saved servers, This device settings (appearance, haptics, notifications,

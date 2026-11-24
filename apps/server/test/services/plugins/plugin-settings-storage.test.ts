@@ -701,6 +701,51 @@ describe("plugin settings + storage", () => {
     });
   });
 
+  describe("files directory", () => {
+    it("creates the plugin's files directory, keeps it across reloads, and deletes only it on remove", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-filer",
+        serverSource: `
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          export default function plugin(bb: any) {
+            const directory = bb.storage.experimental_directory();
+            const file = join(directory, "state.txt");
+            const g = globalThis as any;
+            let previous = null;
+            try { previous = readFileSync(file, "utf8"); } catch {}
+            g.__filer = { directory, previous };
+            writeFileSync(file, "kept");
+            bb.storage.database();
+            bb.log.info("filer loaded");
+          }
+        `,
+      });
+      const filer = () =>
+        (globalThis as Record<string, unknown>).__filer as {
+          directory: string;
+          previous: string | null;
+        };
+      const pluginDir = join(dataDir, "plugins", "filer");
+      expect((await service.installPath(rootDir)).status).toBe("running");
+      expect(filer()).toEqual({
+        directory: join(pluginDir, "files"),
+        previous: null,
+      });
+      if (process.platform !== "win32") {
+        expect((await stat(join(pluginDir, "files"))).mode & 0o777).toBe(0o700);
+      }
+
+      await service.reload("filer");
+      expect(filer().previous).toBe("kept");
+
+      await service.remove("filer");
+      await expect(stat(join(pluginDir, "files"))).rejects.toThrow();
+      await expect(stat(join(pluginDir, "data.db"))).resolves.toBeDefined();
+      await expect(stat(join(pluginDir, "logs"))).resolves.toBeDefined();
+    });
+  });
+
   it("saving settings auto-reloads a needs-configuration plugin (regression: pasting the key in Settings must take effect)", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-needs-key",

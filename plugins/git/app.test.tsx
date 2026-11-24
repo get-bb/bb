@@ -1,29 +1,13 @@
 // @vitest-environment jsdom
-import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
-import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk/app";
+import {
+  experimental_makeActionContext,
+  experimental_makePanelController,
+} from "@get-bb/plugin-sdk/testing";
 
 import { expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
-import { collectPluginAppRegistrations } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
-import gitApp from "./app.js";
 
 const app = await loadPluginApp(() => import("./app.js"));
-
-function unusedLauncherServices(): {
-  sdk: PluginBrowserBbSdk;
-  navigate: BbNavigate;
-} {
-  const unused = <T extends object>(name: string): T =>
-    new Proxy({} as T, {
-      get() {
-        throw new Error(`${name} is not used by this test`);
-      },
-    });
-  return {
-    sdk: unused<PluginBrowserBbSdk>("sdk"),
-    navigate: unused<BbNavigate>("navigate"),
-  };
-}
 
 it("registers the Diff tab, Info rows and sections, the composer segment, and the Commit header action", () => {
   expect(app.tabs).toMatchObject([
@@ -60,8 +44,8 @@ it("registers the Diff tab, Info rows and sections, the composer segment, and th
 });
 
 it("toggles the Diff tab through the thread's panel with Mod+D", async () => {
-  const [command] = collectPluginAppRegistrations(gitApp).commandPaletteActions;
-  if (command?.target !== "app") throw new Error("expected an app command");
+  const [command] = app.commands;
+  if (command === undefined) throw new Error("expected a command");
   expect(command).toMatchObject({
     id: "toggle-diff",
     defaultShortcut: { key: "d", mod: true },
@@ -71,17 +55,15 @@ it("toggles the Diff tab through the thread's panel with Mod+D", async () => {
   });
   expect(
     command.isAvailable?.({
+      ...experimental_makeActionContext({ panel }),
       threadId: null,
       projectId: null,
-      panel,
-      ...unusedLauncherServices(),
     }),
   ).toBe(false);
   await command.run({
+    ...experimental_makeActionContext({ panel }),
     threadId: "thr-1",
     projectId: null,
-    panel,
-    ...unusedLauncherServices(),
   });
   expect(panel.toggleTab).toHaveBeenCalledWith({
     tab: { id: "diff", context: { kind: "thread" }, availability: "fixed" },

@@ -1,5 +1,8 @@
 export * from "./app-settings.js";
 export * from "./app-theme.js";
+export * from "./auth-api-keys.js";
+export * from "./environment-hook-operations.js";
+export * from "./environment-variables.js";
 export * from "./environments.js";
 export {
   bumpThreadEventRewriteGeneration,
@@ -9,6 +12,9 @@ export {
 export * from "./events.js";
 export * from "./experiments.js";
 export * from "./hosts.js";
+export * from "./host-server-access-grants.js";
+export * from "./legacy-automations.js";
+export * from "./legacy-deferred-thread-messages.js";
 export * from "./machines.js";
 export * from "./maintenance.js";
 export * from "./pending-interactions.js";
@@ -22,11 +28,13 @@ export * from "./project-attachment-backfill.js";
 export * from "./project-attachments.js";
 export * from "./project-execution-defaults.js";
 export * from "./project-sources.js";
+export * from "./project-source-folders.js";
 export * from "./projects.js";
 export * from "./prompt-history.js";
 export * from "./provider-model-catalogs.js";
 export * from "./queued-thread-messages.js";
 export * from "./retained-event-outputs.js";
+export * from "./thread-files.js";
 export * from "./server-move.js";
 export * from "./sessions.js";
 export * from "./sweep-item-failures.js";

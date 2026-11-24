@@ -15,7 +15,7 @@ import type { TimelineViewWorkRow } from "./timeline-view.js";
 export type TimelineWorkRowGlyph =
   | "CircleQuestion"
   | "EditFile"
-  | "File"
+  | "Eye"
   | "FileText"
   | "Folder"
   | "Globe"
@@ -105,7 +105,7 @@ function fallbackGlyphForWorkRow(
     case "image-generation":
       return "Palette";
     case "image-view":
-      return "File";
+      return "Eye";
     case "delegation":
       return "UserRoundPlus";
     case "workflow":

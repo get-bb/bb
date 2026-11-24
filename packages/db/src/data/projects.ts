@@ -1,6 +1,14 @@
 import { prepareCachedQuery } from "../connection.js";
 import { hostPathEquals } from "./host-path-sql.js";
-import { and, asc, desc, eq, isNull, placeholder } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  isNotNull,
+  isNull,
+  placeholder,
+} from "drizzle-orm";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
   DbConnection,
@@ -424,4 +432,13 @@ export function deleteProject(
   db.delete(projects).where(eq(projects.id, id)).run();
   notifier.notifyProject(id, ["project-deleted"]);
   return true;
+}
+
+export function listDeletedProjectIds(db: DbQueryConnection): string[] {
+  return db
+    .select({ id: projects.id })
+    .from(projects)
+    .where(isNotNull(projects.deletedAt))
+    .all()
+    .map((project) => project.id);
 }

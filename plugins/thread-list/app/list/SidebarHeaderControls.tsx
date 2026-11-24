@@ -39,7 +39,7 @@ export function SidebarHeaderControls({
 }: {
   label: string;
   sectionId?: SidebarSectionId;
-  onNewThread?: () => void;
+  onNewThread?: (split: boolean) => void;
   showNewThread?: boolean;
   children?: ReactNode;
   open?: boolean;
@@ -60,7 +60,7 @@ export function SidebarHeaderControls({
           <SidebarControlButton
             label={`New thread in ${label}`}
             icon="MessageSquarePlus"
-            onClick={() => onNewThread?.()}
+            onClick={(event) => onNewThread?.(event.metaKey || event.ctrlKey)}
             disabled={!onNewThread}
           />
         ) : null

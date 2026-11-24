@@ -17,6 +17,7 @@ import {
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 
 const ATTACH_TIMEOUT_MS = 15 * 60 * 1000;
+const LIST_PAGE_SIZE = 500;
 const LIVE_THREAD_STATUSES = new Set([
   "starting",
   "active",
@@ -36,15 +37,8 @@ export const checkoutInputsSchema = z.object({
 });
 
 type CheckoutOperation = Pick<
-  PluginEnvironmentProviderCreateContext<{ projectCheckout: true }>,
-  | "attempt"
-  | "experimental_claimPath"
-  | "host"
-  | "pathKey"
-  | "projectCheckout"
-  | "report"
-  | "signal"
-  | "thread"
+  PluginEnvironmentProviderCreateContext<{ projectCheckout: true }, undefined>,
+  "attempt" | "host" | "pathKey" | "projectCheckout" | "report" | "signal"
 >;
 
 function errorMessage(error: unknown): string {
@@ -63,28 +57,40 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     if (report !== undefined) reportHostProgress(report, event.payload);
   });
 
-  async function otherLiveThreadUsesPath(args: {
+  async function listEnvironmentsAtPath(args: {
     hostId: string;
     path: string;
-    threadId: string | null;
-  }): Promise<boolean> {
-    const rows = await bb.sdk.environments.list({
-      hostId: args.hostId,
-      path: args.path,
-    });
-    for (const row of rows) {
-      const threads = await bb.sdk.threads.list({
-        environmentId: row.id,
-        archived: false,
+  }) {
+    const environments: Awaited<ReturnType<typeof bb.sdk.environments.list>> =
+      [];
+    for (let offset = 0; ; offset += LIST_PAGE_SIZE) {
+      const page = await bb.sdk.environments.list({
+        hostId: args.hostId,
+        path: args.path,
+        limit: LIST_PAGE_SIZE,
+        offset,
       });
-      if (
-        threads.some(
-          (thread) =>
-            thread.id !== args.threadId &&
-            LIVE_THREAD_STATUSES.has(thread.status),
-        )
-      ) {
-        return true;
+      environments.push(...page);
+      if (page.length < LIST_PAGE_SIZE) return environments;
+    }
+  }
+
+  async function liveThreadUsesPath(args: {
+    hostId: string;
+    path: string;
+  }): Promise<boolean> {
+    for (const row of await listEnvironmentsAtPath(args)) {
+      for (let offset = 0; ; offset += LIST_PAGE_SIZE) {
+        const threads = await bb.sdk.threads.list({
+          environmentId: row.id,
+          archived: false,
+          limit: LIST_PAGE_SIZE,
+          offset,
+        });
+        if (threads.some((thread) => LIVE_THREAD_STATUSES.has(thread.status))) {
+          return true;
+        }
+        if (threads.length < LIST_PAGE_SIZE) break;
       }
     }
     return false;
@@ -142,10 +148,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     hostId: string;
     path: string;
   }): Promise<string | null> {
-    const rows = await bb.sdk.environments.list({
-      hostId: args.hostId,
-      path: args.path,
-    });
+    const rows = await listEnvironmentsAtPath(args);
     const environment = rows.find(
       (row) =>
         row.status !== "destroyed" &&
@@ -165,27 +168,6 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
   ): Promise<PluginEnvironmentProviderCreateResult> {
     const hostId = context.host.id;
     const { path, branch, mergeBaseBranch } = target;
-    const claimDeadline = Date.now() + ATTACH_TIMEOUT_MS;
-    while (!(await context.experimental_claimPath(path))) {
-      context.signal.throwIfAborted();
-      if (branch !== null || Date.now() >= claimDeadline) {
-        return {
-          status: "failed",
-          message: "Workspace is being prepared by another thread",
-        };
-      }
-      await delay(50, undefined, { signal: context.signal });
-    }
-    if (
-      branch !== null &&
-      (await otherLiveThreadUsesPath({
-        hostId,
-        path,
-        threadId: context.thread.id,
-      }))
-    ) {
-      return { status: "failed", message: LIVE_THREAD_MESSAGE };
-    }
     const operationId = `${context.pathKey}#${context.attempt}`;
     reports.set(operationId, context.report);
     try {
@@ -205,7 +187,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
           : { mergeBaseBranch: mergeBaseBranch ?? result.mergeBaseBranch }),
         ownsPath:
           result.path === context.projectCheckout.path &&
-          context.projectCheckout.experimental_ownsPath === true,
+          context.projectCheckout.ownsPath,
       };
     } catch (error) {
       if (context.signal.aborted) throw error;
@@ -216,6 +198,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
   }
 
   bb.experimental_environments.register({
+    apiVersion: 2,
     id: PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
     displayName: "Project checkout",
     description: "Work in a project checkout on this machine.",
@@ -223,8 +206,10 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
     requires: { projectCheckout: true },
     inputs: checkoutInputsSchema,
     policy: { retireGraceMs: null },
-    experimental_existingPath: (inputs) =>
-      inputs.branch === undefined ? (inputs.path ?? null) : null,
+    locate: ({ inputs, projectCheckout }) => ({
+      path: inputs.path ?? projectCheckout.path,
+      reuse: inputs.branch === undefined,
+    }),
     async validate(context) {
       const branch = context.inputs.branch;
       const path = context.inputs.path ?? context.projectCheckout.path;
@@ -241,13 +226,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
       if (branch === undefined) {
         return { action: "accept" };
       }
-      if (
-        await otherLiveThreadUsesPath({
-          hostId: context.host.id,
-          path,
-          threadId: null,
-        })
-      ) {
+      if (await liveThreadUsesPath({ hostId: context.host.id, path })) {
         return { action: "refuse", message: LIVE_THREAD_MESSAGE };
       }
       const blocker = await branchSwitchBlocker({
@@ -275,7 +254,7 @@ export default async function checkoutPlugin(bb: BbPluginApi): Promise<void> {
         path,
         branch: {
           kind: "new",
-          name: context.suggestedBranchName,
+          name: await context.branchName(),
           baseBranch: branchInput.baseBranch,
         },
       });

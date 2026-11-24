@@ -1,3 +1,8 @@
+import { getOrCreateServerId } from "@bb/db";
+import {
+  refreshServerAccessOrigins,
+  restoreServerAccessOrigins,
+} from "./services/machines/server-access.js";
 import { createPluginUpdateJobs } from "./services/plugins/plugin-update-jobs.js";
 import { registerPluginUpdateJobRoutes } from "./routes/plugin-update-jobs.js";
 import {
@@ -10,10 +15,6 @@ import {
   windowsInstallerFailureScript,
 } from "./services/machines/manual-enrollment-command.js";
 import { reconnectBootstrapForCredential } from "./services/machines/reconnect.js";
-import {
-  refreshServerAccessOrigins,
-  restoreServerAccessOrigins,
-} from "./services/machines/server-access.js";
 import { getMachineEnrollmentService } from "./services/machines/machine-services.js";
 import { withManualMachineProvider } from "./services/machines/manual-provider.js";
 import { registerDesktopBrowserRoutes } from "./routes/desktop-browsers.js";
@@ -75,6 +76,7 @@ import {
 } from "./services/plugins/plugin-server-access-registry.js";
 import { setPluginMachineProviderBridge } from "./services/plugins/plugin-machine-provider-registry.js";
 import { invalidateEnvironmentProviderMachineAvailability } from "./services/environments/provider-machine-availability.js";
+import { releasePluginEnvironmentHolds } from "./services/environments/environment-engine.js";
 import { requestHostDerivedStateRefreshForPluginChange } from "./services/hosts/host-derived-state.js";
 import { requestQueuedMessageDispatch } from "./services/threads/queued-message-dispatch.js";
 import { registerInternalEventRoutes } from "./internal/events.js";
@@ -495,7 +497,7 @@ export function createApp(
   app.use("*", async (context, next) => {
     const problem = requestHostProblem(context, deps);
     if (problem !== null) {
-      throw new ApiError(problem.status, "forbidden_host", problem.error);
+      throw new ApiError(problem.status, problem.code, problem.error);
     }
     return next();
   });
@@ -550,6 +552,7 @@ export function createApp(
     });
     return context.json({
       ok: true,
+      serverId: getOrCreateServerId(deps.db),
       ...(deps.config.launchId === undefined
         ? {}
         : { launchId: deps.config.launchId }),
@@ -784,8 +787,8 @@ export function createApp(
       ),
     callPluginHost: (args) => callPluginHostRpc(deps, args),
     disposePluginHost: (args) => disposePluginHostWorkers(deps, args),
-    onSettingsChanged: (pluginId) => {
-      deps.providerNativeRoots.invalidate(pluginId);
+    onSettingsChanged: () => {
+      deps.projectSkillIndexes.clear();
       deps.providerRegistry.forgetAllInstalled();
       requestHostDerivedStateRefreshForPluginChange(deps);
     },
@@ -794,6 +797,7 @@ export function createApp(
       refreshServerAccessOrigins(deps);
     },
     onPluginUnregistered: (pluginId) => {
+      releasePluginEnvironmentHolds(deps, pluginId);
       requestQueuedMessageDispatch(deps, {
         kind: "plugin-unregistered",
         pluginId,
@@ -887,7 +891,7 @@ export function createApp(
     }
     const problem = browserRequestProblem(context, deps);
     if (problem !== null) {
-      throw new ApiError(problem.status, "forbidden_origin", problem.error);
+      throw new ApiError(problem.status, problem.code, problem.error);
     }
     return next();
   });
@@ -967,12 +971,7 @@ export function createApp(
   ): void => {
     const problem = browserRequestProblem(context, deps);
     if (problem !== null) {
-      throw new ApiError(
-        problem.status,
-        "forbidden_origin",
-        problem.error,
-        false,
-      );
+      throw new ApiError(problem.status, problem.code, problem.error, false);
     }
   };
 

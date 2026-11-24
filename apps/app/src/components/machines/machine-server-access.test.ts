@@ -1,85 +1,117 @@
 import { describe, expect, it } from "vitest";
 import {
+  MACHINE_SERVER_ACCESS_UNSET_REASON,
   machineServerAccessBlockedReason,
   machineServerAccessReady,
 } from "./machine-server-access";
 import type { ServerAccessStatus } from "@bb/server-contract";
 
-function status(
-  overrides: Partial<ServerAccessStatus> = {},
-): ServerAccessStatus {
+type Provider = ServerAccessStatus["providers"][number];
+
+function provider(
+  overrides: Partial<Provider> & Pick<Provider, "id">,
+): Provider {
   return {
-    providers: [
-      {
-        id: "relay",
-        displayName: "Relay",
-        description: "Use a managed relay.",
-        pluginId: "relay-plugin",
-        availability: { status: "available" },
-      },
-    ],
-    defaultProviderId: "relay",
-    effectiveUrl: null,
-    urlSource: null,
+    displayName: overrides.id,
+    description: "",
+    pluginId: null,
+    routeKind: "custom",
+    availability: { status: "available" },
+    urls: [],
     ...overrides,
   };
 }
 
+function status(providers: Provider[]): ServerAccessStatus {
+  return {
+    providers,
+    effectiveUrl: null,
+    urlSource: null,
+    localNetwork: { bindHost: "127.0.0.1", addresses: [], listenerError: null },
+  };
+}
+
+const LAN_OFF = provider({
+  id: "local-network",
+  routeKind: "local-network",
+  availability: {
+    status: "setup-required",
+    message: "Add it to let devices on this network reach bb",
+  },
+});
+const RELAY_UNPAIRED = provider({
+  id: "connect",
+  pluginId: "connect",
+  routeKind: "relay",
+  availability: { status: "setup-required", message: "Pair with bb connect" },
+});
+const MANUAL_UNSET = provider({
+  id: "direct",
+  availability: {
+    status: "setup-required",
+    message: "Set a server URL reachable by machines",
+  },
+});
+
 describe("machine server access readiness", () => {
-  it("accepts a registered provider and rejects missing configuration", () => {
-    expect(machineServerAccessReady(status())).toBe(true);
-    expect(machineServerAccessReady(status({ providers: [] }))).toBe(false);
-    expect(machineServerAccessReady(undefined)).toBe(false);
-  });
-
-  it("blocks an installed provider until access is available and follows its recovery", () => {
-    const access = status();
-    access.providers[0]!.availability = {
-      status: "setup-required",
-      message: "Pair the relay",
-    };
-    expect(machineServerAccessReady(access)).toBe(false);
-    expect(machineServerAccessBlockedReason(access)).toBe("Pair the relay");
-    access.providers[0]!.availability = { status: "available" };
-    expect(machineServerAccessReady(access)).toBe(true);
-    access.providers[0]!.availability = {
-      status: "unavailable",
-      message: "Credential revoked",
-    };
-    expect(machineServerAccessBlockedReason(access)).toBe("Credential revoked");
-    access.providers[0]!.availability = null;
-    expect(machineServerAccessReady(access)).toBe(false);
-  });
-
-  it("requires a reachable address for direct access", () => {
-    const direct = status({
-      defaultProviderId: "direct",
-      providers: [
-        {
-          id: "direct",
-          displayName: "Manual",
-          description: "Use a network address.",
-          pluginId: null,
-          availability: null,
-        },
-      ],
-      effectiveUrl: "https://bb.example.com",
-      urlSource: "setting",
-    });
-    expect(machineServerAccessReady(direct)).toBe(true);
+  it("is ready once any route is reachable, wherever it sits in the order", () => {
     expect(
-      machineServerAccessReady({
-        ...direct,
-        effectiveUrl: "http://localhost:3000",
-      }),
+      machineServerAccessReady(status([LAN_OFF, RELAY_UNPAIRED, MANUAL_UNSET])),
     ).toBe(false);
+    const manual = provider({
+      id: "direct",
+      urls: ["https://bb.example.com"],
+    });
+    const access = status([LAN_OFF, RELAY_UNPAIRED, manual]);
+    expect(machineServerAccessReady(access)).toBe(true);
+    expect(machineServerAccessBlockedReason(access)).toBeNull();
   });
 
-  it("explains blocked configuration and clears the reason when ready", () => {
-    const blocked = status({ providers: [] });
-    expect(machineServerAccessBlockedReason(blocked)).toBe(
-      "Configure how machines should connect to this bb server.",
+  it("does not count an address only this computer can reach", () => {
+    const local = provider({ id: "direct", urls: ["http://localhost:3000"] });
+    expect(machineServerAccessReady(status([local]))).toBe(false);
+    const lan = provider({
+      id: "local-network",
+      routeKind: "local-network",
+      urls: ["http://192.168.1.5:38886"],
+    });
+    expect(machineServerAccessReady(status([local, lan]))).toBe(true);
+  });
+
+  it("trusts a plugin route that grants addresses per machine", () => {
+    const relay = provider({ id: "connect", pluginId: "connect" });
+    expect(machineServerAccessReady(status([relay]))).toBe(true);
+    expect(machineServerAccessReady(status([provider({ id: "direct" })]))).toBe(
+      false,
     );
-    expect(machineServerAccessBlockedReason(status())).toBeNull();
+  });
+
+  it("explains the first route that is not working, skipping Local network until it is added", () => {
+    const lanBroken = provider({
+      id: "local-network",
+      routeKind: "local-network",
+      availability: {
+        status: "unavailable",
+        message: "This computer has no private local network address",
+      },
+    });
+    expect(
+      machineServerAccessBlockedReason(
+        status([LAN_OFF, RELAY_UNPAIRED, lanBroken]),
+      ),
+    ).toBe("Pair with bb connect");
+    expect(
+      machineServerAccessBlockedReason(status([lanBroken, RELAY_UNPAIRED])),
+    ).toBe("This computer has no private local network address");
+  });
+
+  it("falls back to the generic reason when nothing is set up or loaded", () => {
+    expect(machineServerAccessBlockedReason(status([LAN_OFF]))).toBe(
+      MACHINE_SERVER_ACCESS_UNSET_REASON,
+    );
+    expect(machineServerAccessBlockedReason(undefined)).toBe(
+      MACHINE_SERVER_ACCESS_UNSET_REASON,
+    );
+    expect(machineServerAccessReady(undefined)).toBe(false);
   });
 });

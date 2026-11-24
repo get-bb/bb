@@ -9,6 +9,7 @@ import {
   bindEnvironmentPath,
   claimEnvironmentPath,
   createEnvironment,
+  findForeignManagedEnvironmentAtHostPath,
   findProjectEnvironmentByHostPath,
   findProviderEnvironmentContainingPath,
   listRetiredLoadedEnvironmentIdsOnHost,
@@ -433,6 +434,7 @@ describe("environment path claims", () => {
         fixture.db,
         { ...preparing, claimPath: "/tmp/shared-checkout" },
         "/tmp/shared-checkout",
+        existing.id,
       );
 
       expect(bound).toMatchObject({
@@ -486,6 +488,7 @@ describe("environment path claims", () => {
         fixture.db,
         preparing,
         "/tmp/shared-checkout",
+        existing.id,
       );
 
       expect(bound).toMatchObject({
@@ -505,6 +508,28 @@ describe("environment path claims", () => {
       ).toEqual(before);
     },
   );
+
+  it("refuses to fold a preparing environment into an environment it did not declare", () => {
+    const fixture = setup();
+    const existing = seedClaim(fixture, {
+      environmentProviderId: "project-checkout",
+      path: "/tmp/undeclared",
+      providerOwnsPath: false,
+    });
+    const preparing = reserveEnvironment(fixture.db, {
+      projectId: fixture.project.id,
+      hostId: fixture.host.id,
+      ownerThreadId: "thread-undeclared",
+      providerOwnsPath: false,
+      status: "creating",
+      statusMessage: "Creating environment",
+    });
+    expect(() =>
+      bindEnvironmentPath(fixture.db, preparing, "/tmp/undeclared", null),
+    ).toThrow(
+      `Workspace /tmp/undeclared already belongs to environment ${existing.id}`,
+    );
+  });
 
   it("claims a path only for a provider that owns the directory", () => {
     const fixture = setup();
@@ -607,6 +632,46 @@ describe("environment path claims", () => {
       findProviderEnvironmentContainingPath(fixture.db, "C:\\src\\equipe"),
     ).toBeNull();
   });
+
+  it.each([
+    ["/tmp/owned", "/tmp/owned", true],
+    ["/tmp/owned", "/tmp/owned/packages/app", true],
+    ["/tmp/own", "/tmp/owned", false],
+    ["/tmp/owned/", "/tmp/owned/", true],
+    ["/tmp/owned/", "/tmp/owned/pkg", false],
+    ["/tmp/owned", "/tmp/owned//pkg", true],
+    ["/", "/tmp", false],
+    ["C:\\src\\owned", "/src/owned", false],
+    ["c:/src/Owned/", "C:\\SRC\\owned\\pkg", true],
+    ["C:\\src\\.\\x\\..\\owned", "c:\\src\\owned", true],
+    ["D:\\src", "C:\\src\\pkg", false],
+    ["/src/owned", "C:\\src\\owned", false],
+    ["\\\\Server\\Share\\repo", "//server/share/repo/pkg", true],
+    ["//server/share", "\\\\SERVER\\share\\pkg", true],
+    ["\\\\server\\other", "\\\\server\\share\\pkg", false],
+  ] as const)(
+    "decides whether owned path %j contains %j",
+    (ownedPath, path, contains) => {
+      const fixture = setup();
+      const owned = seedClaim(fixture, {
+        environmentProviderId: "git-worktree",
+        path: ownedPath,
+        providerOwnsPath: true,
+      });
+      const expected = contains ? owned.id : undefined;
+
+      expect(
+        findProviderEnvironmentContainingPath(fixture.db, path)?.id,
+      ).toBe(expected);
+      expect(
+        findForeignManagedEnvironmentAtHostPath(fixture.db, {
+          hostId: fixture.host.id,
+          path,
+          projectId: "proj_other",
+        })?.id,
+      ).toBe(expected);
+    },
+  );
 
   it("treats underscores and percent signs in an owned path literally", () => {
     const fixture = setup();

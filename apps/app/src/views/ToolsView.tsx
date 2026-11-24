@@ -1,4 +1,5 @@
 import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
   useAppPanelController,
@@ -40,10 +41,11 @@ import {
 import { matchPath, useLocation, useNavigate } from "react-router-dom";
 import "@bb/shared-ui/icon-extended";
 import { useMutation } from "@tanstack/react-query";
-import { buildPluginEditThreadPrompt } from "@bb/shared-ui/resource-edit-prompt";
+import { buildPluginEditThreadPrompt } from "@/lib/resource-edit-prompt";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
 import { appToast } from "@/components/ui/app-toast";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
-import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
+import { useScrollOverflowState } from "@bb/shared-ui/use-scroll-overflow-state";
 import {
   ConfirmDeleteDialog,
   ConfirmDeleteDialogContent,
@@ -82,10 +84,8 @@ import { pluginAdminErrorMessage } from "@/lib/plugin-admin-error";
 import {
   REGISTRY_SKILLS_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
-  getPluginConfigurationRoutePath,
   getPluginDetailRoutePath,
   getPluginsRoutePath,
-  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 import { getToolsOwnedCollectionRoutePath } from "@/components/tools/tools-navigation";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -99,6 +99,7 @@ import { secondaryPanelWidthPercentAtom } from "@/components/secondary-panel/thr
 import { ThreadSecondaryPanel } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
 import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 function ResourceBodyFallback() {
   return (
@@ -177,6 +178,7 @@ function PluginsToolView({
 
 function PluginDetailToolView({ detailKey }: { detailKey: string }) {
   const navigate = useNavigate();
+  const openNewThread = useOpenNewThread();
   const location = useLocation();
   const { pluginId: detailPluginId } = parsePluginDetailKey(detailKey);
   const routeOwnsDetail =
@@ -184,7 +186,7 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
     (location.pathname ===
       getPluginDetailRoutePath({ pluginId: detailPluginId }) ||
       location.pathname ===
-        getPluginConfigurationRoutePath({ pluginId: detailPluginId }));
+        getSettingsTargetPath({ pluginId: detailPluginId }));
   const [locallyConfiguredDetailKey, setLocallyConfiguredDetailKey] = useState<
     string | null
   >(null);
@@ -295,18 +297,19 @@ function PluginDetailToolView({ detailKey }: { detailKey: string }) {
         : null;
   const handleEditPlugin = useCallback(
     (plugin: PluginListItem) => {
-      void navigate(getRootComposeRoutePath(), {
-        state: {
-          focusPrompt: true,
-          initialPrompt: buildPluginEditThreadPrompt({
+      openNewThread({
+        focusPrompt: true,
+        initialPrompt: initialPromptSeedFromComposer(
+          buildPluginEditThreadPrompt({
             name: plugin.name ?? plugin.id,
             path: plugin.rootDir,
           }),
-          replaceInitialPrompt: true,
-        },
+          null,
+        ),
+        replaceInitialPrompt: true,
       });
     },
-    [navigate],
+    [openNewThread],
   );
   const handleOpenPluginSource = useCallback(
     (plugin: PluginListItem) => {

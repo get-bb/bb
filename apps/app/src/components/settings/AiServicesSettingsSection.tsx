@@ -8,7 +8,7 @@ import type {
   TestAiServiceResponse,
 } from "@bb/server-contract";
 import { Button } from "@bb/shared-ui/button";
-import { SettingsSection } from "@/components/ui/settings-section";
+import { SettingsSection } from "@bb/shared-ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
 import { useSystemAiServices } from "@/hooks/queries/system-queries";
 import { writeCachedAiServices } from "@/hooks/cache-owners/system-config-cache-owner";

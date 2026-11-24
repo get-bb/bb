@@ -1,4 +1,7 @@
-import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
+import {
+  HOST_FILE_CHUNK_MAX_BYTES,
+  type HostDaemonOnlineRpcRequestMessage,
+} from "@bb/host-daemon-contract";
 import { describe, expect, it } from "vitest";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
@@ -52,9 +55,14 @@ function serveFiles(
         ok: true,
         result: {
           path: command.path,
-          content: file.bytes
-            .subarray(command.offset, command.offset + command.length)
-            .toString("base64"),
+          content: command.knownRevisions.includes(REVISION)
+            ? new Uint8Array()
+            : new Uint8Array(
+                file.bytes.subarray(
+                  command.offset,
+                  command.offset + command.length,
+                ),
+              ),
           offset: command.offset,
           mimeType: file.mimeType,
           modifiedAtMs: 1234,
@@ -149,6 +157,93 @@ describe("file content routes", () => {
     });
   });
 
+  it("reads a small file, a revalidation, or a seek with one first daemon read", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedThreadFixture(harness);
+      const storageRoot = `/tmp/bb-host-data/${host.id}/thread-storage/${thread.id}`;
+      const large = Buffer.alloc(HOST_FILE_CHUNK_MAX_BYTES * 2 + 5, 7);
+      const commands = serveFiles(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        files: new Map([
+          [
+            `${storageRoot}/chart.png`,
+            {
+              bytes: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+              mimeType: "image/png",
+            },
+          ],
+          [`${storageRoot}/clip.mp4`, { bytes: large, mimeType: "video/mp4" }],
+        ]),
+      });
+      const baseUrl = `/api/v1/threads/${thread.id}/thread-storage/files`;
+      const reads = async (path: string, init: RequestInit = {}) => {
+        commands.length = 0;
+        const response = await harness.app.request(`${baseUrl}/${path}`, init);
+        const body = Buffer.from(await response.arrayBuffer());
+        return {
+          status: response.status,
+          body,
+          reads: commands.map((command) =>
+            command.type === "host.read_file_chunk"
+              ? [command.offset, command.length, command.knownRevisions]
+              : command.type,
+          ),
+        };
+      };
+      const first = (knownRevisions: string[] = []) => [
+        0,
+        HOST_FILE_CHUNK_MAX_BYTES,
+        knownRevisions,
+      ];
+
+      await expect(reads("chart.png")).resolves.toEqual({
+        status: 200,
+        body: Buffer.from([0x89, 0x50, 0x4e, 0x47]),
+        reads: [first()],
+      });
+      await expect(
+        reads("chart.png", { headers: { range: "bytes=0-65535" } }),
+      ).resolves.toMatchObject({ status: 206, reads: [first()] });
+      await expect(
+        reads("chart.png", {
+          headers: { "if-none-match": `W/"file-${REVISION}"` },
+        }),
+      ).resolves.toEqual({
+        status: 304,
+        body: Buffer.alloc(0),
+        reads: [first([REVISION])],
+      });
+      await expect(
+        reads("chart.png", {
+          headers: { "if-none-match": `W/"file-${"9".repeat(64)}"` },
+        }),
+      ).resolves.toMatchObject({
+        status: 200,
+        reads: [first(["9".repeat(64)])],
+      });
+      await expect(
+        reads("chart.png", { method: "HEAD" }),
+      ).resolves.toMatchObject({ status: 200, reads: [[0, 0, []]] });
+
+      const whole = await reads("clip.mp4");
+      expect(whole.body).toEqual(large);
+      expect(whole.reads).toEqual([
+        first(),
+        [HOST_FILE_CHUNK_MAX_BYTES, HOST_FILE_CHUNK_MAX_BYTES, []],
+        [HOST_FILE_CHUNK_MAX_BYTES * 2, 5, []],
+      ]);
+      const seek = await reads("clip.mp4", {
+        headers: { range: `bytes=${HOST_FILE_CHUNK_MAX_BYTES * 2}-` },
+      });
+      expect(seek).toMatchObject({ status: 206, body: large.subarray(-5) });
+      expect(seek.reads).toEqual([
+        [0, 0, []],
+        [HOST_FILE_CHUNK_MAX_BYTES * 2, 5, []],
+      ]);
+    });
+  });
+
   it("reports file changes before streaming as retryable conflicts", async () => {
     await withTestHarness(async (harness) => {
       const { host, session, thread } = seedThreadFixture(harness);
@@ -170,7 +265,7 @@ describe("file content routes", () => {
             ok: true,
             result: {
               path: command.path,
-              content: "",
+              content: new Uint8Array(),
               offset: 0,
               sizeBytes: 30 * 1024 * 1024,
               mimeType: "video/mp4",
@@ -330,9 +425,9 @@ describe("file content routes", () => {
             ok: true,
             result: {
               path: command.path,
-              content: bytes
-                .subarray(command.offset, command.offset + command.length)
-                .toString("base64"),
+              content: new Uint8Array(
+                bytes.subarray(command.offset, command.offset + command.length),
+              ),
               offset: command.offset,
               mimeType: "application/zip",
               modifiedAtMs: 1234,

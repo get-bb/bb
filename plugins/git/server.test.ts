@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   type ExperimentalFakeHostRpcCall,
@@ -33,6 +33,8 @@ function environment(overrides: Partial<Environment> = {}): Environment {
     environmentProviderSelection: null,
     environmentProviderInstanceKey: null,
     managed: true,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: "worktree",
     ...overrides,
   } as Environment;
@@ -80,9 +82,10 @@ async function setup(environments: Record<string, Environment>) {
       subscribe: () => () => {},
       files: {
         read: async () => {
-          throw Object.assign(new Error("HTTP 413: too large"), {
+          throw new experimental_BbHttpError({
             status: 413,
             code: "file_too_large",
+            message: "too large",
             body: {
               code: "file_too_large",
               message: "File size 30000000 bytes exceeds the 25 MB limit",
@@ -94,8 +97,11 @@ async function setup(environments: Record<string, Environment>) {
         get: async ({ environmentId }: { environmentId: string }) => {
           const found = environments[environmentId];
           if (found === undefined) {
-            throw Object.assign(new Error("Environment not found"), {
+            throw new experimental_BbHttpError({
               status: 404,
+              code: null,
+              message: "Environment not found",
+              body: null,
             });
           }
           return found;
@@ -136,6 +142,7 @@ describe("Git plugin server", () => {
             activeWorkflowCount: 0,
           },
           latestAttentionAt: 0,
+          statusChangedAt: 0,
           updatedAt: 0,
         },
       },
@@ -461,16 +468,15 @@ describe("Git plugin Viewed marks", () => {
         environments: {
           get: async ({ environmentId }: { environmentId: string }) => {
             if (!existing.includes(environmentId)) {
-              throw Object.assign(new Error("Environment not found"), {
+              throw new experimental_BbHttpError({
                 status: 404,
+                code: null,
+                message: "Environment not found",
+                body: null,
               });
             }
             return environment({ id: environmentId });
           },
-          list: async (args?: { status?: string }) =>
-            args?.status === "destroyed"
-              ? []
-              : existing.map((id) => environment({ id })),
         },
       },
     });

@@ -1,4 +1,3 @@
-import * as questionFormHost from "@bb/shared-ui/question-form-host";
 import * as voiceInputTextarea from "@bb/shared-ui/voice-input-textarea";
 import * as react from "react";
 import * as reactDom from "react-dom";
@@ -26,7 +25,8 @@ import { BbHttpError } from "@bb/sdk/browser";
 import { isCancelledError, type QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
-import { createPluginToast } from "@/lib/notifications/plugin-toast";
+import { toast as pluginToast } from "@/lib/plugin-sonner";
+import { isOfficialPlugin } from "@/lib/official-plugins";
 import { appQueryClient } from "./app-query-client";
 import {
   setServerPluginsStarting,
@@ -65,6 +65,7 @@ import {
   flushPluginSlotChanges,
   removePluginSlotRegistrations,
   setBuiltinPluginIds,
+  setOfficialMarketplacePluginIds,
   setLoadingPluginFrontends,
   setPluginSlotRegistrations,
   settleLoadingPluginFrontend,
@@ -222,7 +223,6 @@ export interface BbPluginRuntime {
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
   sharedUiIcon: unknown;
-  questionFormHost: typeof questionFormHost;
   voiceInputTextarea: typeof voiceInputTextarea;
 }
 
@@ -250,13 +250,12 @@ export function installPluginRuntime(): BbPluginRuntime {
     radixPopover,
     radixSelect,
     radixTooltip,
-    sonner: { ...sonner, toast: createPluginToast(sonner.toast) },
+    sonner: { ...sonner, toast: pluginToast },
     vaul,
     clsx,
     tailwindMerge,
     classVarianceAuthority,
     sharedUiIcon,
-    questionFormHost,
     voiceInputTextarea,
   };
   return host.__bbPluginRuntime;
@@ -335,6 +334,9 @@ export async function fetchFrontendCandidates(
     plugins.flatMap((plugin) =>
       plugin.provenance === "builtin" ? [plugin.id] : [],
     ),
+  );
+  setOfficialMarketplacePluginIds(
+    plugins.flatMap((plugin) => (isOfficialPlugin(plugin) ? [plugin.id] : [])),
   );
   return { candidates, startingPluginIds };
 }

@@ -32,7 +32,7 @@ import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 import { buildPluginProviderRegistration } from "../../src/services/providers/plugin-provider-registration.js";
 import { SkillTreeRegistry } from "../../src/services/skills/injected-skills.js";
 import { PluginHostArtifactRegistry } from "../../src/services/plugins/plugin-host-artifact-registry.js";
-import { createProviderNativeRootsCache } from "../../src/services/providers/native-roots.js";
+import { createProjectSkillIndexCache } from "../../src/services/skills/skill-listing.js";
 import { createProviderLiveCommandsCache } from "../../src/services/providers/provider-live-commands.js";
 import { createAiServiceRegistry } from "../../src/services/ai/ai-service-registry.js";
 import {
@@ -103,7 +103,7 @@ export type TestAppHarnessConfigOverrides = Partial<ServerRuntimeConfig> & {
   terminalAttachTimeoutMs?: number;
   terminalCloseTimeoutMs?: number;
   terminalOpenTimeoutMs?: number;
-  nativeRootsClock?: () => number;
+  skillIndexClock?: () => number;
   liveCommandsClock?: () => number;
   seedFirstPartyProviders?: boolean;
   extraProviders?: readonly {
@@ -168,7 +168,7 @@ export async function createTestAppHarness(
     terminalAttachTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
     terminalCloseTimeoutMs,
     terminalOpenTimeoutMs = TEST_TERMINAL_RPC_TIMEOUT_MS,
-    nativeRootsClock,
+    skillIndexClock,
     liveCommandsClock,
     seedFirstPartyProviders = true,
     ...configOverrides
@@ -194,11 +194,12 @@ export async function createTestAppHarness(
     },
   });
   const pluginHostArtifacts = new PluginHostArtifactRegistry();
-  const providerNativeRoots = createProviderNativeRootsCache(
-    nativeRootsClock === undefined ? {} : { now: nativeRootsClock },
+  const projectSkillIndexes = createProjectSkillIndexCache(
+    skillIndexClock === undefined ? {} : { now: skillIndexClock },
   );
   for (const extra of overrides.extraProviders ?? []) {
     providerRegistry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         available: true,
         pluginId: extra.pluginId,
@@ -366,7 +367,7 @@ export async function createTestAppHarness(
     pendingInteractions,
     providerRegistry,
     pluginHostArtifacts,
-    providerNativeRoots,
+    projectSkillIndexes,
     providerLiveCommands: createProviderLiveCommandsCache(
       liveCommandsClock === undefined ? {} : { now: liveCommandsClock },
     ),

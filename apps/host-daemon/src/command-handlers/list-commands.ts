@@ -11,12 +11,14 @@ import type { HostDaemonOnlineRpcResult } from "@bb/host-daemon-contract";
 import { isPathWithinDirectory } from "@bb/process-utils";
 import {
   CommandDispatchError,
+  type CommandDispatchOptions,
   type CommandOf,
 } from "../command-dispatch-support.js";
 import {
   discoverProviderCommands,
   type CommandScanRoot,
 } from "../command-discovery.js";
+import { resolveNativeRootSet } from "./native-root-resolution.js";
 
 export interface DeclaredScanRootResolution {
   cwd: string | null;
@@ -399,6 +401,8 @@ export async function resolveDeclaredScanRoots(
 
 export async function listHostCommands(
   command: CommandOf<"host.list_commands">,
+  options: Pick<CommandDispatchOptions, "logger" | "pluginHost">,
+  signal: AbortSignal,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_commands">> {
   if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
@@ -406,8 +410,13 @@ export async function listHostCommands(
   const roots = await resolveDeclaredScanRoots({
     cwd: command.cwd,
     homeDir: os.homedir(),
-    providerId: command.providerId,
-    nativeRoots: command.nativeRoots,
+    providerId: command.provider.providerId,
+    nativeRoots: await resolveNativeRootSet(command.provider, {
+      cwd: command.cwd,
+      resolution: command.resolution,
+      options,
+      signal,
+    }),
   });
   const commands = await discoverProviderCommands({ roots });
   return { commands };

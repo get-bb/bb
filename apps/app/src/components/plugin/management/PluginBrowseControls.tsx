@@ -25,7 +25,7 @@ import {
   type ResourceOption,
 } from "@bb/shared-ui/resource-list";
 import { useLatestRef } from "@/hooks/useLatestRef";
-import { useScrollOverflowState } from "@/components/thread/timeline/useScrollOverflowState";
+import { useScrollOverflowState } from "@bb/shared-ui/use-scroll-overflow-state";
 import type {
   PluginBrowseSort,
   PluginBrowseCategoryOption,

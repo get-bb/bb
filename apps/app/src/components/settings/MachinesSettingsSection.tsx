@@ -31,7 +31,7 @@ import {
   SettingsRow,
   SettingsRowList,
   SettingsSection,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import {
   useRenameHost,
   useResumeHost,
@@ -46,9 +46,9 @@ import { useSidebarNavigation } from "@/hooks/queries/sidebar-navigation-query";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { machineAttentionIssue } from "@/hooks/useMachineAttention";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
-import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import { PERMISSION_MODE_OPTIONS } from "@/lib/permission-mode-options";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const PERMISSION_MODE_PRESENTATION: Record<
   PermissionMode,
@@ -111,7 +111,7 @@ export function MachineRowContent({
   machineProvider,
 }: MachineRowProps) {
   const navigate = useNavigate();
-  const detailPath = getSettingsMachineRoutePath(host.id);
+  const detailPath = getSettingsTargetPath({ machineId: host.id });
   const permission = PERMISSION_MODE_PRESENTATION[host.maxPermissionMode];
   const projectLabel = `${projectCount} ${projectCount === 1 ? "project" : "projects"}`;
   const connectionLabel = machineStatusLabel({ host, now });
@@ -128,7 +128,7 @@ export function MachineRowContent({
           }}
         >
           <Link
-            to={getSettingsMachineRoutePath(host.id)}
+            to={getSettingsTargetPath({ machineId: host.id })}
             aria-label={`Open ${host.name}`}
             className="flex min-w-0 flex-1 items-center rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
@@ -149,6 +149,9 @@ export function MachineRowContent({
                   <MachineStatusDot tone={machineStatusTone(host)} />
                   <span className="min-w-0 truncate">{connectionLabel}</span>
                 </span>
+                {host.status === "connected" && host.route !== null ? (
+                  <span className="truncate">via {host.route.displayName}</span>
+                ) : null}
                 {platformLabel === null ? null : (
                   <span className="truncate">{platformLabel}</span>
                 )}

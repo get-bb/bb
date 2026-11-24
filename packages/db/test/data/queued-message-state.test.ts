@@ -61,12 +61,14 @@ describe("queued message state", () => {
     expect(claimed?.state).toBe("claimed");
 
     const requeued = requeueClaimedQueuedThreadMessages(db, noopNotifier, {
-      claims: [{ id: row.id, claimToken: claimed!.claimToken }],
+            compactFirstDone: false,
+claims: [{ id: row.id, claimToken: claimed!.claimToken }],
       threadId,
       waitingOn: { kind: "plugin", pluginId: "limiter", reason: "full" },
       sendAt: null,
+      recheckAt: null,
     });
-    expect(requeued).toMatchObject({
+    expect(requeued[0]).toMatchObject({
       state: "waiting",
       waitHolder: "plugin:limiter",
       claimedAt: null,
@@ -124,7 +126,6 @@ describe("queued message state", () => {
         id: row.id,
         threadId,
         waitingOn: { kind: "thread-busy" },
-        sendAt: null,
       }),
     ).toMatchObject({
       state: "waiting",

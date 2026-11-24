@@ -334,6 +334,7 @@ export async function readFileChunkForTransport(
     offset: number;
     length: number;
     revision: string | null;
+    knownRevisions: readonly string[];
   },
 ) {
   const readablePath = await resolveReadablePath(args);
@@ -365,7 +366,9 @@ export async function readFileChunkForTransport(
       );
     }
     const sizeBytes = Number(stat.size);
-    const length = Math.min(args.length, Math.max(0, sizeBytes - args.offset));
+    const length = args.knownRevisions.includes(revision)
+      ? 0
+      : Math.min(args.length, Math.max(0, sizeBytes - args.offset));
     const bytes = Buffer.alloc(length);
     let offset = 0;
     while (offset < length) {
@@ -394,7 +397,7 @@ export async function readFileChunkForTransport(
       mimeType: mimeTypes.lookup(args.resultPath) || null,
       revision,
       offset: args.offset,
-      content: bytes.toString("base64"),
+      content: bytes,
     };
   } finally {
     await file.close();

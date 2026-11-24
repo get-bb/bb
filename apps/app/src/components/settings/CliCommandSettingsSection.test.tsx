@@ -106,6 +106,17 @@ describe("CliCommandSettingsSectionContent", () => {
     ).toBeDefined();
   });
 
+  it("offers to replace the bb a bb machine install added", () => {
+    const changes = renderSection({
+      ...NOT_INSTALLED,
+      shadowedBy: { path: "/home/me/.local/bin/bb", source: "machine" },
+    });
+
+    fireEvent.click(button("Install bb CLI"));
+
+    expect(changes).toEqual(["install"]);
+  });
+
   it("blocks a second change while one is running", () => {
     renderSection(NOT_INSTALLED, true);
 

@@ -1,5 +1,4 @@
 import type { Environment, Host, Project } from "@bb/domain";
-import type { ThreadResponse } from "@bb/server-contract";
 import type {
   JsonValue,
   PluginEnvironmentProviderRequirements,
@@ -13,9 +12,14 @@ export type PluginEnvironmentProviderInputsSchema =
   | undefined;
 type Fact<R, K extends PropertyKey, T> =
   R extends Record<K, true> ? T : T | null;
+/** `ownsPath`: bb cloned this checkout, so a provider may own work there. */
+interface ProjectCheckout {
+  path: string;
+  ownsPath: boolean;
+}
 type Checkout<R> = R extends { projectCheckout: true } | { gitCheckout: true }
-  ? { path: string; experimental_ownsPath: boolean }
-  : { path: string; experimental_ownsPath: boolean } | null;
+  ? ProjectCheckout
+  : ProjectCheckout | null;
 type InputsValue<S> = S extends StandardSchemaV1
   ? StandardSchemaV1InferOutput<S>
   : null;
@@ -39,6 +43,22 @@ export interface PluginEnvironmentProviderValidateContext<
   inputs: InputsValue<S>;
 }
 
+export interface PluginEnvironmentProviderLocation {
+  path: string;
+  reuse: boolean;
+}
+
+export interface PluginEnvironmentProviderLocateContext<
+  R extends PluginEnvironmentProviderRequirements =
+    PluginEnvironmentProviderRequirements,
+  S extends PluginEnvironmentProviderInputsSchema =
+    PluginEnvironmentProviderInputsSchema,
+> {
+  host: Host;
+  projectCheckout: Checkout<R>;
+  inputs: InputsValue<S>;
+}
+
 export interface PluginEnvironmentProviderAvailabilityContext {
   project: Project;
   host: Host;
@@ -51,17 +71,69 @@ export type PluginEnvironmentProviderAvailability =
   | { status: "setup-required"; message: string }
   | { status: "unavailable"; message: string };
 
+/** The environment a create or restore produces a workspace for. */
+export interface PluginEnvironmentProviderEnvironment {
+  id: string;
+  name: string | null;
+  projectId: string;
+}
+
+/** Core's create steps, which a provider calls in the order it needs. */
+export interface PluginEnvironmentProviderSteps {
+  /**
+   * The name for a branch this operation makes. A thread's environment
+   * resolves to `<prefix><slug(title)>-<threadId>` once the thread's title
+   * settles (generated, provided, or the fallback); a thread-less one resolves
+   * at once to `<prefix><slug(name)>-<id>`, or `<prefix><id>` without a name.
+   * Core generates the title while create runs, so await it as late as
+   * possible. Repeated calls return the same name.
+   */
+  branchName(): Promise<string>;
+  /**
+   * Claims `path` as this environment's provider-owned workspace and asks core
+   * to run setup there; resolves once the request is recorded, while setup
+   * runs alongside the rest of create. The environment becomes ready only
+   * after create returns `created` with the same path and `ownsPath: true`.
+   * Without a call, core runs setup after create returns.
+   *
+   * Experimental: `folders` lists extra folders this create made, such as
+   * new sibling worktrees. Core runs each folder's setup script once, in the
+   * given order, before `path`'s, and runs their teardown scripts after
+   * `path`'s, in reverse order. Each folder must be absolute, outside `path`,
+   * and returned in the result's `additionalPaths`. After `adopt`, `folders`
+   * may name only folders the adopted environment set up, such as ones the
+   * provider moved to a new commit; core runs their setup again, in their
+   * recorded order, then `path`'s. See docs/api_to_audit.md.
+   */
+  setup(path: string, options?: { folders?: string[] }): Promise<void>;
+  /**
+   * Hands this operation a ready environment this plugin holds, at once and
+   * atomically: the environment becomes the one this create produces, keeps
+   * its setup, and takes `resource`, which `remove()` receives if create never
+   * returns. The hold is cleared when create returns. Rejects when the
+   * environment is not a ready one this plugin holds on the same project and
+   * machine; then nothing changed. Setup does not run again unless
+   * `setup(path)` is called afterwards with the adopted path, which starts it
+   * at once. A `created` result must name its path; any other outcome leaves
+   * the environment in error, and its thread fails. If bb restarts before
+   * create returns, the environment is removed and the thread is provisioned
+   * again.
+   */
+  adopt(environmentId: string, resource: JsonValue): Promise<void>;
+}
+
 export interface PluginEnvironmentProviderCreateContext<
   R extends PluginEnvironmentProviderRequirements =
     PluginEnvironmentProviderRequirements,
   S extends PluginEnvironmentProviderInputsSchema =
     PluginEnvironmentProviderInputsSchema,
-> extends PluginEnvironmentProviderValidateContext<R, S> {
-  thread: ThreadResponse;
-  suggestedBranchName: string;
+>
+  extends
+    PluginEnvironmentProviderValidateContext<R, S>,
+    PluginEnvironmentProviderSteps {
+  environment: PluginEnvironmentProviderEnvironment;
   attempt: number;
   pathKey: string;
-  experimental_claimPath(path: string): Promise<boolean>;
   report: PluginEnvironmentProviderProgress;
   signal: AbortSignal;
 }
@@ -72,15 +144,9 @@ export interface PluginEnvironmentProviderRestoreContext<
     PluginEnvironmentProviderRequirements,
   S extends PluginEnvironmentProviderInputsSchema =
     PluginEnvironmentProviderInputsSchema,
-> extends PluginEnvironmentProviderValidateContext<R, S> {
-  thread: ThreadResponse;
-  attempt: number;
-  pathKey: string;
-  experimental_claimPath(path: string): Promise<boolean>;
+> extends PluginEnvironmentProviderCreateContext<R, S> {
   /** Resource is private to this provider; null after completed removal. */
   previous: { environment: Environment; resource: JsonValue | null };
-  report: PluginEnvironmentProviderProgress;
-  signal: AbortSignal;
 }
 
 export type PluginEnvironmentProviderCreateResult =
@@ -90,6 +156,17 @@ export type PluginEnvironmentProviderCreateResult =
       ownsPath: boolean;
       /** Ref the workspace's changes are compared against. Null clears the value recorded on a reused environment; omit to keep it. */
       mergeBaseBranch?: string | null;
+      /**
+       * Experimental: this environment's own extra folders, such as sibling
+       * checkouts it created next to `path`. Threads in the environment can
+       * read and write each absolute `path`. `replaces` names the project
+       * folder (`sdk.projects.sources.experimental_folders`) the folder stands
+       * in for, such as the repository it made a worktree of; threads in the
+       * environment no longer get that shared folder. Core records the list
+       * with the environment; omit on a reused environment to keep it.
+       * See docs/api_to_audit.md.
+       */
+      additionalPaths?: { path: string; replaces?: string }[];
       resource?: JsonValue;
     }
   | { status: "failed"; message: string };
@@ -113,17 +190,31 @@ export type PluginEnvironmentProviderRemoveResult =
 export interface PluginEnvironmentProviderPolicy {
   /** Default five minutes; null keeps the environment indefinitely. */
   retireGraceMs: number | null;
-  /** Default per-thread; replacement environments use a fresh key to avoid dead paths. */
-  pathKeys: "per-thread" | "per-attempt";
+  /**
+   * Default per-environment: one key for the environment's workspace, stable
+   * across retries. Core derives it from the driving thread when there is one
+   * and from the environment otherwise, so thread workspaces keep their
+   * names. Replacement environments use a fresh key to avoid dead paths.
+   */
+  pathKeys: "per-environment" | "per-attempt";
 }
 
-/** Resource operations only. Core owns durable launches, retries and retirement. */
+/**
+ * Resource operations only. Core owns durable launches, retries and
+ * retirement. Contexts carry the `environment` being created rather than a
+ * thread, so core can also create environments before any thread exists.
+ */
 export interface PluginEnvironmentProviderDefinition<
   R extends PluginEnvironmentProviderRequirements =
     PluginEnvironmentProviderRequirements,
   S extends PluginEnvironmentProviderInputsSchema =
     PluginEnvironmentProviderInputsSchema,
 > {
+  /**
+   * The context shape `create` and `restore` receive. Required: bb still runs
+   * providers built before it with the earlier, thread-based contexts.
+   */
+  apiVersion: 2;
   id: string;
   displayName: string;
   /** Short explanation shown in environment choices. */
@@ -144,12 +235,25 @@ export interface PluginEnvironmentProviderDefinition<
   ):
     | PluginEnvironmentValidateDecision
     | Promise<PluginEnvironmentValidateDecision>;
-  /** Pure path selection from parsed inputs. Core reuses a recorded environment on the selected host before calling create; null requests normal creation. */
-  experimental_existingPath?(inputs: InputsValue<S>): string | null;
+  /**
+   * Where an environment for these inputs lives, if the provider knows before
+   * creating anything; null asks for a new environment. Core claims the path
+   * for the operation. With `reuse: true`, a thread joins the environment
+   * recorded at `path` as it is. Otherwise create runs on a fresh
+   * reservation, which core refuses while another live thread uses an
+   * environment at `path`, and core folds the result into that environment
+   * when create returns the same path.
+   */
+  locate?(
+    context: PluginEnvironmentProviderLocateContext<R, S>,
+  ):
+    | PluginEnvironmentProviderLocation
+    | null
+    | Promise<PluginEnvironmentProviderLocation | null>;
   create(
     context: PluginEnvironmentProviderCreateContext<R, S>,
   ): Promise<PluginEnvironmentProviderCreateResult>;
-  /** Experimental: rebuild a destroyed environment when its thread asks for it back. Without it, core never rebuilds this provider's destroyed environments: see docs/api_to_audit.md. */
+  /** Experimental: rebuild a destroyed environment when a thread asks for it back. Without it, core never rebuilds this provider's destroyed environments: see docs/api_to_audit.md. */
   restore?(
     context: PluginEnvironmentProviderRestoreContext<R, S>,
   ): Promise<PluginEnvironmentProviderCreateResult>;

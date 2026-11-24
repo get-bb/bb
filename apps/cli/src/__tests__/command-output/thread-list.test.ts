@@ -37,6 +37,7 @@ describe("bb thread list command output", () => {
         archived: "false",
         projectId: "proj-1",
         parentThreadId: "thread-manager-1",
+        limit: "200",
       },
     });
   });
@@ -51,7 +52,7 @@ describe("bb thread list command output", () => {
     );
 
     expect(list).toHaveBeenCalledWith({
-      query: { threadIds: "thr_a,thr_b" },
+      query: { threadIds: "thr_a,thr_b", limit: "200" },
     });
   });
 
@@ -69,7 +70,7 @@ describe("bb thread list command output", () => {
     );
 
     expect(list).toHaveBeenCalledWith({
-      query: { archived: "false", hostId: "host_removed123" },
+      query: { archived: "false", hostId: "host_removed123", limit: "200" },
     });
     expect(hosts).not.toHaveBeenCalled();
   });
@@ -81,17 +82,17 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list", "--include-hidden"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: { archived: "false", includeHidden: "true" },
+      query: { archived: "false", includeHidden: "true", limit: "200" },
     });
   });
 
   it.each([
-    { args: [], query: { archived: "false" } },
-    { args: ["--archived"], query: { archived: "true" } },
-    { args: ["--include-archived"], query: {} },
+    { args: [], query: { archived: "false", limit: "200" } },
+    { args: ["--archived"], query: { archived: "true", limit: "200" } },
+    { args: ["--include-archived"], query: { limit: "200" } },
     {
       args: ["--thread", "thr_a", "--archived"],
-      query: { archived: "true", threadIds: "thr_a" },
+      query: { archived: "true", threadIds: "thr_a", limit: "200" },
     },
   ])(
     "bb thread list $args filters archived threads like bb thread count",
@@ -104,6 +105,37 @@ describe("bb thread list command output", () => {
       expect(list).toHaveBeenCalledWith({ query });
     },
   );
+
+  it("bb thread list pages with --limit and --offset and names the next offset when the page is full", async () => {
+    const list = vi.fn(async () =>
+      ["thread-a", "thread-b"].map((id) =>
+        fixtures.makeThread({
+          id,
+          projectId: "proj-1",
+          providerId: "codex",
+          status: "idle",
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      ),
+    );
+    stubServerApi({
+      "v1.threads.$get": list,
+      "v1.projects.$get": async () => [{ id: "proj-1", name: "Alpha" }],
+    });
+
+    await runCommand(
+      ["thread", "list", "--limit", "2", "--offset", "4"],
+      register,
+    );
+
+    expect(list).toHaveBeenCalledWith({
+      query: { archived: "false", limit: "2", offset: "4" },
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      "(Showing 2 threads from offset 4; more may follow. Use --offset 6 for the next page.)",
+    );
+  });
 
   it("bb thread list rejects --archived with --include-archived", async () => {
     const list = vi.fn(async () => []);
@@ -181,7 +213,7 @@ describe("bb thread list command output", () => {
       await runCommand(["thread", "list"], register);
 
       expect(list).toHaveBeenCalledWith({
-        query: { archived: "false" },
+        query: { archived: "false", limit: "200" },
       });
       expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
         "",
@@ -211,7 +243,7 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: { archived: "false" },
+      query: { archived: "false", limit: "200" },
     });
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
@@ -296,7 +328,7 @@ describe("bb thread list command output", () => {
     await runCommand(["thread", "list"], register);
 
     expect(list).toHaveBeenCalledWith({
-      query: { archived: "false" },
+      query: { archived: "false", limit: "200" },
     });
   });
 });

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import Ajv from "ajv";
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   WORKFLOW_CALL_CACHE_VERSION,
@@ -760,6 +760,8 @@ export function createWorkflowService(
     const catalog = await bb.sdk.providers.models({
       environmentId: run.environmentId,
       providerId: requested.provider,
+      selectedModel: requested.model,
+      signal,
     });
     throwIfCancelled(signal);
     if (catalog.modelLoadError !== null) {
@@ -1650,9 +1652,10 @@ export function createWorkflowService(
   }
 
   function isMissingThread(error: unknown): boolean {
-    if (typeof error !== "object" || error === null) return false;
-    const candidate = error as { status?: unknown; code?: unknown };
-    return candidate.status === 404 || candidate.code === "thread_not_found";
+    return (
+      error instanceof experimental_BbHttpError &&
+      (error.status === 404 || error.code === "thread_not_found")
+    );
   }
 
   async function reconcileRunningCalls(): Promise<void> {

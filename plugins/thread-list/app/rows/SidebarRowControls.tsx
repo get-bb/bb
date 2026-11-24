@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type MouseEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { cn } from "@/lib/utils";
@@ -51,7 +51,7 @@ export function SidebarControlButton({
 }: {
   label: string;
   icon: IconName;
-  onClick: () => void;
+  onClick: (event: MouseEvent<HTMLButtonElement>) => void;
   disabled?: boolean;
 }) {
   return (
@@ -67,7 +67,7 @@ export function SidebarControlButton({
           onClick={(event) => {
             event.stopPropagation();
             if (event.detail > 0) event.currentTarget.blur();
-            onClick();
+            onClick(event);
           }}
         >
           <Icon name={icon} className={COARSE_POINTER_ICON_SIZE_CLASS} />

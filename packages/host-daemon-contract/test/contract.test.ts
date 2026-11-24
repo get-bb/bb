@@ -1,3 +1,4 @@
+import { threadCpuUsage } from "node:process";
 import { collectOptionalFieldPaths } from "@bb/test-helpers";
 import {
   TERMINAL_COLS_MAX,
@@ -13,6 +14,9 @@ import * as contract from "../src/index.js";
 import {
   HOST_ARTIFACT_MAX_BYTES,
   HOST_DAEMON_PROTOCOL_VERSION,
+  HOST_FILE_CHUNK_MAX_BYTES,
+  decodeHostDaemonDaemonWsMessage,
+  encodeHostDaemonDaemonWsMessage,
   HOST_DAEMON_ONLINE_RPC_COMMAND_TYPES,
   HOST_DAEMON_SETTLED_COMMAND_TYPES,
   hostDaemonEnrollRequestSchema,
@@ -76,9 +80,11 @@ const ACP_LAUNCH_SPEC = {
   },
 };
 
+type WireResultFixture = Record<string, unknown>;
+
 type OnlineRpcResponseResultFixtures = Record<
   HostDaemonOnlineRpcCommandType,
-  JsonObject
+  WireResultFixture
 >;
 type SettledResponseResultFixtures = Record<
   HostDaemonSettledCommandType,
@@ -235,16 +241,23 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
     ],
   },
   "host.list_skills": {
-    skills: [
+    workspaceSkills: [],
+    sharedSkills: [],
+    providers: [
       {
-        id: `skill_${"a".repeat(64)}`,
-        name: "review",
-        description: "Review the current diff",
-        filePath: "/home/user/.bb/skills/review/SKILL.md",
-        rootKind: "bb-data-dir",
-        realPath: "/home/user/.bb/skills/review/SKILL.md",
-        contentSha256: "a".repeat(64),
-        linked: false,
+        providerId: "claude-code",
+        skills: [
+          {
+            id: `skill_${"a".repeat(64)}`,
+            name: "review",
+            description: "Review the current diff",
+            filePath: "/home/user/.claude/skills/review/SKILL.md",
+            rootKind: "provider-user",
+            realPath: "/home/user/.claude/skills/review/SKILL.md",
+            contentSha256: "a".repeat(64),
+            linked: false,
+          },
+        ],
       },
     ],
   },
@@ -254,13 +267,17 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       {
         kind: "file",
         directoryName: "review",
-        content: "---\nname: review\ndescription: Review\n---\n",
+        frontmatter: "---\nname: review\ndescription: Review\n---",
       },
       { kind: "oversized", directoryName: "huge", sizeBytes: 11_000_000 },
       { kind: "budget-exceeded", directoryName: "later" },
     ],
     projectSkillsTruncated: false,
     sharedSkills: [],
+    folders: [
+      { path: "/work/app", exists: true, isGitRepo: true },
+      { path: "/data/fixtures", exists: false, isGitRepo: false },
+    ],
   },
   "host.delete_skill": {
     deletedPath: "/home/user/.bb/skills/review",
@@ -327,7 +344,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
   },
   "host.read_file_chunk": {
     path: "/tmp/clip.mp4",
-    content: "AAEC",
+    content: new Uint8Array([0, 1, 2]),
     offset: 0,
     sizeBytes: 3,
     modifiedAtMs: 1234,
@@ -579,8 +596,8 @@ const ONLINE_RPC_RESPONSE_MISMATCH_CASES: OnlineRpcResponseMismatchCase[] = [
 
 function buildHostRpcResponseMessage(
   commandType: HostDaemonRpcCommandType,
-  result: JsonObject,
-): JsonObject {
+  result: WireResultFixture,
+): WireResultFixture {
   return {
     type: "host-rpc.response",
     requestId: `rpc-${commandType}`,
@@ -592,11 +609,21 @@ function buildHostRpcResponseMessage(
 
 function expectHostRpcResponseRoundTrip(
   commandType: HostDaemonRpcCommandType,
-  result: JsonObject,
+  result: WireResultFixture,
   name: string,
 ): void {
   const message = buildHostRpcResponseMessage(commandType, result);
-  const jsonRoundTripped = JSON.parse(JSON.stringify(message));
+  const encoded = encodeHostDaemonDaemonWsMessage(
+    hostDaemonDaemonWsMessageSchema.parse(message),
+  );
+  const decoded = decodeHostDaemonDaemonWsMessage(
+    JSON.parse(encoded.json),
+    encoded.attachment,
+  );
+  if (!decoded.ok) {
+    throw new Error(`${name} did not decode`);
+  }
+  const jsonRoundTripped = decoded.message;
 
   expect(
     hostDaemonOnlineRpcResponseMessageSchema.parse(jsonRoundTripped),
@@ -674,21 +701,25 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "a question option carries a description only when its label needs a gloss; absence means the label stands alone.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.questions.shortLabel":
     "a user question omits shortLabel when its prompt is short enough to title the row itself.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.commands.project.skipIfManifest":
+  "hostDaemonOnlineRpcCommandSchema.provider.declaredRoots.commands.project.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.commands.user.skipIfManifest":
+  "hostDaemonOnlineRpcCommandSchema.provider.declaredRoots.commands.user.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.commands.fallbackName":
-    "a resolved skill-file root carries a fallback name only when the file's frontmatter names none and something else supplies it; absence means the parent directory's name is used.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.commands.skipIfManifest":
+  "hostDaemonOnlineRpcCommandSchema.provider.declaredRoots.skills.project.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.skills.fallbackName":
-    "a resolved skill-file root carries a fallback name only when the file's frontmatter names none and something else supplies it; absence means the parent directory's name is used.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.resolved.skills.skipIfManifest":
+  "hostDaemonOnlineRpcCommandSchema.provider.declaredRoots.skills.user.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.skills.project.skipIfManifest":
+  "hostDaemonOnlineRpcCommandSchema.providers.declaredRoots.commands.project.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
-  "hostDaemonOnlineRpcCommandSchema.nativeRoots.skills.user.skipIfManifest":
+  "hostDaemonOnlineRpcCommandSchema.providers.declaredRoots.commands.user.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.providers.declaredRoots.skills.project.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.providers.declaredRoots.skills.user.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.sharedRoots.project.skipIfManifest":
+    "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
+  "hostDaemonOnlineRpcCommandSchema.sharedRoots.user.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
   "hostDaemonOnlineRpcCommandSchema.sharedSkillRoots.project.skipIfManifest":
     "a provider-native root names a vendor-plugin marker file only when the plugin that knows that vendor layout declares one; absence means every skill-shaped directory under the root is a skill, and core names no vendor path itself.",
@@ -1070,7 +1101,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(275);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(282);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1105,7 +1136,14 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(272)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(273)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(274)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(275)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(275)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(276)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(277)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(278)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(279)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(280)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(281)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(282)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });
@@ -1378,59 +1416,56 @@ describe("host-daemon command schemas", () => {
       ...options,
     });
     const emptyRoots = { user: [], project: [] };
+    const resolution = { contributedEnv: [], timeoutMs: 29_000 };
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_commands",
-        providerId: "acp-amp",
         cwd: "/tmp/workspace",
-        nativeRoots: {
-          skills: {
-            user: [root(".agents/skills")],
-            project: [
-              root(".amp/skills", { recursive: true, ancestors: true }),
-            ],
+        provider: {
+          providerId: "acp-amp",
+          declaredRoots: {
+            skills: {
+              user: [root(".agents/skills")],
+              project: [
+                root(".amp/skills", { recursive: true, ancestors: true }),
+              ],
+            },
+            commands: { ...emptyRoots, project: [root(".amp/commands")] },
           },
-          commands: { ...emptyRoots, project: [root(".amp/commands")] },
-          resolved: {
-            skills: [
-              {
-                path: "/home/dev/.amp/plugins/one/skills",
-                origin: "user",
-                recursive: false,
-                ancestors: false,
-                namePrefix: "one:",
-                shape: "skills",
-              },
-            ],
-            commands: [],
+          resolver: {
+            pluginId: "bb--provider-acp",
+            generation: "gen-1",
+            artifact: { digest: "a".repeat(64), byteLength: 128 },
           },
         },
+        resolution,
       }),
     ).toMatchObject({
       type: "host.list_commands",
-      providerId: "acp-amp",
-      nativeRoots: {
-        skills: {
-          project: [{ path: ".amp/skills", recursive: true, ancestors: true }],
+      provider: {
+        providerId: "acp-amp",
+        declaredRoots: {
+          skills: {
+            project: [
+              { path: ".amp/skills", recursive: true, ancestors: true },
+            ],
+          },
         },
-        resolved: { skills: [{ namePrefix: "one:", shape: "skills" }] },
+        resolver: { pluginId: "bb--provider-acp" },
       },
     });
 
     expect(
       hostDaemonOnlineRpcCommandSchema.parse({
         type: "host.list_skills",
-        providerId: "bb-shared",
         cwd: "/tmp/workspace",
-        nativeRoots: {
-          skills: { ...emptyRoots, user: [root(".agents/skills")] },
-          commands: emptyRoots,
-          resolved: { skills: [], commands: [] },
-        },
+        providers: [],
+        sharedRoots: { ...emptyRoots, user: [root(".agents/skills")] },
+        resolution,
       }),
     ).toMatchObject({
       type: "host.list_skills",
-      nativeRoots: { skills: { user: [{ path: ".agents/skills" }] } },
+      sharedRoots: { user: [{ path: ".agents/skills" }] },
     });
 
     expect(() =>
@@ -1443,13 +1478,16 @@ describe("host-daemon command schemas", () => {
     ).toThrow();
     const withRoots = (skills: Record<string, unknown>) => ({
       type: "host.list_commands",
-      providerId: "pi",
       cwd: "/tmp/workspace",
-      nativeRoots: {
-        skills: { ...emptyRoots, ...skills },
-        commands: emptyRoots,
-        resolved: { skills: [], commands: [] },
+      provider: {
+        providerId: "pi",
+        declaredRoots: {
+          skills: { ...emptyRoots, ...skills },
+          commands: emptyRoots,
+        },
+        resolver: null,
       },
+      resolution,
     });
     expect(() =>
       hostDaemonOnlineRpcCommandSchema.parse(
@@ -1618,7 +1656,7 @@ describe("host-daemon command schemas", () => {
         type: "host.list_branch_options",
         path: "/tmp/workspace",
         limit: 50,
-        remoteRefresh: "none",
+        remoteRefresh: "blocking",
       },
       {
         type: "host.inspect_git_source",
@@ -1749,6 +1787,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -1784,6 +1823,7 @@ describe("host-daemon command schemas", () => {
           providerId: "codex",
           providerThreadId: "prov_123",
           instructions: "Be concise.",
+          additionalWorkspaceFolders: [],
           dynamicTools: [],
           contributedEnv: [],
           injectedSkillSources: [],
@@ -1835,6 +1875,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         instructions: "Be a helpful thread.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [
           {
             name: "notify_user",
@@ -1905,6 +1946,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: "ask" as const,
         },
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -1948,6 +1990,7 @@ describe("host-daemon command schemas", () => {
         permissionEscalation: null,
       },
       instructions: "Be a helpful thread.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: [],
       injectedSkillSources: [],
@@ -1992,6 +2035,7 @@ describe("host-daemon command schemas", () => {
         providerId: "codex",
         providerThreadId: "provider_123",
         instructions: "Be a helpful coding agent.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -2054,6 +2098,7 @@ describe("host-daemon command schemas", () => {
         permissionEscalation: null,
       },
       instructions: "Be a helpful thread.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: CONTRIBUTED_ENV,
       injectedSkillSources: [],
@@ -2091,6 +2136,7 @@ describe("host-daemon command schemas", () => {
         providerId: "acp-local",
         providerThreadId: "provider_123",
         instructions: "Be a helpful thread.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: CONTRIBUTED_ENV,
         injectedSkillSources: [],
@@ -2169,6 +2215,7 @@ describe("host-daemon command schemas", () => {
         permissionEscalation: null,
       },
       instructions: "Be a helpful thread.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: [],
       injectedSkillSources: [],
@@ -2193,6 +2240,7 @@ describe("host-daemon command schemas", () => {
         providerThreadId: "provider_123",
         bridgeLaunch,
         instructions: "Be a helpful thread.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -2335,6 +2383,7 @@ describe("host-daemon command schemas", () => {
           providerId: "codex",
           providerThreadId: "provider_123",
           instructions: "Be a helpful coding agent.",
+          additionalWorkspaceFolders: [],
           dynamicTools: [],
           contributedEnv: [],
           injectedSkillSources: [],
@@ -2381,6 +2430,7 @@ describe("host-daemon command schemas", () => {
           providerId: "codex",
           providerThreadId: "provider_123",
           instructions: "Be a helpful coding agent.",
+          additionalWorkspaceFolders: [],
           dynamicTools: [],
           contributedEnv: [],
           injectedSkillSources: [],
@@ -2420,6 +2470,7 @@ describe("host-daemon command schemas", () => {
           projectId: "proj_123",
           providerId: "codex",
           instructions: "Be a helpful coding agent.",
+          additionalWorkspaceFolders: [],
           dynamicTools: [],
         },
         target: { mode: "start" },
@@ -2450,6 +2501,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
       }),
     ).toThrow();
@@ -2481,6 +2533,7 @@ describe("host-daemon command schemas", () => {
           permissionEscalation: null,
         },
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -2516,6 +2569,7 @@ describe("host-daemon command schemas", () => {
           providerId: "codex",
           providerThreadId: "provider_123",
           instructions: "Be a helpful coding agent.",
+          additionalWorkspaceFolders: [],
           dynamicTools: [],
           contributedEnv: [],
           injectedSkillSources: [],
@@ -2549,7 +2603,7 @@ describe("host-daemon command schemas", () => {
       type: "host.list_branch_options",
       path: "/tmp/workspace",
       limit: 50,
-      remoteRefresh: "none",
+      remoteRefresh: "background",
     };
     expect(
       hostDaemonOnlineRpcCommandSchema.safeParse({
@@ -2902,10 +2956,10 @@ describe("host-daemon session schemas", () => {
 
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
+        serverRoutes: { serverId: "srv_test", routes: [] },
         sessionId: "session_123",
         machineEnvironment: { revision: 0, entries: [] },
         idleProviderSessionTimeoutMinutes: 30,
-        agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
         reconnectGraceMs: 30_000,
@@ -2931,10 +2985,10 @@ describe("host-daemon session schemas", () => {
 
     expect(
       hostDaemonSessionOpenResponseSchema.parse({
+        serverRoutes: { serverId: "srv_test", routes: [] },
         sessionId: "session_default_shares",
         machineEnvironment: { revision: 0, entries: [] },
         idleProviderSessionTimeoutMinutes: 30,
-        agentCpuPriority: false,
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
         reconnectGraceMs: 30_000,
@@ -2944,6 +2998,7 @@ describe("host-daemon session schemas", () => {
 
     expect(() =>
       hostDaemonSessionOpenResponseSchema.parse({
+        serverRoutes: { serverId: "srv_test", routes: [] },
         sessionId: "session_123",
         heartbeatIntervalMs: 5_000,
         leaseTimeoutMs: 30_000,
@@ -3427,11 +3482,36 @@ describe("host-daemon session schemas", () => {
         type: "plugin-host.worker-exited",
         pluginId: "keep-awake",
         generation: "generation-1",
+        reason: "host plugin worker exited (1)",
       }),
     ).toEqual({
       type: "plugin-host.worker-exited",
       pluginId: "keep-awake",
       generation: "generation-1",
+      reason: "host plugin worker exited (1)",
+    });
+    expect(() =>
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.worker-exited",
+        pluginId: "keep-awake",
+        generation: "generation-1",
+      }),
+    ).toThrow();
+
+    expect(
+      hostDaemonDaemonWsMessageSchema.parse({
+        type: "plugin-host.worker-output",
+        pluginId: "keep-awake",
+        generation: "generation-1",
+        stream: "stderr",
+        line: "TypeError: boom",
+      }),
+    ).toEqual({
+      type: "plugin-host.worker-output",
+      pluginId: "keep-awake",
+      generation: "generation-1",
+      stream: "stderr",
+      line: "TypeError: boom",
     });
 
     expect(
@@ -3659,6 +3739,7 @@ describe("bounded file read contract", () => {
     offset: 0,
     length: 0,
     revision: null,
+    knownRevisions: [],
   };
   it("accepts metadata-only probes and bounded revision-checked reads", () => {
     expect(hostDaemonOnlineRpcCommandSchema.parse(command)).toEqual(command);
@@ -3666,24 +3747,70 @@ describe("bounded file read contract", () => {
       hostDaemonOnlineRpcCommandSchema.parse({
         ...command,
         offset: 32 * 1024 * 1024,
-        length: 1024 * 1024,
+        length: HOST_FILE_CHUNK_MAX_BYTES,
         revision: "a".repeat(64),
       }),
-    ).toMatchObject({ length: 1024 * 1024 });
+    ).toMatchObject({ length: HOST_FILE_CHUNK_MAX_BYTES });
   });
   it.each([
-    { length: 1024 * 1024 + 1 },
+    { length: HOST_FILE_CHUNK_MAX_BYTES + 1 },
     { length: -1 },
     { length: 1.5 },
     { offset: -1 },
     { offset: Number.MAX_SAFE_INTEGER + 1 },
     { offset: 0.5 },
     { revision: "invalid" },
+    { knownRevisions: ["invalid"] },
+    { knownRevisions: Array.from({ length: 17 }, () => "a".repeat(64)) },
+    { knownRevisions: undefined },
     { rootPath: undefined },
   ])("rejects unsafe bounds or missing confinement: %j", (override) => {
     expect(
       hostDaemonOnlineRpcCommandSchema.safeParse({ ...command, ...override })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("daemon websocket message dispatch", () => {
+  function cpuUsPerParse(parse: () => unknown): number {
+    parse();
+    let fastest = Number.POSITIVE_INFINITY;
+    for (let sample = 0; sample < 3; sample += 1) {
+      const started = threadCpuUsage();
+      let parses = 0;
+      let elapsedCpuUs = 0;
+      do {
+        for (let repeat = 0; repeat < 256; repeat += 1) {
+          parse();
+        }
+        parses += 256;
+        const cpu = threadCpuUsage(started);
+        elapsedCpuUs = cpu.user + cpu.system;
+      } while (elapsedCpuUs < 50_000);
+      fastest = Math.min(fastest, elapsedCpuUs / parses);
+    }
+    return fastest;
+  }
+
+  it("parses the last message type about as fast as its own schema", () => {
+    const message = {
+      type: "host-rpc.response",
+      requestId: "request-1",
+      commandType: "host.list_files",
+      ok: false,
+      errorCode: "not_found",
+      errorMessage: "Missing directory",
+    };
+    expect(hostDaemonDaemonWsMessageSchema.parse(message)).toEqual(message);
+
+    const viaMessageSchemaCpuUs = cpuUsPerParse(() =>
+      hostDaemonDaemonWsMessageSchema.parse(message),
+    );
+    const viaMemberSchemaCpuUs = cpuUsPerParse(() =>
+      hostDaemonOnlineRpcResponseMessageSchema.parse(message),
+    );
+
+    expect(viaMessageSchemaCpuUs).toBeLessThan(viaMemberSchemaCpuUs * 4);
   });
 });

@@ -227,3 +227,79 @@ export function useUploadPromptAttachment() {
     retry: false,
   });
 }
+
+interface AddProjectSourceFolderRequest {
+  path: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export function useAddProjectSourceFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to add folder.",
+    },
+    mutationFn: (request: AddProjectSourceFolderRequest) =>
+      sdk.projects.sources.experimental_folders.add(request),
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
+interface UpdateProjectSourceFolderRequest {
+  folderId: string;
+  path: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export function useUpdateProjectSourceFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to change folder.",
+    },
+    mutationFn: (request: UpdateProjectSourceFolderRequest) =>
+      sdk.projects.sources.experimental_folders.update(request),
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}
+
+interface RemoveProjectSourceFolderRequest {
+  folderId: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export function useRemoveProjectSourceFolder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    meta: {
+      errorMessage: "Failed to remove folder.",
+    },
+    mutationFn: async (
+      request: RemoveProjectSourceFolderRequest,
+    ): Promise<void> => {
+      await sdk.projects.sources.experimental_folders.remove(request);
+    },
+    onSuccess: (_data, variables) => {
+      invalidateProjectSourceQueries({
+        projectId: variables.projectId,
+        queryClient,
+      });
+    },
+  });
+}

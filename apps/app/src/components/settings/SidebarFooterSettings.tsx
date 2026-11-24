@@ -6,7 +6,7 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { Button } from "@bb/shared-ui/button";
 import { Switch } from "@bb/shared-ui/switch";
-import { SettingsWithControl } from "@/components/ui/settings-section";
+import { SettingsWithControl } from "@bb/shared-ui/settings-section";
 import { useReorderDnd } from "@bb/shared-ui/use-reorder-dnd";
 import { useSidebarSortable } from "@bb/shared-ui/sortable-motion";
 import {

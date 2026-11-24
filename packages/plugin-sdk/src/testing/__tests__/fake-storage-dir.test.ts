@@ -127,6 +127,28 @@ describe("fake plugin host storage directory", { timeout: 30_000 }, () => {
     expect(leftoverHostDirs(run.tmp)).toEqual([]);
   });
 
+  it("puts experimental_directory() in the host dir and removes it with the host", async () => {
+    const run = await runChild(`
+      const { existsSync, writeFileSync } = await import("node:fs");
+      const host = createFakePluginHost();
+      const files = host.bb.storage.experimental_directory();
+      writeFileSync(join(files, "note.txt"), "x");
+      host.bb.storage.database();
+      console.log("roots:" + roots().length + " hosts:" + hostDirs().length);
+      console.log("under-host:" + (files === join(hostDirs()[0], "files")));
+      await host.harness.dispose();
+      console.log("files:" + existsSync(files) + " roots:" + roots().length);
+    `);
+    expect(run.stderr).toBe("");
+    expect(run.lines).toEqual([
+      "roots:1 hosts:1",
+      "under-host:true",
+      "files:false roots:0",
+    ]);
+    expect(run.code).toBe(0);
+    expect(leftoverHostDirs(run.tmp)).toEqual([]);
+  });
+
   it("removes the root when its last host is disposed, and adds one exit listener per process", async () => {
     const run = await runChild(`
       const exitListeners = process.listenerCount("exit");

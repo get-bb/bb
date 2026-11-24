@@ -614,6 +614,15 @@
     "typecheck": {
       "dependsOn": ["topo"]
     },
+    "@bb/db#typecheck": {
+      "dependsOn": ["topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/plugins/account-pool/src/**",
+        "$TURBO_ROOT$/plugins/automations/src/**",
+        "$TURBO_ROOT$/plugins/workflows/src/**"
+      ]
+    },
     "@bb/app#typecheck": {
       "dependsOn": ["topo"],
       "inputs": [
@@ -1524,6 +1533,21 @@
         "@get-bb/plugin-sdk#build",
         "topo"
       ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--server-switcher#typecheck": {
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "topo"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
+      ]
+    },
+    "bb-plugin-bb--server-switcher#test": {
+      "env": ["VITEST_MAX_WORKERS"],
+      "dependsOn": ["@get-bb/plugin-sdk#build", "topo"],
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"

@@ -27,13 +27,15 @@ const autoDenySessionOptions = {
 let harness: ReturnType<typeof createBridgeJsonRpcTestHarness>;
 let workspaceDir: string;
 let requestLogPath: string;
+let launchLogPath: string;
 let scriptPath: string;
 
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-signature-ws-"));
   requestLogPath = join(workspaceDir, "requests.jsonl");
+  launchLogPath = join(workspaceDir, "launches.jsonl");
   scriptPath = join(workspaceDir, "script.json");
-  writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath, launchLogPath }));
   stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
@@ -83,7 +85,10 @@ it("keeps the constructed session for a turn whose options carry no envVars", as
 }, 30_000);
 
 it("rebuilds the session only when a turn changes or removes an env var", async () => {
-  const original = { BB_TEST_SECRET: "original", BB_TEST_REMOVED: "gone" };
+  const original = {
+    CODEX_SIGNATURE_TEST_SECRET: "original",
+    CODEX_SIGNATURE_TEST_REMOVED: "gone",
+  };
   harness.sendRequest(1, "thread/start", {
     threadId: THREAD_ID,
     cwd: workspaceDir,
@@ -96,10 +101,16 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
     .parse(started.result);
 
   const turnEnvVars: Record<string, string>[] = [
-    { BB_TEST_REMOVED: "gone", BB_TEST_SECRET: "original" },
-    { BB_TEST_SECRET: "rotated", BB_TEST_REMOVED: "gone" },
-    { BB_TEST_SECRET: "rotated" },
-    { BB_TEST_SECRET: "rotated" },
+    {
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
+      CODEX_SIGNATURE_TEST_SECRET: "original",
+    },
+    {
+      CODEX_SIGNATURE_TEST_SECRET: "rotated",
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
+    },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
   ];
   const replacementsAfterTurn: number[] = [];
   for (const [index, envVars] of turnEnvVars.entries()) {
@@ -120,27 +131,159 @@ it("rebuilds the session only when a turn changes or removes an env var", async 
   }
 
   expect(replacementsAfterTurn).toEqual([0, 1, 2, 2]);
-  const resumeConfigs = recordedRequests()
-    .filter((request) => request.method === "thread/resume")
-    .map((request) =>
-      z
-        .object({ config: z.record(z.string(), z.unknown()) })
-        .parse(request.params),
-    )
-    .map(({ config }) =>
-      Object.fromEntries(
-        Object.entries(config).filter(([key]) =>
-          key.startsWith("shell_environment_policy.set.BB_TEST_"),
-        ),
-      ),
+  const launchedEnvs = readFileSync(launchLogPath, "utf8")
+    .trim()
+    .split("\n")
+    .map(
+      (line) =>
+        z
+          .object({ testEnv: z.record(z.string(), z.string()) })
+          .parse(JSON.parse(line)).testEnv,
     );
-  expect(resumeConfigs).toEqual([
+  expect(launchedEnvs).toEqual([
+    original,
     {
-      "shell_environment_policy.set.BB_TEST_SECRET": "rotated",
-      "shell_environment_policy.set.BB_TEST_REMOVED": "gone",
+      CODEX_SIGNATURE_TEST_SECRET: "rotated",
+      CODEX_SIGNATURE_TEST_REMOVED: "gone",
     },
-    { "shell_environment_policy.set.BB_TEST_SECRET": "rotated" },
+    { CODEX_SIGNATURE_TEST_SECRET: "rotated" },
   ]);
+  const sessionConfigs = recordedRequests()
+    .filter(
+      (request) =>
+        request.method === "thread/start" || request.method === "thread/resume",
+    )
+    .map(
+      (request) =>
+        z
+          .object({ config: z.record(z.string(), z.unknown()) })
+          .parse(request.params).config,
+    );
+  expect(sessionConfigs).toHaveLength(3);
+  expect(JSON.stringify(sessionConfigs)).not.toContain(
+    "CODEX_SIGNATURE_TEST_",
+  );
+}, 30_000);
+
+it("forks the session from its rollout when a writable folder is removed, and adds folders in place", async () => {
+  const storageOnly = {
+    ...autoAskSessionOptions,
+    providerOptions: { additionalWorkspaceWriteRoots: ["/data/storage"] },
+  };
+  const withFolder = {
+    ...autoAskSessionOptions,
+    providerOptions: {
+      additionalWorkspaceWriteRoots: ["/work/api", "/data/storage"],
+    },
+  };
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: storageOnly,
+  });
+  const started = await harness.waitForResponse(1);
+  const { providerThreadId } = z
+    .object({ providerThreadId: z.string() })
+    .parse(started.result);
+
+  const replacementsAfterTurn: number[] = [];
+  for (const [index, options] of [
+    withFolder,
+    withFolder,
+    storageOnly,
+    storageOnly,
+  ].entries()) {
+    const id = index + 2;
+    harness.sendRequest(id, "turn/start", {
+      threadId: THREAD_ID,
+      providerThreadId,
+      clientRequestId: `creq_rtswapxxx${id}`,
+      input: [{ type: "text", text: "say hello", mentions: [] }],
+      options,
+    });
+    expect((await harness.waitForResponse(id)).error).toBeUndefined();
+    replacementsAfterTurn.push(
+      harness.messages.filter(
+        (message) => message.method === "session/replaced",
+      ).length,
+    );
+  }
+
+  expect(replacementsAfterTurn).toEqual([0, 0, 1, 1]);
+  const requests = recordedRequests();
+  expect(
+    requests.filter((request) => request.method === "thread/resume"),
+  ).toEqual([]);
+  const forks = requests.filter((request) => request.method === "thread/fork");
+  expect(forks).toHaveLength(1);
+  expect(
+    z
+      .object({ config: z.record(z.string(), z.unknown()) })
+      .parse(forks[0]?.params).config["sandbox_workspace_write.writable_roots"],
+  ).not.toContain("/work/api");
+  expect(
+    requests.filter((request) => request.method === "turn/start").at(1)?.params,
+  ).toMatchObject({
+    sandboxPolicy: { writableRoots: expect.arrayContaining(["/work/api"]) },
+  });
+}, 30_000);
+
+it.each([
+  {
+    name: "forks before the first turn when Codex restores a folder bb no longer grants",
+    restoredRoots: ["/work/api", "/data/storage"],
+    forkedRoots: [["/data/storage"]],
+  },
+  {
+    name: "keeps the resumed session when Codex restores only granted folders",
+    restoredRoots: ["/data/storage"],
+    forkedRoots: [],
+  },
+])("$name", async ({ restoredRoots, forkedRoots }) => {
+  writeFileSync(
+    scriptPath,
+    JSON.stringify({
+      requestLogPath,
+      resumedSandbox: { type: "workspaceWrite", writableRoots: restoredRoots },
+    }),
+  );
+  const storageOnly = {
+    ...autoAskSessionOptions,
+    providerOptions: { additionalWorkspaceWriteRoots: ["/data/storage"] },
+  };
+  harness.sendRequest(1, "thread/resume", {
+    threadId: THREAD_ID,
+    providerThreadId: "codex-persisted-thread",
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: storageOnly,
+  });
+  expect((await harness.waitForResponse(1)).error).toBeUndefined();
+
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId: "codex-persisted-thread",
+    clientRequestId: "creq_rstrdrts22",
+    input: [{ type: "text", text: "say hello", mentions: [] }],
+    options: storageOnly,
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+
+  const forks = recordedRequests().filter(
+    (request) => request.method === "thread/fork",
+  );
+  expect(
+    forks.map(
+      (fork) =>
+        z
+          .object({
+            excludeTurns: z.literal(true),
+            config: z.record(z.string(), z.unknown()),
+          })
+          .parse(fork.params).config["sandbox_workspace_write.writable_roots"],
+    ),
+  ).toEqual(forkedRoots);
 }, 30_000);
 
 it("keeps an auto-reviewed session when only escalation intent changes", async () => {

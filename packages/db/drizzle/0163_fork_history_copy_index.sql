@@ -1,0 +1,1 @@
+CREATE INDEX `threads_fork_history_copy_idx` ON `threads` (`id`) WHERE (CASE WHEN json_valid("threads"."startup_context") THEN json_extract("threads"."startup_context", '$.historyCopy') END) IS NOT NULL;

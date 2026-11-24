@@ -27,11 +27,11 @@ import {
   ThreadContextCardProvider,
   resolveThreadContextCardLayout,
   useThreadContextCardTranscriptCenteredMinWidth,
-  useThreadContextKind,
   WithoutThreadContextCard,
   type CoreThreadContextCardRow,
   type CoreThreadContextCardSection,
 } from "./PluginThreadContextCard";
+import { useThreadContextKind } from "./thread-context-card-pane";
 
 function section(label: string) {
   return function Section({ threadId }: ExperimentalThreadContextCardProps) {

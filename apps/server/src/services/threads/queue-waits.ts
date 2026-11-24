@@ -59,7 +59,7 @@ export function createQueuedMessageAutoSendPausedError(): ApiError {
  * tell.
  */
 export interface SettleQueueRowArgs {
-  row: QueuedThreadMessageRow;
+  rows: readonly QueuedThreadMessageRow[];
 }
 
 /** The message a queued row will carry, as the queueing site supplies it. */
@@ -78,6 +78,8 @@ export interface QueuedDispatchMessage {
   /** Non-null only when core is queueing one of its own system notices. */
   systemNotice: QueuedMessageSystemNotice | null;
   deliveryMode: QueuedMessageDeliveryMode;
+  executionInputSources: QueuedThreadMessageRow["executionInputSources"];
+  compactFirst: boolean;
 }
 
 export interface RecordQueuedMessageWaitArgs {
@@ -86,12 +88,13 @@ export interface RecordQueuedMessageWaitArgs {
   placement: "back" | "front";
   waitingOn: QueuedMessageWaitingOn;
   /**
-   * The row's scheduled instant. Passed every time the wait is written rather
-   * than left alone, because writing a wait is a fresh statement of when this
-   * row may run: a `time` wait sets it, a plugin wait with a `sendAt` sets it,
-   * and every other wait clears it by passing null.
+   * The sender's time, while it is still ahead. Passed every time the wait is
+   * written rather than left alone, because writing a wait is a fresh
+   * statement of when this row may run. Only the sender's time lives here, so
+   * whatever the row waits on, it never dispatches before it.
    */
   sendAt: number | null;
+  recheckAt: number | null;
   /**
    * Rows already claimed from the queue that this call is RETURNING rather
    * than creating. Present on every drain re-attempt; absent when an inline
@@ -119,10 +122,10 @@ export function recordQueuedMessageWait(
 ): ThreadQueuedMessage | null {
   const claimed = args.claimed ?? [];
   const leadClaim = claimed[0];
-  let row: QueuedThreadMessageRow | null;
+  let rows: QueuedThreadMessageRow[];
 
   if (leadClaim === undefined) {
-    row = deps.db.transaction(
+    const queued = deps.db.transaction(
       (tx) => {
         assertThreadHostAcceptsWork(tx, args.thread);
         const created = createQueuedThreadMessageInTransaction(tx, {
@@ -138,9 +141,12 @@ export function recordQueuedMessageWait(
           serviceTier: args.message.execution.serviceTier,
           waitingOn: args.waitingOn,
           sendAt: args.sendAt,
+          ...(args.recheckAt === null ? {} : { recheckAt: args.recheckAt }),
           payload: args.message.payload,
           systemNotice: args.message.systemNotice,
           deliveryMode: args.message.deliveryMode,
+          executionInputSources: args.message.executionInputSources,
+          compactFirst: args.message.compactFirst,
         });
         return args.placement === "front"
           ? moveQueuedThreadMessageToFrontInTransaction(tx, created)
@@ -148,8 +154,9 @@ export function recordQueuedMessageWait(
       },
       { behavior: "immediate" },
     );
+    rows = [queued];
   } else {
-    row = requeueClaimedQueuedThreadMessages(deps.db, deps.hub, {
+    rows = requeueClaimedQueuedThreadMessages(deps.db, deps.hub, {
       claims: claimed.map((claim) => ({
         id: claim.id,
         claimToken: claim.claimToken,
@@ -157,16 +164,19 @@ export function recordQueuedMessageWait(
       threadId: args.thread.id,
       waitingOn: args.waitingOn,
       sendAt: args.sendAt,
+      recheckAt: args.recheckAt,
+      compactFirstDone: !args.message.compactFirst,
     });
   }
 
-  if (row === null) {
+  const entries = rows.map(toThreadQueuedMessage);
+  const entry = entries[0];
+  if (entry === undefined) {
     // The claim no longer holds: the row was deleted under the drain, or a
     // stale-claim sweep reclaimed it. Either way there is no row left to queue.
     return null;
   }
-  const entry = toThreadQueuedMessage(row);
-  emitPluginMessageQueued(entry);
+  for (const queued of entries) emitPluginMessageQueued(queued);
   deps.hub.notifyThread(args.thread.id, ["queue-changed"]);
   return entry;
 }
@@ -177,7 +187,9 @@ export function recordQueuedMessageWait(
  * the row leave the queue rather than a row that is about to.
  */
 export function settleQueueRowDispatched(args: SettleQueueRowArgs): void {
-  emitPluginMessageDispatched(toThreadQueuedMessage(args.row));
+  for (const row of args.rows) {
+    emitPluginMessageDispatched(toThreadQueuedMessage(row));
+  }
 }
 
 /**

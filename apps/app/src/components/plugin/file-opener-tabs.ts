@@ -5,10 +5,11 @@ import {
   type PluginPanelFixedPanelTab,
   type SecondaryFileFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
-import type { FileOpenerPreferenceMap } from "@/lib/file-opener-preference";
+import type { ExclusiveBootState } from "@/lib/plugin-replacement-preference";
 import {
   resolveFileOpenerReplacement,
   type FileOpenerOverride,
+  type FileOpenerPreferenceMap,
 } from "@/lib/plugin-slot-resolvers";
 import type { PluginFileOpenerSlot } from "@/lib/plugin-slots";
 import type { OpenSecondaryPanelTabRequest } from "@/components/secondary-panel/useThreadFileTabs";
@@ -140,6 +141,7 @@ export function createFileOpenerOriginalTab(
 interface CreateFileOpenerTabForRequestArgs {
   fileOpeners: readonly PluginFileOpenerSlot[];
   preference: FileOpenerPreferenceMap;
+  boot: ExclusiveBootState;
   projectHostId?: string | null;
   projectId: string | null;
   request: OpenSecondaryPanelTabRequest;
@@ -149,6 +151,7 @@ interface CreateFileOpenerTabForRequestArgs {
 }
 
 export function createFileOpenerTabForRequest({
+  boot,
   fileOpeners,
   preference,
   projectHostId,
@@ -181,7 +184,8 @@ export function createFileOpenerTabForRequest({
       : file;
   const resolved = resolveFileOpenerReplacement({
     registrations: fileOpeners,
-    preference,
+    picks: preference,
+    boot,
     path: routedFile.path,
     ...(viewer !== undefined ? { override: viewer } : {}),
   });
@@ -197,7 +201,7 @@ function ownerRequestForOpenRequest({
   threadId,
 }: Omit<
   CreateFileOpenerTabForRequestArgs,
-  "fileOpeners" | "preference"
+  "boot" | "fileOpeners" | "preference"
 >): ThreadTabFileOpenerOwner | null {
   switch (request.kind) {
     case "workspace-file-preview": {

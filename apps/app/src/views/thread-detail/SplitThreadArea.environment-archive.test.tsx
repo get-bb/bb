@@ -27,7 +27,7 @@ import {
   makeProjectWithThreadsResponse,
   makeSidebarBootstrapResponse,
 } from "@/test/fixtures/projects";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import type { SplitLayout } from "@/lib/split-layout";
 import { resetThreadActionRegistryForTest } from "@/lib/thread-actions/thread-action-registry";
@@ -177,7 +177,7 @@ it("keeps an unrelated split pane open and focused when an environment is archiv
       <QueryClientProvider client={queryClient}>
         <MemoryRouter
           initialEntries={[
-            getThreadRoutePath({
+            getThreadLocationPath({
               projectId: PERSONAL_PROJECT_ID,
               threadId: "thr-env",
             }),
@@ -205,7 +205,7 @@ it("keeps an unrelated split pane open and focused when an environment is archiv
   unsubscribe();
 
   expect(screen.getByTestId("location").textContent).toBe(
-    getThreadRoutePath({
+    getThreadLocationPath({
       projectId: PERSONAL_PROJECT_ID,
       threadId: "thr-other",
     }),

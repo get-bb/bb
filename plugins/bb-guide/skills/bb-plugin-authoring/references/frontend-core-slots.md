@@ -67,7 +67,20 @@ Slot props contracts (versioned, additive-only):
   form for running, needs-configuration, and degraded plugins. Registration:
   `{ id, title?, description?, component }`; `title` is an optional host-rendered
   section heading and `description` is optional supporting copy rendered with
-  that heading. Use the existing hooks (`useRpc`, `useRealtime`,
+  that heading; put your heading there instead of your own `h3`. Build the
+  body from `npx shadcn add @bb/settings-section`, the primitives bb's own
+  settings pages use: `SettingsList` is the settings card (optional
+  `title`/`description` sub-heading); each `SettingsListItem` takes `title`,
+  `meta` (short facts joined with a middot), `badge`, `description`,
+  `leading` (radio, checkbox, icon), a trailing `control` and an `error`
+  line, and nests child items for per-machine or per-account overrides
+  (show an inherited value in the control, e.g. `Project (2)`).
+  `SettingsListMessage` covers loading, empty and load-error rows, and
+  `SettingsListAction` an "Add …" row at the end of a nested group. Pass
+  `dividers={false}` when items nest, so the nested hairline carries the
+  grouping. For a value picker in a row, put `SETTINGS_INLINE_SELECT_CLASS`
+  on the `SelectTrigger` and `align="end"` on its `SelectContent`. Use the
+  existing hooks (`useRpc`, `useRealtime`,
   `useRealtimeConnectionState`, `useSettings`, `useBbNavigate`, `useBbContext`)
   for data. Enabled plugins appear in the
   settings sidebar when they declare settings descriptors OR register
@@ -230,7 +243,7 @@ onChange }` — the control the New Thread environment picker renders beside
   Experimental: see `docs/api_to_audit.md`.
 - `sidebarFooterAction` → compatibility API for a host-rendered footer action.
   Registration remains `{ id, title, icon, run }`, and `run` still receives
-  `{ openSettings }` plus the
+  `{ openSettings }` (the same as `navigate.experimental_toSettings()`) plus the
   [callback context](frontend-hooks-and-ui.md#callback-context). New plugins should use
   `app.experimental_sidebarFooter.register({ kind: "action", ... })` so actions
   and disclosures share one surface.
@@ -243,7 +256,8 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   navigation is active. Read items and host actions
   with `experimental_useSidebarNavigation()`. Exclusive; see
   frontend-sidebar-navigation.md. Experimental: see `docs/api_to_audit.md`.
-- `experimental_threadList`, `experimental_threadRowMetadata`,
+- `experimental_threadList` is covered in frontend-thread-list.md.
+- `experimental_threadRowMetadata`,
   `experimental_threadInfoRow`, `experimental_threadInfoSection`,
   `experimental_threadContextCardRow`, `experimental_threadContextCardSection`,
   `experimental_threadAction` (menu entries and header buttons), and
@@ -252,9 +266,9 @@ experimental_Original }` — draws the sidebar navigation. Registration:
   frontend-thread-header-row.md.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor
   for file extensions: `{ id, title, extensions: ["md"], component }`.
-  Matching files use the first applicable opener in deterministic slot order
-  by default. Users can pin BB's preview or a specific opener per extension
-  under Settings → "File openers", and
+  Exclusive per extension (see exclusive-slots.md):
+  users pick BB's preview or a specific opener per extension in
+  `fileOpener.byExtension` (Settings → Files → File openers), and
   right-clicking a file link in rendered markdown offers a one-off
   "Open with …" choice; matching files opened in the right panel then
   render your component in a plugin tab instead of the built-in preview —

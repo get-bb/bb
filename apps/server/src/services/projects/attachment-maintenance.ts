@@ -1,15 +1,13 @@
-import { and, asc, eq, gt, isNotNull, notInArray } from "drizzle-orm";
 import {
-  acquireProjectAttachmentOwnership,
   claimProjectAttachments,
+  commitAttachmentBackfillStep,
+  deleteClaimedProjectAttachment,
   ensureProjectAttachmentBackfill,
   getProjectAttachment,
+  nextCompletedProjectAttachmentBackfill,
   nextProjectAttachmentBackfill,
-  projectAttachmentBackfills,
-  projectAttachments,
   readAttachmentBackfillInput,
   startAttachmentBackfillPhase,
-  threads,
   updateAttachmentBackfill,
   type DbConnection,
 } from "@bb/db";
@@ -151,26 +149,7 @@ async function advanceProjectAttachmentBackfill(
           projectId,
           step.paths,
         );
-      deps.db.transaction(
-        (tx) => {
-          if (
-            step.threadId &&
-            tx
-              .select({ id: threads.id })
-              .from(threads)
-              .where(eq(threads.id, step.threadId))
-              .get()
-          )
-            acquireProjectAttachmentOwnership(
-              tx,
-              step.threadId,
-              step.paths,
-              "best-effort",
-            );
-          updateAttachmentBackfill(tx, step.next);
-        },
-        { behavior: "immediate" },
-      );
+      commitAttachmentBackfillStep(deps.db, step);
       state = step.next;
     } else break;
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -206,15 +185,7 @@ export async function pruneProjectAttachments(
     for (const attachment of claimProjectAttachments(deps.db, projectId, now)) {
       try {
         await deleteInventoriedAttachmentFiles(deps.config.dataDir, attachment);
-        deps.db
-          .delete(projectAttachments)
-          .where(
-            and(
-              eq(projectAttachments.id, attachment.id),
-              isNotNull(projectAttachments.deletionClaimedAt),
-            ),
-          )
-          .run();
+        deleteClaimedProjectAttachment(deps.db, attachment.id);
         reclaimedCount += 1;
         reclaimedBytes += attachment.sizeBytes;
       } catch (error) {
@@ -251,25 +222,12 @@ export function projectAttachmentPruneSweep(
     name: "project-attachment-orphan-prune",
     concurrency: 1,
     list: ({ excludedKeys }) => {
-      const row = deps.db
-        .select({ id: projectAttachmentBackfills.projectId })
-        .from(projectAttachmentBackfills)
-        .where(
-          and(
-            eq(projectAttachmentBackfills.phase, "done"),
-            gt(projectAttachmentBackfills.projectId, maintenance.pruneCursor),
-            excludedKeys.size === 0
-              ? undefined
-              : notInArray(projectAttachmentBackfills.projectId, [
-                  ...excludedKeys,
-                ]),
-          ),
-        )
-        .orderBy(asc(projectAttachmentBackfills.projectId))
-        .limit(1)
-        .get();
-      maintenance.pruneCursor = row?.id ?? "";
-      return row === undefined ? [] : [row.id];
+      const projectId = nextCompletedProjectAttachmentBackfill(deps.db, {
+        afterProjectId: maintenance.pruneCursor,
+        excludedProjectIds: excludedKeys,
+      });
+      maintenance.pruneCursor = projectId ?? "";
+      return projectId === null ? [] : [projectId];
     },
     key: (projectId) => projectId,
     process: async (projectId) => {

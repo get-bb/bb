@@ -36,6 +36,7 @@ describe("parsePageToShellMessage", () => {
       { type: "badge", count: 0 },
       { type: "open-external", url: "https://example.com/docs" },
       { type: "open-native", screen: "device-settings" },
+      { type: "open-native", screen: "add-server" },
       { type: "switch-server", id: "profile-2" },
       {
         type: "request",

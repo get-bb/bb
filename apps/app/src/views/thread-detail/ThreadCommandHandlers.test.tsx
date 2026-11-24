@@ -3,6 +3,7 @@
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
+import { createStore, Provider } from "jotai";
 import type { Thread } from "@bb/domain";
 import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
 import { defaultAppSettings } from "@bb/domain";
@@ -17,10 +18,11 @@ import {
   resetThreadActionRegistryForTest,
 } from "@/lib/thread-actions/thread-action-registry";
 import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler";
+import { threadRequestsAtom } from "@/lib/thread-requests";
 
-const mocks = vi.hoisted(() => ({
-  requestArchiveThreads: vi.fn<(threads: readonly Thread[]) => void>(),
-  requestDeleteThreads: vi.fn(),
+const threadRequests = vi.hoisted(() => ({
+  requestArchive: vi.fn(async (_threadIds: readonly string[]) => {}),
+  requestDelete: vi.fn(async (_threadIds: readonly string[]) => {}),
 }));
 const sdkThreads = vi.hoisted(() => ({
   pin: vi.fn(),
@@ -58,10 +60,6 @@ const testState = vi.hoisted(() => {
 });
 
 vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
-
-vi.mock("@/components/thread/ThreadActionsProvider", () => ({
-  useThreadActions: () => mocks,
-}));
 
 vi.mock("@/hooks/queries/system-queries", () => ({
   useSystemConfig: () => ({
@@ -123,34 +121,36 @@ function SplitHandlers({
   }
   return (
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter>
-        <ThreadActionCollectors
-          coreRegistrations={CORE_THREAD_ACTIONS}
-          requestRename={() => {}}
-        />
-        <AppCommandProvider>
-          <PaneContext.Provider
-            value={paneContext(
-              "pane-first",
-              focusedThreadId === firstPaneThread.id,
-            )}
-          >
-            <PaneThreadActionCommandHandler
-              thread={toThreadActionTarget(firstPaneThread, null)}
-            />
-          </PaneContext.Provider>
-          <PaneContext.Provider
-            value={paneContext(
-              "pane-second",
-              focusedThreadId === secondThread.id,
-            )}
-          >
-            <PaneThreadActionCommandHandler
-              thread={toThreadActionTarget(secondThread, null)}
-            />
-          </PaneContext.Provider>
-        </AppCommandProvider>
-      </MemoryRouter>
+      <Provider store={store}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={CORE_THREAD_ACTIONS}
+            requestRename={() => {}}
+          />
+          <AppCommandProvider>
+            <PaneContext.Provider
+              value={paneContext(
+                "pane-first",
+                focusedThreadId === firstPaneThread.id,
+              )}
+            >
+              <PaneThreadActionCommandHandler
+                thread={toThreadActionTarget(firstPaneThread, null)}
+              />
+            </PaneContext.Provider>
+            <PaneContext.Provider
+              value={paneContext(
+                "pane-second",
+                focusedThreadId === secondThread.id,
+              )}
+            >
+              <PaneThreadActionCommandHandler
+                thread={toThreadActionTarget(secondThread, null)}
+              />
+            </PaneContext.Provider>
+          </AppCommandProvider>
+        </MemoryRouter>
+      </Provider>
     </QueryClientProvider>
   );
 }
@@ -169,9 +169,9 @@ const PANE_COMMANDS = [
     command: "thread.archive",
     letter: "A",
     targets: () =>
-      mocks.requestArchiveThreads.mock.calls.flatMap(([threads]) =>
-        threads.map((thread) => thread.id),
-      ),
+      threadRequests.requestArchive.mock.calls.flatMap(([threadIds]) => [
+        ...threadIds,
+      ]),
   },
   {
     command: "thread.pin",
@@ -186,7 +186,11 @@ const PANE_COMMANDS = [
   },
 ] as const;
 
+let store: ReturnType<typeof createStore>;
+
 beforeEach(() => {
+  store = createStore();
+  store.set(threadRequestsAtom, threadRequests);
   sdkThreads.pin.mockImplementation(async ({ threadId }) => ({
     ...makeThread(threadId, threadId),
     pinnedAt: 9,
@@ -244,6 +248,6 @@ describe("pane thread action command handler", () => {
     pressShortcut("A");
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mocks.requestArchiveThreads).not.toHaveBeenCalled();
+    expect(threadRequests.requestArchive).not.toHaveBeenCalled();
   });
 });

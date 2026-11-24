@@ -52,7 +52,7 @@ async function rpcValidationWarning(
     );
     expect(response.status).toBe(400);
     return warn.mock.calls
-      .map(([message]) => String(message))
+      .map((args) => String(args.find((arg) => typeof arg === "string")))
       .find((message) => message.includes("rpc inspect failed:"));
   } finally {
     warn.mockRestore();

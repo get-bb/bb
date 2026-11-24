@@ -21,6 +21,7 @@ import type {
   PluginHomepageSectionRegistration,
   PluginCommandRegistration,
   ExperimentalComposerCommandRegistration,
+  PluginComposerScope,
   PluginMessageActionRegistration,
   ExperimentalMessageActionSurface,
   ExperimentalMessageMetadataRegistration,
@@ -39,6 +40,8 @@ import type {
   ExperimentalThreadInfoSectionRegistration,
   ExperimentalThreadHeaderRowRegistration,
   ExperimentalThreadHeaderTitleRegistration,
+  ExperimentalThreadRailRegistration,
+  ExperimentalThreadRailOutlineRegistration,
   ExperimentalThreadContextCardRowRegistration,
   ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
@@ -275,6 +278,9 @@ export type CollectedPluginProviderIconRegistration = Omit<
   providerKind: PluginProviderIconRegistration["providerKind"] | "all";
 };
 
+const BARE_KEY_SHORTCUT_MESSAGE =
+  'Use Command, Control, or Alt with a key, or a function key; bare keys need experimental_keyScope: "pluginPage"';
+
 function createCommandShortcutSchema() {
   return z
     .object({
@@ -300,21 +306,28 @@ function createCommandShortcutSchema() {
       alt: z.boolean().default(false),
       shift: z.boolean().default(false),
     })
-    .strict()
-    .refine(
-      (shortcut) =>
-        shortcut.mod ||
-        shortcut.meta ||
-        shortcut.control ||
-        shortcut.alt ||
-        /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key),
-      "Use Command, Control, or Alt with a key, or a function key",
-    );
+    .strict();
+}
+
+function isBareKeyShortcut(
+  shortcut: z.infer<ReturnType<typeof createCommandShortcutSchema>>,
+): boolean {
+  return !(
+    shortcut.mod ||
+    shortcut.meta ||
+    shortcut.control ||
+    shortcut.alt ||
+    /^F(?:[1-9]|1[0-9]|2[0-4])$/u.test(shortcut.key)
+  );
 }
 
 type CollectedCommandShortcut = z.infer<
   ReturnType<typeof createCommandShortcutSchema>
 > | null;
+
+const COMPOSER_COMMAND_SCOPES: ReadonlySet<unknown> = new Set<
+  PluginComposerScope["kind"]
+>(["thread", "queued-message", "new-thread"]);
 
 export type CollectedPluginCommandRegistration =
   | (Omit<PluginCommandRegistration, "defaultShortcut"> & {
@@ -383,6 +396,8 @@ export interface CollectedPluginAppRegistrations {
   threadInfoSections: ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows: ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles: ExperimentalThreadHeaderTitleRegistration[];
+  threadRails: ExperimentalThreadRailRegistration[];
+  threadRailOutlines: ExperimentalThreadRailOutlineRegistration[];
   threadContextCardRows: ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections: CollectedThreadContextCardSectionRegistration[];
   threadActions: PluginThreadActionRegistration<unknown>[];
@@ -529,6 +544,8 @@ export function collectPluginAppRegistrations(
     threadInfoSections: [],
     threadHeaderRows: [],
     threadHeaderTitles: [],
+    threadRails: [],
+    threadRailOutlines: [],
     threadContextCardRows: [],
     threadContextCardSections: [],
     threadActions: [],
@@ -572,6 +589,8 @@ export function collectPluginAppRegistrations(
     threadInfoSection: new Set<string>(),
     threadHeaderRow: new Set<string>(),
     threadHeaderTitle: new Set<string>(),
+    threadRail: new Set<string>(),
+    threadRailOutline: new Set<string>(),
     threadContextCardRow: new Set<string>(),
     threadContextCardSection: new Set<string>(),
     threadAction: new Set<string>(),
@@ -667,25 +686,40 @@ export function collectPluginAppRegistrations(
     registration:
       | PluginCommandRegistration
       | ExperimentalComposerCommandRegistration,
+    keyScope: PluginCommandRegistration["experimental_keyScope"],
   ) {
     const id = requireSlotId(kind, registration?.id);
     requireUniqueId(kind, seenIds.command, id);
     if (typeof registration.run !== "function") {
       throw new Error(`${kind}: "run" must be a function`);
     }
+    const defaultShortcut =
+      registration.defaultShortcut === undefined
+        ? null
+        : commandShortcutSchema.parse(registration.defaultShortcut);
+    if (
+      defaultShortcut !== null &&
+      keyScope !== "pluginPage" &&
+      isBareKeyShortcut(defaultShortcut)
+    ) {
+      throw new Error(`${kind}: ${BARE_KEY_SHORTCUT_MESSAGE}`);
+    }
     return {
       id,
-      defaultShortcut:
-        registration.defaultShortcut === undefined
-          ? null
-          : commandShortcutSchema.parse(registration.defaultShortcut),
+      defaultShortcut,
       title: requireNonEmptyString(kind, "title", registration.title),
     };
   }
 
   function registerCommand(registration: PluginCommandRegistration): void {
     const kind = "commands.register";
-    const command = collectCommand(kind, registration);
+    const keyScope = registration?.experimental_keyScope;
+    if (keyScope !== undefined && keyScope !== "pluginPage") {
+      throw new Error(
+        `${kind}: "experimental_keyScope" must be "pluginPage" or omitted`,
+      );
+    }
+    const command = collectCommand(kind, registration, keyScope);
     if (
       registration.isAvailable !== undefined &&
       typeof registration.isAvailable !== "function"
@@ -695,6 +729,7 @@ export function collectPluginAppRegistrations(
     collected.commandPaletteActions.push({
       target: "app",
       ...command,
+      ...(keyScope !== undefined ? { experimental_keyScope: keyScope } : {}),
       ...(registration.isAvailable !== undefined
         ? { isAvailable: registration.isAvailable }
         : {}),
@@ -705,9 +740,34 @@ export function collectPluginAppRegistrations(
   function registerComposerCommand(
     registration: ExperimentalComposerCommandRegistration,
   ): void {
+    const kind = "composer.experimental_registerCommand";
+    const command = collectCommand(kind, registration, undefined);
+    const scopes = registration.scopes;
+    if (scopes !== undefined) {
+      if (!Array.isArray(scopes)) {
+        throw new Error(`${kind}: "scopes" must be an array when set`);
+      }
+      for (const scope of scopes) {
+        if (!COMPOSER_COMMAND_SCOPES.has(scope)) {
+          throw new Error(
+            `${kind}: invalid scope kind ${JSON.stringify(scope)}`,
+          );
+        }
+      }
+    }
+    if (
+      registration.isAvailable !== undefined &&
+      typeof registration.isAvailable !== "function"
+    ) {
+      throw new Error(`${kind}: "isAvailable" must be a function`);
+    }
     collected.commandPaletteActions.push({
       target: "composer",
-      ...collectCommand("composer.experimental_registerCommand", registration),
+      ...command,
+      ...(scopes !== undefined ? { scopes: [...scopes] } : {}),
+      ...(registration.isAvailable !== undefined
+        ? { isAvailable: registration.isAvailable }
+        : {}),
       run: registration.run,
     });
   }
@@ -1110,6 +1170,25 @@ export function collectPluginAppRegistrations(
         collected.threadHeaderRows.push({
           id,
           ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadRail(registration) {
+        const kind = "slots.experimental_threadRail";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadRail, id);
+        collected.threadRails.push({
+          id,
+          ...requireOptionalOrder(kind, registration.order),
+          component: requireComponent(kind, registration.component),
+        });
+      },
+      experimental_threadRailOutline(registration) {
+        const kind = "slots.experimental_threadRailOutline";
+        const id = requireSlotId(kind, registration?.id);
+        requireUniqueId(kind, seenIds.threadRailOutline, id);
+        collected.threadRailOutlines.push({
+          id,
           component: requireComponent(kind, registration.component),
         });
       },

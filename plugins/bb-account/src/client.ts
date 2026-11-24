@@ -1,4 +1,9 @@
-import type { BbPluginApi, JsonValue, PluginLogger } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type JsonValue,
+  type PluginLogger,
+} from "@get-bb/plugin-sdk";
 import type { z } from "zod";
 import {
   ADOPT_CONNECT_CREDENTIAL_METHOD,
@@ -61,22 +66,6 @@ export interface AccountClient {
   }): Promise<AccountStatus>;
 }
 
-function httpStatusOf(error: unknown): number | null {
-  if (typeof error !== "object" || error === null || !("status" in error)) {
-    return null;
-  }
-  return typeof error.status === "number" ? error.status : null;
-}
-
-function isServerMoving(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    error.code === "server_moving"
-  );
-}
-
 export function createAccountClient(
   getSdk: () => BbPluginApi["sdk"],
 ): AccountClient {
@@ -95,9 +84,12 @@ export function createAccountClient(
         ...(signal === undefined ? {} : { signal }),
       });
     } catch (error) {
-      const status = httpStatusOf(error);
-      if ((status === 503 && !isServerMoving(error)) || status === 404) {
-        throw new AccountUnavailableError(`HTTP ${status}`);
+      if (
+        error instanceof experimental_BbHttpError &&
+        (error.code === "plugin_not_found" ||
+          error.code === "plugin_not_running")
+      ) {
+        throw new AccountUnavailableError(error.message);
       }
       throw error;
     }

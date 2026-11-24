@@ -35,3 +35,10 @@ export function parseSkillMetadata(content: string): SkillMetadata {
     };
   }
 }
+
+export function skillFrontmatterBlock(content: string): string {
+  const open = content.indexOf("---");
+  if (open === -1) return "";
+  const close = content.indexOf("\n---", open + 3);
+  return close === -1 ? content : content.slice(0, close + 4);
+}

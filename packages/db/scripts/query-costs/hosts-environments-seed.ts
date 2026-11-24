@@ -5,6 +5,10 @@ import {
   updatePreparingEnvironment,
   type EnvironmentRow,
 } from "../../src/data/environments.js";
+import {
+  finishEnvironmentHookOperation,
+  insertEnvironmentHookOperation,
+} from "../../src/data/environment-hook-operations.js";
 import { updateHost, upsertHost } from "../../src/data/hosts.js";
 import {
   ensureProjectAttachmentBackfill,
@@ -19,6 +23,7 @@ import {
   createProjectSource,
   getProjectSourceByHost,
 } from "../../src/data/project-sources.js";
+import { createProjectSourceFolder } from "../../src/data/project-source-folders.js";
 import {
   createProject,
   ensurePersonalProject,
@@ -67,8 +72,10 @@ export interface HostsEnvironmentsSeed {
   busyDefaultSourceId: string;
   busyExtraSourceId: string;
   busySourcePath: string;
+  busyFolderId: string;
   readyEnvironmentId: string;
   readyEnvironmentPath: string;
+  readyEnvironmentSetupOperationId: string;
   bindTargetPath: string;
   sharedEnvironmentId: string;
   ownedEnvironmentThreadId: string;
@@ -496,7 +503,7 @@ function insertEnvironment(
       ...fields,
       ownerThreadId: thread.id,
       attempt: 1,
-      environmentProviderInstanceKey: `${thread.id}-1`,
+      environmentProviderInstanceKey: () => `${thread.id}-1`,
     });
     updateThread(db, noopNotifier, thread.id, {
       environmentId: environment.id,
@@ -530,6 +537,35 @@ function insertEnvironment(
   return { environment, threadId: thread.id };
 }
 
+function seedHookOperations(
+  db: DbConnection,
+  environment: EnvironmentRow,
+  finishedAt: number,
+): string | null {
+  if (
+    environment.path === null ||
+    environment.environmentProviderInstanceKey === null
+  ) {
+    return null;
+  }
+  const kinds =
+    environment.status === "destroyed"
+      ? (["setup", "teardown"] as const)
+      : (["setup"] as const);
+  for (const kind of kinds) {
+    const id = `environment:${environment.id}:${environment.environmentProviderInstanceKey}:${kind}`;
+    insertEnvironmentHookOperation(db, {
+      id,
+      hostId: environment.hostId,
+      path: environment.path,
+      kind,
+      startedAt: finishedAt,
+    });
+    finishEnvironmentHookOperation(db, id, { finishedAt, error: null });
+  }
+  return `environment:${environment.id}:${environment.environmentProviderInstanceKey}:setup`;
+}
+
 function seedEnvironments(
   db: DbConnection,
   fixture: HistoryFixture,
@@ -544,6 +580,7 @@ function seedEnvironments(
   const loadedEnvironmentIds: string[] = [];
   let ownedEnvironmentThreadId: string | null = null;
   let readyEnvironment: EnvironmentRow | null = null;
+  let readyEnvironmentSetupOperationId: string | null = null;
   const otherProjects = projects.projectIds.slice(1);
   for (let index = 0; index < total; index += 1) {
     const projectBucket = roll();
@@ -571,6 +608,7 @@ function seedEnvironments(
       deleting,
     );
     const { environment, threadId } = insertEnvironment(db, plan);
+    const setupOperationId = seedHookOperations(db, environment, createdAt);
     if (threadId !== null) {
       const list = threadIdsByProject.get(projectId) ?? [];
       list.push(threadId);
@@ -597,6 +635,7 @@ function seedEnvironments(
       plan.providerId === WORKTREE_PROVIDER
     ) {
       readyEnvironment = environment;
+      readyEnvironmentSetupOperationId = setupOperationId;
     }
   }
   const bindTargetPath = "/Users/dev/code/bb-main";
@@ -636,13 +675,17 @@ function seedEnvironments(
       status: "creating",
       environmentProviderId: WORKTREE_PROVIDER,
       environmentProviderPluginId: WORKTREE_PLUGIN,
-      environmentProviderInstanceKey: `${thread.id}-1`,
+      environmentProviderInstanceKey: () => `${thread.id}-1`,
       providerOwnsPath: true,
       statusMessage: "Preparing Git worktree…",
     });
   }
-  if (ownedEnvironmentThreadId === null || readyEnvironment === null) {
-    throw new Error("Expected an owned and a ready environment");
+  if (
+    ownedEnvironmentThreadId === null ||
+    readyEnvironment === null ||
+    readyEnvironmentSetupOperationId === null
+  ) {
+    throw new Error("Expected an owned and a ready environment with setup");
   }
   const readyEnvironmentPath = readyEnvironment.path;
   if (readyEnvironmentPath === null) {
@@ -654,6 +697,7 @@ function seedEnvironments(
     ownedEnvironmentThreadId,
     readyEnvironmentId: readyEnvironment.id,
     readyEnvironmentPath,
+    readyEnvironmentSetupOperationId,
     bindTargetPath,
     sharedEnvironmentId: shared.id,
   };
@@ -862,6 +906,14 @@ export function seedHostsEnvironments(
       if (busyDefaultSource === null || !busyDefaultSource.isDefault) {
         throw new Error("Expected a default source for the busy project");
       }
+      const busyFolderIds = ["api", "docs", "fixtures"].map(
+        (name) =>
+          createProjectSourceFolder(db, noopNotifier, {
+            projectId: fixture.projectId,
+            projectSourceId: busyDefaultSource.id,
+            path: `/Users/dev/code/${name}`,
+          }).id,
+      );
       return {
         busyHostId: hosts.busyHostId,
         machineHostId: hosts.machineHostId,
@@ -882,8 +934,11 @@ export function seedHostsEnvironments(
         busyDefaultSourceId: busyDefaultSource.id,
         busyExtraSourceId: projects.busyExtraSourceId,
         busySourcePath: busyDefaultSource.path,
+        busyFolderId: pick(busyFolderIds, 0),
         readyEnvironmentId: environments.readyEnvironmentId,
         readyEnvironmentPath: environments.readyEnvironmentPath,
+        readyEnvironmentSetupOperationId:
+          environments.readyEnvironmentSetupOperationId,
         bindTargetPath: environments.bindTargetPath,
         sharedEnvironmentId: environments.sharedEnvironmentId,
         ownedEnvironmentThreadId: environments.ownedEnvironmentThreadId,

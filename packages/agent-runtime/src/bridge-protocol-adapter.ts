@@ -118,10 +118,14 @@ function toBridgeWireOptions(
     permissionScope,
     approvalReviewer,
     permissionEscalation,
+    additionalWorkspaceWriteRoots,
   } = options;
   const providerOptions = {
     ...staticProviderOptions,
     ...options.providerOptions,
+    ...(additionalWorkspaceWriteRoots.length > 0
+      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
+      : {}),
   };
   return {
     ...(model !== undefined ? { model } : {}),
@@ -280,6 +284,21 @@ export function createBridgeProtocolAdapter(
         case "skills/configure":
           if (!handshake.skills.configure) {
             return { kind: "noop", reason: "skills.configure not advertised" };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.skillsConfigure,
+            params: { roots: command.skillRoots },
+          };
+        case "skills/reconfigure":
+          if (
+            !handshake.skills.configure ||
+            handshake.skills.reconfigure !== true
+          ) {
+            return {
+              kind: "noop",
+              reason: "skills.reconfigure not advertised",
+            };
           }
           return {
             kind: "request",

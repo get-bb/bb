@@ -52,6 +52,7 @@ describe("createAgentRuntime input accepted events", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222222u",
       threadId: "t1",
       input: [promptTextInput({ text: "delay:500 active turn" })],
@@ -66,6 +67,7 @@ describe("createAgentRuntime input accepted events", () => {
 
     await expect(
       runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         threadId: "t1",
         expectedTurnId: turnId,
         clientRequestId: "creq_23456789ae",
@@ -109,6 +111,7 @@ describe("createAgentRuntime input accepted events", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222222v",
       threadId: "t1",
       input: [promptTextInput({ text: "delay:500 active turn" })],
@@ -123,6 +126,7 @@ describe("createAgentRuntime input accepted events", () => {
 
     await expect(
       runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222w",
         threadId: "t1",
         expectedTurnId: turnId,
@@ -161,6 +165,7 @@ describe("createAgentRuntime input accepted events", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_2345678tsa",
       threadId: "t1",
       input: [promptTextInput({ text: "delay:5000 active turn" })],
@@ -176,6 +181,7 @@ describe("createAgentRuntime input accepted events", () => {
     vi.useFakeTimers();
     try {
       const steer = runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_2345678tsb",
         threadId: "t1",
         expectedTurnId: turnId,
@@ -250,6 +256,7 @@ describe("createAgentRuntime input accepted events", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222222x",
         threadId: "t1",
         input: [promptTextInput({ text: "delay:500 active turn" })],
@@ -264,6 +271,7 @@ describe("createAgentRuntime input accepted events", () => {
 
       await expect(
         runtime.steerTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222222y",
           threadId: "t1",
           expectedTurnId: turnId,
@@ -279,6 +287,7 @@ describe("createAgentRuntime input accepted events", () => {
 
       await expect(
         runtime.steerTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222222z",
           threadId: "t1",
           expectedTurnId: turnId,
@@ -312,6 +321,7 @@ describe("createAgentRuntime input accepted events", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_22222222nm",
       threadId: "t1",
       input: [promptTextInput({ text: "delay:500 active turn" })],
@@ -325,6 +335,7 @@ describe("createAgentRuntime input accepted events", () => {
     });
 
     const result = await runtime.steerTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_22222222np",
       threadId: "t1",
       expectedTurnId: missedTurnId,

@@ -71,9 +71,6 @@ import {
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getAutomationsRoutePath,
-  getPluginConfigurationRoutePath,
-  getSettingsRoutePath,
-  getSettingsProjectRoutePath,
 } from "./lib/route-paths";
 import { AppCommandProvider } from "./components/commands/AppCommandProvider";
 import { WindowFindHost } from "./components/layout/WindowFindHost";
@@ -86,6 +83,7 @@ import { PluginInstallJobsHost } from "./components/plugin/PluginInstallJobsHost
 import { RouteLoadingSkeleton } from "./components/ui/route-loading-skeleton";
 import { ThreadTimelineLoadingSkeleton } from "./components/thread/timeline/ThreadTimelineLoadingSkeleton";
 import { trackCriticalLoad } from "./lib/split-prefetch";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const SettingsView = lazy(() =>
   import("./views/SettingsView").then((m) => ({
@@ -134,8 +132,8 @@ function LegacyProjectSettingsRedirect() {
     <NavigatePreservingLocation
       pathname={
         projectId
-          ? getSettingsProjectRoutePath(projectId)
-          : getSettingsRoutePath("projects")
+          ? getSettingsTargetPath({ projectId: projectId })
+          : getSettingsTargetPath({ section: "projects" })
       }
     />
   );
@@ -304,9 +302,7 @@ export function AppRoutes() {
             path="/settings/usage"
             element={
               <Navigate
-                to={getPluginConfigurationRoutePath({
-                  pluginId: "bb--provider-usage",
-                })}
+                to={getSettingsTargetPath({ pluginId: "bb--provider-usage" })}
                 replace
               />
             }
@@ -335,11 +331,21 @@ export function AppRoutes() {
           />
           <Route
             path={PROJECT_ARCHIVED_ROUTE_PATH}
-            element={<Navigate to={getSettingsRoutePath("archived")} replace />}
+            element={
+              <Navigate
+                to={getSettingsTargetPath({ section: "archived" })}
+                replace
+              />
+            }
           />
           <Route
             path={PROJECTLESS_ARCHIVED_ROUTE_PATH}
-            element={<Navigate to={getSettingsRoutePath("archived")} replace />}
+            element={
+              <Navigate
+                to={getSettingsTargetPath({ section: "archived" })}
+                replace
+              />
+            }
           />
           <Route
             path={LEGACY_TOOLS_AUTOMATIONS_ROUTE_PATH}

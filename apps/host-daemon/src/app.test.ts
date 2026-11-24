@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
-import { execFileSync, spawn } from "node:child_process";
-import os from "node:os";
+import { execFileSync } from "node:child_process";
 import path from "node:path";
 import type { AgentRuntime, AgentRuntimeOptions } from "@bb/agent-runtime";
 import {
@@ -19,13 +18,6 @@ import {
   type HostDaemonOnlineRpcCommand,
 } from "@bb/host-daemon-contract";
 import type { HostWatcher } from "@bb/host-watcher";
-import {
-  AGENT_WORKLOAD_NICE,
-  deprioritizeAgentWorkload,
-  readAgentCpuPriority,
-  setAgentWorkloadsLowered,
-  writeAgentCpuPriority,
-} from "@bb/process-utils";
 import { createDeferredPromise, makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -39,6 +31,7 @@ import {
   type HostDaemonApp,
 } from "./app.js";
 import type { HostDaemonLogger } from "./logger.js";
+import { ServerRouteResolver } from "./server-routes.js";
 import type {
   RuntimeManagerReapIdleProviderSessionsArgs,
   RuntimeManagerReapIdleProviderSessionsResult,
@@ -66,7 +59,6 @@ interface CreateFetchRecorderArgs {
   interactiveRequestError?: Error;
   interactiveRequestResponse?: HostDaemonInteractiveRequestResponse;
   interruptResponses?: Array<() => Response>;
-  agentCpuPriority?: boolean;
   retiredEnvironmentIds?: string[];
   endedInteractiveRequestsOnReconnect?: HostDaemonInteractiveRequestKey[];
   sessionIds?: string[];
@@ -87,6 +79,15 @@ interface HostDaemonAppFixture {
 type StartIdleProviderSessionReaperArgsForTest = Parameters<
   typeof startIdleProviderSessionReaper
 >[0];
+
+function testRoutes(): ServerRouteResolver {
+  return new ServerRouteResolver({
+    anchorUrl: "http://127.0.0.1:3334",
+    anchorHeaders: {},
+    persisted: null,
+    logger: createLogger(),
+  });
+}
 
 function createLogger() {
   return {
@@ -146,7 +147,6 @@ function createFetchRecorder(
         {
           sessionId,
           idleProviderSessionTimeoutMinutes: 30,
-          agentCpuPriority: args.agentCpuPriority ?? false,
           machineEnvironment: {
             revision: 0,
             entries: args.machineEnvironment ?? [],
@@ -155,6 +155,7 @@ function createFetchRecorder(
           leaseTimeoutMs: 90000,
           reconnectGraceMs: 90000,
           retiredEnvironmentIds: args.retiredEnvironmentIds ?? [],
+          serverRoutes: { serverId: "srv_test", routes: [] },
           endedInteractiveRequests:
             sessionOpenCount > 1
               ? (args.endedInteractiveRequestsOnReconnect ?? [])
@@ -243,7 +244,6 @@ function createOpeningWebSocket(
       onclose: null,
       onerror: null,
       send: vi.fn(),
-      sendUncompressed: vi.fn(),
       close: vi.fn(() => {
         readyState = 3;
       }),
@@ -346,6 +346,9 @@ function createFakeRuntime(): AgentRuntime {
     listOpenBackgroundWork() {
       return [];
     },
+    async reconfigureSkillRoots() {
+      return { appliedToEveryProvider: false };
+    },
     async shutdown() {},
   };
 }
@@ -413,19 +416,15 @@ async function createAppFixture(
     closeMachineAuthProxy?: () => Promise<void>;
     createWebSocket?: CreateReconnectingWebSocket;
     exitProcess?: (code: number) => void;
-    savedAgentCpuPriority?: boolean;
   } = {},
 ): Promise<HostDaemonAppFixture> {
   const dataDir = await makeTempDir("bb-host-daemon-app-test-");
-  if (options.savedAgentCpuPriority !== undefined) {
-    writeAgentCpuPriority(dataDir, options.savedAgentCpuPriority);
-  }
   const fetchRecorder = createFetchRecorder(args);
   const logger = createLogger();
   const runtimeOptions: RuntimeOptionsRef = { current: null };
   const app = await createHostDaemonApp({
     dataDir,
-    serverUrl: "http://127.0.0.1:3334",
+    routes: testRoutes(),
     hostKey: "host-key-app-test",
     hostId: "host-app-test",
     hostName: "App Test Host",
@@ -522,72 +521,6 @@ describe("createHostDaemonApp", () => {
     }
   });
 
-  it("lowers agent workloads from the last saved value before the server answers", async () => {
-    const { app } = await createAppFixture({}, { savedAgentCpuPriority: true });
-    const child = spawn(process.execPath, [
-      "-e",
-      "setInterval(() => {}, 1000)",
-    ]);
-    try {
-      deprioritizeAgentWorkload(child.pid);
-      expect(os.getPriority(child.pid)).toBe(AGENT_WORKLOAD_NICE);
-    } finally {
-      child.kill("SIGKILL");
-      setAgentWorkloadsLowered(false);
-      await app.daemon.shutdown("test", 0);
-    }
-  });
-
-  it("lowers agent workloads and saves the agent CPU priority for its launcher while the server enables it", async () => {
-    let socket: ReconnectingWebSocketLike | undefined;
-    const { app, dataDir } = await createAppFixture(
-      { agentCpuPriority: true },
-      {
-        createWebSocket: createOpeningWebSocket((created) => {
-          socket = created;
-        }),
-      },
-    );
-    const inherited = os.getPriority();
-    const child = spawn(process.execPath, [
-      "-e",
-      "setInterval(() => {}, 1000)",
-    ]);
-    try {
-      await app.daemon.start();
-      expect(readAgentCpuPriority(dataDir)).toBe(true);
-      deprioritizeAgentWorkload(child.pid);
-      expect(os.getPriority(child.pid)).toBe(AGENT_WORKLOAD_NICE);
-      if (!socket) throw new Error("Expected daemon socket");
-      socket.onmessage?.({
-        data: JSON.stringify({
-          seq: 1,
-          ack: 0,
-          message: {
-            type: "provider-session-policy.replace",
-            idleProviderSessionTimeoutMinutes: 30,
-            agentCpuPriority: false,
-          },
-        }),
-      });
-      expect(readAgentCpuPriority(dataDir)).toBe(false);
-      const later = spawn(process.execPath, [
-        "-e",
-        "setInterval(() => {}, 1000)",
-      ]);
-      try {
-        deprioritizeAgentWorkload(later.pid);
-        expect(os.getPriority(later.pid)).toBe(inherited);
-      } finally {
-        later.kill("SIGKILL");
-      }
-    } finally {
-      child.kill("SIGKILL");
-      setAgentWorkloadsLowered(false);
-      await app.daemon.shutdown("test", 0);
-    }
-  });
-
   it("acknowledges machine shutdown, cleans up, and exits", async () => {
     let socket: ReconnectingWebSocketLike | undefined;
     const exitProcess = vi.fn();
@@ -618,7 +551,7 @@ describe("createHostDaemonApp", () => {
     expect(
       vi
         .mocked(socket.send)
-        .mock.calls.map(([frame]) => JSON.parse(frame).message),
+        .mock.calls.map(([frame]) => JSON.parse(String(frame)).message),
     ).toContainEqual({ type: "machine.shutdown-ack" });
     expect(exitProcess).toHaveBeenCalledWith(0);
   });
@@ -657,7 +590,7 @@ describe("createHostDaemonApp", () => {
     }));
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-app-test",
       hostId: "host-app-test",
       hostName: "App Test Host",
@@ -764,7 +697,7 @@ describe("createHostDaemonApp", () => {
     }));
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-app-test",
       hostId: "host-app-test",
       hostName: "App Test Host",
@@ -927,7 +860,7 @@ describe("createHostDaemonApp", () => {
     };
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-app-test",
       hostId: "host-app-test",
       hostName: "App Test Host",
@@ -1296,7 +1229,7 @@ describe("createHostDaemonApp", () => {
     } satisfies HostWatcher;
     const app = await createHostDaemonApp({
       dataDir,
-      serverUrl: "http://127.0.0.1:3334",
+      routes: testRoutes(),
       hostKey: "host-key-retired-env",
       hostId: "host-retired-env",
       hostName: "Retired Environment Host",

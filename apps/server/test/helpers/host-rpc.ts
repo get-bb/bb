@@ -20,6 +20,7 @@ export const EMPTY_WORKSPACE_AGENT_CONTEXT: HostDaemonOnlineRpcResult<"host.read
     projectSkills: [],
     projectSkillsTruncated: false,
     sharedSkills: [],
+    folders: [],
   };
 
 interface ProviderModelResponse {
@@ -91,7 +92,12 @@ function buildTestFailureResponse(
     requestId: request.requestId,
     commandType: request.command.type,
     ok: false,
-    errorCode: "test_rpc_error",
+    errorCode:
+      error instanceof Error &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : "test_rpc_error",
     errorMessage: toErrorMessage(error),
   };
 }
@@ -153,7 +159,11 @@ export function registerHostRpcResponder(
     close() {},
     send(data) {
       const message = hostDaemonServerWsMessageSchema.parse(JSON.parse(data));
-      if (message.type === "provider-session-policy.replace") return;
+      if (
+        message.type === "provider-session-policy.replace" ||
+        message.type === "server-routes.replace"
+      )
+        return;
       if (
         message.type === "machine-environment.replace" &&
         args.onMachineEnvironment

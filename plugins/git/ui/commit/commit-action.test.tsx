@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
 import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -74,6 +75,7 @@ function target(
     pinnedAt: null,
     sectionId: null,
     isUnread: false,
+    isHidden: false,
     status: "idle",
     environment: { id: "env-1", path: "/work/env-1" },
     ...overrides,
@@ -92,9 +94,7 @@ function Probe({ onItem }: { onItem(item: ItemFor): void }) {
       commitThreadAction.item({
         thread,
         data,
-        sdk,
-        navigate,
-        panel,
+        ...experimental_makeActionContext({ sdk, navigate, panel }),
       }),
     );
   });

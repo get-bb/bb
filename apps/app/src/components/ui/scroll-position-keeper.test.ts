@@ -421,6 +421,35 @@ describe("ScrollPositionKeeper", () => {
     expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
   });
 
+  it("follows a scroll without input while text in the timeline is selected, as Android Chrome does when a selection handle is dragged", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const text = document.createTextNode("selected words");
+    timeline.element("row-8").append(text);
+
+    document.getSelection()?.setBaseAndExtent(text, 0, text, 8);
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 10);
+
+    expect(timeline.keeper.isAttached()).toBe(false);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop() - 10);
+    document.getSelection()?.removeAllRanges();
+  });
+
+  it("keeps the end through a scroll without input while the selection is outside the timeline", () => {
+    const timeline = createTimeline(rowsOf(10), { attached: true });
+    const outside = document.createElement("p");
+    outside.textContent = "selected words";
+    document.body.append(outside);
+    const text = outside.firstChild;
+    if (text === null) throw new Error("missing text");
+
+    document.getSelection()?.setBaseAndExtent(text, 0, text, 8);
+    timeline.layout.layoutScrollTo(timeline.layout.scrollTop - 300);
+
+    expect(timeline.keeper.isAttached()).toBe(true);
+    expect(timeline.layout.scrollTop).toBe(timeline.layout.maxScrollTop());
+    document.getSelection()?.removeAllRanges();
+  });
+
   it("follows a focus move after Tab as the reader's scroll", () => {
     const timeline = createTimeline(rowsOf(10), { attached: true });
 
@@ -907,7 +936,9 @@ describe("ScrollPositionKeeper", () => {
     vi.advanceTimersByTime(500);
     const before = timeline.topOf("row-3");
 
-    loadingStatus.dispatchEvent(new TouchEvent("touchstart", { bubbles: true }));
+    loadingStatus.dispatchEvent(
+      new TouchEvent("touchstart", { bubbles: true }),
+    );
     loadingStatus.remove();
     timeline.setRows([...rowsOf(4, 100, "older"), ...rows]);
     timeline.keeper.reconcile();

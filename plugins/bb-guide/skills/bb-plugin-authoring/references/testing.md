@@ -102,6 +102,11 @@ explicit when their exact complete shape is the assertion.
 `panel` for a command, thread action or message action called
 directly: every method declines and `getTabs()` reports a closed, empty panel
 except the ones you pass, such as `{ toggleTab: vi.fn(() => true) }`.
+`experimental_makeActionContext(overrides?)` builds the whole callback context
+(`sdk`, `navigate`, `panel`, `composer`, `threadRequests`), so a test keeps
+compiling when bb adds a member. Its defaults record calls in `context.calls`
+(`sdk` methods reject until you stub them). Spread it and add the callback's own
+fields: `run({ ...experimental_makeActionContext({ panel }), threadId: "thr-1", projectId: null })`.
 
 Use the named views: `harness.behavior` drives host inputs,
 `harness.inspection` exposes observable state, and `harness.lifecycle` owns
@@ -208,6 +213,8 @@ import {
 // loadPluginApp and renderSlot install the test runtime. The SDK looks it up
 // when a hook runs, so a static `import app from "./app"` works as well.
 const app = await loadPluginApp(() => import("./app"));
+// Pass { hasServers: true } to define the app as bb Desktop or the mobile app
+// would; experimental_hasServers() is false otherwise, as in a web browser.
 const contentScripts = await mountPluginContentScripts(app, {
   pluginId: "my-plugin",
   generation: 1,
@@ -232,6 +239,8 @@ await slot.behavior.setComposerScope({
   kind: "queued-message",
   threadId: "t1",
   queuedMessageId: "q1",
+  projectId: "p1",
+  environmentId: null,
 });
 await slot.behavior.setComposerText("queued draft");
 slot.inspection.rpcCalls;
@@ -244,8 +253,10 @@ await contentScripts.lifecycle.dispose();
 `loadPluginApp` validates registrations with the host's own rules (slot id
 patterns, settingsSection optional title, navPanel path,
 fileOpener extensions, code-fence renderer languages (exposed as
-`app.codeFenceRenderers`), and content-script ids/mount functions) and returns
-them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
+`app.codeFenceRenderers`), command shortcuts and composer-command scopes
+(`app.commands`, `app.composerCommands`; call their `isAvailable` and `run`
+with `experimental_makeActionContext()`), and content-script ids/mount
+functions) and returns them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
 mount, abort-before-cleanup, reverse rollback, exact-once disposal, and
 per-window instances. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
@@ -273,7 +284,7 @@ arbitration. Use a live loop for those host boundaries.
   `dist/app.js` + `app.css`; `bb plugin build` and installs minify them.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
-  `bb.log` output. Use `--json` only when live help lists that option.
+  `bb.log` output and the plugin's failures, with stacks. Use `--json` only when live help lists that option.
 - Exercise wire surfaces directly: `curl -X POST -H "content-type:
 application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
   `bb <command> …` for the CLI, `bb plugin run <id> …` as the explicit form.

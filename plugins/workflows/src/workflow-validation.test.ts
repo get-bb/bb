@@ -74,6 +74,49 @@ describe("workflow validation", () => {
     },
   );
 
+  it("discovers reasoning levels for a model whose levels are unknown", async () => {
+    const requests: Array<string | undefined> = [];
+    await expect(
+      validateWorkflowSource(
+        `${SOURCE}\nreturn agent("again", { provider: "codex", model: "gpt-test", reasoningLevel: "high" });`.replace(
+          'reasoningLevel: "medium"',
+          'reasoningLevel: "high"',
+        ),
+        "env-1",
+        catalog({
+          loadModels: async (_environmentId, _providerId, selectedModel) => {
+            requests.push(selectedModel);
+            return {
+              modelLoadError: null,
+              selectedOnlyModels: [],
+              models: [
+                selectedModel === "gpt-test"
+                  ? {
+                      id: "gpt-test",
+                      model: "gpt-test",
+                      reasoningDiscovery: "known",
+                      defaultReasoningEffort: "medium",
+                      supportedReasoningEfforts: [
+                        { reasoningEffort: "medium" },
+                        { reasoningEffort: "high" },
+                      ],
+                    }
+                  : {
+                      id: "gpt-test",
+                      model: "gpt-test",
+                      reasoningDiscovery: "unknown",
+                      defaultReasoningEffort: "medium",
+                      supportedReasoningEfforts: [],
+                    },
+              ],
+            };
+          },
+        }),
+      ),
+    ).resolves.toMatchObject({ valid: true });
+    expect(requests).toEqual(["gpt-test"]);
+  });
+
   it("validates every safely discoverable literal tuple", async () => {
     await expect(
       validateWorkflowSource(SOURCE, "env-1", catalog()),

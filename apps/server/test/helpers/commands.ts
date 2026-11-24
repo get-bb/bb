@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
+import { skillFrontmatterBlock } from "@bb/skill-index/metadata";
 import { hostDaemonSessions } from "@bb/db";
 import {
   hostDaemonCommandSchema,
@@ -149,7 +150,9 @@ function readWorkspaceAgentContextFromDisk(
         {
           kind: "file" as const,
           directoryName,
-          content: readFileSync(skillFilePath, "utf8"),
+          frontmatter: skillFrontmatterBlock(
+            readFileSync(skillFilePath, "utf8"),
+          ),
         },
       ];
     } catch {
@@ -171,6 +174,7 @@ function readWorkspaceAgentContextFromDisk(
     projectSkills,
     projectSkillsTruncated: false,
     sharedSkills: [],
+    folders: [],
   };
 }
 

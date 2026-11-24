@@ -26,6 +26,10 @@ import {
   storeStructuredResult,
 } from "./data.js";
 
+const WORKER_OWNERSHIP_MIGRATION = migrations.findIndex((statement) =>
+  statement.includes("CREATE TABLE workflow_workers"),
+);
+
 describe("workflow durable data", () => {
   let db: Database.Database;
 
@@ -111,7 +115,7 @@ describe("workflow durable data", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -3).join("\n"));
+    db.exec(migrations.slice(0, WORKER_OWNERSHIP_MIGRATION).join("\n"));
     const run = newRun();
     markRunning(run.id);
     const call = startCall(db, {
@@ -131,7 +135,7 @@ describe("workflow durable data", () => {
     db.prepare(
       `UPDATE workflow_calls SET child_thread_id = 'legacy-worker', status = 'failed' WHERE id = ?`,
     ).run(call.id);
-    db.exec(migrations.slice(-3).join("\n"));
+    db.exec(migrations.slice(WORKER_OWNERSHIP_MIGRATION).join("\n"));
     expect(retiredWorkers(db, Date.now())).toEqual([
       { threadId: "legacy-worker", callId: call.id },
     ]);
@@ -144,7 +148,7 @@ describe("workflow durable data", () => {
     db.close();
     db = new Database(":memory:");
     db.pragma("foreign_keys = ON");
-    db.exec(migrations.slice(0, -3).join("\n"));
+    db.exec(migrations.slice(0, WORKER_OWNERSHIP_MIGRATION).join("\n"));
     const run = newRun();
     const insertCall = db.prepare(
       `INSERT INTO workflow_calls(id, run_id, call_index, cache_key, prompt,
@@ -161,7 +165,7 @@ describe("workflow durable data", () => {
         `worker-${String(index).padStart(3, "0")}`,
       );
     const migratedAt = Date.now();
-    db.exec(migrations.slice(-3).join("\n"));
+    db.exec(migrations.slice(WORKER_OWNERSHIP_MIGRATION).join("\n"));
 
     const buckets = db
       .prepare(

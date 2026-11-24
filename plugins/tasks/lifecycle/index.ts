@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginThreadSettledEvent } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type PluginThreadSettledEvent,
+} from "@get-bb/plugin-sdk";
 import {
   invalidateComments,
   invalidateThreads,
@@ -90,13 +94,6 @@ function statusCommentBody(
   return `Thread "${thread.title}" ${outcome} · ${thread.threadId}`;
 }
 
-function sdkErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  return typeof error.code === "string" ? error.code : undefined;
-}
-
 function transitionThread(
   bb: BbPluginApi,
   store: TasksApiStore,
@@ -148,7 +145,10 @@ async function reconcileTrackedThread(
     });
     transitionThread(bb, store, trackedThread, liveStatusFromThread(thread));
   } catch (error) {
-    if (sdkErrorCode(error) === "thread_not_found") {
+    if (
+      error instanceof experimental_BbHttpError &&
+      error.code === "thread_not_found"
+    ) {
       transitionThread(bb, store, trackedThread, "completed");
       return;
     }

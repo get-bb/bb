@@ -173,9 +173,19 @@ SDK methods are `system.experimental_cliCommand()`,
   already on your PATH. If the folder is not on your PATH, the setting says so.
   On Windows it appends `<dataDir>\bin` to your user PATH.
 - bb never replaces another `bb`. If one already comes first on your PATH
-  (for example a global `npm install -g bb-app`, the `~/.local/bin/bb` a bb
-  machine install added, or Babashka), the setting names it and Install is
-  refused with `409 cli_command_blocked`.
+  (for example a global `npm install -g bb-app` or Babashka), the setting
+  names it and Install is refused with `409 cli_command_blocked`.
+- A bb machine install adds its own `~/.local/bin/bb`, which runs the data
+  dir's `<dataDir>/bin/bb` launcher (or the machine's npm install when the
+  data dir has none). The machine install writes that launcher pointing at
+  its npm install, which the daemon keeps updated, unless the data dir already
+  has one. Once the data dir runs a bb server, each start points the launcher
+  at that bb instead. After the server moves away,
+  `bb server install-machine-service` reinstalls the machine and points the
+  launcher back at the npm install. Older machine installs wrote a
+  `~/.local/bin/bb` that always runs the npm install from enrollment, which
+  goes stale after in-app updates. Install replaces either kind with a link
+  to this bb's launcher, in the same place.
 - Remove deletes only links that point at a bb launcher, or the
   `<dataDir>\bin` PATH entry on Windows.
 - Machine credentials cannot install or remove the command.
@@ -278,21 +288,21 @@ SDK `system.updateGeneralSettings`, which takes the full settings object (read
 the current `generalSettings` and change one key). See `bb guide customization`
 for the command surface.
 
-| Key                                                                        | Default                             | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| -------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `showDiagnosticEvents`                                                     | `false` in all builds               | Settings → General → Privacy & diagnostics → Show diagnostic events. Shows provider environment resolution and raw provider events bb does not yet understand in the timeline. Warnings, errors, and model fallback stay visible. Hidden diagnostics do not count toward timeline event or byte limits.                                                                                                                                                                                                                                        |
-| `steerActiveThreadOnEnter`                                                 | `true`                              | Settings → General → Default thread followup behavior, when no typeahead suggestion is active. `true` ("Steer"): Enter sends to the agent during its current run and Mod+Enter queues the message until the agent stops; `false` ("Queue") swaps them. Installs with saved settings or work from before the setting were migrated once to `false`.                                                                                                                                                                                             |
-| `confirmThreadArchive`                                                     | `true`                              | Settings → General → Thread archive confirmation. `false` archives a thread and its children in the app without a confirmation popup; the toast still offers Undo. CLI and SDK archives never prompt.                                                                                                                                                                                                                                                                                                                                          |
-| `keepHistoryAfterContextClear`                                             | `false`                             | Settings → General → Show messages from before a context clear. When `false`, a thread's timeline, conversation outline, and message lookup start at its latest `Context cleared` boundary; `true` keeps earlier messages, which load on scroll and appear in the outline and `bb thread log --message`. Clearing always starts a fresh provider conversation and resets the context meter.                                                                                                                                                    |
-| `summarizeShellCommands`                                                   | `true`                              | Settings → General → Summarize shell commands. `true` titles a shell command that runs `ls`, `find`, `grep`, `rg`, `cat`, `head`, `tail`, `nl`, or `sed -n` with a summary such as `Searched for X`, and the row does not expand. `false` titles every shell command row with its command (`Running …`, `Ran …`), expands it to the command and its output, and counts it as a command in step summaries. Native read and search tool rows keep their titles.                                                                                  |
-| `streamerMode`                                                             | `false`                             | Settings → General. Hides every `customModels` entry from the web and mobile pickers, `bb provider models`, and `sdk.providers.models`, for example before a screen share. Entries stay in `config.json`; a thread that names a hidden model still runs, and default model resolution keeps the full list, so a provider whose only models are custom still starts. A composer whose stored selection is hidden falls back to the provider default and records it on the next send; reselect the custom model after turning streamer mode off. |
-| `allowFastServiceTier`                                                     | `true`                              | Settings → Providers. `false` hides the service tier control and runs every new turn at the default tier, including explicit requests for another tier (`fast`, Codex `ultrafast`, or any tier a provider lists), automations, and queued messages. Completed turns and project defaults saved while off keep the default tier.                                                                                                                                                                                                                |
-| `managedBranchPrefix`                                                      | `bb/`                               | Settings → General → New branch prefix. Prefix for branches bb creates for worktrees and new checkout branches (`bb/fix-login-flow-thr_ab12cd34ef`); empty for none. At most 64 characters and must start a valid git branch name (no space or leading `-`). Existing branches and worktrees keep their names.                                                                                                                                                                                                                                 |
-| `providerOrder`                                                            | `[]`                                | Settings → Providers (move a provider up or down). JSON list of provider ids that lead the picker, such as `'["claude-code","codex"]'`; unlisted ids follow in plugin install order and unknown ids are ignored.                                                                                                                                                                                                                                                                                                                               |
-| `defaultProviderId`                                                        | `null`                              | Settings → Providers. Provider for new threads when neither caller nor project chose one; `null` means the first available provider in picker order.                                                                                                                                                                                                                                                                                                                                                                                           |
-| `telemetryEnabled`                                                         | `true`                              | Settings → General → Privacy & diagnostics → Share anonymous usage data. Takes effect immediately; `BB_TELEMETRY=false` overrides it.                                                                                                                                                                                                                                                                                                                                                                                                          |
-| `earlyAdopter`                                                             | `false`                             | Settings → Experiments → Become an early adopter. Turns on experiments marked Early adopter unless you set them yourself; see [Experiments](#experiments).                                                                                                                                                                                                                                                                                                                                                                                     |
-| `machineServerUrl`, `defaultMachineAccess`, `machineGitCredentialsEnabled` | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| Key                                                                                                        | Default                             | Effect                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `showDiagnosticEvents`                                                                                     | `false` in all builds               | Settings → General → Privacy & diagnostics → Show diagnostic events. Shows provider environment resolution and raw provider events bb does not yet understand in the timeline. Warnings, errors, and model fallback stay visible. Hidden diagnostics do not count toward timeline event or byte limits.                                                                                                                                                                                                                                        |
+| `steerActiveThreadOnEnter`                                                                                 | `true`                              | Settings → General → Default thread followup behavior, when no typeahead suggestion is active. `true` ("Steer"): Enter sends to the agent during its current run and Mod+Enter queues the message until the agent stops; `false` ("Queue") swaps them. Installs with saved settings or work from before the setting were migrated once to `false`.                                                                                                                                                                                             |
+| `confirmThreadArchive`                                                                                     | `true`                              | Settings → General → Thread archive confirmation. `false` archives a thread and its children in the app without a confirmation popup; the toast still offers Undo. CLI and SDK archives never prompt.                                                                                                                                                                                                                                                                                                                                          |
+| `keepHistoryAfterContextClear`                                                                             | `false`                             | Settings → General → Show messages from before a context clear. When `false`, a thread's timeline, conversation outline, and message lookup start at its latest `Context cleared` boundary; `true` keeps earlier messages, which load on scroll and appear in the outline and `bb thread log --message`. Clearing always starts a fresh provider conversation and resets the context meter.                                                                                                                                                    |
+| `summarizeShellCommands`                                                                                   | `true`                              | Settings → General → Summarize shell commands. `true` titles a shell command that runs `ls`, `find`, `grep`, `rg`, `cat`, `head`, `tail`, `nl`, or `sed -n` with a summary such as `Searched for X`, and the row does not expand. `false` titles every shell command row with its command (`Running …`, `Ran …`), expands it to the command and its output, and counts it as a command in step summaries. Native read and search tool rows keep their titles.                                                                                  |
+| `streamerMode`                                                                                             | `false`                             | Settings → General. Hides every `customModels` entry from the web and mobile pickers, `bb provider models`, and `sdk.providers.models`, for example before a screen share. Entries stay in `config.json`; a thread that names a hidden model still runs, and default model resolution keeps the full list, so a provider whose only models are custom still starts. A composer whose stored selection is hidden falls back to the provider default and records it on the next send; reselect the custom model after turning streamer mode off. |
+| `allowFastServiceTier`                                                                                     | `true`                              | Settings → Providers. `false` hides the service tier control and runs every new turn at the default tier, including explicit requests for another tier (`fast`, Codex `ultrafast`, or any tier a provider lists), automations, and queued messages. Completed turns and project defaults saved while off keep the default tier.                                                                                                                                                                                                                |
+| `managedBranchPrefix`                                                                                      | `bb/`                               | Settings → General → New branch prefix. Prefix for branches bb creates for worktrees and new checkout branches (`bb/fix-login-flow-thr_ab12cd34ef`); empty for none. At most 64 characters and must start a valid git branch name (no space or leading `-`). Existing branches and worktrees keep their names.                                                                                                                                                                                                                                 |
+| `providerOrder`                                                                                            | `[]`                                | Settings → Providers (move a provider up or down). JSON list of provider ids that lead the picker, such as `'["claude-code","codex"]'`; unlisted ids follow in plugin install order and unknown ids are ignored.                                                                                                                                                                                                                                                                                                                               |
+| `defaultProviderId`                                                                                        | `null`                              | Settings → Providers. Provider for new threads when neither caller nor project chose one; `null` means the first available provider in picker order.                                                                                                                                                                                                                                                                                                                                                                                           |
+| `telemetryEnabled`                                                                                         | `true`                              | Settings → General → Privacy & diagnostics → Share anonymous usage data. Takes effect immediately; `BB_TELEMETRY=false` overrides it.                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `earlyAdopter`                                                                                             | `false`                             | Settings → Experiments → Become an early adopter. Turns on experiments marked Early adopter unless you set them yourself; see [Experiments](#experiments).                                                                                                                                                                                                                                                                                                                                                                                     |
+| `machineServerUrl`, `serverAccessOrder`, `localNetworkEnabled`, `machineGitCredentialsEnabled`             | See [Multi-machine](#multi-machine) | Machine access and credential forwarding.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 
 **Terminal clipboard.** Settings → General → Terminals → Copy on select
 (`terminalCopyOnSelect`, default `true`) copies completed terminal selections
@@ -657,6 +667,7 @@ like the matching thread menu item.
 | Window    | New window                                   | `Mod+Shift+N`               | Desktop                  |
 | Window    | Find in window                               | `Mod+F`                     | Desktop                  |
 | Window    | Settings                                     | `Mod+,`                     | All clients              |
+| Window    | Search settings                              | `/`                         | Settings page            |
 | Window    | Open data directory                          | Unassigned                  | Desktop                  |
 | Window    | Open local logs                              | Unassigned                  | Desktop                  |
 | Window    | Show all notifications                       | Unassigned                  | All clients              |
@@ -683,6 +694,11 @@ skip text fields outside the card, so the composer keeps its own keys;
 `Mod+Enter` and `Mod+.` also work from the card's own answer field, where
 `Enter` goes to the next question or submits and `Shift+Enter` adds a line.
 Previous / next need focus in the card, outside its answer field.
+
+`settings.search` (`/`) focuses the Settings search field. Like a plugin's
+page command, it works only on its own page and never while focus is in a
+field, an editor or a menu, so it can be rebound to another bare key. Page
+commands on different pages never conflict with each other.
 
 Cycle shortcuts act only from the active composer or an open picker; other
 editable controls keep their Option-composed input. Reasoning cycles through
@@ -892,13 +908,20 @@ the SDK and CLI, and machine credentials cannot change it. Read it with
 
 **Machine server access.** `machineServerUrl` (Settings → Machines → Server URL
 reachable by machines; HTTP or HTTPS without embedded credentials) falls back
-to `BB_EXTERNAL_URL` when unset. `defaultMachineAccess` selects the access
-provider; unset selects the provider of the earliest-installed plugin (bb
-connect unless it was removed), `tailscale` uses the Tailscale plugin's Serve
-address, and `direct` (Manual) uses your own URL.
-An explicit provider must be installed and available. Set them with
-`bb settings general machineServerUrl <url-or-null>` and
-`bb settings general defaultMachineAccess <provider-id-or-null>`.
+to `BB_EXTERNAL_URL` when unset. Machines and apps reach the server over every
+set-up access provider ("route"), in order: `serverAccessOrder` lists ids to
+put first (with the `serverRoutes` experiment, others follow by kind: local
+network, private overlay such as the Tailscale plugin's Serve address, relay
+such as bb connect, custom; otherwise by install order with Manual last;
+providers of one kind follow the earliest-installed plugin). Plugin routes are
+set up and turned off in their plugin's settings. `localNetworkEnabled`
+(default `false`) adds `local-network`, which makes bb also listen on this
+computer's private LAN addresses without a restart (only with the
+`serverRoutes` experiment, which also controls whether routes are advertised);
+`tailscale` uses the Tailscale plugin's Serve address; `direct` (Manual) uses
+your own URL. Manage them in Settings → Machines → How devices reach this
+server or with `bb server access list|add|remove|order`; `add direct <url>`
+sets the URL.
 
 **Daemon updates.** Machines install the host package from the owning server
 (falling back to npm only when the server has no package route) under the
@@ -972,7 +995,7 @@ setup commands, and terminals.
 
 ## Sidebar preferences
 
-Core sidebar and Info panel layout preferences live in a server-side keyed registry shared by every
+Core sidebar, Info panel and plugin choice preferences live in a server-side keyed registry shared by every
 window, device, and the CLI. Each key has a typed schema, a default, and a
 revision; a write that names a stale revision gets `409
 ui_preference_conflict`. Read and write them with `bb settings ui
@@ -983,6 +1006,14 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `sidebar.threadListProvider`          | Plugin key or `__automatic__` (default): the first installed thread list plugin other than the bundled `thread-list/thread-list`, else the bundled one                                                        |
 | `sidebar.navigationProvider`          | Plugin key or `__automatic__` (default): the first navigation from a plugin other than the bundled Navigation plugin, else its `navigation/rail`                                                              |
+| `composer.provider`                   | Plugin key or `__automatic__` (default): the composer that draws the input box                                                                                                                                |
+| `diff.provider`                       | Plugin key, `__builtin__` (bb's diff), or `__automatic__` (default)                                                                                                                                           |
+| `sourceCode.provider`                 | Plugin key, `__builtin__` (bb's source viewer), or `__automatic__` (default)                                                                                                                                  |
+| `threadHeader.titleProvider`          | Plugin key, `__builtin__` (bb's thread title), or `__automatic__` (default)                                                                                                                                   |
+| `threadRail.outlineProvider`          | Plugin key, `__builtin__` (bb's thread outline), or `__automatic__` (default)                                                                                                                                 |
+| `fileOpener.byExtension`              | JSON map of extension to plugin key or `__builtin__` (bb's preview), such as `{"md":"simple-notes/docs"}`; a missing extension is Automatic                                                                   |
+| `codeFence.byLanguage`                | JSON map of code fence language to plugin key or `__builtin__` (bb's code block); a missing language is Automatic                                                                                             |
+| `messageDirective.byName`             | JSON map of directive name to plugin key or `__builtin__` (show as text); a name several plugins claim shows a plugin picker in the message until it is listed                                                  |
 | `sidebar.pluginPanelOrder`            | Navigation destination order                                                                                                                                                                                  |
 | `sidebar.visiblePluginPanels`         | Navigation destinations shown, or `null` for every destination                                                                                                                                                |
 | `sidebar.footerOrder`                 | Footer action order                                                                                                                                                                                           |
@@ -994,8 +1025,20 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `infoPanel.collapsedSections`         | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)                                                                 |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
-A provider key whose plugin is disabled or uninstalled behaves as
-`__automatic__` until the plugin returns.
+
+The provider keys above pick which plugin draws a surface only one plugin can
+draw, with one rule for every slot and every map key, bb's bundled plugins
+included. A plugin key (`<pluginId>/<registrationId>`) wins while its plugin is
+installed and enabled; otherwise the pick behaves as `__automatic__` until the
+plugin returns. Automatic picks the first plugin you installed (by plugin id),
+then bb's own (bundled or from bb's official marketplace), then bb's built-in view. A message directive claimed by
+several plugins has no automatic winner. Each device remembers its last value
+of these keys so the first paint already uses your pick, and picks this device
+made before they were synced (diff and source renderers, file openers) move to
+the server once, if the server is still at the default. Change them in
+Settings → Appearance (Markdown for code blocks and directives), Settings
+→ Files → File openers, or with `bb settings ui set`,
+for example `bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`.
 Footer IDs are `builtin:settings` (top list layout only), `builtin:mobile`,
 `builtin:report-bug`, and
 `plugin:<encoded pluginId>/<encoded registrationId>`; unknown and
@@ -1050,6 +1093,12 @@ notification they are showing for it. Phones need a mobile app version with
 the background task; an older Android app in the foreground would list the
 silent push as a blank notification.
 
+bb skips the push-notifications plugin's web and desktop system notification
+for a thread that is open in a visible, focused bb window or browser tab of the
+same origin. Each such window holds a shared Web Lock for its thread, so the
+window that claims a notification also sees threads focused in other windows.
+Other threads, notifications without a thread, and mobile push are unaffected.
+
 Thread row metadata adds Metadata to the built-in
 thread list's Organize → Rows menu. With it checked (`showRowMetadata`), plugins draw details such as
 GitHub PR Status's pull request number on a line under each thread title.
@@ -1081,6 +1130,63 @@ instead of starting turns the restart would cut. bb sends them when it starts
 again, after any resume `resumeThreadsAfterRestart` queues, in order; if the
 update is deferred, cancelled, or fails, it sends them at once. See `bb guide machines`.
 
+## Daemon session resume
+
+A machine's daemon session outlives a dropped WebSocket. When the socket closes
+for any reason other than the daemon shutting down, the server keeps the
+session active for 30 seconds (`reconnectGraceMs` in session open): terminals,
+pending host requests, Connect sharing and the host's connected status stay as
+they are, and messages for the daemon queue up. A daemon that reconnects in
+time resumes the same session with `/internal/ws?sessionId=…&resumeFrom=<n>`,
+and each side re-sends only the messages the other has not acknowledged. Past
+30 seconds the session ends as `expired` and the daemon opens a new one.
+
+## Thread context card
+
+A running thread's details sit in the thread context card at the upper-right
+of its pane: bb's parent thread and child threads, the Git plugin's changes,
+which open the Diff tab, and GitHub PR Status's pull request. The context row
+above the composer drops those segments and keeps other plugins' segments; the
+project, environment, and branch stay below the composer, side chats keep
+their context row, and a new thread's composer is unchanged.
+A header button opens the card or pins it: a pinned card sits beside the
+transcript in a wide pane and moves the transcript aside in a medium one,
+and a narrow pane or window keeps the context row above the composer and
+opens the card over the transcript. Phones keep the context row above the
+composer and show no card. Plugins read how a pane
+shows thread context with `experimental_useThreadContextKind()`.
+
+## CPU priority, plugin styles, and database checkpoints
+
+bb keeps itself responsive when agents saturate the CPU. The host daemon
+starts provider processes and environment setup and teardown scripts at nice
+10 (below-normal on Windows), inherited by the builds and tests they run;
+terminals keep normal priority. On macOS the launcher also starts the server
+and daemon with application scheduling (`taskpolicy -a`). See
+[slow database operations](debugging-and-qa.md#slow-database-operations).
+
+The app requests each plugin's stylesheet with
+`css-scope=plugin-attribute-v1`. bb then keys the plugin's utilities on an
+attribute named after the plugin, `data-bb-plugin-scope-<id>`, so style
+updates inside other plugins' UI, such as the sidebar and composer, skip that
+plugin's rules. The app adds the attribute to every element labeled
+`data-bb-plugin`, including ones a plugin creates itself. See
+[Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
+
+SQLite WAL checkpoints for `bb.db` and plugin `data.db` files run off the
+server's main thread. A background worker thread opens its own connection to
+each database and runs `wal_checkpoint(PASSIVE)` every 100 ms, and right away again while the WAL holds 4,096 frames or more
+and is still growing; the server's own connections set
+`wal_autocheckpoint=0`, so a commit no longer copies the WAL into the
+database file and fsyncs it. If sustained writes grow the WAL past 16,384
+frames across two worker passes, the server checkpoints the small remaining
+tail itself between tasks and logs "Sustained writes outpaced the WAL
+checkpoint worker". The hourly incremental vacuum waits for a worker pass
+around each chunk instead of checkpointing inline. If the worker exits or
+cannot open a database, those connections go back to checkpointing on
+commit and bb logs a warning; a worker that had started restarts after
+10 seconds.
+
 ## Experiments
 
 Experimental surfaces are changed in Settings → Experiments or with
@@ -1090,22 +1196,12 @@ bb stores only the experiments you set; the others follow the shipped default.
 The `earlyAdopter` general setting (the Become an early adopter banner on
 Settings → Experiments, `bb settings general earlyAdopter on`) switches the
 shipped default to the early adopter default: experiments marked Early adopter
-(currently `agentCpuPriority`, `compactExpiredCache`, `keyedPluginCss`,
-`pluginUpdates`, `resumeDaemonSessions`, `skipFocusedThreadNotifications`,
-`threadContextCard`, and `walCheckpointWorker`) turn on, and the rest stay off. An experiment you set yourself keeps your value
+(currently `compactExpiredCache`, `pluginUpdates`, and `serverRoutes`) turn
+on, and the rest stay off. An experiment you set yourself keeps your value
 either way.
 `/system/config` and `sdk.system.config()` return the resolved values in
 `experiments`.
 
-- `agentCpuPriority` (on for early adopters) keeps bb responsive when agents saturate the CPU. The
-  host daemon starts provider processes and environment setup and teardown
-  scripts at nice 10 (below-normal on Windows), inherited by
-  the builds and tests they run; terminals keep normal priority. On macOS the
-  launcher also starts the server and daemon with application scheduling
-  (`taskpolicy -a`). Turning it on or off takes effect after restarting bb,
-  including the restart an update performs: running provider processes serve
-  new threads too, and a lowered process cannot be raised again. See
-  [slow database operations](debugging-and-qa.md#slow-database-operations).
 - `compactExpiredCache` (on for early adopters) reports `compactionOfferAt` on a thread's context
   usage (timeline `contextWindowUsage` and `bb thread context`) once the
   provider has reported a prompt-cache lifetime, the provider supports manual
@@ -1114,16 +1210,6 @@ either way.
   next send passes `compactFirst` so the server runs `/compact` and queues the
   message behind it. Clicking the chip keeps the full history for that one
   send.
-
-- `keyedPluginCss` (on for early adopters) makes the app request each plugin's
-  stylesheet with `css-scope=plugin-attribute-v1`. bb then keys the plugin's
-  utilities on an attribute named after the plugin,
-  `data-bb-plugin-scope-<id>`, so style updates inside other plugins' UI, such
-  as the sidebar and composer, skip that plugin's rules. The app adds the
-  attribute to every element labeled `data-bb-plugin`, including ones a plugin
-  creates itself. The app reads the experiment when it loads a plugin's
-  stylesheet, so a toggle applies after a reload. See
-  [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 - `serverMove` enables Move server here in Settings → Machines,
   `bb server move`, `bb server export`, and old server copy deletion; while off
   those routes return 403 `server_move_experiment_disabled` (status and cancel
@@ -1148,58 +1234,14 @@ either way.
   badge counts plugin updates. While it is off, the six-hourly background check,
   `bb plugin outdated`, `bb plugin update`, and Settings → Installed plugins
   work as before.
-- `resumeDaemonSessions` (on for early adopters) lets a machine's daemon
-  session outlive a dropped WebSocket. When the socket closes for any reason
-  other than the daemon shutting down, the server keeps the session active for
-  30 seconds: terminals, pending host requests, Connect sharing and the host's
-  connected status stay as they are, and messages for the daemon queue up. A
-  daemon that reconnects in time resumes the same session with
-  `/internal/ws?sessionId=…&resumeFrom=<n>`, and each side re-sends only the
-  messages the other has not acknowledged. Past 30 seconds the session ends as
-  `expired` and the daemon opens a new one. While the experiment is off, the
-  server ends the session as soon as the socket closes, and session open
-  returns `reconnectGraceMs: 0`, so the daemon opens a new session after every
-  drop. It applies from the next disconnect.
-
-- `threadContextCard` (on for early adopters) moves a running thread's
-  details into the thread context card at the upper-right of its pane: bb's parent
-  thread and child threads, the Git plugin's changes, which open the Diff tab,
-  and GitHub PR Status's pull request. The context row above the
-  composer drops those segments and keeps other plugins' segments; the
-  project, environment, and branch stay below the composer, side chats keep
-  their context row, and a new thread's composer is unchanged.
-  A header button opens the card or pins it: a pinned card sits beside the
-  transcript in a wide pane and moves the transcript aside in a medium one,
-  and a narrow pane or window keeps the context row above the composer and
-  opens the card over the transcript. Phones keep the context row above the
-  composer and show no card. Plugins read how a pane
-  shows thread context with `experimental_useThreadContextKind()`.
-
-- `skipFocusedThreadNotifications` (on for early adopters) makes the
-  push-notifications plugin skip the web and desktop system notification for a
-  thread that is open in a visible, focused bb window or browser tab of the same
-  origin. Each such window holds a shared Web Lock for its thread, so the window
-  that claims a notification also sees threads focused in other windows. Other
-  threads, notifications without a thread, and mobile push are unaffected. The
-  plugin reads it with
-  `experimental_useExperiment("skipFocusedThreadNotifications")` and follows a
-  toggle live.
-
-- `walCheckpointWorker` (on for early adopters) moves SQLite WAL checkpoints for `bb.db` and plugin
-  `data.db` files off the server's main thread. A background worker thread
-  opens its own connection to each database and runs `wal_checkpoint(PASSIVE)`
-  every 100 ms, and right away again while the WAL holds 4,096 frames or more
-  and is still growing; the server's own connections set
-  `wal_autocheckpoint=0`, so a commit no longer copies the WAL into the
-  database file and fsyncs it. If sustained writes grow the WAL past 16,384
-  frames across two worker passes, the server checkpoints the small remaining
-  tail itself between tasks and logs "Sustained writes outpaced the WAL
-  checkpoint worker". The hourly incremental vacuum waits for a worker pass
-  around each chunk instead of checkpointing inline. If the worker exits or
-  cannot open a database, those connections go back to checkpointing on
-  commit and bb logs a warning; a worker that had started restarts after
-  10 seconds. The experiment applies live: turning it off stops the worker
-  after a final checkpoint and restores `wal_autocheckpoint=1000`.
+- `serverRoutes` (on for early adopters) advertises every available server
+  access route (see [Multi-machine](#multi-machine)) to machines in daemon
+  session open and to apps in `/system/config` `routes`, and makes the
+  `local-network` route available to add. A machine dials the highest route in
+  its order that answers and stays on it until the connection drops. While it is off, the server advertises
+  `routes: []`, `local-network` is unavailable, and machines use only the URL
+  they were installed with. It applies when each machine next opens a session
+  or receives `server-routes.replace`.
 
 ## Thread Timeline Window
 
@@ -1241,8 +1283,9 @@ Plugin state lives under the data dir:
                                    settles, or at the next restart after a
                                    rollback
 <dataDir>/plugins/<id>/secrets/    Secret settings and the plugin HTTP token
-<dataDir>/plugins/<id>/logs/       bb.log output (plugin.log, JSONL, rotated
-                                   at 5MB; read with `bb plugin logs <id>`)
+<dataDir>/plugins/<id>/logs/       bb.log output and the plugin's failures
+                                   (plugin.log, JSONL, rotated at 5MB; read
+                                   with `bb plugin logs <id>`)
 <dataDir>/plugins/git/, npm/       Managed installs for git:/npm: sources
 <dataDir>/marketplaces/staging/    Throwaway checkouts for git: marketplace
                                    refreshes
@@ -1325,7 +1368,8 @@ The builtin Account Pooler plugin pools Claude and Codex accounts behind the bb
 server. It is disabled on fresh installations (`bb plugin enable
 account-pool`), except that a nested server with `BB_ACCOUNT_POOL_PARENT_URL`
 enables it. Account tokens and per-machine hub tokens are 0600 files under
-`<dataDir>/plugins/account-pool/secrets/accounts/`.
+`<dataDir>/plugins/account-pool/files/accounts/`. A pool from an earlier bb
+keeps them in `secrets/accounts/`; the plugin moves them on its next load.
 
 | Setting                    | Default                                 | Effect                                                                                                                                             |
 | -------------------------- | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -1347,12 +1391,34 @@ processor), a blank host field restores Auto, and `0` pauses new work for that
 scope. Configure it on its autosaving plugin page or with
 `bb concurrency-limit status|global|host`; see the `concurrency-limit` skill.
 
+### Worktree warm pools
+
+The builtin Worktree plugin can keep warm worktrees for a project so new
+worktree threads on the default base skip `git worktree add` and the setup
+script. It is off for every project; set a project's size from 0 to 4 on the
+plugin's settings page or with `bb worktree pool set <project-id> <size>`, and
+list them with `bb worktree pool status`. A machine can keep its own count with
+`--host <host-id>`, or follow the project's again with the size `project`. See
+[Warm worktrees](worktrees.md#warm-worktrees) and the `worktree` skill.
+
 ### GitHub Star
 
 The builtin GitHub Star plugin (`bb--github-star`) asks once for a star on
 GitHub after more than five prompts, when the window has been idle for 30
 seconds. The server records that it asked, so no other window or device asks
 again. Disable the plugin to never be asked.
+
+### Server switcher
+
+The builtin Server switcher plugin (`bb--server-switcher`) is off by default.
+Enable it in Settings › Plugins or with `bb plugin enable bb--server-switcher`
+to add a **Servers** item to the sidebar footer in bb Desktop and the mobile
+app. It lists the servers the app keeps, with a check on the current one;
+choosing another moves the window to it. **Add server…** opens bb Desktop's Add Server dialog or the
+mobile app's Settings › Servers › Add, and **Sign in to bb Connect…** appears
+whenever bb Desktop's Server menu offers the same sign-in. A web browser keeps
+no server list, so the item is absent there. Hide it from the footer like any
+other item, or disable the plugin again to remove it.
 
 ### Keep Awake
 

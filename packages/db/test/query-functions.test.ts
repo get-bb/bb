@@ -33,4 +33,39 @@ describe("listQueryFunctionsInSource", () => {
       `${FILE}#throughPreparedHelper`,
     ]);
   });
+
+  it("lists public methods of exported classes that query through this.db", () => {
+    const file = "plugins/example/src/store.ts";
+    const source = `
+      export class Store {
+        constructor(private readonly db) {}
+        get(id) {
+          return this.db.prepare("SELECT * FROM rows WHERE id = ?").get(id);
+        }
+        latest() {
+          return this.#newest();
+        }
+        #newest() {
+          return this.db.prepare("SELECT * FROM rows ORDER BY id DESC").get();
+        }
+        private count() {
+          return this.db.prepare("SELECT count(*) FROM rows").get();
+        }
+        describe(row) {
+          return row.id;
+        }
+      }
+      class Hidden {
+        constructor(db) { this.db = db; }
+        get() {
+          return this.db.prepare("SELECT 1").get();
+        }
+      }
+    `;
+
+    expect(listQueryFunctionsInSource(file, source)).toEqual([
+      `${file}#Store.get`,
+      `${file}#Store.latest`,
+    ]);
+  });
 });

@@ -1,6 +1,6 @@
 import { reportEnvironmentHookProgress } from "../services/environments/environment-hooks.js";
 import { syncDesktopBrowserTabs } from "../services/desktop-browsers.js";
-import { getExperiments, heartbeatSession } from "@bb/db";
+import { heartbeatSession, recordSessionRoute } from "@bb/db";
 import {
   HOST_DAEMON_WS_RESUME_REJECTED_CLOSE_CODE,
   HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON,
@@ -153,7 +153,10 @@ export function createDaemonSocketEvents(
     Pick<AppDeps, "hub" | "logger" | "sharedPorts" | "terminalSessions"> &
     LoggedPendingInteractionWorkSessionDeps,
   target: DaemonSocketTarget,
-  plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
+  plugins?: Pick<
+    PluginService,
+    "handleHostSignal" | "handleHostWorkerExit" | "handleHostWorkerOutput"
+  >,
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): DaemonSocketEvents {
   let channel: DaemonChannel | null = null;
@@ -211,8 +214,7 @@ export function createDaemonSocketEvents(
       if (
         detached === "detached" &&
         reason !== HOST_DAEMON_WS_SHUTDOWN_CLOSE_REASON &&
-        deps.hub.getDaemonSessionSocket(target.sessionId) === channel &&
-        getExperiments(deps.db).resumeDaemonSessions
+        deps.hub.getDaemonSessionSocket(target.sessionId) === channel
       ) {
         onDaemonSocketDetached(deps, target);
         return;
@@ -233,6 +235,7 @@ export const SERVER_MOVE_FENCED_DAEMON_MESSAGE_TYPES: ReadonlySet<
   "desktop-browser.changed",
   "plugin-host.signal",
   "plugin-host.worker-exited",
+  "session.route",
   "terminal.opened",
   "terminal.exited",
 ]);
@@ -283,7 +286,10 @@ export function onDaemonSocketOpen(
 export function onDaemonSocketMessage(
   deps: WorkSessionDeps & Pick<AppDeps, "sharedPorts" | "terminalSessions">,
   args: DaemonSocketMessageArgs,
-  plugins?: Pick<PluginService, "handleHostSignal" | "handleHostWorkerExit">,
+  plugins?: Pick<
+    PluginService,
+    "handleHostSignal" | "handleHostWorkerExit" | "handleHostWorkerOutput"
+  >,
   serverMove?: Pick<ServerMoveCoordinator, "handleProgress">,
 ): void {
   deps.hub.recordDaemonActivity(args.sessionId);
@@ -400,6 +406,14 @@ export function onDaemonSocketMessage(
         deps.sharedPorts.recordTunnelIdentity(args.hostId, message.identity);
         return;
       }
+      if (message.type === "session.route") {
+        recordSessionRoute(deps.db, {
+          sessionId: args.sessionId,
+          route: message.route,
+        });
+        deps.hub.notifyHost(args.hostId, ["host-connected"]);
+        return;
+      }
       if (message.type === "desktop-browser.changed") {
         const scope = {
           hostId: args.hostId,
@@ -427,6 +441,17 @@ export function onDaemonSocketMessage(
           authenticatedHostId: args.hostId,
           pluginId: message.pluginId,
           generation: message.generation,
+          reason: message.reason,
+        });
+        return;
+      }
+      if (message.type === "plugin-host.worker-output") {
+        plugins?.handleHostWorkerOutput({
+          authenticatedHostId: args.hostId,
+          pluginId: message.pluginId,
+          generation: message.generation,
+          stream: message.stream,
+          line: message.line,
         });
         return;
       }

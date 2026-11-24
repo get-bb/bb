@@ -1,5 +1,6 @@
 import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
-import { coreMessageMetadata } from "@/components/thread/timeline/core-message-metadata";
+import coreMessageTime from "@/core-contributions/message-time";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
@@ -30,6 +31,8 @@ import type {
   ExperimentalThreadInfoSectionRegistration,
   ExperimentalThreadHeaderRowRegistration,
   ExperimentalThreadHeaderTitleRegistration,
+  ExperimentalThreadRailRegistration,
+  ExperimentalThreadRailOutlineRegistration,
   ExperimentalThreadContextCardRowRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
@@ -51,6 +54,11 @@ import {
   type CollectedSidebarNavigationRegistration,
   type CollectedThreadContextCardSectionRegistration,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+
+const coreMessageMetadata = collectCoreContributionSlots(
+  coreMessageTime,
+  "messageMetadata",
+);
 
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
@@ -74,6 +82,8 @@ export interface PluginRegistrationSet {
   threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows?: readonly ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles?: readonly ExperimentalThreadHeaderTitleRegistration[];
+  threadRails?: readonly ExperimentalThreadRailRegistration[];
+  threadRailOutlines?: readonly ExperimentalThreadRailOutlineRegistration[];
   threadContextCardRows?: readonly ExperimentalThreadContextCardRowRegistration[];
   threadContextCardSections?: readonly CollectedThreadContextCardSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
@@ -157,6 +167,10 @@ export interface PluginThreadHeaderRowSlot
   extends ExperimentalThreadHeaderRowRegistration, PluginSlotBase {}
 export interface PluginThreadHeaderTitleSlot
   extends ExperimentalThreadHeaderTitleRegistration, PluginSlotBase {}
+export interface PluginThreadRailSlot
+  extends ExperimentalThreadRailRegistration, PluginSlotBase {}
+export interface PluginThreadRailOutlineSlot
+  extends ExperimentalThreadRailOutlineRegistration, PluginSlotBase {}
 export interface PluginThreadContextCardRowSlot
   extends ExperimentalThreadContextCardRowRegistration, PluginSlotBase {}
 export interface PluginThreadContextCardSectionSlot
@@ -214,6 +228,8 @@ export interface PluginSlotSnapshot {
   threadInfoSections: readonly PluginThreadInfoSectionSlot[];
   threadHeaderRows: readonly PluginThreadHeaderRowSlot[];
   threadHeaderTitles: readonly PluginThreadHeaderTitleSlot[];
+  threadRails: readonly PluginThreadRailSlot[];
+  threadRailOutlines: readonly PluginThreadRailOutlineSlot[];
   threadContextCardRows: readonly PluginThreadContextCardRowSlot[];
   threadContextCardSections: readonly PluginThreadContextCardSectionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
@@ -255,6 +271,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadInfoSections: [],
   threadHeaderRows: [],
   threadHeaderTitles: [],
+  threadRails: [],
+  threadRailOutlines: [],
   threadContextCardRows: [],
   threadContextCardSections: [],
   threadActions: [],
@@ -304,6 +322,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadInfoSections",
   "threadHeaderRows",
   "threadHeaderTitles",
+  "threadRails",
+  "threadRailOutlines",
   "threadContextCardRows",
   "threadContextCardSections",
   "threadActions",
@@ -400,6 +420,8 @@ function flattenRegistrations(
     threadInfoSections: stamp(set.threadInfoSections),
     threadHeaderRows: stamp(set.threadHeaderRows),
     threadHeaderTitles: stamp(set.threadHeaderTitles),
+    threadRails: stamp(set.threadRails),
+    threadRailOutlines: stamp(set.threadRailOutlines),
     threadContextCardRows: stamp(set.threadContextCardRows),
     threadContextCardSections: stamp(set.threadContextCardSections),
     threadActions: stamp(set.threadActions),
@@ -706,15 +728,31 @@ export function usePluginFrontendRegistered(pluginId: string): boolean {
 let builtinPluginIds: ReadonlySet<string> = new Set();
 const builtinPluginIdListeners = new Set<() => void>();
 
+let officialMarketplacePluginIds: ReadonlySet<string> = new Set();
+let bbPluginIds: ReadonlySet<string> = new Set();
+
+function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
+function updateBbPluginIds(): void {
+  const next = new Set([...builtinPluginIds, ...officialMarketplacePluginIds]);
+  if (!sameIds(next, bbPluginIds)) bbPluginIds = next;
+}
+
 export function setBuiltinPluginIds(ids: Iterable<string>): void {
   const next = new Set(ids);
-  if (
-    next.size === builtinPluginIds.size &&
-    [...next].every((id) => builtinPluginIds.has(id))
-  ) {
-    return;
-  }
+  if (sameIds(next, builtinPluginIds)) return;
   builtinPluginIds = next;
+  updateBbPluginIds();
+  for (const listener of builtinPluginIdListeners) listener();
+}
+
+export function setOfficialMarketplacePluginIds(ids: Iterable<string>): void {
+  const next = new Set(ids);
+  if (sameIds(next, officialMarketplacePluginIds)) return;
+  officialMarketplacePluginIds = next;
+  updateBbPluginIds();
   for (const listener of builtinPluginIdListeners) listener();
 }
 
@@ -725,15 +763,25 @@ function subscribeBuiltinPluginIds(listener: () => void): () => void {
   };
 }
 
+export function useBbPluginIds(): ReadonlySet<string> {
+  return useSyncExternalStore(
+    subscribeBuiltinPluginIds,
+    () => bbPluginIds,
+    () => bbPluginIds,
+  );
+}
+
 export function useBuiltinPluginIds(): ReadonlySet<string> {
   return useSyncExternalStore(
     subscribeBuiltinPluginIds,
+    () => builtinPluginIds,
     () => builtinPluginIds,
   );
 }
 
 export function resetPluginSlotStoreForTest(): void {
   setBuiltinPluginIds([]);
+  setOfficialMarketplacePluginIds([]);
   registrationsByPluginId.clear();
   generationByPluginId.clear();
   flattenedByPluginId.clear();

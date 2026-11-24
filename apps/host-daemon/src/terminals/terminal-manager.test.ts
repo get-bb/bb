@@ -248,6 +248,9 @@ function createFakeRuntime(): AgentRuntime {
     getLiveThreadIds: vi.fn(() => []),
     hasOpenBackgroundWork: vi.fn(() => false),
     listOpenBackgroundWork: vi.fn(() => []),
+    reconfigureSkillRoots: vi.fn(async () => ({
+      appliedToEveryProvider: false,
+    })),
     shutdown: vi.fn(async () => undefined),
   };
 }

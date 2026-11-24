@@ -74,6 +74,27 @@ export type RoutedThread = z.infer<typeof routedThreadSchema> & {
   threadId: string;
 };
 
+export async function moveAccountSecretFiles(
+  from: string,
+  to: string,
+): Promise<void> {
+  let names: string[];
+  try {
+    names = await fs.readdir(from);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return;
+    }
+    throw error;
+  }
+  await fs.mkdir(to, { recursive: true, mode: 0o700 });
+  await fs.chmod(to, 0o700);
+  for (const name of names) {
+    await fs.rename(path.join(from, name), path.join(to, name));
+  }
+  await fs.rmdir(from);
+}
+
 export class AccountStore {
   private mutationLock: Promise<void> | null = null;
 

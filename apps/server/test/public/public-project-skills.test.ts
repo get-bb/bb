@@ -18,7 +18,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeRegistrySkillProvenance } from "../../src/services/skills/registry-skill-provenance.js";
 import { providerHasNativeRootSurface } from "../../src/services/providers/native-roots.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
-import { declaredNativeRootSet } from "../helpers/provider-registry.js";
+import { declaredNativeRootScan } from "../helpers/provider-registry.js";
 import { healthAnswer } from "../helpers/provider-model-catalogs.js";
 import { readJson } from "../helpers/json.js";
 import {
@@ -90,18 +90,29 @@ function registerSkillRpc(
         );
       }
       if (request.command.type === "host.list_skills") {
+        const byProvider = args.skillsByProvider ?? {};
+        const isWorkspaceSkill = (skill: DiscoveredSkill) =>
+          skill.rootKind === "bb-project";
+        const workspaceSkills = new Map(
+          Object.entries(byProvider)
+            .filter(([providerId]) => providerId !== "bb-shared")
+            .flatMap(([, skills]) => skills)
+            .filter(isWorkspaceSkill)
+            .map((skill) => [skill.id, skill]),
+        );
         return {
           ok: true,
           result: {
-            skills: args.skillsByProvider?.[request.command.providerId] ?? [],
+            workspaceSkills: [...workspaceSkills.values()],
+            sharedSkills: byProvider["bb-shared"] ?? [],
+            providers: request.command.providers.map((provider) => ({
+              providerId: provider.providerId,
+              skills: (byProvider[provider.providerId] ?? []).filter(
+                (skill) => !isWorkspaceSkill(skill),
+              ),
+            })),
           },
         };
-      }
-      if (
-        request.command.type === "plugin.host.call" &&
-        request.command.method === "resolveNativeRoots"
-      ) {
-        return { ok: true, result: { output: { skills: [], commands: [] } } };
       }
       if (request.command.type === "host.delete_skill") {
         return {
@@ -1222,6 +1233,76 @@ describe("public project skills route", () => {
     });
   });
 
+  it("opens a listed skill with one host read, and re-lists only for a skill the last listing did not have", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-skill-open",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/skill-open",
+      });
+      const listed = discovered(
+        "listed",
+        "provider-user",
+        "/home/.claude/skills/listed/SKILL.md",
+      );
+      const added = discovered(
+        "added",
+        "provider-user",
+        "/home/.claude/skills/added/SKILL.md",
+      );
+      const skillsByProvider = { "claude-code": [listed] };
+      const stub = registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        skillsByProvider,
+      });
+      const hostCommands = () =>
+        stub.requests
+          .map((request) => request.command.type)
+          .filter((type) => type !== "provider.health");
+
+      const list = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills?environmentId=`,
+      );
+      expect(list.status).toBe(200);
+      expect(hostCommands()).toEqual(["host.list_skills"]);
+
+      const [content, files] = await Promise.all([
+        harness.app.request(
+          `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=${listed.id}&path=SKILL.md`,
+        ),
+        harness.app.request(
+          `/api/v1/projects/${project.id}/skills/files?environmentId=&skillId=${listed.id}`,
+        ),
+      ]);
+      expect(content.status).toBe(200);
+      expect(files.status).toBe(200);
+      expect(hostCommands().slice(1).sort()).toEqual([
+        "host.list_files",
+        "host.read_file",
+      ]);
+
+      skillsByProvider["claude-code"] = [listed, added];
+      const fresh = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=${added.id}&path=SKILL.md`,
+      );
+      expect(fresh.status).toBe(200);
+      expect(hostCommands().slice(3)).toEqual([
+        "host.list_skills",
+        "host.read_file",
+      ]);
+
+      const missing = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=skill_${"f".repeat(64)}&path=SKILL.md`,
+      );
+      expect(missing.status).toBe(404);
+      expect(hostCommands().slice(5)).toEqual(["host.list_skills"]);
+    });
+  });
+
   it("maps scope, de-dupes shared bb skills, and sorts the listing", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -1349,21 +1430,26 @@ describe("public project skills route", () => {
         .list()
         .filter(providerHasNativeRootSurface)
         .map((registration) => registration.info.id);
-      const scanned = listed.map((command) => command.providerId).sort();
+      expect(listed).toHaveLength(1);
+      const [command] = listed;
+      const scanned = (command?.providers ?? [])
+        .map((provider) => provider.providerId)
+        .sort();
       expect(scanned).toEqual(["acp-cursor", "claude-code", "codex", "pi"]);
       expect(surfaced).toEqual(
         expect.arrayContaining([...scanned, "acp-grok", "acp-omp"]),
       );
-      for (const command of listed) {
-        expect(command).toEqual({
-          type: "host.list_skills",
-          providerId: command.providerId,
-          cwd: "/tmp/skills-env",
-          nativeRoots: declaredNativeRootSet(
-            harness.deps.providerRegistry,
-            command.providerId,
-          ),
-        });
+      expect(command).toEqual({
+        type: "host.list_skills",
+        cwd: "/tmp/skills-env",
+        providers: expect.any(Array),
+        sharedRoots: { user: [], project: [] },
+        resolution: { contributedEnv: [], timeoutMs: expect.any(Number) },
+      });
+      for (const provider of command?.providers ?? []) {
+        expect(provider).toEqual(
+          declaredNativeRootScan(harness.deps, provider.providerId),
+        );
       }
     });
   });

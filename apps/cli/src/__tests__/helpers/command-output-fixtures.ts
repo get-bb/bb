@@ -6,6 +6,7 @@ import {
   type Environment,
   type PendingInteractionApprovalDecision,
   type ProviderPendingInteraction,
+  type ResolvedThreadExecutionOptions,
   type Thread,
 } from "@bb/domain";
 import type {
@@ -68,6 +69,14 @@ export function makeEmptyHeadStateGetMock() {
     providerCommands: null,
     sessionOptions: null,
   }));
+}
+
+export function makeDefaultExecutionOptionsGetMock(
+  options: ResolvedThreadExecutionOptions | null = null,
+) {
+  return vi.fn(
+    async (): Promise<ResolvedThreadExecutionOptions | null> => options,
+  );
 }
 
 export function makeTimelineResponse(
@@ -147,6 +156,7 @@ export function makeEnvironment(overrides: MakeEnvironmentArgs): Environment {
   return {
     name: null,
     path: "/tmp/environment",
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: false,
     branchName: "bb/thread",
@@ -159,6 +169,8 @@ export function makeEnvironment(overrides: MakeEnvironmentArgs): Environment {
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: false,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: null,
     status: "ready",
     createdAt: Date.now(),

@@ -275,7 +275,6 @@ function buildPayload(
 
 function adapterFor(enforcer: Enforcer): BridgeProtocolAdapter {
   const adapter = createProviderForId("fake", {
-    additionalWorkspaceWriteRoots: [],
     bridgeLaunch: createScriptedEchoLaunch(),
   });
   const [initialize] = adapter.buildPostInitializeRequests();

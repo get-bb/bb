@@ -9,7 +9,12 @@ import {
   printBorderlessTable,
   truncateCell,
 } from "../../table.js";
-import { collectOption } from "../helpers.js";
+import {
+  collectOption,
+  LIST_COMMAND_DEFAULT_LIMIT,
+  parseNonNegativeIntegerOption,
+  printListPageNotice,
+} from "../helpers.js";
 import {
   resolveMachineHostId,
   resolveMachineTargetOption,
@@ -28,6 +33,8 @@ interface ThreadListCommandOptions {
   unsectioned?: boolean;
   json?: boolean;
   includeHidden?: boolean;
+  limit?: string;
+  offset?: string;
 }
 
 export function registerListCommand(
@@ -56,9 +63,18 @@ export function registerListCommand(
     .option("--archived", "Show only archived threads")
     .option("--include-archived", "Include archived threads")
     .option("--include-hidden", "Include hidden threads")
+    .option(
+      "--limit <n>",
+      `At most this many threads (default ${LIST_COMMAND_DEFAULT_LIMIT})`,
+    )
+    .option("--offset <n>", "Skip this many threads")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: ThreadListCommandOptions) => {
+        const limit =
+          parseNonNegativeIntegerOption(opts.limit, "--limit") ??
+          LIST_COMMAND_DEFAULT_LIMIT;
+        const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
         const sdk = createCliBbSdk(getUrl());
         const projectId = resolveExplicitIdFlag({
           flagName: "--project flag",
@@ -114,6 +130,8 @@ export function registerListCommand(
           ...(sectionId ? { sectionId } : {}),
           ...(opts.unsectioned ? { unsectioned: true } : {}),
           ...(opts.includeHidden ? { includeHidden: true } : {}),
+          limit,
+          ...(offset === undefined ? {} : { offset }),
         });
         if (outputJson(opts, threads)) return;
         if (threads.length === 0) {
@@ -125,6 +143,12 @@ export function registerListCommand(
           projects.map((project) => [project.id, project.name]),
         );
         printThreadTable(threads, projectNames);
+        printListPageNotice({
+          count: threads.length,
+          limit,
+          noun: "threads",
+          offset,
+        });
       }),
     );
 }

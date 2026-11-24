@@ -15,11 +15,14 @@ import {
 import type { ReuseThreadOption } from "@/components/pickers/ReuseEnvironmentPicker";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 
-export type SeededReuseEnvironmentStatus = "pending" | "available" | "missing";
+export type SelectedReuseEnvironmentStatus =
+  | "pending"
+  | "available"
+  | "missing";
 
-export interface SeededReuseEnvironment {
+export interface SelectedReuseEnvironment {
   environmentId: string;
-  status: SeededReuseEnvironmentStatus;
+  status: SelectedReuseEnvironmentStatus;
 }
 
 interface ResolveRootComposeEffectiveEnvironmentValueArgs {
@@ -31,7 +34,7 @@ interface ResolveRootComposeEffectiveEnvironmentValueArgs {
   projectSources: readonly ProjectSource[];
   reuseThreadOptions: readonly ReuseThreadOption[];
   reuseThreadOptionsLoading: boolean;
-  seededReuseEnvironment: SeededReuseEnvironment | null;
+  selectedReuseEnvironment: SelectedReuseEnvironment | null;
 }
 
 interface ResolveProjectlessEnvironmentValueArgs {
@@ -41,19 +44,19 @@ interface ResolveProjectlessEnvironmentValueArgs {
   primaryHostId: string | null;
   reuseThreadOptions: readonly ReuseThreadOption[];
   reuseThreadOptionsLoading: boolean;
-  seededReuseEnvironment: SeededReuseEnvironment | null;
+  selectedReuseEnvironment: SelectedReuseEnvironment | null;
 }
 
 function reuseSelectionSurvives({
   environmentId,
   reuseThreadOptions,
   reuseThreadOptionsLoading,
-  seededReuseEnvironment,
+  selectedReuseEnvironment,
 }: {
   environmentId: string;
   reuseThreadOptions: readonly ReuseThreadOption[];
   reuseThreadOptionsLoading: boolean;
-  seededReuseEnvironment: SeededReuseEnvironment | null;
+  selectedReuseEnvironment: SelectedReuseEnvironment | null;
 }): boolean {
   if (
     reuseThreadOptions.some((option) => option.environmentId === environmentId)
@@ -61,8 +64,8 @@ function reuseSelectionSurvives({
     return true;
   }
   if (reuseThreadOptionsLoading) return true;
-  if (seededReuseEnvironment?.environmentId === environmentId) {
-    return seededReuseEnvironment.status !== "missing";
+  if (selectedReuseEnvironment?.environmentId === environmentId) {
+    return selectedReuseEnvironment.status !== "missing";
   }
   return false;
 }
@@ -190,7 +193,7 @@ function resolveProjectlessEnvironmentValue({
   primaryHostId,
   reuseThreadOptions,
   reuseThreadOptionsLoading,
-  seededReuseEnvironment,
+  selectedReuseEnvironment,
 }: ResolveProjectlessEnvironmentValueArgs): string {
   if (
     parsedSelection?.type === "reuse" &&
@@ -199,7 +202,7 @@ function resolveProjectlessEnvironmentValue({
       environmentId: parsedSelection.environmentId,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
-      seededReuseEnvironment,
+      selectedReuseEnvironment,
     })
   ) {
     return environmentSelectionValue;
@@ -235,7 +238,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
   projectSources,
   reuseThreadOptions,
   reuseThreadOptionsLoading,
-  seededReuseEnvironment,
+  selectedReuseEnvironment,
 }: ResolveRootComposeEffectiveEnvironmentValueArgs): string {
   const parsedSelection = parseEnvironmentValue(environmentSelectionValue);
 
@@ -247,7 +250,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
       primaryHostId,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
-      seededReuseEnvironment,
+      selectedReuseEnvironment,
     });
   }
 
@@ -282,7 +285,7 @@ export function resolveRootComposeEffectiveEnvironmentValue({
       environmentId: parsedSelection.environmentId,
       reuseThreadOptions,
       reuseThreadOptionsLoading,
-      seededReuseEnvironment,
+      selectedReuseEnvironment,
     })
       ? environmentSelectionValue
       : fallbackValue;

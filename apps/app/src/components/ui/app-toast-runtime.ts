@@ -49,6 +49,16 @@ export function dismissSonnerToast(id?: string | number): void {
   attachedToast?.dismiss(id);
 }
 
+export function readSonnerToasts(): {
+  history: ReturnType<SonnerToast["getHistory"]>;
+  active: ReturnType<SonnerToast["getToasts"]>;
+} {
+  return {
+    history: attachedToast?.getHistory() ?? [],
+    active: attachedToast?.getToasts() ?? [],
+  };
+}
+
 export function attachSonnerToast(sonnerToast: SonnerToast): void {
   attachedToast = sonnerToast;
   for (const { run } of pendingCalls.splice(0)) run(sonnerToast);

@@ -2,12 +2,14 @@ import { ApiError } from "../../errors.js";
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { and, eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import {
-  environmentVariables,
+  deleteEnvironmentVariable,
+  deleteEnvironmentVariablesInScope,
+  hasAnyEnvironmentVariable,
+  listEnvironmentVariables,
+  saveEnvironmentVariable,
   type DbConnection,
-  type DbQueryConnection,
 } from "@bb/db";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import {
@@ -27,12 +29,6 @@ const encryptedSchema = z.object({
 });
 type EncryptedVariable = z.infer<typeof encryptedSchema>;
 const locks = new WeakMap<DbConnection, Promise<unknown>>();
-
-function scope(projectId: string | null) {
-  return projectId === null
-    ? isNull(environmentVariables.projectId)
-    : eq(environmentVariables.projectId, projectId);
-}
 
 async function encryptionKey(dataDir: string, allowCreate: boolean) {
   try {
@@ -114,35 +110,17 @@ export async function decryptMachineEnvironment(
   }
 }
 
-function save(db: DbQueryConnection, row: EncryptedVariable) {
-  db.delete(environmentVariables)
-    .where(and(scope(row.projectId), eq(environmentVariables.name, row.name)))
-    .run();
-  db.insert(environmentVariables)
-    .values({ ...row, updatedAt: Date.now() })
-    .run();
-}
-
 export function readMachineEnvironment(
   db: DbConnection,
   projectId: string | null = null,
 ): EncryptedVariable[] {
-  return db
-    .select()
-    .from(environmentVariables)
-    .where(scope(projectId))
-    .orderBy(environmentVariables.name)
-    .all()
-    .map((row) => encryptedSchema.parse(row));
+  return listEnvironmentVariables(db, projectId).map((row) =>
+    encryptedSchema.parse(row),
+  );
 }
 
 async function keyForWrite(db: DbConnection, dataDir: string) {
-  const existing = db
-    .select({ id: environmentVariables.id })
-    .from(environmentVariables)
-    .limit(1)
-    .get();
-  return encryptionKey(dataDir, existing === undefined);
+  return encryptionKey(dataDir, !hasAnyEnvironmentVariable(db));
 }
 
 export function replaceMachineEnvironment(
@@ -173,8 +151,8 @@ export function replaceMachineEnvironment(
       return { ...existing, note: variable.note };
     });
     db.transaction((tx) => {
-      tx.delete(environmentVariables).where(scope(projectId)).run();
-      for (const row of replacements) save(tx, row);
+      deleteEnvironmentVariablesInScope(tx, projectId);
+      for (const row of replacements) saveEnvironmentVariable(tx, row);
     });
   });
 }
@@ -187,7 +165,7 @@ export function setMachineEnvironmentVariable(
 ): Promise<void> {
   return runSerialized(locks, db, async () => {
     const row = encrypt(await keyForWrite(db, dataDir), input, projectId);
-    db.transaction((tx) => save(tx, row));
+    db.transaction((tx) => saveEnvironmentVariable(tx, row));
   });
 }
 
@@ -197,8 +175,6 @@ export function deleteMachineEnvironmentVariable(
   projectId: string | null,
 ): Promise<void> {
   return runSerialized(locks, db, async () => {
-    db.delete(environmentVariables)
-      .where(and(scope(projectId), eq(environmentVariables.name, name)))
-      .run();
+    deleteEnvironmentVariable(db, { projectId, name });
   });
 }

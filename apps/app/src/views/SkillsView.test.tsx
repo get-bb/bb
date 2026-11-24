@@ -935,7 +935,6 @@ describe("SkillsLibrary registry detail lifecycle", () => {
         focusPrompt: true,
         initialPrompt: buildRegistrySkillReferencePrompt(registrySkill),
         replaceInitialPrompt: true,
-        createDraftKind: "skill",
       });
       expect(
         fetchMock.mock.calls.some(([input]) =>

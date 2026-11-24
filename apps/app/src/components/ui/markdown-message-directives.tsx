@@ -8,6 +8,29 @@ import { directive as directiveSyntax } from "micromark-extension-directive";
 import type { Extension } from "micromark-util-types";
 import type { Processor } from "unified";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
+import { useNavigate } from "react-router-dom";
+import { useSetAtom } from "jotai";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@bb/shared-ui/dropdown-menu";
+import { Icon } from "@bb/shared-ui/icon";
+import { PluginIcon } from "@/components/plugin/PluginIcon";
+import { getPluginDisplayName } from "@/lib/plugin-logos";
+import {
+  messageDirectivePicksAtom,
+  MARKDOWN_SETTINGS_TITLE,
+} from "@/lib/plugin-choice-picks";
+import { SETTINGS_SEARCH_ANCHOR_STATE_KEY } from "@/components/settings/settings-search";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
+import {
+  replacementProviderKey,
+  type ExclusiveBootState,
+} from "@/lib/plugin-replacement-preference";
 import {
   resolveMessageDirectiveRegistry,
   type ResolvedMessageDirective,
@@ -26,12 +49,21 @@ export interface MessageDirectiveRegistry {
   unclaimed: UnclaimedMessageDirectivePolicy;
 }
 
-export interface MountedMessageDirective {
-  attributes: Readonly<Record<string, string>>;
-  index: number;
-  slot: PluginMessageDirectiveSlot;
-  source: string;
-}
+export type MountedMessageDirective =
+  | {
+      kind: "plugin";
+      attributes: Readonly<Record<string, string>>;
+      index: number;
+      slot: PluginMessageDirectiveSlot;
+      source: string;
+    }
+  | {
+      kind: "contested";
+      index: number;
+      name: string;
+      pluginIds: readonly string[];
+      source: string;
+    };
 
 export interface MarkdownMessageDirectives {
   registry: MessageDirectiveRegistry;
@@ -77,23 +109,18 @@ export function buildMessageDirectiveRegistry(
   slots: readonly PluginMessageDirectiveSlot[],
   options: {
     unclaimed: UnclaimedMessageDirectivePolicy;
-    warn?: (message: string) => void;
+    picks: Readonly<Record<string, string>>;
+    boot: ExclusiveBootState;
   },
 ): MessageDirectiveRegistry {
-  const warn = options.warn ?? defaultCollisionWarn;
-  const directives = resolveMessageDirectiveRegistry(slots);
-  for (const [id, directive] of directives) {
-    if (directive.status === "collision") {
-      warn(
-        `[plugin] message directive "${id}" claimed by multiple plugins (${directive.pluginIds.join(", ")}); rendering as literal text`,
-      );
-    }
-  }
-  return { directives, unclaimed: options.unclaimed };
-}
-
-function defaultCollisionWarn(message: string): void {
-  console.warn(message);
+  return {
+    directives: resolveMessageDirectiveRegistry(
+      slots,
+      options.picks,
+      options.boot,
+    ),
+    unclaimed: options.unclaimed,
+  };
 }
 
 export function normalizeDirectiveAttributes(
@@ -248,7 +275,7 @@ function gluedDirectiveSyntax(registry: MessageDirectiveRegistry): Extension {
               const claimable =
                 entry === undefined
                   ? registry.unclaimed === "hold"
-                  : entry.status === "ok";
+                  : entry.status !== "literal";
               return hasAttributes && claimable ? ok(code) : nok(code);
             },
             nok,
@@ -317,8 +344,8 @@ export function remarkMessageDirectives(
       if (
         isBlock &&
         name.length > 0 &&
-        entry === undefined &&
-        registry.unclaimed === "hold"
+        ((entry === undefined && registry.unclaimed === "hold") ||
+          entry?.status === "loading")
       ) {
         const remainder: Paragraph | null =
           isGlued && paragraph !== null && paragraph.children.length > 1
@@ -336,7 +363,7 @@ export function remarkMessageDirectives(
         !isBlock ||
         name.length === 0 ||
         entry === undefined ||
-        entry.status === "collision" ||
+        (entry.status !== "ok" && entry.status !== "collision") ||
         mounts.length >= limit
       ) {
         if (isGlued) return;
@@ -344,12 +371,23 @@ export function remarkMessageDirectives(
       }
 
       const mountIndex = indexBase + mounts.length;
-      mounts.push({
-        attributes,
-        index: mountIndex,
-        slot: entry.slot,
-        source,
-      });
+      mounts.push(
+        entry.status === "ok"
+          ? {
+              kind: "plugin",
+              attributes,
+              index: mountIndex,
+              slot: entry.slot,
+              source,
+            }
+          : {
+              kind: "contested",
+              index: mountIndex,
+              name,
+              pluginIds: entry.pluginIds,
+              source,
+            },
+      );
       const remainder: Paragraph | null =
         isGlued && paragraph !== null && paragraph.children.length > 1
           ? { ...paragraph, children: paragraph.children.slice(1) }
@@ -388,14 +426,93 @@ export function MessageDirectiveElement(props: MessageDirectiveElementProps) {
   if (mount === undefined) {
     return null;
   }
+  if (mount.kind === "contested") {
+    return <ContestedMessageDirective mount={mount} />;
+  }
   return <MountedMessageDirectiveView mount={mount} render={render} />;
+}
+
+function ContestedMessageDirective({
+  mount,
+}: {
+  mount: Extract<MountedMessageDirective, { kind: "contested" }>;
+}) {
+  const setPicks = useSetAtom(messageDirectivePicksAtom);
+  const navigate = useNavigate();
+  const directive = `::${mount.name}`;
+  return (
+    <div
+      data-contested-message-directive={mount.name}
+      className="my-2 flex items-start gap-2 overflow-hidden rounded-md border border-border bg-surface-recessed py-1.5 pl-3 pr-1.5"
+    >
+      <pre className="min-w-0 flex-1 whitespace-pre-wrap break-words py-px font-mono text-xs">
+        {mount.source}
+      </pre>
+      <div data-clipboard-ignore className="shrink-0">
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label={`Choose a plugin to show ${directive}`}
+              className="inline-flex h-5 shrink-0 cursor-pointer items-center gap-1 rounded px-1.5 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-active data-[state=open]:text-foreground"
+            >
+              Choose plugin
+              <Icon name="ChevronDown" className="size-3" aria-hidden="true" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            mobileTitle={`Show ${directive} with`}
+          >
+            <DropdownMenuLabel className="font-normal text-subtle-foreground">
+              Always show {directive} with
+            </DropdownMenuLabel>
+            {mount.pluginIds.map((pluginId) => (
+              <DropdownMenuItem
+                key={pluginId}
+                onSelect={() =>
+                  setPicks((previous) => ({
+                    ...previous,
+                    [mount.name]: replacementProviderKey({
+                      pluginId,
+                      id: mount.name,
+                    }),
+                  }))
+                }
+              >
+                <PluginIcon pluginId={pluginId} icon={null} />
+                {getPluginDisplayName(pluginId)}
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onSelect={() => {
+                void navigate(
+                  getSettingsTargetPath({ section: "appearance" }),
+                  {
+                    state: {
+                      [SETTINGS_SEARCH_ANCHOR_STATE_KEY]:
+                        MARKDOWN_SETTINGS_TITLE,
+                    },
+                  },
+                );
+              }}
+            >
+              <Icon name="Settings" aria-hidden="true" />
+              Settings…
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
 }
 
 const MountedMessageDirectiveView = memo(function MountedMessageDirectiveView({
   mount,
   render,
 }: {
-  mount: MountedMessageDirective;
+  mount: Extract<MountedMessageDirective, { kind: "plugin" }>;
   render: MessageDirectiveRenderContext;
 }) {
   const { message, openWorkspaceFile } = render;

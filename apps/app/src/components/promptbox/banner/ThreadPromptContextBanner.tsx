@@ -4,41 +4,39 @@ import {
   type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk";
 import {
-  CORE_THREAD_CONTEXT_OWNER,
   ThreadContextSegmentMount,
   threadContextSegmentKey,
   threadContextSegmentMountKey,
+  useThreadContextSegmentDisclosure,
   useThreadContextSegments,
   type CoreThreadContextSegment,
   type ThreadContextSegmentEntry,
   type ThreadContextSegmentPart,
 } from "@/components/plugin/PluginThreadContextSegments";
-import {
-  collectPluginAppRegistrations,
-  definePluginApp,
-} from "@/lib/plugin-app-definition";
+import { definePluginApp } from "@/lib/plugin-app-definition";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import {
   machineRemovalDescriptions,
   machineRemovalLabels,
   type MachineRemovalStatus,
 } from "@/lib/machine-removal-display";
 import {
-  createContext,
   useCallback,
-  useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type Ref,
   type RefObject,
 } from "react";
 import { NavLink } from "react-router-dom";
-import type {
-  EnvironmentStatus,
-  PendingInteraction,
-  ThreadRuntimeDisplayStatus,
+import {
+  CORE_PLUGIN_ID,
+  type EnvironmentStatus,
+  type PendingInteraction,
+  type ThreadRuntimeDisplayStatus,
 } from "@bb/domain";
 import {
   PromptStackCard,
@@ -56,8 +54,12 @@ import {
 import { formatPendingInteractionSummary } from "@bb/core-ui";
 import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
+import { CONTEXT_CARD_SEGMENT_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { useThreadContextKind } from "@/components/plugin/PluginThreadContextCard";
+import {
+  experimental_useThreadContextKind,
+  experimental_useThreadTitleDisplayText,
+} from "@get-bb/plugin-sdk/app";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   AnimatedBody,
@@ -77,6 +79,7 @@ import {
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import { childThreadNoun } from "@/lib/child-thread-copy";
+import { useParentThreadSection } from "@/views/thread-detail/useParentThreadSection";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
@@ -126,13 +129,8 @@ export function isThreadDisplayStatusBannerActive(
   return THREAD_BANNER_ACTIVE_CHILD_RUNTIME_STATUSES.has(status);
 }
 
-export interface CoreThreadContext {
-  parentThread: ThreadPromptParentThreadSection | null;
-}
-
 interface ThreadPromptContextBannerProps {
   input: ExperimentalThreadContextSegmentInput;
-  core: CoreThreadContext;
   archivedSection: ThreadPromptArchivedSection | null;
   environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
   expandedSegment: string | null;
@@ -205,7 +203,7 @@ const PARENT_SECTION_ICON: Record<
 function useParentSectionAriaLabel(
   section: ThreadPromptParentThreadSection,
 ): string {
-  const parentThreadTitle = useThreadTitleDisplayText(
+  const parentThreadTitle = experimental_useThreadTitleDisplayText(
     section.parentThreadTitle,
   );
   return `${PARENT_SECTION_COPY[section.relationship].ariaPrefix} ${parentThreadTitle}`;
@@ -224,7 +222,7 @@ function ParentThreadInlineSegment({
     <div
       className={cn(
         "flex min-w-0 items-center gap-1.5 text-xs",
-        PROMPT_STACK_INLAY_SEGMENT_CLASS,
+        CONTEXT_CARD_SEGMENT_CLASS,
       )}
       title={ariaLabel}
     >
@@ -254,7 +252,7 @@ function ParentThreadSectionToggle({
   onToggle,
 }: {
   section: ThreadPromptParentThreadSection;
-  buttonRef: RefObject<HTMLButtonElement | null>;
+  buttonRef: Ref<HTMLButtonElement>;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -288,7 +286,7 @@ function ParentThreadSectionBody({
 }: {
   section: ThreadPromptParentThreadSection;
   isExpanded: boolean;
-  collapseRef: RefObject<HTMLButtonElement | null>;
+  collapseRef: Ref<HTMLButtonElement>;
   onCollapse: () => void;
 }) {
   return (
@@ -488,14 +486,12 @@ function ChildQuestionBody({
   index,
   total,
   onStep,
-  onClose,
 }: {
   titleLinkRef: RefObject<HTMLAnchorElement | null>;
   current: ChildThreadQuestion;
   index: number;
   total: number;
   onStep: (offset: 1 | -1) => void;
-  onClose: (childThreadId: string) => void;
 }) {
   const position = `${index + 1} of ${total}`;
   const childTitle = useThreadTitleDisplayText(current.childTitle);
@@ -505,10 +501,7 @@ function ChildQuestionBody({
   const form = useMemo(
     () => (
       <InlinePendingInteractionContext.Provider
-        value={{
-          promptShownAbove: question,
-          close: () => onClose(current.childThreadId),
-        }}
+        value={{ promptShownAbove: question }}
       >
         <ThreadPendingInteractionBanners
           interactions={[current.interaction]}
@@ -516,7 +509,7 @@ function ChildQuestionBody({
         />
       </InlinePendingInteractionContext.Provider>
     ),
-    [current.interaction, current.childThreadId, question, onClose],
+    [current.interaction, current.childThreadId, question],
   );
   return (
     <div className="px-3 pb-2 pt-2">
@@ -772,7 +765,7 @@ function ActiveChildThreadsCard({
       closeQuestion(currentQuestion.childThreadId);
     }
   };
-  const showBackHeader = currentQuestion !== undefined && items.length > 1;
+  const showBackHeader = currentQuestion !== undefined;
   const needsInput = items.some((item) => item.hasPendingInteraction);
   return (
     <PromptStackCard
@@ -850,7 +843,6 @@ function ActiveChildThreadsCard({
                   pendingInteractions.length,
               )
             }
-            onClose={closeQuestion}
           />
         ) : (
           <ChildThreadsBody
@@ -880,54 +872,42 @@ function ActiveChildThreadsCard({
   );
 }
 
-type DisclosureFocusHandoff = ReturnType<typeof useDisclosureFocusHandoff>;
-
-interface CoreThreadContextValue extends CoreThreadContext {
-  parentFocus: DisclosureFocusHandoff;
-}
-
-const CoreThreadContextContext = createContext<CoreThreadContextValue | null>(
-  null,
-);
-
-function useCoreThreadContext(): CoreThreadContextValue {
-  const value = useContext(CoreThreadContextContext);
-  if (value === null) {
-    throw new Error("Core thread context segments render inside the banner");
-  }
-  return value;
-}
-
 function ParentThreadSummary({
+  threadId,
   segments,
   isExpanded,
+  onToggle,
+  toggleRef,
 }: ExperimentalThreadContextSegmentProps) {
-  const { parentThread, parentFocus } = useCoreThreadContext();
+  const parentThread = useParentThreadSection(threadId);
   if (parentThread === null) return null;
   return segments.length === 1 ? (
     <ParentThreadInlineSegment section={parentThread} />
   ) : (
     <ParentThreadSectionToggle
       section={parentThread}
-      buttonRef={parentFocus.triggerRef}
+      buttonRef={toggleRef}
       isExpanded={isExpanded}
-      onToggle={parentFocus.onTriggerClick}
+      onToggle={onToggle}
     />
   );
 }
 
 function ParentThreadDetails({
+  threadId,
   segments,
   isExpanded,
+  onToggle,
+  collapseRef,
 }: ExperimentalThreadContextSegmentProps) {
-  const { parentThread, parentFocus } = useCoreThreadContext();
+  const parentThread = useParentThreadSection(threadId);
   if (parentThread === null || segments.length === 1) return null;
   return (
     <ParentThreadSectionBody
       section={parentThread}
       isExpanded={isExpanded}
-      collapseRef={parentFocus.collapseRef}
-      onCollapse={parentFocus.onCollapseClick}
+      collapseRef={collapseRef}
+      onCollapse={onToggle}
     />
   );
 }
@@ -956,7 +936,7 @@ export function ThreadChildThreadsBanner({
 const SEGMENT_GROUPS = experimental_THREAD_CONTEXT_SEGMENT_GROUPS;
 
 const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
-  collectPluginAppRegistrations(
+  collectCoreContributionSlots(
     definePluginApp((app) => {
       app.slots.experimental_threadContextSegment({
         id: "parent-thread",
@@ -965,17 +945,15 @@ const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
         order: 10,
         summary: ParentThreadSummary,
         details: ParentThreadDetails,
-        useVisible: () => {
-          const { parentThread } = useCoreThreadContext();
-          const kind = useThreadContextKind();
+        useVisible: ({ threadId }) => {
+          const parentThread = useParentThreadSection(threadId);
+          const kind = experimental_useThreadContextKind();
           return parentThread !== null && kind === "banner";
         },
       });
     }),
-  ).threadContextSegments.map((slot) => ({
-    ...slot,
-    pluginId: CORE_THREAD_CONTEXT_OWNER,
-  }));
+    "threadContextSegments",
+  );
 
 function coreSlot(id: string): CoreThreadContextSegment {
   const slot = coreThreadContextSegments.find(
@@ -991,10 +969,10 @@ const PARENT_THREAD_ENTRY: ThreadContextSegmentEntry = {
   slot: PARENT_THREAD_SLOT,
 };
 const PARENT_THREAD_KEY = threadContextSegmentKey(PARENT_THREAD_SLOT);
-const STATUS_KEY = `${CORE_THREAD_CONTEXT_OWNER}/status`;
+const STATUS_KEY = `${CORE_PLUGIN_ID}/status`;
 const READ_ONLY_SEGMENTS = [
-  { key: PARENT_THREAD_KEY, pluginId: CORE_THREAD_CONTEXT_OWNER },
-  { key: STATUS_KEY, pluginId: CORE_THREAD_CONTEXT_OWNER },
+  { key: PARENT_THREAD_KEY, pluginId: CORE_PLUGIN_ID },
+  { key: STATUS_KEY, pluginId: CORE_PLUGIN_ID },
 ];
 
 interface ReadOnlyContextBannerProps {
@@ -1002,7 +980,6 @@ interface ReadOnlyContextBannerProps {
   iconName: IconName;
   statusLabel: string;
   description: string | null;
-  hasParentThread: boolean;
   statusAction: ReactNode;
   expandedSegment: string | null;
   onToggleSegment: (key: string) => void;
@@ -1013,11 +990,15 @@ function ReadOnlyContextBanner({
   iconName,
   statusLabel,
   description,
-  hasParentThread,
   statusAction,
   expandedSegment,
   onToggleSegment,
 }: ReadOnlyContextBannerProps) {
+  const hasParentThread = useParentThreadSection(input.threadId) !== null;
+  const disclosure = useThreadContextSegmentDisclosure(
+    expandedSegment,
+    onToggleSegment,
+  );
   const isStatusExpanded =
     expandedSegment === STATUS_KEY && description !== null;
   const statusFocus = useDisclosureFocusHandoff(isStatusExpanded, () =>
@@ -1034,8 +1015,7 @@ function ReadOnlyContextBanner({
         {...input}
         part={part}
         segments={READ_ONLY_SEGMENTS}
-        isExpanded={expandedSegment === PARENT_THREAD_KEY}
-        onToggle={() => onToggleSegment(PARENT_THREAD_KEY)}
+        {...disclosure(PARENT_THREAD_KEY)}
       />
     ) : null;
   return (
@@ -1115,6 +1095,10 @@ function WritableContextBanner({
     input,
     coreThreadContextSegments,
   );
+  const disclosure = useThreadContextSegmentDisclosure(
+    expandedSegment,
+    onToggleSegment,
+  );
   const segments = entries.map(({ slot }) => ({
     key: threadContextSegmentKey(slot),
     pluginId: slot.pluginId,
@@ -1131,8 +1115,7 @@ function WritableContextBanner({
         part={part}
         {...input}
         segments={segments}
-        isExpanded={expandedSegment === key}
-        onToggle={() => onToggleSegment(key)}
+        {...disclosure(key)}
       />
     );
   };
@@ -1163,7 +1146,6 @@ function WritableContextBanner({
 
 export function ThreadPromptContextBanner({
   input,
-  core,
   archivedSection,
   environmentGoneSection,
   expandedSegment,
@@ -1171,18 +1153,12 @@ export function ThreadPromptContextBanner({
 }: ThreadPromptContextBannerProps) {
   const isReadOnly =
     archivedSection !== null || environmentGoneSection !== null;
-  const parentFocus = useDisclosureFocusHandoff(
-    expandedSegment === PARENT_THREAD_KEY,
-    () => onToggleSegment(PARENT_THREAD_KEY),
-  );
-  const context: CoreThreadContextValue = { ...core, parentFocus };
   if (isReadOnly) {
     const environmentGoneCopy = environmentGoneSection
       ? ENVIRONMENT_GONE_STATUS_COPY[environmentGoneSection.status]
       : null;
     return (
-      <CoreThreadContextContext.Provider value={context}>
-        <ReadOnlyContextBanner
+      <ReadOnlyContextBanner
           input={input}
           iconName={environmentGoneSection ? "CircleX" : "Archive"}
           statusLabel={
@@ -1206,20 +1182,16 @@ export function ThreadPromptContextBanner({
               />
             ) : null
           }
-          hasParentThread={core.parentThread !== null}
           expandedSegment={expandedSegment}
           onToggleSegment={onToggleSegment}
         />
-      </CoreThreadContextContext.Provider>
     );
   }
   return (
-    <CoreThreadContextContext.Provider value={context}>
-      <WritableContextBanner
-        input={input}
-        expandedSegment={expandedSegment}
-        onToggleSegment={onToggleSegment}
-      />
-    </CoreThreadContextContext.Provider>
+    <WritableContextBanner
+      input={input}
+      expandedSegment={expandedSegment}
+      onToggleSegment={onToggleSegment}
+    />
   );
 }
