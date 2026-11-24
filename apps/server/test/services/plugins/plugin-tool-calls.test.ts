@@ -149,9 +149,10 @@ describe("PluginToolCallRegistry", () => {
     expect(registry.size).toBe(1);
     result.resolve(textResponse("the user answered"));
     await vi.advanceTimersByTimeAsync(0);
-    expect(onDetachedResult).toHaveBeenCalledWith(
-      textResponse("the user answered"),
-    );
+    expect(onDetachedResult).toHaveBeenCalledWith({
+      response: textResponse("the user answered"),
+      wakeIdleThread: false,
+    });
     expect(registry.size).toBe(0);
   });
 
@@ -211,6 +212,44 @@ describe("PluginToolCallRegistry", () => {
     registry.abortForPlugin("alpha", "plugin-disposed");
 
     expect(signals.map((signal) => signal.aborted)).toEqual([true, false]);
+  });
+
+  it("delivers a waking failure at once when a detached call's plugin is disposed", async () => {
+    const registry = createRegistry();
+    const onDetachedResult = vi.fn(async () => undefined);
+    const result = createDeferredPromise<ToolCallResponse>();
+    let toolSignal: AbortSignal | undefined;
+    const response = registry.run({
+      pluginId: "fixture",
+      threadId: "thread",
+      callId: "call",
+      toolName: "ask",
+      roundTrip: new AbortController().signal,
+      invoke: (signal) => {
+        toolSignal = signal;
+        detachActivePluginToolCallForUserInput();
+        return result.promise;
+      },
+      onDetachedResult,
+    });
+    await expect(response).resolves.toEqual(
+      textResponse(PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT),
+    );
+
+    registry.abortForPlugin("fixture", "plugin-disposed");
+
+    expect(toolSignal?.reason).toBe("plugin-disposed");
+    expect(onDetachedResult).toHaveBeenCalledExactlyOnceWith({
+      response: textResponse(
+        'Tool "ask" failed: the "fixture" plugin stopped before the call finished (it was reloaded, updated or disabled), so its result will not arrive. Call the tool again if you still need it.',
+        false,
+      ),
+      wakeIdleThread: true,
+    });
+    expect(registry.size).toBe(0);
+    result.resolve(textResponse("cancelled by the stopping plugin", false));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(onDetachedResult).toHaveBeenCalledTimes(1);
   });
 
   it("turns a rejected invocation into a failed tool result", async () => {

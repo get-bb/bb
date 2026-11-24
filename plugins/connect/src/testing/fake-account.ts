@@ -96,7 +96,7 @@ export class FakeAccount {
     if (args.pluginId !== "bb-account" || !this.available) {
       throw new experimental_BbHttpError({
         status: 503,
-        code: null,
+        code: "plugin_not_running",
         message: `plugin "${args.pluginId}" is not running`,
         body: null,
       });

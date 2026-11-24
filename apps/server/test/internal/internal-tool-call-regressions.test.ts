@@ -7,6 +7,7 @@ import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT,
+  abortPluginToolCallsForPlugin,
   detachActivePluginToolCallForUserInput,
 } from "../../src/services/plugins/plugin-tool-calls.js";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
@@ -373,6 +374,79 @@ describe("plugin tool calls that outlive their round trip", () => {
           listQueuedThreadCommands(harness, "turn.submit", thread.id),
         ).toHaveLength(0);
         expect(turnRequestedEvents(harness, thread.id)).toHaveLength(1);
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+  it("wakes an idle thread with a failure when the waiting tool's plugin stops", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedIdleProviderThread(harness, 4);
+      const record: PluginAgentToolRecord = {
+        name: "wait_for_user",
+        description: "Wait",
+        presentation: null,
+        instructions: null,
+        inputSchema: {},
+        parse: (input) => ({ ok: true, value: input }),
+        execute: () => "unused",
+      };
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: (name) =>
+          name === record.name ? { pluginId: "fixture", record } : undefined,
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+        invokeAgentTool: async () => {
+          detachActivePluginToolCallForUserInput();
+          return new Promise(() => undefined);
+        },
+      });
+      try {
+        const response = await harness.app.request(
+          "/internal/session/tool-call",
+          {
+            method: "POST",
+            headers: internalAuthHeaders(harness),
+            body: JSON.stringify({
+              sessionId: session.id,
+              threadId: thread.id,
+              providerThreadId: "provider-thread",
+              turnId: "turn",
+              callId: "call-4",
+              tool: record.name,
+            }),
+          },
+        );
+        await response.json();
+
+        abortPluginToolCallsForPlugin("fixture", "plugin-disposed");
+
+        await vi.waitFor(() => {
+          expect(
+            listQueuedThreadCommands(harness, "turn.submit", thread.id),
+          ).toHaveLength(1);
+        });
+        const [command] = listQueuedThreadCommands(
+          harness,
+          "turn.submit",
+          thread.id,
+        );
+        expect(command).toMatchObject({
+          input: [
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining(
+                'Your earlier wait_for_user tool call failed:\n\nTool "wait_for_user" failed: the "fixture" plugin stopped before the call finished',
+              ),
+            }),
+          ],
+        });
+        expect(turnRequestedEvents(harness, thread.id).at(-1)).toMatchObject({
+          initiator: "system",
+          systemMessageKind: "tool-result-delivered",
+        });
       } finally {
         setPluginAgentContributions(undefined);
       }

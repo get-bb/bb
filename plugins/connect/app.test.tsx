@@ -237,7 +237,7 @@ describe("connect settings section", () => {
       "login.start": () => {
         throw new experimental_BbHttpError({
           status: 503,
-          code: null,
+          code: "plugin_not_running",
           message: "not running",
           body: null,
         });

@@ -439,7 +439,8 @@ Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
 `invalid_output`, `non_json_result`, and `unknown_method`; validation failures
 also carry normalized `{ message, path? }[]` issues. Unknown methods return
 404, invalid JSON/input returns 400, and handler/output/serialization failures
-return 500. Throw `new experimental_PluginRpcRefusal({ code, message, issues? })`
+return 500. Before a handler runs: `plugin_not_found` 404, `plugin_not_running`
+503, `invalid_caller` 403, `forbidden_origin` 403, `unsupported_media_type` 415. Throw `new experimental_PluginRpcRefusal({ code, message, issues? })`
 from `@get-bb/plugin-sdk` for expected refusals:
 `forbidden` → 403, `not_found` → 404, `conflict` → 409, `invalid` → 422.
 Codes and optional `PluginRpcValidationIssue[]` issues reach callers in the error envelope.

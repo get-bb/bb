@@ -199,6 +199,7 @@ export async function createTestAppHarness(
   );
   for (const extra of overrides.extraProviders ?? []) {
     providerRegistry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         available: true,
         pluginId: extra.pluginId,

@@ -125,12 +125,15 @@ interface ProviderProcessExitedErrorArgs {
   providerId: string;
   status: ProviderProcessExitStatus;
   stderrTail: Buffer;
+  expected: boolean;
 }
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const PROVIDER_PROCESS_CLOSE_GRACE_MS = 1_000;
 
 class ProviderProcessExitedError extends Error {
+  readonly code: "provider_process_exited" | undefined;
+
   constructor(args: ProviderProcessExitedErrorArgs) {
     const stderr = formatProviderStderr(args.stderrTail);
     super(
@@ -138,6 +141,7 @@ class ProviderProcessExitedError extends Error {
         (stderr ? `\nstderr: ${stderr}` : ""),
     );
     this.name = "ProviderProcessExitedError";
+    this.code = args.expected ? undefined : "provider_process_exited";
   }
 }
 
@@ -623,6 +627,7 @@ export class RuntimeProviderProcessManager {
           providerId: args.providerId,
           status: { code: args.code, signal: args.signal },
           stderrTail: args.providerProcess.stderrTail,
+          expected,
         }),
       );
     }

@@ -1482,14 +1482,18 @@ describe("createAgentRuntime process lifecycle", () => {
       onEvent: () => {},
       onToolCall: async () => ({ contentItems: [], success: true }),
     });
-    await expect(
-      withBridgeLaunch(
-        runtime,
-        createScriptedEchoLaunch({
-          modulePath: join(tmpDir, "nonexistent-bridge.mjs"),
-        }),
-      ).ensureProvider({ providerId: "fake" }),
-    ).rejects.toThrow(/exited unexpectedly[\s\S]*Cannot find module/);
+    const started = withBridgeLaunch(
+      runtime,
+      createScriptedEchoLaunch({
+        modulePath: join(tmpDir, "nonexistent-bridge.mjs"),
+      }),
+    ).ensureProvider({ providerId: "fake" });
+    await expect(started).rejects.toThrow(
+      /exited unexpectedly[\s\S]*Cannot find module/,
+    );
+    await expect(started).rejects.toMatchObject({
+      code: "provider_process_exited",
+    });
     await runtime.shutdown();
   });
 

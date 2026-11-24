@@ -54,14 +54,14 @@ const cases: WatchCase[] = [
   },
   {
     name: "reports no account while bb account isn't running",
-    steps: [failure(503), signedIn(1)],
+    steps: [failure(503, "plugin_not_running"), signedIn(1)],
     accounts: [null, "srv_1"],
     calls: ["status", "status"],
     warnings: 0,
   },
   {
     name: "reports no account while bb account isn't installed",
-    steps: [failure(404), signedIn(1)],
+    steps: [failure(404, "plugin_not_found"), signedIn(1)],
     accounts: [null, "srv_1"],
     calls: ["status", "status"],
     warnings: 0,

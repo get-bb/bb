@@ -323,6 +323,7 @@ function notifyInsertedEventThreads(
 async function applyEventEffects(
   deps: LoggedPendingInteractionWorkSessionDeps,
   events: HostDaemonEventEnvelope[],
+  hostId: string,
 ): Promise<TurnEndFollowUp[]> {
   const followUps: TurnEndFollowUp[] = [];
   const failedParentNotificationThreadIds = new Set<string>();
@@ -462,10 +463,19 @@ async function applyEventEffects(
         (event.code === "provider_process_exited" ||
           event.code === "provider_turn_start_failed")
       ) {
-        if (getThread(deps.db, entry.threadId) === null) {
+        const thread = getThread(deps.db, entry.threadId);
+        if (thread === null) {
           continue;
         }
         if (event.code === "provider_process_exited") {
+          deps.providerRegistry.get(thread.providerId)?.reportBridgeFailure({
+            hostId,
+            operation: `session for thread ${thread.id}`,
+            message:
+              event.detail === undefined
+                ? event.message
+                : `${event.message}\n${event.detail}`,
+          });
           deps.pendingInteractions.interruptPendingInteractionsForThreadIds({
             threadIds: [entry.threadId],
             reason:
@@ -931,6 +941,7 @@ export function registerInternalEventRoutes(app: Hono, deps: AppDeps): void {
           events: postableEvents,
           insertedEventIndexes: appendResult.insertedInputIndexes,
         }),
+        session.hostId,
       );
       for (const candidate of resolveActivePruneCandidates({
         acceptedEvents: appendResult.acceptedEvents,

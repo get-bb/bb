@@ -157,12 +157,7 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
     if (problem === null) {
       return;
     }
-    throw new ApiError(
-      problem.status,
-      problem.status === 403 ? "forbidden_origin" : "unsupported_media_type",
-      problem.error,
-      false,
-    );
+    throw new ApiError(problem.status, problem.code, problem.error, false);
   };
 
   for (const route of [

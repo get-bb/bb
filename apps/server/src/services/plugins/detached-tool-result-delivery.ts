@@ -13,6 +13,7 @@ interface DeliverDetachedToolResultArgs {
   toolName: string;
   presentation: PluginRowPresentation | null;
   response: ToolCallResponse;
+  wakeIdleThread: boolean;
 }
 
 function buildDetachedToolResultInput(args: {
@@ -59,7 +60,11 @@ export async function deliverDetachedToolResult(
   if (!thread || thread.deletedAt !== null || thread.archivedAt !== null) {
     return;
   }
-  if (!args.response.success && thread.status !== "active") {
+  if (
+    !args.response.success &&
+    !args.wakeIdleThread &&
+    thread.status !== "active"
+  ) {
     return;
   }
   await queueParentSystemMessage(deps, {

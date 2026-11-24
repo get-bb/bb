@@ -86,10 +86,10 @@ export function createAccountClient(
     } catch (error) {
       if (
         error instanceof experimental_BbHttpError &&
-        ((error.status === 503 && error.code !== "server_moving") ||
-          error.status === 404)
+        (error.code === "plugin_not_found" ||
+          error.code === "plugin_not_running")
       ) {
-        throw new AccountUnavailableError(`HTTP ${error.status}`);
+        throw new AccountUnavailableError(error.message);
       }
       throw error;
     }

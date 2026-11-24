@@ -92,7 +92,12 @@ function buildTestFailureResponse(
     requestId: request.requestId,
     commandType: request.command.type,
     ok: false,
-    errorCode: "test_rpc_error",
+    errorCode:
+      error instanceof Error &&
+      "code" in error &&
+      typeof error.code === "string"
+        ? error.code
+        : "test_rpc_error",
     errorMessage: toErrorMessage(error),
   };
 }

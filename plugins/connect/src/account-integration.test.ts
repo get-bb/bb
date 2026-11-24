@@ -74,7 +74,7 @@ async function callAccountRpc(args: RpcArgs): Promise<unknown> {
     return Promise.reject(
       new experimental_BbHttpError({
         status: 503,
-        code: null,
+        code: "plugin_not_running",
         message: `${args.pluginId} is not running`,
         body: null,
       }),

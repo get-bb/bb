@@ -12,15 +12,22 @@ export interface RunPluginToolCallArgs {
   toolName: string;
   roundTrip: AbortSignal;
   invoke(signal: AbortSignal): Promise<ToolCallResponse>;
-  onDetachedResult(response: ToolCallResponse): Promise<void>;
+  onDetachedResult(result: DetachedPluginToolResult): Promise<void>;
 }
+
+export interface DetachedPluginToolResult {
+  response: ToolCallResponse;
+  wakeIdleThread: boolean;
+}
+
+type PluginToolCallAbandonment = "plugin" | "thread";
 
 interface TrackedPluginToolCall {
   pluginId: string;
   threadId: string;
   callId: string;
   toolName: string;
-  controller: AbortController;
+  abandon(by: PluginToolCallAbandonment, reason: string): void;
   detachWith(response: ToolCallResponse): void;
 }
 
@@ -51,6 +58,12 @@ function failedToolCallResponse(
   };
 }
 
+function pluginStoppedError(pluginId: string): Error {
+  return new Error(
+    `the "${pluginId}" plugin stopped before the call finished (it was reloaded, updated or disabled), so its result will not arrive. Call the tool again if you still need it.`,
+  );
+}
+
 export class PluginToolCallRegistry {
   private readonly calls = new Set<TrackedPluginToolCall>();
   private readonly logger: ServerLogger;
@@ -62,12 +75,14 @@ export class PluginToolCallRegistry {
   run(args: RunPluginToolCallArgs): Promise<ToolCallResponse> {
     const controller = new AbortController();
     let detachWith: (response: ToolCallResponse) => void = () => undefined;
+    let abandon: (by: PluginToolCallAbandonment, reason: string) => void = () =>
+      undefined;
     const tracked: TrackedPluginToolCall = {
       pluginId: args.pluginId,
       threadId: args.threadId,
       callId: args.callId,
       toolName: args.toolName,
-      controller,
+      abandon: (by, reason) => abandon(by, reason),
       detachWith: (response) => detachWith(response),
     };
     this.calls.add(tracked);
@@ -75,39 +90,19 @@ export class PluginToolCallRegistry {
     return new Promise<ToolCallResponse>((resolve) => {
       let detached = false;
       let settled = false;
-      const abort = () => {
+      const abortRoundTrip = () => {
         controller.abort(args.roundTrip.reason);
         settle(failedToolCallResponse(args.toolName, args.roundTrip.reason));
       };
       detachWith = (response) => {
         if (settled || detached || controller.signal.aborted) return;
         detached = true;
-        args.roundTrip.removeEventListener("abort", abort);
+        args.roundTrip.removeEventListener("abort", abortRoundTrip);
         resolve(response);
       };
 
-      const settle = (response: ToolCallResponse) => {
-        if (settled) return;
-        settled = true;
-        args.roundTrip.removeEventListener("abort", abort);
-        this.calls.delete(tracked);
-        if (!detached) {
-          resolve(response);
-          return;
-        }
-        if (controller.signal.aborted) {
-          this.logger.info(
-            {
-              threadId: args.threadId,
-              callId: args.callId,
-              tool: args.toolName,
-              reason: controller.signal.reason,
-            },
-            "Dropped a detached plugin tool result after its thread or plugin went away",
-          );
-          return;
-        }
-        void args.onDetachedResult(response).catch((error: unknown) => {
+      const deliverDetached = (result: DetachedPluginToolResult) => {
+        void args.onDetachedResult(result).catch((error: unknown) => {
           this.logger.warn(
             {
               err: error,
@@ -120,9 +115,56 @@ export class PluginToolCallRegistry {
         });
       };
 
-      args.roundTrip.addEventListener("abort", abort, { once: true });
+      const finish = (): boolean => {
+        if (settled) return false;
+        settled = true;
+        args.roundTrip.removeEventListener("abort", abortRoundTrip);
+        this.calls.delete(tracked);
+        return true;
+      };
+
+      const settle = (response: ToolCallResponse) => {
+        if (!finish()) return;
+        if (!detached) {
+          resolve(response);
+          return;
+        }
+        deliverDetached({ response, wakeIdleThread: false });
+      };
+
+      abandon = (by, reason) => {
+        if (settled) return;
+        controller.abort(reason);
+        const response =
+          by === "plugin"
+            ? failedToolCallResponse(
+                args.toolName,
+                pluginStoppedError(args.pluginId),
+              )
+            : failedToolCallResponse(args.toolName, reason);
+        if (!finish()) return;
+        if (!detached) {
+          resolve(response);
+          return;
+        }
+        if (by === "plugin") {
+          deliverDetached({ response, wakeIdleThread: true });
+          return;
+        }
+        this.logger.info(
+          {
+            threadId: args.threadId,
+            callId: args.callId,
+            tool: args.toolName,
+            reason,
+          },
+          "Dropped a detached plugin tool result after its thread went away",
+        );
+      };
+
+      args.roundTrip.addEventListener("abort", abortRoundTrip, { once: true });
       if (args.roundTrip.aborted) {
-        abort();
+        abortRoundTrip();
         return;
       }
 
@@ -142,14 +184,14 @@ export class PluginToolCallRegistry {
 
   abortForThreads(threadIds: readonly string[], reason: string): void {
     const ids = new Set(threadIds);
-    for (const call of this.calls) {
-      if (ids.has(call.threadId)) call.controller.abort(reason);
+    for (const call of [...this.calls]) {
+      if (ids.has(call.threadId)) call.abandon("thread", reason);
     }
   }
 
   abortForPlugin(pluginId: string, reason: string): void {
-    for (const call of this.calls) {
-      if (call.pluginId === pluginId) call.controller.abort(reason);
+    for (const call of [...this.calls]) {
+      if (call.pluginId === pluginId) call.abandon("plugin", reason);
     }
   }
 

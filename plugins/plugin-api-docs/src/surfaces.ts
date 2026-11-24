@@ -1230,6 +1230,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "mutate, isPending and pendingInputs settle at write acknowledgement; matched reads refresh in the background. Shared predictions stay until confirmed reads arrive, or roll back on write failure",
           "Optimistic updaters must be pure and replayable; generate IDs and timestamps before mutate",
           "RPC error codes may grow: switch on error.code with a fallback. Newer server codes become unknown_error with the original serverCode; transport_error and invalid_response cover client failures. CLI output preserves unknown codes",
+          "Before a handler runs, the route fails with plugin_not_found (404), plugin_not_running (503), invalid_caller (403), forbidden_origin (403) or unsupported_media_type (415)",
         ],
         apiSymbols: [
           "PluginRpc",

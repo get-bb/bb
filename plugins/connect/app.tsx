@@ -149,7 +149,7 @@ const PAIR_ERROR_COPY: Record<ConnectPairErrorCode, PairErrorCopy> = {
 function isUnavailableError(error: unknown): boolean {
   return (
     error instanceof experimental_BbHttpError &&
-    (error.status === 503 || error.status === 404)
+    (error.code === "plugin_not_found" || error.code === "plugin_not_running")
   );
 }
 

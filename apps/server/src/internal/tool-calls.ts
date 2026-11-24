@@ -107,12 +107,13 @@ export function registerInternalToolCallRoutes(app: Hono, deps: AppDeps): void {
                 signal,
               },
             }),
-          onDetachedResult: (result) =>
+          onDetachedResult: ({ response, wakeIdleThread }) =>
             deliverDetachedToolResult(deps, {
               threadId: thread.id,
               toolName: payload.tool,
               presentation: pluginTool.record.presentation,
-              response: result,
+              response,
+              wakeIdleThread,
             }),
         });
         return streamToolCallResponse(response, roundTrip);

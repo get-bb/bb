@@ -74,6 +74,7 @@ function registerGoalsProvider(
   declareGoalState: boolean,
 ): { dispose(): void } {
   return harness.deps.providerRegistry.register({
+    reportBridgeFailure: () => undefined,
     ...buildPluginProviderRegistration({
       iconHash: null,
       available: true,

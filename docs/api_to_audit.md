@@ -56,10 +56,15 @@ copy of the SDK, so a plugin's bundled copy recognizes errors the host's
 `bb.sdk` throws. Core callers: `@bb/sdk`'s own job waits and status reads use
 the same class and check; bundled plugins (tasks, git, github-pr-status,
 secrets, connect, storage-retention, provider usage sources and others)
-narrow with it instead of duck-typing `status`. Docs: Plugin Guide, The bb SDK
-(`plugins/plugin-api-docs/src/surfaces.ts`). Stabilize after checking
-`code`/`body` across every route family (some plugin routes still return bare
-string errors) and whether plugins need a narrower helper than the class.
+narrow with it instead of duck-typing `status`. The plugin RPC route
+(`POST /api/v1/plugins/<id>/rpc/<method>`) returns `{ code, message }` for
+every failure, including `plugin_not_found` (404), `plugin_not_running` (503),
+`invalid_caller` (403) and `unsupported_media_type` (415), so bb-account's
+client and connect's sign-in UI read `code` instead of the status. Docs: Plugin
+Guide, The bb SDK (`plugins/plugin-api-docs/src/surfaces.ts`). Stabilize after
+checking `code`/`body` across every route family (the plugin `http` and
+WebSocket routes still return bare string errors) and whether plugins need a
+narrower helper than the class.
 
 ## UTF-16-safe cuts (`@get-bb/plugin-sdk`, `@get-bb/plugin-sdk/app`, `@get-bb/plugin-sdk/host`)
 
@@ -5721,7 +5726,7 @@ field introduces no separate backend or headless side effect.
 ## Plugin RPC contract and client-state guarantees
 
 - All three live hooks use `{ contract, method, ... }` with contract/method inference and no explicit generic arguments. Plain reads add `input`, keyed reads add `keys` and optional `select`, and mutations add optional `optimistic`. `experimental_useRpcKeyedQuery({ contract, method, keys, select? })` infers rows and selection results from the contract value. `ExperimentalRpcKeyedMethod` restricts methods to schemas accepting only `{ keys: string[] }` plus optional/defaulted fields and returning string-indexed records; `ExperimentalRpcKeyedValue` derives their row values. The keyed state's `refetchKeys(keys)` reads only the given keys again and keeps the other rows; the Git plugin retries one failed patch or one environment's status with it. `defineRpcContract` rejects `keyTags` unless parsed input has string keys and output is a string-indexed record. Push-notifications is the first caller. Stabilization includes transformed schemas, invalid shapes and projected selections.
-- `experimental_PluginRpcCallError` is exported from the SDK root and app entry and is the error of live read/mutation hooks and every rejected `mutate`. It always has `code: PluginRpcErrorCode`, `message`, optional validated issues and optional HTTP status. `transport_error`, `invalid_response` and `unknown_error` cover client failures. The union may grow: consumers need a fallback; unknown server codes map to `unknown_error` and remain in `serverCode`. CLI output preserves newer codes without assuming an exhaustive list. Core callers use the same HTTP, SDK and command error boundaries; bb-account exercises expected refusals. Stabilize after version-skew, transport, malformed-response and refusal checks.
+- `experimental_PluginRpcCallError` is exported from the SDK root and app entry and is the error of live read/mutation hooks and every rejected `mutate`. It always has `code: PluginRpcErrorCode`, `message`, optional validated issues and optional HTTP status. `transport_error`, `invalid_response` and `unknown_error` cover client failures; `plugin_not_found`, `plugin_not_running`, `invalid_caller`, `forbidden_origin` and `unsupported_media_type` (SDK 0.6.191) are the route's own failures before a handler runs. The union may grow: consumers need a fallback; unknown server codes map to `unknown_error` and remain in `serverCode`. CLI output preserves newer codes without assuming an exhaustive list. Core callers use the same HTTP, SDK and command error boundaries; bb-account exercises expected refusals. Stabilize after version-skew, transport, malformed-response and refusal checks.
 - `mutate`, `isPending` and `pendingInputs` finish at write acknowledgement. Core thread writes have the same semantics through `useTaggedMutation`. Cache predictions survive background refreshes and failed rereads until fresh confirmed data arrives. Write rejection rolls back. Owner tests cover acknowledgement, held refreshes, reconciliation and concurrent predictions.
 - BB read state means: `data` is the latest successful value plus predictions, retained during refresh errors (plain reads start undefined; keyed selections receive loaded rows, initially an empty record). `isLoading` means an enabled read is fetching never-loaded requested data. `isFetching` includes background attempts; keyed views share method activity. `error` records the completed read failure and clears on success; retrying a first load clears its old error while loading. `refetch` forces a read and waits through retries; failure remains in `error` and its promise resolves. Production freshness is two seconds without polling. Focus does not refetch while BB's realtime connection is healthy; while disconnected, focus/browser-online events recheck stale active reads. BB reconnect invalidates all plugin reads regardless of freshness. Page hiding cancels active attempts and resume restarts cancelled reads. Invalidations refresh immediately. Tags remain plain strings. Network/abort failures retry twice with 250 ms delay, HTTP failures never retry, and writes never retry automatically. No query-library options are exposed.
 

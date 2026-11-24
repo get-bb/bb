@@ -37,13 +37,7 @@ export function registerDesktopBrowserRoutes(app: Hono, deps: AppDeps) {
         requireJsonForMutation: true,
       });
       if (problem)
-        throw new ApiError(
-          problem.status,
-          problem.status === 403
-            ? "forbidden_origin"
-            : "unsupported_media_type",
-          problem.error,
-        );
+        throw new ApiError(problem.status, problem.code, problem.error);
       await next();
     });
   }
