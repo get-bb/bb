@@ -64,7 +64,7 @@ describe("environment repos", () => {
         path: "/mono/packages/app",
       });
       setEnvironmentColumns(harness.db, environment.id, {
-        additionalPaths: ["/data/stack"],
+        additionalPaths: [{ path: "/data/stack", replaces: null }],
       });
       const url = `/api/v1/environments/${environment.id}/repos`;
 

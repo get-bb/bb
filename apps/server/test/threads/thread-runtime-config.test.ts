@@ -1157,6 +1157,20 @@ describe("thread runtime config", () => {
         hostId: host.id,
         sessionId: session.id,
         handle: ({ command }) => {
+          if (command.type === "host.find_git_repos") {
+            return {
+              ok: true,
+              result: {
+                folders: command.folderPaths.map((folderPath) => ({
+                  path: folderPath,
+                  exists: true,
+                  gitRoot: folderPath,
+                  repos: [],
+                  truncated: false,
+                })),
+              },
+            };
+          }
           if (command.type !== "host.read_workspace_agent_context") {
             throw new Error(`Unexpected RPC ${command.type}`);
           }
@@ -1209,6 +1223,11 @@ describe("thread runtime config", () => {
 
       expect(responder.requests.map(({ command }) => command)).toEqual([
         expect.objectContaining({
+          type: "host.read_workspace_agent_context",
+          folderPaths: [workspacePath, "/work/web", "/worktrees/thr-1/api"],
+        }),
+        expect.objectContaining({
+          type: "host.find_git_repos",
           folderPaths: [workspacePath, "/work/web", "/worktrees/thr-1/api"],
         }),
       ]);
@@ -1219,7 +1238,6 @@ describe("thread runtime config", () => {
       expect(runtimeConfig.instructions).not.toContain("/work/api ");
     });
   });
-
 
   it.each([
     {

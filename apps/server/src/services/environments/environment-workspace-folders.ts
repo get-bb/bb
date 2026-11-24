@@ -1,11 +1,14 @@
 import { listProjectFolderPathsForHost } from "@bb/db";
 import type { DbQueryConnection } from "@bb/db";
-import { mergeWorkspaceFolderPaths } from "../projects/workspace-folder-paths.js";
+import {
+  mergeWorkspaceFolderPaths,
+  type EnvironmentAdditionalPath,
+} from "../projects/workspace-folder-paths.js";
 
 export function listEnvironmentExtraFolderPaths(
   db: DbQueryConnection,
   args: {
-    additionalPaths: readonly string[];
+    additionalPaths: readonly EnvironmentAdditionalPath[];
     hostId: string;
     mainPath: string;
     projectId: string;
@@ -13,12 +16,10 @@ export function listEnvironmentExtraFolderPaths(
 ): string[] {
   return mergeWorkspaceFolderPaths({
     mainPath: args.mainPath,
-    paths: [
-      ...listProjectFolderPathsForHost(db, {
-        projectId: args.projectId,
-        hostId: args.hostId,
-      }),
-      ...args.additionalPaths,
-    ],
+    projectFolderPaths: listProjectFolderPathsForHost(db, {
+      projectId: args.projectId,
+      hostId: args.hostId,
+    }),
+    additionalPaths: args.additionalPaths,
   });
 }

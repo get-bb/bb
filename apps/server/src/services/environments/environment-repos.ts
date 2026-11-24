@@ -12,6 +12,7 @@ import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { WorkSessionDeps } from "../../types.js";
 import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { listEnvironmentExtraFolderPaths } from "./environment-workspace-folders.js";
+import type { EnvironmentAdditionalPath } from "../projects/workspace-folder-paths.js";
 
 const FIND_GIT_REPOS_MAX_DEPTH = 2;
 const FIND_GIT_REPOS_MAX_REPOS = 32;
@@ -19,7 +20,7 @@ const REPOS_CACHE_TTL_MS = 10_000;
 const REPOS_CACHE_MAX_ENTRIES = 256;
 
 export interface EnvironmentReposTarget {
-  additionalPaths: readonly string[];
+  additionalPaths: readonly EnvironmentAdditionalPath[];
   hostId: string;
   id: string;
   path: string;
