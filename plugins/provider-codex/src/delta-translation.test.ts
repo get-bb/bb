@@ -27,12 +27,6 @@ const THREAD_ID = "t-codex-translation";
 const ENTROPY = "cx-test";
 const ITEM_ID_PATTERN = /^cx-test-i\d+$/;
 
-const IMAGE_PRESENTATION = {
-  label: { pending: "Viewing image", completed: "Viewed image" },
-  icon: { glyph: "Eye" },
-  title: "image.png",
-};
-
 const IMAGE_GENERATION_PRESENTATION = {
   label: { pending: "Generating image", completed: "Generated image" },
   icon: { glyph: "Palette" },
@@ -470,7 +464,6 @@ describe("codex item translation", () => {
           type: "imageView",
           id: harness.itemId("image-1"),
           path: "/tmp/image.png",
-          presentation: IMAGE_PRESENTATION,
         },
       }),
     );
@@ -491,7 +484,6 @@ describe("codex item translation", () => {
           type: "imageView",
           id: harness.itemId("image-1"),
           path: "/tmp/image.png",
-          presentation: IMAGE_PRESENTATION,
         },
       }),
     );

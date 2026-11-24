@@ -53,6 +53,10 @@ export const toolResultBlockSchema = z.object({
   tool_use_result: claudeToolUseResultSchema.nullish(),
 });
 
+export const toolResultContentBlocksSchema = z.array(
+  z.object({ type: z.string() }).passthrough(),
+);
+
 export const thinkingBlockSchema = z
   .object({
     type: z.literal("thinking"),

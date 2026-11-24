@@ -260,7 +260,7 @@ const ONLINE_RPC_RESPONSE_RESULT_FIXTURES: OnlineRpcResponseResultFixtures = {
       {
         kind: "file",
         directoryName: "review",
-        content: "---\nname: review\ndescription: Review\n---\n",
+        frontmatter: "---\nname: review\ndescription: Review\n---",
       },
       { kind: "oversized", directoryName: "huge", sizeBytes: 11_000_000 },
       { kind: "budget-exceeded", directoryName: "later" },
@@ -1090,7 +1090,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(281);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(282);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1131,7 +1131,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(278)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(279)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(280)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(281)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(281)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(282)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });
@@ -3727,6 +3728,7 @@ describe("bounded file read contract", () => {
     offset: 0,
     length: 0,
     revision: null,
+    knownRevisions: [],
   };
   it("accepts metadata-only probes and bounded revision-checked reads", () => {
     expect(hostDaemonOnlineRpcCommandSchema.parse(command)).toEqual(command);
@@ -3747,6 +3749,9 @@ describe("bounded file read contract", () => {
     { offset: Number.MAX_SAFE_INTEGER + 1 },
     { offset: 0.5 },
     { revision: "invalid" },
+    { knownRevisions: ["invalid"] },
+    { knownRevisions: Array.from({ length: 17 }, () => "a".repeat(64)) },
+    { knownRevisions: undefined },
     { rootPath: undefined },
   ])("rejects unsafe bounds or missing confinement: %j", (override) => {
     expect(

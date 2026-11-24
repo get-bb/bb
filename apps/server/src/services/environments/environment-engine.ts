@@ -1,6 +1,7 @@
 import {
   MAX_WORKSPACE_FOLDERS,
-  validateWorkspaceFolderPaths,
+  validateEnvironmentAdditionalPaths,
+  validateSetupFolderPaths,
 } from "../projects/workspace-folder-paths.js";
 import { emitPluginEnvironmentRemoved } from "../plugins/plugin-thread-events.js";
 import { withHostCleanup } from "../hosts/cleanup-context.js";
@@ -46,6 +47,7 @@ import {
   environmentHasLiveThreads,
   getEnvironment,
   getEnvironmentHookOperation,
+  forgetFinishedEnvironmentHookOperations,
   getStartingLiveEnvironmentThread,
   hasEnvironmentHookOperation,
   listEnvironmentThreads,
@@ -211,7 +213,20 @@ const createResultSchema = z.discriminatedUnion("status", [
     path: z.string().min(1),
     ownsPath: z.boolean().default(false),
     mergeBaseBranch: z.string().min(1).nullable().optional(),
-    additionalPaths: z.array(z.string()).max(MAX_WORKSPACE_FOLDERS).optional(),
+    additionalPaths: z
+      .array(
+        z
+          .object({
+            path: z.string(),
+            replaces: z
+              .string()
+              .optional()
+              .transform((replaces) => replaces ?? null),
+          })
+          .strict(),
+      )
+      .max(MAX_WORKSPACE_FOLDERS)
+      .optional(),
     resource: resourceSchema.optional(),
   }),
   z.object({
@@ -219,6 +234,7 @@ const createResultSchema = z.discriminatedUnion("status", [
     message: z.string().min(1),
   }),
 ]);
+type CreateResult = z.output<typeof createResultSchema>;
 const removeResultSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("removed") }),
   z.object({ status: z.literal("failed"), message: z.string().min(1) }),
@@ -459,7 +475,7 @@ async function invokeCreate(
   operation: ProviderOperationBase,
   steps: ProviderSteps,
   claimPath: ClaimPath,
-): Promise<PluginEnvironmentProviderCreateResult> {
+): Promise<CreateResult> {
   const provider = record.provider;
   const invocation = await invokeEnvironmentProvider(
     record,
@@ -501,7 +517,7 @@ async function invokeRestore(
   },
   steps: ProviderSteps,
   claimPath: ClaimPath,
-): Promise<PluginEnvironmentProviderCreateResult> {
+): Promise<CreateResult> {
   const restore = providerRestoreCall(
     record,
     context,
@@ -568,9 +584,10 @@ async function runCreate(
   let adoptedExistingEnvironment = false;
   let existingProviderOwnsLifecycle = false;
   let handedOff = false;
-  const requested: { path: string | null } = {
-    path: provisioning.status === "creating" ? null : provisioning.path,
-  };
+  const requested: { path: string | null; folders: string[] } =
+    provisioning.status === "creating"
+      ? { path: null, folders: [] }
+      : { path: provisioning.path, folders: provisioning.setupFolderPaths };
   const target: { row: EnvironmentRow | null } = { row: null };
   const bindPath = async (producedPath: string) => {
     await ensureHostSessionReadyForWork(deps, { hostId: context.host.id });
@@ -612,15 +629,43 @@ async function runCreate(
       { behavior: "immediate" },
     );
   };
-  const requestSetup = async (value: string): Promise<void> => {
+  const requestSetup = async (
+    value: string,
+    options?: { folders?: string[] },
+  ): Promise<void> => {
     const path = canonicalizeHostPath(providerPathSchema.parse(value));
+    const folders = validateSetupFolderPaths({
+      mainPath: path,
+      paths: z
+        .array(providerPathSchema)
+        .max(MAX_WORKSPACE_FOLDERS)
+        .parse(options?.folders ?? []),
+    });
     if (requested.path !== null) {
       if (!areHostPathsEqual(requested.path, path))
         throw new Error(`Setup was already requested at ${requested.path}`);
+      if (
+        folders.length !== requested.folders.length ||
+        folders.some(
+          (folder, index) =>
+            !areHostPathsEqual(folder, requested.folders[index] ?? ""),
+        )
+      )
+        throw new Error("Setup was already requested with other folders");
       return;
     }
     signal.throwIfAborted();
     if (handedOff) {
+      const unknownFolder = folders.find(
+        (folder) =>
+          !provisioning.setupFolderPaths.some((recorded) =>
+            areHostPathsEqual(recorded, folder),
+          ),
+      );
+      if (unknownFolder !== undefined)
+        throw new Error(
+          `Setup after adopt can't run in ${unknownFolder}: the adopted environment did not set it up`,
+        );
       if (
         provisioning.path === null ||
         !areHostPathsEqual(provisioning.path, path)
@@ -628,7 +673,17 @@ async function runCreate(
         throw new Error(
           `Setup can't run at ${path}: the adopted environment is at ${provisioning.path}`,
         );
+      const adopted = provisioning;
+      forgetFinishedEnvironmentHookOperations(
+        deps.db,
+        adopted.setupFolderPaths.flatMap((recorded, index) =>
+          folders.some((folder) => areHostPathsEqual(folder, recorded))
+            ? [folderHookOperationId(adopted, "setup", index)]
+            : [],
+        ),
+      );
       requested.path = path;
+      requested.folders = folders;
       applyLoggedEnvironmentLifecycleEvent(deps, {
         environmentId: provisioning.id,
         event: { type: "provision.requested" },
@@ -644,9 +699,11 @@ async function runCreate(
       );
     await bindPath(path);
     requested.path = path;
+    requested.folders = folders;
     mutateProvisioning(deps, provisioning, ["creating"], (row) => {
       row.path = path;
       row.providerOwnsPath = true;
+      row.setupFolderPaths = folders;
       if (row.ownerThreadId === null) row.claimPath = null;
     });
     applyLoggedEnvironmentLifecycleEvent(deps, {
@@ -828,10 +885,25 @@ async function runCreate(
       const producedAdditionalPaths =
         result.additionalPaths === undefined
           ? undefined
-          : validateWorkspaceFolderPaths({
+          : validateEnvironmentAdditionalPaths({
               mainPath: producedPath,
-              paths: result.additionalPaths,
+              entries: result.additionalPaths,
             });
+      const recordedAdditionalPaths =
+        producedAdditionalPaths ??
+        (adoptedExistingEnvironment && existingProviderOwnsLifecycle
+          ? provisioning.additionalPaths
+          : []);
+      const unreturnedSetupFolder = requested.folders.find(
+        (folder) =>
+          !recordedAdditionalPaths.some((entry) =>
+            areHostPathsEqual(entry.path, folder),
+          ),
+      );
+      if (unreturnedSetupFolder !== undefined)
+        throw new Error(
+          `The provider set up ${unreturnedSetupFolder} but did not return it in additionalPaths`,
+        );
       result = {
         ...result,
         path: producedPath,
@@ -1089,22 +1161,36 @@ async function runRemove(
   await withHostCleanup(deps, row.hostId, async () => {
     try {
       if (row.providerOwnsPath && row.hostId !== null && row.path !== null) {
-        await runEnvironmentTeardownHook(deps, {
-          projectId: row.projectId,
-          id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
-          hostId: row.hostId,
-          path: row.path,
-          resumeOnly,
-          report: {
-            step: () => undefined,
-            log: (text) =>
-              deps.logger.warn(
-                { environmentId, text },
-                "Environment teardown hook",
-              ),
+        const hooks = [
+          {
+            id: `environment:${environmentId}:${row.environmentProviderInstanceKey}:teardown`,
+            path: row.path,
           },
-          signal,
-        });
+          ...row.setupFolderPaths
+            .map((path, index) => ({
+              id: folderHookOperationId(row, "teardown", index),
+              path,
+            }))
+            .reverse(),
+        ];
+        for (const hook of hooks) {
+          await runEnvironmentTeardownHook(deps, {
+            projectId: row.projectId,
+            id: hook.id,
+            hostId: row.hostId,
+            path: hook.path,
+            resumeOnly,
+            report: {
+              step: () => undefined,
+              log: (text) =>
+                deps.logger.warn(
+                  { environmentId, text },
+                  "Environment teardown hook",
+                ),
+            },
+            signal,
+          });
+        }
       }
       if (row.providerOwnsPath && row.path !== null) {
         await preservePathPluginsInside(deps.db, row.path);
@@ -1330,7 +1416,15 @@ async function sweepProviderEnvironmentInSlot(
   });
   try {
     const setupOperation = readSetupOperation(deps, row);
+    const folderSetupUnresolved = row.setupFolderPaths.some((_, index) => {
+      const operation = getEnvironmentHookOperation(
+        deps.db,
+        folderHookOperationId(row, "setup", index),
+      );
+      return operation !== null && operation.finishedAt === null;
+    });
     const setupUnresolved =
+      folderSetupUnresolved ||
       (setupOperation !== null && setupOperation.finishedAt === null) ||
       cancelled ||
       ((row.status === "provisioning" || row.status === "error") &&
@@ -1343,10 +1437,13 @@ async function sweepProviderEnvironmentInSlot(
       (row.providerOwnsPath || setupOperation !== null) &&
       row.path !== null
     ) {
-      await cancelPendingEnvironmentHook(deps, {
-        id: setupOperationId(row),
-        hostId: row.hostId,
-      });
+      for (const id of [
+        ...row.setupFolderPaths.map((_, index) =>
+          folderHookOperationId(row, "setup", index),
+        ),
+        setupOperationId(row),
+      ])
+        await cancelPendingEnvironmentHook(deps, { id, hostId: row.hostId });
     }
     await runRemove(
       deps,
@@ -1444,16 +1541,21 @@ export async function recoverEnvironmentCleanup(
         );
       const workspacePath = row.providerOwnsPath ? row.path : null;
       await withEnvironmentCleanupSlot(deps.db, row.hostId, async () => {
-        if (workspacePath !== null) {
+        const inspectedPaths =
+          workspacePath === null
+            ? []
+            : [workspacePath, ...row.setupFolderPaths];
+        for (const path of inspectedPaths) {
           const inspection = await callHostOnlineRpc(deps, {
             hostId: row.hostId,
             timeoutMs: 30_000,
             command: {
               type: "environment.inspect_cleanup",
               environmentId,
-              path: workspacePath,
+              path,
             },
           });
+          const where = path === workspacePath ? "" : ` in ${path}`;
           if (
             !inspection.supported ||
             inspection.active ||
@@ -1463,7 +1565,7 @@ export async function recoverEnvironmentCleanup(
             throw new ApiError(
               409,
               "invalid_request",
-              `Recovery refused: ${!inspection.supported ? "process inspection is unavailable on this host (supported on Linux and macOS)" : inspection.active ? "setup or a hook is still running" : inspection.pids.length > 0 ? `workspace processes remain (${inspection.pids.join(", ")})` : `cannot inspect same-user processes (${inspection.unreadablePids.join(", ")})`}`,
+              `Recovery refused: ${!inspection.supported ? "process inspection is unavailable on this host (supported on Linux and macOS)" : inspection.active ? `setup or a hook is still running${where}` : inspection.pids.length > 0 ? `workspace processes remain${where} (${inspection.pids.join(", ")})` : `cannot inspect same-user processes${where} (${inspection.unreadablePids.join(", ")})`}`,
             );
         }
         const current = getEnvironment(deps.db, environmentId);
@@ -1482,24 +1584,31 @@ export async function recoverEnvironmentCleanup(
           );
         deps.db.transaction(() => {
           if (workspacePath !== null)
-            for (const kind of ["setup", "teardown"] as const) {
-              const id = `environment:${row.id}:${row.environmentProviderInstanceKey}:${kind}`;
-              const finishedAt = Date.now();
-              if (
-                kind === "teardown" &&
-                !hasEnvironmentHookOperation(deps.db, id)
-              )
-                continue;
-              acknowledgeInterruptedEnvironmentHookOperation(deps.db, {
-                id,
-                hostId: row.hostId,
-                path: workspacePath,
-                kind,
-                finishedAt,
-                error:
-                  "Interrupted hook acknowledged by explicit cleanup recovery",
-              });
-            }
+            for (const hook of [
+              { index: null, path: workspacePath },
+              ...row.setupFolderPaths.map((path, index) => ({ index, path })),
+            ])
+              for (const kind of ["setup", "teardown"] as const) {
+                const id =
+                  hook.index === null
+                    ? `environment:${row.id}:${row.environmentProviderInstanceKey}:${kind}`
+                    : folderHookOperationId(row, kind, hook.index);
+                const finishedAt = Date.now();
+                if (
+                  (kind === "teardown" || hook.index !== null) &&
+                  !hasEnvironmentHookOperation(deps.db, id)
+                )
+                  continue;
+                acknowledgeInterruptedEnvironmentHookOperation(deps.db, {
+                  id,
+                  hostId: row.hostId,
+                  path: hook.path,
+                  kind,
+                  finishedAt,
+                  error:
+                    "Interrupted hook acknowledged by explicit cleanup recovery",
+                });
+              }
           writeEnvironment(deps, environmentId, {
             teardownAttempt: 0,
             retireAt: Date.now(),
@@ -2216,6 +2325,46 @@ function readSetupOperation(
   return getEnvironmentHookOperation(deps.db, setupOperationId(environment));
 }
 
+function folderHookOperationId(
+  environment: EnvironmentRow,
+  kind: "setup" | "teardown",
+  index: number,
+): string {
+  return `environment:${environment.id}:${environment.environmentProviderInstanceKey}:${kind}:folder:${index}`;
+}
+
+function folderLabel(path: string): string {
+  return path.split(/[\\/]/u).filter(Boolean).at(-1) ?? path;
+}
+
+function labelledHookProgress(
+  sink: EnvironmentHookProgressSink,
+  folder: { index: number; path: string } | null,
+): EnvironmentHookProgressSink {
+  if (folder === null) return sink;
+  const label = folderLabel(folder.path);
+  return (entry) =>
+    sink({
+      ...entry,
+      key: `folder-${folder.index}-${entry.key}`,
+      text: `${label}: ${entry.text}`,
+    });
+}
+
+function hookSucceededAt(
+  deps: Pick<Deps, "db">,
+  id: string,
+  path: string,
+): boolean {
+  const operation = getEnvironmentHookOperation(deps.db, id);
+  return (
+    operation !== null &&
+    operation.finishedAt !== null &&
+    operation.error === null &&
+    areHostPathsEqual(operation.path, path)
+  );
+}
+
 async function createReturned(
   deps: Pick<Deps, "db">,
   environmentId: string,
@@ -2239,13 +2388,7 @@ function setupSucceededAt(
   environment: EnvironmentRow,
   path: string,
 ): boolean {
-  const operation = readSetupOperation(deps, environment);
-  return (
-    operation !== null &&
-    operation.finishedAt !== null &&
-    operation.error === null &&
-    areHostPathsEqual(operation.path, path)
-  );
+  return hookSucceededAt(deps, setupOperationId(environment), path);
 }
 
 function createSetupTranscript(
@@ -2303,13 +2446,26 @@ async function runEnvironmentSetup(
   },
 ): Promise<"ready" | "stopped" | { failed: Error }> {
   const environment = args.environment;
-  const id = setupOperationId(environment);
   const unknownOutcomeReason = `An earlier setup has an unknown outcome. Archive its threads, inspect the workspace, then run bb environment cleanup ${environment.id} --recover.`;
-  const existing = readSetupOperation(deps, environment);
+  const hooks = [
+    ...environment.setupFolderPaths.flatMap((path, index) => {
+      const id = folderHookOperationId(environment, "setup", index);
+      return hookSucceededAt(deps, id, path)
+        ? []
+        : [{ id, path, folder: { index, path } }];
+    }),
+    {
+      id: setupOperationId(environment),
+      path: args.request.command.path,
+      folder: null,
+    },
+  ];
   if (
-    existing !== null &&
-    existing.finishedAt === null &&
-    !args.setupRunsOnConnectedDaemon
+    !args.setupRunsOnConnectedDaemon &&
+    hooks.some((hook) => {
+      const existing = getEnvironmentHookOperation(deps.db, hook.id);
+      return existing !== null && existing.finishedAt === null;
+    })
   ) {
     interruptUnrecoverableEnvironmentProvisioning(deps, {
       environmentId: environment.id,
@@ -2322,16 +2478,19 @@ async function runEnvironmentSetup(
     initiator: args.request.command.initiator,
   });
   try {
-    await runEnvironmentHook(deps, {
-      id,
-      projectId: environment.projectId,
-      hostId: environment.hostId,
-      path: args.request.command.path,
-      kind: "setup",
-      resumeOnly: false,
-      onProgress: transcript.push,
-      signal: args.signal,
-    });
+    for (const hook of hooks) {
+      await runEnvironmentHook(deps, {
+        id: hook.id,
+        projectId: environment.projectId,
+        hostId: environment.hostId,
+        path: hook.path,
+        kind: "setup",
+        resumeOnly: false,
+        onProgress: labelledHookProgress(transcript.push, hook.folder),
+        signal: args.signal,
+      });
+      if (args.signal.aborted) break;
+    }
     return args.signal.aborted
       ? { failed: provisionCancelledError() }
       : "ready";

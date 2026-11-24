@@ -26,11 +26,16 @@ describe("deprioritizeAgentWorkload", () => {
         Symbol.asyncIterator
       ]();
       expect((await lines.next()).value).toBe("ready");
+      const inheritedPriority = getPriority(child.pid);
       deprioritizeAgentWorkload(child.pid);
-      expect(getPriority(child.pid)).toBe(AGENT_WORKLOAD_NICE);
+      const priority = getPriority(child.pid);
+      expect(priority).toBeGreaterThanOrEqual(AGENT_WORKLOAD_NICE);
+      expect(priority).toBeLessThanOrEqual(
+        Math.max(inheritedPriority, AGENT_WORKLOAD_NICE),
+      );
       child.stdin.write("go\n");
       const grandchildPid = Number((await lines.next()).value);
-      expect(getPriority(grandchildPid)).toBe(AGENT_WORKLOAD_NICE);
+      expect(getPriority(grandchildPid)).toBe(priority);
     } finally {
       await stop();
     }

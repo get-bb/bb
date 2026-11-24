@@ -95,8 +95,17 @@ export interface PluginEnvironmentProviderSteps {
    * runs alongside the rest of create. The environment becomes ready only
    * after create returns `created` with the same path and `ownsPath: true`.
    * Without a call, core runs setup after create returns.
+   *
+   * Experimental: `folders` lists extra folders this create made, such as
+   * new sibling worktrees. Core runs each folder's setup script once, in the
+   * given order, before `path`'s, and runs their teardown scripts after
+   * `path`'s, in reverse order. Each folder must be absolute, outside `path`,
+   * and returned in the result's `additionalPaths`. After `adopt`, `folders`
+   * may name only folders the adopted environment set up, such as ones the
+   * provider moved to a new commit; core runs their setup again, in their
+   * recorded order, then `path`'s. See docs/api_to_audit.md.
    */
-  setup(path: string): Promise<void>;
+  setup(path: string, options?: { folders?: string[] }): Promise<void>;
   /**
    * Hands this operation a ready environment this plugin holds, at once and
    * atomically: the environment becomes the one this create produces, keeps
@@ -148,13 +157,16 @@ export type PluginEnvironmentProviderCreateResult =
       /** Ref the workspace's changes are compared against. Null clears the value recorded on a reused environment; omit to keep it. */
       mergeBaseBranch?: string | null;
       /**
-       * Experimental: absolute paths of this environment's own extra folders,
-       * such as sibling checkouts it created next to `path`. Threads in the
-       * environment can read and write them. Core records them with the
-       * environment; omit on a reused environment to keep the recorded list.
+       * Experimental: this environment's own extra folders, such as sibling
+       * checkouts it created next to `path`. Threads in the environment can
+       * read and write each absolute `path`. `replaces` names the project
+       * folder (`sdk.projects.sources.experimental_folders`) the folder stands
+       * in for, such as the repository it made a worktree of; threads in the
+       * environment no longer get that shared folder. Core records the list
+       * with the environment; omit on a reused environment to keep it.
        * See docs/api_to_audit.md.
        */
-      additionalPaths?: string[];
+      additionalPaths?: { path: string; replaces?: string }[];
       resource?: JsonValue;
     }
   | { status: "failed"; message: string };

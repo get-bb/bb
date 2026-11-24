@@ -1164,6 +1164,26 @@ providers receive, so they carry no nested `experimental_` prefix.
   bound. Stopping the only thread of an environment whose create has not
   returned aborts the create and removes the environment, and the thread
   goes back to its provider request. Caller: Worktree's cold create.
+- `setup(path, { folders })` (experimental option) also names extra folders
+  the create made, such as new sibling worktrees. Core canonicalizes them,
+  refuses relative ones, `path` itself, ones inside or containing `path`,
+  and repeats, and stores them on `environments.setup_folder_paths` with the
+  request; repeating a request with other folders is refused. The attach
+  operation runs each folder's `.bb-env-setup.sh`, in order, before
+  `path`'s, each as its own hook operation
+  (`environment:<id>:<key>:setup:folder:<index>`), skipping a folder whose
+  setup already succeeded there. After `adopt`, `folders` may name only
+  folders the adopted environment recorded; core forgets their finished
+  setup records (`forgetFinishedEnvironmentHookOperations`), so the attach
+  operation runs those folders again, in recorded order, then `path`, and
+  leaves the others alone. Caller: Worktree's handoff, which names the
+  folder worktrees it fast-forwarded. Removal runs `path`'s `.bb-env-teardown.sh`, then
+  each folder's in reverse order. The create fails when a set-up folder is
+  missing from the result's `additionalPaths`. Recovery inspects processes
+  in each folder and acknowledges each folder's interrupted hooks. Callers:
+  Worktree's cold create and restore, which list the folder worktrees they
+  made. Before stabilizing, decide whether `additionalPaths` entries should
+  carry the setup request instead of a separate list.
 - `locate({ host, projectCheckout, inputs })` answers `{ path, reuse }` or
   null before create, replacing `experimental_existingPath`. Core checks
   path admission and claims the path on the reservation; `reuse: true` joins
@@ -1191,27 +1211,36 @@ the Worktree keeps it in its private resource and core has no reader.
 ## Environment folders (`PluginEnvironmentProviderCreateResult.additionalPaths`, `Environment.additionalPaths`)
 
 A `created` result from `create` or `restore` may carry `additionalPaths`:
-absolute host paths of the environment's own extra folders, such as sibling
-checkouts the provider made next to `path`. Core canonicalizes them and fails
-the create when one is relative, equals `path`, is inside `path`, contains
-`path`, or repeats another entry (at most 64). They are stored on
+the environment's own extra folders, each `{ path, replaces? }`. `path` is an
+absolute host path, such as a sibling checkout the provider made next to the
+main `path`. `replaces` names the project folder (`bb project folder`) that
+entry stands in for, such as the repository the provider made a worktree of.
+Core canonicalizes both and fails the create when a `path` is relative,
+equals the main `path`, is inside it, contains it, or repeats another entry,
+or when a `replaces` is relative (at most 64 entries). They are stored on
 `environments.additional_paths` and returned as `Environment.additionalPaths`
-(`[]` when the provider sends none). Omitting the field on a reused
-environment keeps the recorded list. At every session start, turn and steer
-the server merges them after the project's folders for the thread's machine
-(`bb project folder`), drops duplicates and the main folder, and sends the
-list to the daemon, which grants the agent write access for that turn; the
-agent's instructions list the folders as of its session start. The field is a member of a result type, so it carries no
-nested `experimental_` prefix.
+with `replaces` filled as `null` when absent (`[]` when the provider sends
+none). Omitting the field on a reused environment keeps the recorded list.
+At every session start, turn and steer `mergeWorkspaceFolderPaths` in
+`workspace-folder-paths.ts` takes the project's folders for the thread's
+machine, drops every one an entry replaces, adds each entry's `path`, drops
+duplicates and the main folder, and the server sends the list to the daemon,
+which grants the agent write access for that turn; the agent's instructions
+list the folders as of its session start. A replaced folder stays out even
+when its replacement is missing on disk, so the thread never silently writes
+to the shared checkout it was branched away from; the missing replacement is
+reported like any missing folder. The field is a member of a result type,
+so it carries no nested `experimental_` prefix.
 
-Core path: `environment-engine.ts` records the field for every provider,
-including the built-in Worktree and Project checkout, which return none
-today; `thread-runtime-config.ts` is the only reader.
+Core path: `environment-engine.ts` records the field for every provider;
+`thread-runtime-config.ts` is the only reader. The built-in Worktree is the
+first caller that sets `replaces`: with `folders` in its inputs it returns a
+worktree of each chosen project folder that replaces that folder. Project
+checkout returns none.
 
 Before stabilizing, decide whether a provider needs to change the list after
-create (today only a restore replaces it), whether removal should be told
-about the folders, and whether the Worktree should report worktrees it makes
-of a project's folders.
+create (today only a restore replaces it) and whether removal should be told
+about the folders.
 
 ## `app.slots.experimental_environmentProviderInputs`, `experimental_BranchPicker`, `experimental_useBranches` and `experimental_useCheckoutState` (`@get-bb/plugin-sdk/app`)
 
@@ -5490,9 +5519,10 @@ Core callers: the project settings Folders section
 `bb project folder list|add|update|remove`.
 
 Before stabilizing, decide whether folders belong on the checkout (per
-machine) or on the project with per-machine paths, whether environment
-providers should read them (for example to make a worktree of each), and
-whether `list` should report which folders are missing on the machine.
+machine) or on the project with per-machine paths, and whether `list` should
+report which folders are missing on the machine. The Worktree environment
+provider reads them to offer and validate the folders it can branch
+(`listBranchableFolders`, `validate`).
 
 ## Global prompt history (`bb.sdk.experimental_promptHistory`)
 

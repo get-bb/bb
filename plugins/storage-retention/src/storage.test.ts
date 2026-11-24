@@ -1454,6 +1454,7 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     return target;
   };
   const managed = worktree("managed", "-b", "managed");
+  const managedFolder = worktree("managed-folder", "-b", "managed-folder");
   const clean = worktree("clean", "-b", "clean");
   await fs.mkdir(path.join(clean, "node_modules"));
   await fs.writeFile(
@@ -1475,7 +1476,9 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     projectId: "proj_work",
     hostId: "host_test",
     path: managed,
-    additionalPaths: [],
+    additionalPaths: [
+      { path: managedFolder, replaces: path.join(root, "other-repo") },
+    ],
     isGitRepo: true,
     isWorktree: true,
     branchName: "managed",
@@ -3259,13 +3262,14 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
   const leftover = (
     id: string,
     teardown: { needsRecovery: boolean; message: string },
+    additionalPaths: Environment["additionalPaths"] = [],
   ): Environment => ({
     id,
     name: null,
     projectId: "proj_work",
     hostId: "host_test",
     path: `/worktrees/${id}`,
-    additionalPaths: [],
+    additionalPaths,
     isGitRepo: true,
     isWorktree: false,
     branchName: id,
@@ -3307,7 +3311,9 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
         checkouts: paths.map((path) =>
           path.endsWith("env_dirty")
             ? { path, state: "changed", changedFileCount: 2 }
-            : { path, state: "clean" },
+            : path.endsWith("/api")
+              ? { path, state: "changed", changedFileCount: 3 }
+              : { path, state: "clean" },
         ),
       };
     },
@@ -3320,6 +3326,9 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
         list: async () => [
           leftover("env_clean", interrupted),
           leftover("env_dirty", interrupted),
+          leftover("env_dirty_folder", interrupted, [
+            { path: "/worktrees/env_dirty_folder/api", replaces: "/code/api" },
+          ]),
           leftover("env_old_daemon", interrupted),
           leftover("env_failed", {
             needsRecovery: false,
@@ -3364,6 +3373,10 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
         {
           environmentId: "env_dirty",
           message: "Kept because it has 2 uncommitted changes",
+        },
+        {
+          environmentId: "env_dirty_folder",
+          message: "Kept because it has 3 uncommitted changes",
         },
         {
           environmentId: "env_old_daemon",

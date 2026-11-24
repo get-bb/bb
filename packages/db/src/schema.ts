@@ -581,6 +581,10 @@ export const environments = sqliteTable(
       .references(() => hosts.id, { onDelete: "cascade" }),
     path: text("path"),
     additionalPaths: text("additional_paths", { mode: "json" })
+      .$type<{ path: string; replaces: string | null }[]>()
+      .notNull()
+      .default(sql`'[]'`),
+    setupFolderPaths: text("setup_folder_paths", { mode: "json" })
       .$type<string[]>()
       .notNull()
       .default(sql`'[]'`),

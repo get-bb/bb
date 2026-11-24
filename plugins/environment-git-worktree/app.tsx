@@ -29,6 +29,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { blurActiveKeyboardInputWithin } from "@bb/shared-ui/overlay-trigger";
 import { Pill } from "@bb/shared-ui/pill";
+import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import {
   definePluginApp,
@@ -46,7 +47,10 @@ import { WarmPoolSettings } from "./warm-pool-settings.js";
 import type { WorktreeInputs, worktreeRpcContract } from "./server.js";
 import type { WarmPoolStatus } from "./warm-pools.js";
 
-const DEFAULT_INPUTS: WorktreeInputs = { branch: { kind: "default" } };
+const DEFAULT_INPUTS: WorktreeInputs = {
+  branch: { kind: "default" },
+  folders: [],
+};
 const NEW_WORKTREE_LABEL = "New worktree";
 const BRANCH_FROM_PREFIX = "Branch from:";
 const REUSE_PREFIX = "Reuse:";
@@ -69,6 +73,63 @@ function selectedBranchName(value: JsonValue | null): string | null {
   return branch.kind === "named" && typeof branch.name === "string"
     ? branch.name
     : null;
+}
+
+function selectedFolders(value: JsonValue | null): string[] {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return [];
+  }
+  const folders = value.folders;
+  return Array.isArray(folders)
+    ? folders.filter((folder): folder is string => typeof folder === "string")
+    : [];
+}
+
+const REMEMBERED_FOLDERS_KEY = "bb.environment-git-worktree.folders";
+
+function rememberedFoldersKey(projectId: string, hostId: string): string {
+  return `${REMEMBERED_FOLDERS_KEY}:${projectId}:${hostId}`;
+}
+
+function readRememberedFolders(
+  projectId: string | null,
+  hostId: string | null,
+): string[] {
+  if (projectId === null || hostId === null) return [];
+  try {
+    const stored: unknown = JSON.parse(
+      window.localStorage.getItem(rememberedFoldersKey(projectId, hostId)) ??
+        "[]",
+    );
+    return Array.isArray(stored)
+      ? stored.filter((folder): folder is string => typeof folder === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberFolders(
+  projectId: string | null,
+  hostId: string | null,
+  folders: readonly string[],
+): void {
+  if (projectId === null || hostId === null) return;
+  try {
+    const key = rememberedFoldersKey(projectId, hostId);
+    if (folders.length === 0) window.localStorage.removeItem(key);
+    else window.localStorage.setItem(key, JSON.stringify(folders));
+  } catch {
+    return;
+  }
+}
+
+function folderLabel(folderPath: string): string {
+  return folderPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? folderPath;
+}
+
+function folderRowValue(folderPath: string): string {
+  return `folder:${folderPath}`;
 }
 
 function selectedExistingPath(value: JsonValue | null): string | null {
@@ -149,6 +210,11 @@ function WorktreeInputsControl({
     ready: number;
   } | null>(null);
   const warmRequest = useRef(0);
+  const [folderResult, setFolderResult] = useState<{
+    projectId: string;
+    hostId: string;
+    folders: readonly string[] | null;
+  } | null>(null);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -156,6 +222,7 @@ function WorktreeInputsControl({
 
   const existingPath = selectedExistingPath(value);
   const branchName = selectedBranchName(value);
+  const folders = selectedFolders(value);
   const selectedIntent: WorktreeIntent =
     existingPath === null ? "new" : "existing";
   const [intent, setIntent] = useState<WorktreeIntent>(selectedIntent);
@@ -167,8 +234,15 @@ function WorktreeInputsControl({
   });
 
   useEffect(() => {
-    if (value === null) onChange({ status: "ready", value: DEFAULT_INPUTS });
-  }, [value, onChange]);
+    if (value !== null) return;
+    onChange({
+      status: "ready",
+      value: {
+        ...DEFAULT_INPUTS,
+        folders: readRememberedFolders(projectId, hostId),
+      },
+    });
+  }, [value, onChange, projectId, hostId]);
 
   const refreshWorktrees = useCallback(async () => {
     const request = ++worktreeRequest.current;
@@ -242,6 +316,52 @@ function WorktreeInputsControl({
   }, [refreshWarmPool]);
   useRealtime(WARM_POOLS_CHANGED_CHANNEL, refreshWarmPool);
 
+  const hasFolders = folders.length > 0;
+  useEffect(() => {
+    if ((!open && !hasFolders) || projectId === null || hostId === null) return;
+    let active = true;
+    rpc.call("listBranchableFolders", { projectId, hostId }).then(
+      (result) => {
+        if (active)
+          setFolderResult({ projectId, hostId, folders: result.folders });
+      },
+      () => {
+        if (active) setFolderResult({ projectId, hostId, folders: null });
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [open, hasFolders, projectId, hostId, rpc]);
+
+  const loadedFolders =
+    folderResult?.projectId === projectId && folderResult?.hostId === hostId
+      ? folderResult.folders
+      : null;
+  useEffect(() => {
+    if (loadedFolders === null) return;
+    const current = selectedFolders(value);
+    const kept = current.filter((folder) => loadedFolders.includes(folder));
+    if (kept.length === current.length) return;
+    rememberFolders(
+      projectId,
+      hostId,
+      readRememberedFolders(projectId, hostId).filter((folder) =>
+        loadedFolders.includes(folder),
+      ),
+    );
+    onChange({
+      status: "ready",
+      value: {
+        branch:
+          branchName === null
+            ? { kind: "default" }
+            : { kind: "named", name: branchName },
+        folders: kept,
+      },
+    });
+  }, [value, loadedFolders, branchName, onChange, projectId, hostId]);
+
   useEffect(() => {
     if (projectId === null || branchName !== null || existingPath !== null)
       return;
@@ -303,12 +423,24 @@ function WorktreeInputsControl({
     warmResult?.projectId === projectId && warmResult?.hostId === hostId
       ? warmResult.ready
       : 0;
+  const offeredFolders = loadedFolders ?? [];
+  const folderOptions = [
+    ...offeredFolders,
+    ...folders.filter((folder) => !offeredFolders.includes(folder)),
+  ];
   const triggerPrefix =
     existingPath === null ? BRANCH_FROM_PREFIX : REUSE_PREFIX;
   const triggerValue =
-    existingPath === null ? baseBranchLabel : worktreePathLabel(existingPath);
+    existingPath === null
+      ? folders.length === 0
+        ? baseBranchLabel
+        : `${baseBranchLabel} +${folders.length} ${folders.length === 1 ? "folder" : "folders"}`
+      : worktreePathLabel(existingPath);
   const triggerTitle =
-    existingPath ?? `Create a worktree from ${baseBranchLabel}`;
+    existingPath ??
+    (folders.length === 0
+      ? `Create a worktree from ${baseBranchLabel}`
+      : `Create a worktree from ${baseBranchLabel}, and worktrees of ${folders.join(", ")} from their default branches`);
 
   const updateOpen = (nextOpen: boolean) => {
     if (!nextOpen) {
@@ -325,6 +457,22 @@ function WorktreeInputsControl({
   const submit = (next: WorktreeInputs) => {
     onChange({ status: "ready", value: next });
     updateOpen(false);
+  };
+  const toggleFolder = (folder: string) => {
+    const nextFolders = folders.includes(folder)
+      ? folders.filter((entry) => entry !== folder)
+      : [...folders, folder];
+    rememberFolders(projectId, hostId, nextFolders);
+    onChange({
+      status: "ready",
+      value: {
+        branch:
+          branchName === null
+            ? { kind: "default" }
+            : { kind: "named", name: branchName },
+        folders: nextFolders,
+      },
+    });
   };
   const openWorktreeSettings = () => {
     updateOpen(false);
@@ -440,6 +588,32 @@ function WorktreeInputsControl({
             <div className="my-1 h-px bg-border/60" />
             {intent === "new" ? (
               <>
+                {folderOptions.length > 0 && query.trim() === "" ? (
+                  <>
+                    <BranchPickerSectionHeader label="Folder worktrees:" />
+                    {folderOptions.map((folder) => (
+                      <BranchPickerRow
+                        key={folder}
+                        value={folderRowValue(folder)}
+                        icon="FolderGit"
+                        selected={folders.includes(folder)}
+                        title={`Give this thread its own worktree of ${folder}, started from that repository's default branch and named like the thread's branch, instead of the shared folder`}
+                        onSelect={() => toggleFolder(folder)}
+                        align="first-line"
+                      >
+                        <span className="flex min-w-0 flex-1 flex-col">
+                          <span className="min-w-0 truncate">
+                            {folderLabel(folder)}
+                          </span>
+                          <TruncateStart className="text-muted-foreground">
+                            {folder}
+                          </TruncateStart>
+                        </span>
+                      </BranchPickerRow>
+                    ))}
+                    <div className="my-1 h-px bg-border/60" />
+                  </>
+                ) : null}
                 <BranchPickerSectionHeader label="Branch from:" />
                 <BranchPickerRow
                   value={DEFAULT_BRANCH_ROW_VALUE}
@@ -450,7 +624,9 @@ function WorktreeInputsControl({
                       ? `Use the repository's default branch. ${warmWorktreesLabel(warmReady)} ready, so the thread starts right away.`
                       : "Use the repository's default branch"
                   }
-                  onSelect={() => submit(DEFAULT_INPUTS)}
+                  onSelect={() =>
+                    submit({ branch: { kind: "default" }, folders })
+                  }
                 >
                   <span className="min-w-0 flex-1 truncate">
                     Default branch
@@ -472,7 +648,10 @@ function WorktreeInputsControl({
                     selected={branch === branchName}
                     title={branch}
                     onSelect={() =>
-                      submit({ branch: { kind: "named", name: branch } })
+                      submit({
+                        branch: { kind: "named", name: branch },
+                        folders,
+                      })
                     }
                   >
                     <span className="min-w-0 flex-1 truncate">{branch}</span>

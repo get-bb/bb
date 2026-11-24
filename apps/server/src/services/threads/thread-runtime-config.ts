@@ -145,13 +145,11 @@ export async function resolveThreadRuntimeCommandConfig(
 
   const candidateFolders = mergeWorkspaceFolderPaths({
     mainPath: workspacePath,
-    paths: [
-      ...listProjectFolderPathsForHost(deps.db, {
-        projectId: project.id,
-        hostId: args.environment.hostId,
-      }),
-      ...environment.additionalPaths,
-    ],
+    projectFolderPaths: listProjectFolderPathsForHost(deps.db, {
+      projectId: project.id,
+      hostId: args.environment.hostId,
+    }),
+    additionalPaths: environment.additionalPaths,
   });
   const workspaceAgentContext = await readWorkspaceAgentContext(deps, {
     includeAgentInstructions: true,

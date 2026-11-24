@@ -22,6 +22,7 @@ import {
 import {
   classifyAcpToolCall as classifyAcpToolCallOperation,
   extractAcpToolCallPaths,
+  isAcpLocalAbsolutePath,
   resolveAcpToolCallPath,
   type AcpToolCallOperation,
   type AcpToolCallPathOptions,
@@ -31,7 +32,7 @@ import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface AcpClassifiedToolCall {
   item: DeltaItemShape;
-  presentation: DeltaPresentation;
+  presentation: DeltaPresentation | undefined;
 }
 
 export interface AcpInjectedTool {
@@ -376,21 +377,31 @@ function fileChangeItem(
   };
 }
 
+const IMAGE_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
+
 function fileReadItem(
   event: AcpToolCallUpdateEvent,
   title: string | undefined,
   options: AcpToolCallPathOptions | undefined,
 ): AcpClassifiedToolCall | null {
   const ticked = tickedTokenFromTitle(title);
-  const path =
+  const readPath =
     extractAcpToolCallPaths(event, options)[0] ??
-    (ticked !== undefined && looksLikePath(ticked) ? ticked : undefined);
-  if (path === undefined) {
+    (ticked !== undefined && looksLikePath(ticked)
+      ? resolveAcpToolCallPath(ticked, options)
+      : undefined);
+  if (readPath === undefined) {
     return null;
   }
+  if (isAcpLocalAbsolutePath(readPath) && IMAGE_PATH_PATTERN.test(readPath)) {
+    return {
+      item: { type: "imageView", path: readPath },
+      presentation: undefined,
+    };
+  }
   return {
-    item: { type: "fileRead", path },
-    presentation: fileReadPresentation(path),
+    item: { type: "fileRead", path: readPath },
+    presentation: fileReadPresentation(readPath),
   };
 }
 

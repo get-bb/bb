@@ -112,8 +112,7 @@ export function resolveWorktreeTargetPath(args: {
 }
 
 export function resolveWorktreeChildPath(args: {
-  dataDir: string;
-  pathKey: string;
+  environmentRoot: string;
   childName: string;
 }): string {
   if (
@@ -127,5 +126,47 @@ export function resolveWorktreeChildPath(args: {
       "A managed worktree directory name must be a safe path segment",
     );
   }
-  return path.join(resolveWorktreeAttemptRoot(args), args.childName);
+  return path.join(args.environmentRoot, args.childName);
+}
+
+export function resolveManagedEnvironmentRoot(args: {
+  dataDir: string;
+  worktreePath: string;
+}): string | null {
+  const environmentRoot = path.dirname(path.resolve(args.worktreePath));
+  return path.dirname(environmentRoot) ===
+    path.resolve(resolveWorktreesRoot(args.dataDir))
+    ? environmentRoot
+    : null;
+}
+
+export function resolveFolderWorktreePaths(args: {
+  dataDir: string;
+  mainPath: string;
+  sourcePaths: readonly string[];
+}): string[] {
+  const environmentRoot = resolveManagedEnvironmentRoot({
+    dataDir: args.dataDir,
+    worktreePath: args.mainPath,
+  });
+  if (environmentRoot === null) {
+    throw new WorkspaceError(
+      "invalid_source_path",
+      `${args.mainPath} is not a worktree bb manages, so no folder worktrees can be made next to it`,
+    );
+  }
+  const taken = new Set([path.basename(args.mainPath)]);
+  return args.sourcePaths.map((sourcePath) => {
+    const derived = deriveRepoDirName(sourcePath);
+    const name = taken.has(derived)
+      ? `${derived.slice(0, MAX_REPO_DIR_NAME_BYTES - REPO_DIR_HASH_LENGTH - 1)}-${createHash(
+          "sha256",
+        )
+          .update(sourcePath, "utf8")
+          .digest("hex")
+          .slice(0, REPO_DIR_HASH_LENGTH)}`
+      : derived;
+    taken.add(name);
+    return path.join(environmentRoot, name);
+  });
 }

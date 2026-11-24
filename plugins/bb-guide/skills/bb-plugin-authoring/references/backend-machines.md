@@ -284,6 +284,8 @@ environment's name and id without a thread), so await it late; `setup(path)`
 claims `path` as a provider-owned workspace and starts core's setup there
 while create continues. The thread starts only after create returns `created`
 with the same path; without a call, core runs setup after create.
+`setup(path, { folders })` sets up each new folder once, in order, before
+`path` (teardown in reverse, after it); return them in `additionalPaths`.
 `projectCheckout.ownsPath` says bb cloned the checkout.
 
 Path keys come from the driving thread when there is one, so thread
@@ -362,7 +364,7 @@ function registerStackProvider(stacks: StackBuilder) {
       status: "created" as const,
       path: stack.app,
       ownsPath: true,
-      additionalPaths: [stack.api, stack.docs],
+      additionalPaths: [{ path: stack.api }, { path: stack.docs }],
       resource: stack.app,
     };
   };

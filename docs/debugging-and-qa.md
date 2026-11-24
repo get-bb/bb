@@ -610,9 +610,13 @@ cannot acquire the app's origin privileges. HTML also carries the no-store
 policy, at any size; the app renders an HTML iframe only for files up
 to 5 MiB and shows larger HTML as source or, past 25 MB, as a Download.
 
-The server uses `host.read_file_chunk` for a metadata-only probe (`length: 0`),
-then reads at most 64 KiB per RPC, keeping up to 16 RPCs in flight ahead of
-the HTTP consumer. The daemon returns each chunk's bytes as a binary WebSocket
+The server's first `host.read_file_chunk` returns the file's metadata together
+with its first 64 KiB, so a file up to 64 KiB takes one daemon round trip. That
+read sends the revisions named in `If-None-Match` as `knownRevisions`; when the
+file still has one of them, the daemon returns no bytes and the server answers
+`304`. HEAD, `If-None-Match: *`, and ranges that do not start at byte 0 make the
+first read metadata-only (`length: 0`). Later reads take at most 64 KiB per RPC,
+keeping up to 16 RPCs in flight ahead of the HTTP consumer. The daemon returns each chunk's bytes as a binary WebSocket
 frame (a 4-byte header length, the JSON frame, then the raw bytes) instead of
 base64 inside JSON. HEAD, `304`, and `416` responses read no contents.
 Cancelling, aborting, or a failed chunk stops subsequent reads and aborts the
@@ -1345,11 +1349,14 @@ applied chunk.
 
 The server passes `host.read_workspace_agent_context` its project skill read
 policy: at most 1,000 non-hidden, non-excluded directories, 10 MiB per
-`SKILL.md`, and 32 MiB of JSON-encoded content in total (directory metadata,
-shared skill discovery, and workspace instructions do not count). These are a
-starting policy, not a measured requirement or transport ceiling. Files over a
-limit are skipped with server warnings; smaller later files can still fit, and
-count truncation is reported separately. Only exact-case `SKILL.md` files are
+`SKILL.md`, and 4 MiB of JSON-encoded frontmatter in total (directory metadata,
+shared skill discovery, and workspace instructions do not count). The daemon
+returns each `SKILL.md` only through its closing `---` delimiter, never the
+body; the server parses that block exactly as it would the whole file, because
+injected project skills reach the provider by path. These are a starting
+policy, not a measured requirement or transport ceiling. Files over a limit are
+skipped with server warnings; smaller later files can still fit, and count
+truncation is reported separately. Only exact-case `SKILL.md` files are
 read; symlinked skill directories or files and roots escaping the workspace are
 skipped before reading. Command lookup sets `includeAgentInstructions: false`,
 so an invalid `.bb/AGENTS.md` cannot break the command catalog; turn

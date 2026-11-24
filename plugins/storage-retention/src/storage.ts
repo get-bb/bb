@@ -143,13 +143,19 @@ const liveEnvironment = (
   env.path !== null &&
   env.status !== "destroyed" &&
   env.lifecycle.teardown?.status !== "removed";
+const environmentPaths = (env: Environment) =>
+  env.path === null
+    ? []
+    : [env.path, ...env.additionalPaths.map((entry) => entry.path)];
 function bbOwnedPathList(
   hostId: string,
   environments: Environment[],
   projects: Project[],
 ) {
   return [
-    ...environments.flatMap((env) => (liveEnvironment(env) ? [env.path] : [])),
+    ...environments.flatMap((env) =>
+      liveEnvironment(env) ? environmentPaths(env) : [],
+    ),
     ...projects.flatMap((project) =>
       project.sources
         .filter((source) => source.hostId === hostId)
@@ -989,7 +995,7 @@ export function createStorage(
         );
         const worktreeTargets = [
           ...environments.flatMap((env) =>
-            env.path === null ? [] : [{ path: env.path, perChild: false }],
+            environmentPaths(env).map((path) => ({ path, perChild: false })),
           ),
           ...externals.map((worktree) => ({
             path: worktree.path,
@@ -1047,15 +1053,23 @@ export function createStorage(
           worktrees: environments.flatMap((env) => {
             const entry =
               env.path === null ? undefined : measured.get(env.path);
-            return entry?.outcome === "measured"
-              ? [
-                  {
-                    environmentId: env.id,
-                    path: entry.path,
-                    sizeBytes: entry.sizeBytes,
-                  },
-                ]
-              : [];
+            if (entry?.outcome !== "measured") return [];
+            const additionalBytes = env.additionalPaths.reduce(
+              (total, additional) => {
+                const measuredAdditional = measured.get(additional.path);
+                return measuredAdditional?.outcome === "measured"
+                  ? total + measuredAdditional.sizeBytes
+                  : total;
+              },
+              0,
+            );
+            return [
+              {
+                environmentId: env.id,
+                path: entry.path,
+                sizeBytes: entry.sizeBytes + additionalBytes,
+              },
+            ];
           }),
           externalWorktrees: externals.flatMap((worktree) => {
             const entry = measured.get(worktree.path);
@@ -1796,7 +1810,7 @@ export function createStorage(
         await readLeftoverEnvironments(await readEnvironments(hostId))
       ).filter((env) => !interruptedOnly || interruptedCleanup(env));
       const interruptedPaths = environments.flatMap((env) =>
-        interruptedCleanup(env) && env.path !== null ? [env.path] : [],
+        interruptedCleanup(env) ? environmentPaths(env) : [],
       );
       const changes = new Map<string, number>();
       for (let offset = 0; offset < interruptedPaths.length; offset += 100) {
@@ -1815,8 +1829,16 @@ export function createStorage(
       for (const env of environments) {
         lifecycle.signal.throwIfAborted();
         const recover = interruptedCleanup(env);
+        const changedCounts = recover
+          ? environmentPaths(env).flatMap((path) => {
+              const count = changes.get(path);
+              return count === undefined ? [] : [count];
+            })
+          : [];
         const changedFileCount =
-          recover && env.path !== null ? changes.get(env.path) : undefined;
+          changedCounts.length === 0
+            ? undefined
+            : changedCounts.reduce((total, count) => total + count, 0);
         if (changedFileCount !== undefined && !includeUncommitted) {
           const cleanup = {
             state: "uncommittedChanges" as const,

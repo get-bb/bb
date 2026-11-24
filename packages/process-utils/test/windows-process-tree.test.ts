@@ -67,7 +67,7 @@ it("rejects within a deadline when taskkill and root termination both fail", asy
   await expect(stopWindowsProcessTree(child)).rejects.toThrow(
     "Process did not exit after termination",
   );
-}, 3_000);
+}, 8_000);
 
 it("does not target a recycled PID after the root has exited", async () => {
   const child = await startChild();

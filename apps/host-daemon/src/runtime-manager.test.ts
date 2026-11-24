@@ -1151,6 +1151,8 @@ describe("RuntimeManager", () => {
     try {
       const dataDir = await makeTempDir("bb-provider-maintenance-idle-");
       const runtime = createFakeRuntime();
+      const releaseShutdown = createDeferredPromise<undefined>();
+      runtime.shutdown.mockImplementationOnce(() => releaseShutdown.promise);
       const request = createDeferredPromise<void>();
       const requestStarted = createDeferredPromise<void>();
       const manager = new RuntimeManager({
@@ -1174,6 +1176,14 @@ describe("RuntimeManager", () => {
       await vi.advanceTimersByTimeAsync(99);
       expect(runtime.shutdown).not.toHaveBeenCalled();
       await vi.advanceTimersByTimeAsync(1);
+      expect(runtime.shutdown).toHaveBeenCalledOnce();
+
+      const finished = vi.fn();
+      const stopped = manager.shutdownAll().then(finished);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(finished).not.toHaveBeenCalled();
+      releaseShutdown.resolve(undefined);
+      await stopped;
       expect(runtime.shutdown).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();

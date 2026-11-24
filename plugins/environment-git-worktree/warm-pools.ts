@@ -23,13 +23,16 @@ const CLAIM_TIMEOUT_MS = 15 * 60 * 1000;
 const LIST_PAGE_SIZE = 500;
 const SETTLE_POLL_MS = 2_000;
 
+const MAX_POOL_FOLDERS = 64;
 const poolSizeSchema = z.number().int().min(0).max(MAX_POOL_SIZE);
+const poolFoldersSchema = z.array(z.string().min(1)).max(MAX_POOL_FOLDERS);
 const configurationSchema = z.array(
   z
     .object({
       projectId: z.string().min(1),
       size: poolSizeSchema,
       hosts: z.record(z.string().min(1), poolSizeSchema).default({}),
+      folders: z.record(z.string().min(1), poolFoldersSchema).default({}),
     })
     .strict(),
 );
@@ -52,6 +55,7 @@ export const warmPoolStatusSchema = z
                 path: z.string().min(1),
                 size: poolSizeSchema,
                 hostSize: poolSizeSchema.nullable(),
+                folders: poolFoldersSchema,
                 ready: z.number().int().min(0),
                 preparing: z.number().int().min(0),
                 base: z.string().nullable(),
@@ -80,6 +84,7 @@ interface Checkout {
   hostId: string;
   sourcePath: string;
   size: number;
+  folders: string[];
 }
 
 interface CheckoutState {
@@ -93,6 +98,17 @@ interface Counters {
   missed: number;
 }
 
+export interface WarmFolderWorktree {
+  sourcePath: string;
+  path: string;
+  baseBranch: string | null;
+}
+
+export interface HandedFolderWorktree extends WarmFolderWorktree {
+  baseCommit: string;
+  memberCommit: string;
+}
+
 export interface WarmHandOff {
   path: string;
   baseBranch: string;
@@ -100,6 +116,7 @@ export interface WarmHandOff {
   memberCommit: string;
   offline: boolean;
   placeholder: string;
+  folders: HandedFolderWorktree[];
 }
 
 export interface WarmPools {
@@ -110,11 +127,17 @@ export interface WarmPools {
     hostId: string,
     size: number | null,
   ): Promise<void>;
+  setFolders(
+    projectId: string,
+    hostId: string,
+    folders: readonly string[],
+  ): Promise<void>;
   handOff(args: {
     environmentId: string;
     projectId: string;
     hostId: string;
     sourcePath: string;
+    folders: readonly string[];
     adopt(environmentId: string, handOff: WarmHandOff): Promise<void>;
     signal: AbortSignal;
   }): Promise<WarmHandOff | null>;
@@ -131,6 +154,32 @@ function errorMessage(error: unknown): string {
 
 function isNotFound(error: unknown): boolean {
   return error instanceof Error && "status" in error && error.status === 404;
+}
+
+function trimTrailingSeparators(folderPath: string): string {
+  return folderPath.replace(/(?<=.)[\\/]+$/u, "");
+}
+
+function samePath(left: string, right: string): boolean {
+  return trimTrailingSeparators(left) === trimTrailingSeparators(right);
+}
+
+function sameFolderSet(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((folder) => right.some((other) => samePath(folder, other)))
+  );
+}
+
+function memberFolders(member: Environment): WarmFolderWorktree[] {
+  return member.additionalPaths.flatMap((entry) =>
+    entry.replaces === null
+      ? []
+      : [{ sourcePath: entry.replaces, path: entry.path, baseBranch: null }],
+  );
 }
 
 function isPreparing(member: Environment): boolean {
@@ -166,6 +215,18 @@ export async function createWarmPools(args: {
       .filter((entry) => Object.keys(entry.hosts).length > 0)
       .map((entry) => [entry.projectId, new Map(Object.entries(entry.hosts))]),
   );
+  const hostFolders = new Map(
+    configuration
+      .filter((entry) => Object.keys(entry.folders).length > 0)
+      .map((entry) => [
+        entry.projectId,
+        new Map(Object.entries(entry.folders)),
+      ]),
+  );
+
+  function foldersOn(projectId: string, hostId: string): string[] {
+    return hostFolders.get(projectId)?.get(hostId) ?? [];
+  }
   const checkouts = new Map<string, CheckoutState>();
   const counters = new Map<string, Counters>();
   const reserved = new Map<string, number>();
@@ -183,7 +244,9 @@ export async function createWarmPools(args: {
   }
 
   function configuredProjects(): string[] {
-    return [...new Set([...sizes.keys(), ...hostSizes.keys()])];
+    return [
+      ...new Set([...sizes.keys(), ...hostSizes.keys(), ...hostFolders.keys()]),
+    ];
   }
 
   function enabled(): boolean {
@@ -235,6 +298,11 @@ export async function createWarmPools(args: {
           size: sizes.get(projectId) ?? 0,
           hosts: Object.fromEntries(
             [...(hostSizes.get(projectId) ?? [])].sort(([left], [right]) =>
+              left.localeCompare(right),
+            ),
+          ),
+          folders: Object.fromEntries(
+            [...(hostFolders.get(projectId) ?? [])].sort(([left], [right]) =>
               left.localeCompare(right),
             ),
           ),
@@ -292,6 +360,7 @@ export async function createWarmPools(args: {
         if (isNotFound(error)) {
           sizes.delete(projectId);
           hostSizes.delete(projectId);
+          hostFolders.delete(projectId);
           await saveConfiguration();
         } else {
           unreachable.add(projectId);
@@ -305,11 +374,37 @@ export async function createWarmPools(args: {
         if (source.type !== "local_path") continue;
         const size = sizeOn(projectId, source.hostId);
         if (size === 0) continue;
+        const configuredFolders = foldersOn(projectId, source.hostId);
+        let folders: string[] = [];
+        if (configuredFolders.length > 0) {
+          try {
+            const sourceFolders =
+              await bb.sdk.projects.sources.experimental_folders.list({
+                projectId,
+                sourceId: source.id,
+                signal: lifetime.signal,
+              });
+            folders = configuredFolders.flatMap((folder) => {
+              const match = sourceFolders.find((entry) =>
+                samePath(entry.path, folder),
+              );
+              return match === undefined ? [] : [match.path];
+            });
+          } catch (error) {
+            if (lifetime.signal.aborted) throw error;
+            unreachable.add(projectId);
+            bb.log.warn(
+              `Warm worktrees skipped project ${projectId}: ${errorMessage(error)}`,
+            );
+            continue;
+          }
+        }
         desired.push({
           projectId,
           hostId: source.hostId,
           sourcePath: source.path,
           size,
+          folders,
         });
       }
     }
@@ -327,7 +422,7 @@ export async function createWarmPools(args: {
         hostId: checkout.hostId,
         provider: {
           id: GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
-          inputs: { branch: { kind: "default" } },
+          inputs: { branch: { kind: "default" }, folders: checkout.folders },
         },
         hold: "plugin",
       });
@@ -366,6 +461,69 @@ export async function createWarmPools(args: {
         return;
       }
     }
+  }
+
+  async function folderStaleness(
+    checkout: Checkout,
+    ready: readonly Environment[],
+    state: CheckoutState,
+  ): Promise<Map<string, string>> {
+    const problems = new Map<string, string>();
+    for (const member of ready) {
+      const folders = memberFolders(member).map((folder) => folder.sourcePath);
+      if (!sameFolderSet(folders, checkout.folders))
+        problems.set(member.id, "its folders differ from the pool's");
+    }
+    for (const folder of checkout.folders) {
+      const worktrees = ready.flatMap((member) => {
+        if (problems.has(member.id)) return [];
+        const worktree = memberFolders(member).find((entry) =>
+          samePath(entry.sourcePath, folder),
+        );
+        return worktree === undefined ? [] : [{ member, path: worktree.path }];
+      });
+      if (worktrees.length === 0) continue;
+      let refreshed;
+      try {
+        refreshed = await host.call(
+          "refreshPoolBase",
+          {
+            sourcePath: folder,
+            memberPaths: worktrees.map((worktree) => worktree.path),
+          },
+          {
+            hostId: checkout.hostId,
+            signal: lifetime.signal,
+            timeoutMs: REFRESH_TIMEOUT_MS,
+          },
+        );
+      } catch (error) {
+        if (lifetime.signal.aborted) throw error;
+        state.lastError = `Could not check ${folder} for updates, trying again in 2 minutes.`;
+        continue;
+      }
+      if (refreshed.status === "no-repository") {
+        state.lastError = `The project folder ${folder} is missing or is not a git repository.`;
+        continue;
+      }
+      const observed = new Map(
+        refreshed.members.map((member) => [member.path, member]),
+      );
+      for (const { member, path } of worktrees) {
+        const seen = observed.get(path);
+        if (seen === undefined || seen.branch !== member.branchName)
+          problems.set(
+            member.id,
+            `its worktree of ${folder} left the placeholder branch`,
+          );
+        else if (!seen.onBase)
+          problems.set(
+            member.id,
+            `its worktree of ${folder} is not on ${refreshed.ref ?? "the base"}`,
+          );
+      }
+    }
+    return problems;
   }
 
   async function reconcileCheckout(
@@ -445,6 +603,7 @@ export async function createWarmPools(args: {
       }
       return used;
     });
+    const staleFolders = await folderStaleness(checkout, ready, state);
     const discards: Array<[Environment, string]> = [];
     for (const member of own.filter((entry) => entry.status === "error")) {
       state.lastError =
@@ -456,17 +615,28 @@ export async function createWarmPools(args: {
     }
     const current: Environment[] = [];
     for (const member of ready) {
+      const folderProblem = staleFolders.get(member.id);
       if (repaired.has(member.id))
         discards.push([member, "its checkout left the placeholder branch"]);
+      else if (folderProblem !== undefined)
+        discards.push([member, folderProblem]);
       else if (now - member.createdAt > MEMBER_TTL_MS)
         discards.push([member, "it outlived its time to live"]);
       else if (observed.get(member.path ?? "")?.onBase !== true)
         discards.push([member, `it is not on ${refreshed.ref ?? "the base"}`]);
       else current.push(member);
     }
-    const live = [...current, ...own.filter(isPreparing)].sort(
-      (left, right) => right.createdAt - left.createdAt,
-    );
+    const live = [
+      ...current,
+      ...own.filter(
+        (member) =>
+          isPreparing(member) &&
+          sameFolderSet(
+            memberFolders(member).map((folder) => folder.sourcePath),
+            checkout.folders,
+          ),
+      ),
+    ].sort((left, right) => right.createdAt - left.createdAt);
     for (const member of live.slice(checkout.size))
       discards.push([member, "the pool shrank"]);
     await serialFor(checkout)(async () => {
@@ -602,6 +772,7 @@ export async function createWarmPools(args: {
                 path: source.path,
                 size: sizeOn(project.id, source.hostId),
                 hostSize: hostSizes.get(project.id)?.get(source.hostId) ?? null,
+                folders: foldersOn(project.id, source.hostId),
                 ready: onHost.filter((member) => member.status === "ready")
                   .length,
                 preparing: onHost.filter(isPreparing).length,
@@ -630,7 +801,11 @@ export async function createWarmPools(args: {
           candidate.path !== null &&
           candidate.branchName !== null &&
           !reserved.has(candidate.id) &&
-          !tried.has(candidate.id),
+          !tried.has(candidate.id) &&
+          sameFolderSet(
+            memberFolders(candidate).map((folder) => folder.sourcePath),
+            request.folders,
+          ),
       )
       .sort((left, right) => left.createdAt - right.createdAt)[0];
     if (member === undefined) return null;
@@ -648,54 +823,65 @@ export async function createWarmPools(args: {
     if (creating.heldBy !== null) return null;
     const tried = new Set<string>();
     let base: RemoteBase | null = null;
+    const folderBases = new Map<string, RemoteBase>();
+    const claim = (target: {
+      sourcePath: string;
+      path: string;
+      placeholder: string;
+      base: RemoteBase | null;
+    }) =>
+      host.call(
+        "claimPoolMember",
+        { ...target, checkTimeoutMs: HANDOFF_CHECK_TIMEOUT_MS },
+        {
+          hostId: request.hostId,
+          signal: request.signal,
+          timeoutMs: CLAIM_TIMEOUT_MS,
+        },
+      );
+    const claimFailed = async (
+      member: Environment,
+      error: unknown,
+    ): Promise<void> => {
+      reserved.delete(member.id);
+      await serialFor(request)(() =>
+        discard(member, "its claim failed and it may have moved"),
+      );
+      if (request.signal.aborted) throw error;
+      bb.log.warn(
+        `Warm worktree ${member.id} could not be handed off: ${errorMessage(error)}`,
+      );
+    };
+    const checkTimedOut = `its check took longer than ${HANDOFF_CHECK_TIMEOUT_MS / 1000} s`;
     for (;;) {
       const member = await serialFor(request)(() => reserve(request, tried));
       if (member === null || member.path === null || member.branchName === null)
         break;
       tried.add(member.id);
+      const placeholder = member.branchName;
       let claimed;
       try {
-        claimed = await host.call(
-          "claimPoolMember",
-          {
-            sourcePath: request.sourcePath,
-            path: member.path,
-            placeholder: member.branchName,
-            base,
-            checkTimeoutMs: HANDOFF_CHECK_TIMEOUT_MS,
-          },
-          {
-            hostId: request.hostId,
-            signal: request.signal,
-            timeoutMs: CLAIM_TIMEOUT_MS,
-          },
-        );
+        claimed = await claim({
+          sourcePath: request.sourcePath,
+          path: member.path,
+          placeholder,
+          base,
+        });
       } catch (error) {
-        reserved.delete(member.id);
-        await serialFor(request)(() =>
-          discard(member, "its claim failed and it may have moved"),
-        );
-        if (request.signal.aborted) throw error;
-        bb.log.warn(
-          `Warm worktree ${member.id} could not be handed off: ${errorMessage(error)}`,
-        );
+        await claimFailed(member, error);
         break;
       }
       if (claimed.status === "no-base") {
         reserved.delete(member.id);
         break;
       }
-      if (claimed.status === "timed-out") {
+      if (
+        claimed.status === "timed-out" ||
+        claimed.status === "base-unavailable"
+      ) {
         reserved.delete(member.id);
         bb.log.warn(
-          `Warm worktree ${member.id} could not be handed off: its check took longer than ${HANDOFF_CHECK_TIMEOUT_MS / 1000} s`,
-        );
-        break;
-      }
-      if (claimed.status === "base-unavailable") {
-        reserved.delete(member.id);
-        bb.log.warn(
-          `Warm worktree ${member.id} could not be handed off: ${claimed.reason}`,
+          `Warm worktree ${member.id} could not be handed off: ${claimed.status === "timed-out" ? checkTimedOut : claimed.reason}`,
         );
         break;
       }
@@ -709,19 +895,86 @@ export async function createWarmPools(args: {
         );
         continue;
       }
+      const settled = await Promise.allSettled(
+        memberFolders(member).map(async (folder) => ({
+          folder,
+          claimed: await claim({
+            sourcePath: folder.sourcePath,
+            path: folder.path,
+            placeholder,
+            base: folderBases.get(folder.sourcePath) ?? null,
+          }),
+        })),
+      );
+      const failure = settled.find(
+        (entry): entry is PromiseRejectedResult => entry.status === "rejected",
+      );
+      if (failure !== undefined) {
+        await claimFailed(member, failure.reason);
+        break;
+      }
+      let moved = claimed.head !== claimed.base.commit;
+      const folders: HandedFolderWorktree[] = [];
+      let folderProblem: { discard: string | null } | null = null;
+      for (const entry of settled) {
+        if (entry.status === "rejected") continue;
+        const { folder, claimed: folderClaimed } = entry.value;
+        if (
+          folderClaimed.status === "usable" ||
+          folderClaimed.status === "refused" ||
+          folderClaimed.status === "busy"
+        )
+          folderBases.set(folder.sourcePath, folderClaimed.base);
+        if (folderClaimed.status === "usable") {
+          if (folderClaimed.head !== folderClaimed.base.commit) moved = true;
+          folders.push({
+            ...folder,
+            baseBranch: folderClaimed.base.ref,
+            baseCommit: folderClaimed.base.commit,
+            memberCommit: folderClaimed.head,
+          });
+          continue;
+        }
+        if (folderProblem !== null) continue;
+        if (folderClaimed.status === "refused") {
+          folderProblem = {
+            discard: `its worktree of ${folder.sourcePath} cannot be handed off: ${folderClaimed.reason}`,
+          };
+          continue;
+        }
+        if (
+          folderClaimed.status === "timed-out" ||
+          folderClaimed.status === "base-unavailable"
+        )
+          bb.log.warn(
+            `Warm worktree ${member.id} could not be handed off: its worktree of ${folder.sourcePath}: ${folderClaimed.status === "timed-out" ? checkTimedOut : folderClaimed.reason}`,
+          );
+        folderProblem = { discard: null };
+      }
+      if (folderProblem !== null) {
+        reserved.delete(member.id);
+        const reason =
+          folderProblem.discard ??
+          (moved ? "it moved to a new base but was not handed off" : null);
+        if (reason !== null)
+          await serialFor(request)(() => discard(member, reason));
+        if (folderProblem.discard === null) break;
+        continue;
+      }
       const handed: WarmHandOff = {
         path: member.path,
         baseBranch: claimed.base.ref,
         baseCommit: claimed.base.commit,
         memberCommit: claimed.head,
         offline: claimed.base.offline,
-        placeholder: member.branchName,
+        placeholder,
+        folders,
       };
       try {
         await request.adopt(member.id, handed);
       } catch (error) {
         reserved.delete(member.id);
-        if (handed.memberCommit !== handed.baseCommit)
+        if (moved)
           await serialFor(request)(() =>
             discard(member, "it moved to a new base but was not adopted"),
           );
@@ -769,6 +1022,39 @@ export async function createWarmPools(args: {
       else hosts.set(hostId, parsed);
       if (hosts.size === 0) hostSizes.delete(projectId);
       else hostSizes.set(projectId, hosts);
+      await saveAndReconcile();
+    },
+    async setFolders(projectId, hostId, folders) {
+      const requested = poolFoldersSchema.parse([...folders]);
+      const project = await bb.sdk.projects.get({ projectId });
+      const source = project.sources.find(
+        (candidate) =>
+          candidate.type === "local_path" && candidate.hostId === hostId,
+      );
+      if (source === undefined)
+        throw new Error(
+          `Project ${projectId} has no checkout on machine ${hostId}`,
+        );
+      const known = (
+        await bb.sdk.projects.sources.experimental_folders.list({
+          projectId,
+          sourceId: source.id,
+        })
+      ).map((entry) => entry.path);
+      const chosen: string[] = [];
+      for (const folder of requested) {
+        const match = known.find((entry) => samePath(entry, folder));
+        if (match === undefined)
+          throw new Error(
+            `${folder} is not one of this project's folders on machine ${hostId}. List them with \`bb project folder list ${projectId} --machine ${hostId}\`.`,
+          );
+        if (!chosen.some((entry) => samePath(entry, match))) chosen.push(match);
+      }
+      const hosts = hostFolders.get(projectId) ?? new Map<string, string[]>();
+      if (chosen.length === 0) hosts.delete(hostId);
+      else hosts.set(hostId, chosen);
+      if (hosts.size === 0) hostFolders.delete(projectId);
+      else hostFolders.set(projectId, hosts);
       await saveAndReconcile();
     },
     async handOff(request) {
