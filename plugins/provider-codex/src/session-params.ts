@@ -617,10 +617,25 @@ export function toCodexUserInput(
   return [...chunks, ...selected.values()];
 }
 
+const BB_CONTEXT_ENV_NAMES = [
+  "BB_PROJECT_ID",
+  "BB_ENVIRONMENT_ID",
+  "BB_THREAD_STORAGE",
+  "BB_CLI",
+  "BB_SERVER_URL",
+  "BB_HOST_DAEMON_PORT",
+] as const;
+
 export function buildCodexConfig(
   args: BuildCodexConfigArgs,
 ): { [key in string]?: JsonValue } | undefined {
   const config: { [key in string]?: JsonValue } = {};
+  for (const name of BB_CONTEXT_ENV_NAMES) {
+    const value = args.options?.envVars?.[name];
+    if (value !== undefined) {
+      config[`shell_environment_policy.set.${name}`] = value;
+    }
+  }
   if (args.threadId) {
     config["shell_environment_policy.set.BB_THREAD_ID"] = args.threadId;
   }
