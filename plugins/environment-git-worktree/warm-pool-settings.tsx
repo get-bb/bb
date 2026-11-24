@@ -8,6 +8,7 @@ import {
 } from "@bb/shared-ui/select";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  SETTINGS_INLINE_SELECT_CLASS,
   SettingsList,
   SettingsListItem,
   SettingsListMessage,
@@ -64,7 +65,7 @@ function SizeSelect(props: {
       <SelectTrigger
         aria-label={props.label}
         className={cn(
-          "w-36",
+          SETTINGS_INLINE_SELECT_CLASS,
           props.value === FOLLOW_PROJECT && "text-subtle-foreground",
         )}
       >

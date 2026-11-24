@@ -192,6 +192,9 @@ export function SettingsWithControl({
   );
 }
 
+export const SETTINGS_INLINE_SELECT_CLASS =
+  "h-8 w-auto gap-1.5 border-transparent px-2 shadow-none hover:bg-state-hover data-[state=open]:bg-state-hover";
+
 export const SETTINGS_CARD_CLASS =
   "rounded-lg border border-border bg-card px-4 py-3.5";
 
@@ -282,8 +285,8 @@ function gridColumns(hasLeading: boolean, hasControl: boolean): string {
   if (!hasControl)
     return hasLeading ? "grid-cols-[1rem_minmax(0,1fr)]" : "grid-cols-1";
   return hasLeading
-    ? "grid-cols-[1rem_minmax(0,1fr)] @min-[30rem]/settings-list:grid-cols-[1rem_minmax(0,1fr)_auto] has-[>[data-settings-control]_:is([role=switch],[aria-haspopup=menu])]:grid-cols-[1rem_minmax(0,1fr)_auto]"
-    : "grid-cols-1 @min-[30rem]/settings-list:grid-cols-[minmax(0,1fr)_auto] has-[>[data-settings-control]_:is([role=switch],[aria-haspopup=menu])]:grid-cols-[minmax(0,1fr)_auto]";
+    ? "grid-cols-[1rem_minmax(0,1fr)] @min-[30rem]/settings-list:grid-cols-[1rem_minmax(0,1fr)_auto] has-[>[data-settings-control]_:is([role=switch],[role=combobox],[aria-haspopup=menu])]:grid-cols-[1rem_minmax(0,1fr)_auto]"
+    : "grid-cols-1 @min-[30rem]/settings-list:grid-cols-[minmax(0,1fr)_auto] has-[>[data-settings-control]_:is([role=switch],[role=combobox],[aria-haspopup=menu])]:grid-cols-[minmax(0,1fr)_auto]";
 }
 
 export type SettingsListMeta = readonly (ReactNode | null | false)[];
@@ -326,7 +329,7 @@ export function SettingsListItem({
         className={cn(
           "grid items-center gap-x-3",
           gridColumns(leading !== undefined, control !== undefined),
-          !hasDetails && "min-h-9",
+          !hasDetails && "min-h-8",
         )}
       >
         {leading === undefined ? null : (
@@ -346,7 +349,7 @@ export function SettingsListItem({
               <span aria-hidden className="ml-1.5 pr-0.5">
                 ·
               </span>{" "}
-              <span>{item}</span>
+              <span className="whitespace-nowrap">{item}</span>
             </span>
           ))}
           {badge === undefined ? null : (
@@ -393,8 +396,8 @@ export function SettingsListItem({
             className={cn(
               "flex items-center gap-2",
               leading === undefined
-                ? "col-start-1 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-2 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch],[aria-haspopup=menu]]:col-start-2 has-[[role=switch],[aria-haspopup=menu]]:row-start-1 has-[[role=switch],[aria-haspopup=menu]]:mt-0 has-[[role=switch],[aria-haspopup=menu]]:justify-self-end"
-                : "col-start-2 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-3 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch],[aria-haspopup=menu]]:col-start-3 has-[[role=switch],[aria-haspopup=menu]]:row-start-1 has-[[role=switch],[aria-haspopup=menu]]:mt-0 has-[[role=switch],[aria-haspopup=menu]]:justify-self-end",
+                ? "col-start-1 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-2 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:col-start-2 has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:row-start-1 has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:mt-0 has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:justify-self-end"
+                : "col-start-2 mt-2 justify-self-start @min-[30rem]/settings-list:col-start-3 @min-[30rem]/settings-list:row-start-1 @min-[30rem]/settings-list:mt-0 @min-[30rem]/settings-list:justify-self-end has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:col-start-3 has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:row-start-1 has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:mt-0 has-[[role=switch],[role=combobox],[aria-haspopup=menu]]:justify-self-end",
             )}
           >
             {control}

@@ -11,7 +11,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@bb/shared-ui/select";
+import { cn } from "@bb/shared-ui/lib/utils";
 import {
+  SETTINGS_INLINE_SELECT_CLASS,
   SettingsList,
   SettingsListAction,
   SettingsListItem,
@@ -22,9 +24,16 @@ import { Switch } from "@bb/shared-ui/switch";
 export default { title: "settings/Settings list" };
 
 function CountSelect({ value, inherit }: { value: string; inherit?: string }) {
+  const [current, setCurrent] = useState(value);
   return (
-    <Select defaultValue={value}>
-      <SelectTrigger className="w-36" aria-label="Count">
+    <Select value={current} onValueChange={setCurrent}>
+      <SelectTrigger
+        className={cn(
+          SETTINGS_INLINE_SELECT_CLASS,
+          current === "inherit" && "text-subtle-foreground",
+        )}
+        aria-label="Count"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
