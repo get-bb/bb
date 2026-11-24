@@ -123,6 +123,7 @@ export interface PluginServiceDeps {
   retiredBundledPlugins?: readonly RetiredBundledPlugin[];
   watchBuiltinPluginSources?: boolean;
   loadTimeoutMs?: number;
+  preparationTimeoutMs?: number;
   /** How long an install waits for `bb.onInstall` handlers. Defaults to 30s. */
   installHandlerTimeoutMs?: number;
   serviceStopTimeoutMs?: number;
