@@ -25,7 +25,7 @@ import {
   SettingsBadge,
   SettingsRow,
   SettingsSection,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import {
   useDeleteProject,
   useReorderProject,

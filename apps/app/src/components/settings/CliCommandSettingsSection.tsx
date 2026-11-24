@@ -3,7 +3,7 @@ import { Button } from "@bb/shared-ui/button";
 import {
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { useChangeCliCommand } from "@/hooks/mutations/settings-mutations";
 import { useCliCommandStatus } from "@/hooks/queries/system-queries";
 

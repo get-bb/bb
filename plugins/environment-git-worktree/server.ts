@@ -90,6 +90,16 @@ export const worktreeRpcContract = defineRpcContract({
       .strict(),
     output: warmPoolStatusSchema,
   },
+  setWarmPoolHostSize: {
+    input: z
+      .object({
+        projectId: z.string().min(1),
+        hostId: z.string().min(1),
+        size: z.number().int().min(0).max(MAX_POOL_SIZE).nullable(),
+      })
+      .strict(),
+    output: warmPoolStatusSchema,
+  },
 });
 
 const JSON_OPTION = {
@@ -98,15 +108,19 @@ const JSON_OPTION = {
 } as const;
 
 function formatWarmPoolStatus(status: WarmPoolStatus): string {
-  const enabled = status.pools.filter((pool) => pool.size > 0);
+  const enabled = status.pools.filter((pool) =>
+    pool.checkouts.some((checkout) => checkout.size > 0),
+  );
   if (enabled.length === 0) {
     return "No project keeps warm worktrees. Enable one with `bb worktree pool set <project-id> <size>`.";
   }
   return enabled
     .flatMap((pool) => [
-      `${pool.projectName} (${pool.projectId}): ${pool.size} warm worktree${pool.size === 1 ? "" : "s"}, ${pool.handedOff} handed off, ${pool.missed} missed since the server started`,
+      `${pool.projectName} (${pool.projectId}): ${pool.size} warm worktree${pool.size === 1 ? "" : "s"} per machine, ${pool.handedOff} handed off, ${pool.missed} missed since the server started`,
       ...pool.checkouts.flatMap((checkout) => [
-        `  ${checkout.hostName} ${checkout.path}: ${checkout.ready} ready, ${checkout.preparing} being set up${
+        `  ${checkout.hostName} (${checkout.hostId}) ${checkout.path}: keeps ${checkout.size}${
+          checkout.hostSize === null ? "" : " (set for this machine)"
+        }, ${checkout.ready} ready, ${checkout.preparing} being set up${
           checkout.base === null ? "" : ` on ${checkout.base}`
         }`,
         ...(checkout.lastError === null
@@ -466,6 +480,10 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       await pools.setSize(projectId, size);
       return pools.status();
     },
+    async setWarmPoolHostSize({ projectId, hostId, size }) {
+      await pools.setHostSize(projectId, hostId, size);
+      return pools.status();
+    },
   });
 
   bb.cli.register(
@@ -473,7 +491,7 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
       name: "worktree",
       summary: "Keep warm worktrees ready for new threads",
       description:
-        "A project with warm worktrees keeps that many worktrees checked out at its default base with setup finished, so a new worktree thread on the default base starts without waiting for git or the setup script.",
+        "A project with warm worktrees keeps that many worktrees on each machine with a checkout, at its default base with setup finished, so a new worktree thread on the default base starts without waiting for git or the setup script. A machine can keep its own count instead of the project's.",
       commands: {
         "pool status": cliCommand({
           summary: "Show projects that keep warm worktrees",
@@ -498,20 +516,40 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
             },
             {
               name: "size",
-              description: `A whole number from 0 to ${MAX_POOL_SIZE}; 0 turns warm worktrees off and removes the project's idle ones`,
+              description: `A whole number from 0 to ${MAX_POOL_SIZE}; 0 turns warm worktrees off and removes the project's idle ones. With --host, \`project\` makes the machine follow the project's count again`,
               required: true,
             },
           ],
-          options: { json: JSON_OPTION },
+          options: {
+            host: {
+              type: "string",
+              placeholder: "id",
+              aliases: ["host-id"],
+              description:
+                "Set the count for one machine's checkout only, as `bb host list` prints its id",
+            },
+            json: JSON_OPTION,
+          },
           async run(input) {
-            const size = Number(input.positionals.size);
-            if (!Number.isInteger(size) || size < 0 || size > MAX_POOL_SIZE) {
+            const projectId = input.positionals["project-id"];
+            const hostId = input.options.host;
+            const raw = input.positionals.size;
+            const size =
+              hostId !== undefined && raw === "project" ? null : Number(raw);
+            if (
+              size !== null &&
+              (!Number.isInteger(size) || size < 0 || size > MAX_POOL_SIZE)
+            ) {
               throw new PluginCliError(
-                `Size must be a whole number from 0 to ${MAX_POOL_SIZE}`,
+                hostId === undefined
+                  ? `Size must be a whole number from 0 to ${MAX_POOL_SIZE}`
+                  : `Size must be a whole number from 0 to ${MAX_POOL_SIZE}, or \`project\``,
                 { code: "invalid_size" },
               );
             }
-            await pools.setSize(input.positionals["project-id"], size);
+            if (hostId !== undefined)
+              await pools.setHostSize(projectId, hostId, size);
+            else if (size !== null) await pools.setSize(projectId, size);
             const status = await pools.status();
             return {
               exitCode: 0,

@@ -25,7 +25,7 @@ import {
   SettingsRowList,
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { useSetProviderEnabled } from "@/hooks/mutations/provider-mutations";
 import {

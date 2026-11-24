@@ -558,6 +558,11 @@
       "source": "./src/components/ui/list-loading-placeholder.tsx",
       "types": "./src/components/ui/list-loading-placeholder.tsx",
       "default": "./src/components/ui/list-loading-placeholder.tsx"
+    },
+    "./settings-section": {
+      "source": "./src/components/ui/settings-section.tsx",
+      "types": "./src/components/ui/settings-section.tsx",
+      "default": "./src/components/ui/settings-section.tsx"
     }
   },
   "scripts": {

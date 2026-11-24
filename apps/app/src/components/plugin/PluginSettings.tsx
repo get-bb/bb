@@ -14,7 +14,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Input } from "@bb/shared-ui/input";
 import { Textarea } from "@bb/shared-ui/textarea";
 import { Link } from "react-router-dom";
-import { SettingsWithControl } from "@/components/ui/settings-section.js";
+import { SettingsWithControl } from "@bb/shared-ui/settings-section";
 import { getPluginDetailRoutePath } from "@/lib/route-paths";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { Switch } from "@bb/shared-ui/switch";

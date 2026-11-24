@@ -211,10 +211,17 @@ describe("ProjectDetailSettingsView", () => {
       screen.getByText("github.com/get-bb/bb · 1 of 3 machines · 1 thread"),
     ).toBeDefined();
     expect(screen.getAllByText("Not set up on this machine")).toHaveLength(2);
-    expect(screen.getByRole("button", { name: "Set up" })).toBeDefined();
     expect(
-      screen.getByRole("button", { name: "Offline" }).hasAttribute("disabled"),
+      screen
+        .getByRole("button", { name: "Set up on dev-vm" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
+    expect(
+      screen
+        .getByRole("button", { name: "Set up on old-laptop" })
+        .hasAttribute("disabled"),
     ).toBe(true);
+    expect(screen.getByText("Offline")).toBeDefined();
     expect(
       screen.getByRole("link", { name: "dev-vm" }).getAttribute("href"),
     ).toBe("/settings/machines/host_remote");
@@ -226,7 +233,9 @@ describe("ProjectDetailSettingsView", () => {
     ]);
 
     renderView();
-    fireEvent.click(await screen.findByRole("button", { name: "Set up" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Set up on dev-vm" }),
+    );
 
     expect(await screen.findByText("Set up bb on dev-vm")).toBeDefined();
   });
@@ -235,7 +244,9 @@ describe("ProjectDetailSettingsView", () => {
     stubSidebarBootstrapFetch([{ hostId: "host_remote", path: "/home/me/bb" }]);
 
     renderView();
-    fireEvent.click(await screen.findByRole("button", { name: "Set up" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Set up on MacBook Pro" }),
+    );
 
     expect(await screen.findByText("Add project source")).toBeDefined();
   });

@@ -1396,7 +1396,8 @@ The builtin Worktree plugin can keep warm worktrees for a project so new
 worktree threads on the default base skip `git worktree add` and the setup
 script. It is off for every project; set a project's size from 0 to 4 on the
 plugin's settings page or with `bb worktree pool set <project-id> <size>`, and
-list them with `bb worktree pool status`. See
+list them with `bb worktree pool status`. A machine can keep its own count with
+`--host <host-id>`, or follow the project's again with the size `project`. See
 [Warm worktrees](worktrees.md#warm-worktrees) and the `worktree` skill.
 
 ### GitHub Star

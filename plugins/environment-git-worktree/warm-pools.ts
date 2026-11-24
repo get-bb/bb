@@ -23,7 +23,13 @@ const SETTLE_POLL_MS = 2_000;
 
 const poolSizeSchema = z.number().int().min(0).max(MAX_POOL_SIZE);
 const configurationSchema = z.array(
-  z.object({ projectId: z.string().min(1), size: poolSizeSchema }).strict(),
+  z
+    .object({
+      projectId: z.string().min(1),
+      size: poolSizeSchema,
+      hosts: z.record(z.string().min(1), poolSizeSchema).default({}),
+    })
+    .strict(),
 );
 
 export const warmPoolStatusSchema = z
@@ -42,6 +48,8 @@ export const warmPoolStatusSchema = z
                 hostId: z.string().min(1),
                 hostName: z.string(),
                 path: z.string().min(1),
+                size: poolSizeSchema,
+                hostSize: poolSizeSchema.nullable(),
                 ready: z.number().int().min(0),
                 preparing: z.number().int().min(0),
                 base: z.string().nullable(),
@@ -93,9 +101,13 @@ export interface WarmHandOff {
 }
 
 export interface WarmPools {
-  sizeFor(projectId: string): number;
   status(): Promise<WarmPoolStatus>;
   setSize(projectId: string, size: number): Promise<void>;
+  setHostSize(
+    projectId: string,
+    hostId: string,
+    size: number | null,
+  ): Promise<void>;
   handOff(args: {
     environmentId: string;
     projectId: string;
@@ -141,11 +153,16 @@ export async function createWarmPools(args: {
   const stored = configurationSchema.safeParse(
     await bb.storage.kv.get<unknown>(CONFIGURATION_KEY),
   );
+  const configuration = stored.success ? stored.data : [];
   const sizes = new Map(
-    (stored.success ? stored.data : []).map((entry) => [
-      entry.projectId,
-      entry.size,
-    ]),
+    configuration
+      .filter((entry) => entry.size > 0)
+      .map((entry) => [entry.projectId, entry.size]),
+  );
+  const hostSizes = new Map(
+    configuration
+      .filter((entry) => Object.keys(entry.hosts).length > 0)
+      .map((entry) => [entry.projectId, new Map(Object.entries(entry.hosts))]),
   );
   const checkouts = new Map<string, CheckoutState>();
   const counters = new Map<string, Counters>();
@@ -159,8 +176,22 @@ export async function createWarmPools(args: {
 
   let hadMembers = false;
 
+  function sizeOn(projectId: string, hostId: string): number {
+    return hostSizes.get(projectId)?.get(hostId) ?? sizes.get(projectId) ?? 0;
+  }
+
+  function configuredProjects(): string[] {
+    return [...new Set([...sizes.keys(), ...hostSizes.keys()])];
+  }
+
   function enabled(): boolean {
-    return hadMembers || [...sizes.values()].some((size) => size > 0);
+    return (
+      hadMembers ||
+      sizes.size > 0 ||
+      [...hostSizes.values()].some((hosts) =>
+        [...hosts.values()].some((size) => size > 0),
+      )
+    );
   }
 
   function serialFor(target: { projectId: string; hostId: string }) {
@@ -195,9 +226,17 @@ export async function createWarmPools(args: {
   async function saveConfiguration(): Promise<void> {
     await bb.storage.kv.set(
       CONFIGURATION_KEY,
-      [...sizes]
-        .map(([projectId, size]) => ({ projectId, size }))
-        .sort((left, right) => left.projectId.localeCompare(right.projectId)),
+      configuredProjects()
+        .sort((left, right) => left.localeCompare(right))
+        .map((projectId) => ({
+          projectId,
+          size: sizes.get(projectId) ?? 0,
+          hosts: Object.fromEntries(
+            [...(hostSizes.get(projectId) ?? [])].sort(([left], [right]) =>
+              left.localeCompare(right),
+            ),
+          ),
+        })),
     );
   }
 
@@ -239,8 +278,7 @@ export async function createWarmPools(args: {
   }> {
     const desired: Checkout[] = [];
     const unreachable = new Set<string>();
-    for (const [projectId, size] of sizes) {
-      if (size === 0) continue;
+    for (const projectId of configuredProjects()) {
       let project;
       try {
         project = await bb.sdk.projects.get({
@@ -251,6 +289,7 @@ export async function createWarmPools(args: {
         if (lifetime.signal.aborted) throw error;
         if (isNotFound(error)) {
           sizes.delete(projectId);
+          hostSizes.delete(projectId);
           await saveConfiguration();
         } else {
           unreachable.add(projectId);
@@ -262,6 +301,8 @@ export async function createWarmPools(args: {
       }
       for (const source of project.sources) {
         if (source.type !== "local_path") continue;
+        const size = sizeOn(projectId, source.hostId);
+        if (size === 0) continue;
         desired.push({
           projectId,
           hostId: source.hostId,
@@ -557,6 +598,8 @@ export async function createWarmPools(args: {
                 hostId: source.hostId,
                 hostName: hostNames.get(source.hostId) ?? source.hostId,
                 path: source.path,
+                size: sizeOn(project.id, source.hostId),
+                hostSize: hostSizes.get(project.id)?.get(source.hostId) ?? null,
                 ready: onHost.filter((member) => member.status === "ready")
                   .length,
                 preparing: onHost.filter(isPreparing).length,
@@ -684,22 +727,41 @@ export async function createWarmPools(args: {
     return null;
   }
 
+  async function saveAndReconcile(): Promise<void> {
+    for (const state of checkouts.values()) state.retryAt = 0;
+    await saveConfiguration();
+    void reconcile();
+  }
+
   return {
-    sizeFor(projectId) {
-      return sizes.get(projectId) ?? 0;
-    },
     status,
     async setSize(projectId, size) {
       const parsed = poolSizeSchema.parse(size);
       await bb.sdk.projects.get({ projectId });
       if (parsed === 0) sizes.delete(projectId);
       else sizes.set(projectId, parsed);
-      for (const state of checkouts.values()) state.retryAt = 0;
-      await saveConfiguration();
-      void reconcile();
+      await saveAndReconcile();
+    },
+    async setHostSize(projectId, hostId, size) {
+      const parsed = poolSizeSchema.nullable().parse(size);
+      const project = await bb.sdk.projects.get({ projectId });
+      if (
+        !project.sources.some(
+          (source) => source.type === "local_path" && source.hostId === hostId,
+        )
+      )
+        throw new Error(
+          `Project ${projectId} has no checkout on machine ${hostId}`,
+        );
+      const hosts = hostSizes.get(projectId) ?? new Map<string, number>();
+      if (parsed === null) hosts.delete(hostId);
+      else hosts.set(hostId, parsed);
+      if (hosts.size === 0) hostSizes.delete(projectId);
+      else hostSizes.set(projectId, hosts);
+      await saveAndReconcile();
     },
     async handOff(request) {
-      if ((sizes.get(request.projectId) ?? 0) === 0) return null;
+      if (sizeOn(request.projectId, request.hostId) === 0) return null;
       try {
         return await handOff(request);
       } catch (error) {

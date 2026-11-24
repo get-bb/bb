@@ -308,6 +308,7 @@ composer.
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
   npm. Managed source installs run bb's bundled npm.
+- `@bb/settings-section`: bb's settings cards and rows (frontend-core-slots.md).
 - `EmptyState` ships as `npx shadcn add @bb/empty-state`. There is no
   `PageBody` or `Spinner`; write your own (each is a few lines; see
   `plugins/github/components/` for reference implementations).

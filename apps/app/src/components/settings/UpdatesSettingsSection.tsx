@@ -69,7 +69,7 @@ import { BbLogo } from "@/components/ui/bb-logo";
 import {
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { Switch } from "@bb/shared-ui/switch";
 import { showProviderCliUpdatesAtom } from "@/components/sidebar/sidebar-update-preferences";
 import { refreshHostProviderCliStatus } from "@/hooks/cache-owners/provider-cli-status-cache-owner";

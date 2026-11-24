@@ -104,9 +104,9 @@ function warmReadyCount(
   hostId: string,
 ): number {
   const pool = status.pools.find((entry) => entry.projectId === projectId);
-  if (pool === undefined || pool.size === 0) return 0;
+  if (pool === undefined) return 0;
   return pool.checkouts
-    .filter((checkout) => checkout.hostId === hostId)
+    .filter((checkout) => checkout.hostId === hostId && checkout.size > 0)
     .reduce((total, checkout) => total + checkout.ready, 0);
 }
 
@@ -551,6 +551,9 @@ function WorktreeInputsControl({
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "warm-worktrees",
+    title: "Warm worktrees",
+    description:
+      "Worktrees set up ahead of time, so new threads on the default branch start right away. Each machine keeps the project's count unless you set its own.",
     component: WarmPoolSettings,
   });
   app.slots.experimental_environmentProviderInputs({

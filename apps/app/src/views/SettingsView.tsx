@@ -40,7 +40,7 @@ import { PageShell } from "@/components/ui/page-shell.js";
 import {
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section.js";
+} from "@bb/shared-ui/settings-section";
 import { WorkspaceOpenTargetIcon } from "@/components/workspace-open-target/WorkspaceOpenTargetIcon";
 import {
   setPreferredTheme,

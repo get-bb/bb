@@ -12,7 +12,6 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
-import { Pill } from "@bb/shared-ui/pill";
 import { ResourceOverflowMenu } from "@bb/shared-ui/resource-list";
 import { ProjectPathDialog } from "@/components/dialogs/ProjectPathDialog";
 import {
@@ -31,7 +30,6 @@ import {
   ProjectSourceDeleteDialog,
   type ProjectSourceDeleteDialogTarget,
 } from "@/components/dialogs/ProjectSourceDeleteDialog";
-import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import {
   formatGitRemote,
   pluralize,
@@ -41,9 +39,13 @@ import {
   SettingsBadge,
   SettingsDetailRow,
   SettingsRow,
+  SettingsListAction,
+  SettingsListItem,
+  SettingsListMessage,
+  SettingsListRows,
   SettingsRowList,
   SettingsSection,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import {
   useAddLocalProjectSource,
   useAddProjectSourceFolder,
@@ -77,44 +79,27 @@ const FOLDERS_DESCRIPTION =
 const DEFAULTS_DESCRIPTION =
   "What new threads in this project start with. bb remembers the last options you used here.";
 
-interface FolderEntryProps {
+interface FolderItemProps {
   path: string;
-  badges?: ReactNode;
+  badge?: string;
+  missing: boolean;
   menu: ReactNode;
 }
 
-function FolderEntry({ path, badges, menu }: FolderEntryProps) {
+function FolderItem({ path, badge, missing, menu }: FolderItemProps) {
   return (
-    <div className="flex min-w-0 items-start gap-2 py-1.5">
-      <div className="min-w-0 flex-1 space-y-0.5">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <Icon
-            name="Folder"
-            className="size-3.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0 truncate text-sm text-foreground">
-            {getHostPathBasename(path) ?? path}
-          </span>
-          {badges}
-        </div>
-        <div className="min-w-0 truncate pl-5 font-mono text-xs text-subtle-foreground/75">
-          {path}
-        </div>
-      </div>
-      {menu}
-    </div>
+    <SettingsListItem
+      leading={<Icon name="Folder" className="size-4 text-muted-foreground" />}
+      title={getHostPathBasename(path) ?? path}
+      badge={badge}
+      description={<span className="block truncate font-mono">{path}</span>}
+      error={missing ? "Not found on this machine." : null}
+      control={menu}
+    />
   );
 }
 
-function MissingFolderPill() {
-  return (
-    <Pill variant="destructive" size="sm">
-      Not found
-    </Pill>
-  );
-}
-
-interface ExtraFolderRowProps {
+interface ExtraFolderItemProps {
   folder: ProjectSourceFolder;
   host: Host;
   pending: boolean;
@@ -122,25 +107,21 @@ interface ExtraFolderRowProps {
   onRemove: () => void;
 }
 
-function ExtraFolderRow({
+function ExtraFolderItem({
   folder,
   host,
   pending,
   onChange,
   onRemove,
-}: ExtraFolderRowProps) {
+}: ExtraFolderItemProps) {
   const connected = host.status === "connected";
   const existence = useHostPathExistence(connected ? host.id : null, [
     folder.path,
   ]);
   return (
-    <FolderEntry
+    <FolderItem
       path={folder.path}
-      badges={
-        isHostPathMissing(existence, folder.path) ? (
-          <MissingFolderPill />
-        ) : null
-      }
+      missing={isHostPathMissing(existence, folder.path)}
       menu={
         <ResourceOverflowMenu
           label={`${folder.path} actions`}
@@ -176,7 +157,6 @@ interface MachineFoldersProps {
   pending: boolean;
   onChangePath: () => void;
   onRemove: () => void;
-  onAddFolder: () => void;
   onChangeFolder: (folder: ProjectSourceFolder) => void;
 }
 
@@ -188,7 +168,6 @@ function MachineFolders({
   pending,
   onChangePath,
   onRemove,
-  onAddFolder,
   onChangeFolder,
 }: MachineFoldersProps) {
   const connected = host.status === "connected";
@@ -198,15 +177,11 @@ function MachineFolders({
   });
   const removeFolder = useRemoveProjectSourceFolder();
   return (
-    <div className="mt-2 ml-[7px] border-l border-border pl-4">
-      <FolderEntry
+    <>
+      <FolderItem
         path={source.path}
-        badges={
-          <>
-            <SettingsBadge>main</SettingsBadge>
-            {isPathInvalid ? <MissingFolderPill /> : null}
-          </>
-        }
+        badge="main"
+        missing={isPathInvalid}
         menu={
           <ResourceOverflowMenu
             label={`${host.name} checkout actions`}
@@ -235,12 +210,12 @@ function MachineFolders({
         }
       />
       {foldersQuery.isError ? (
-        <p className="py-1.5 text-xs text-destructive" role="alert">
+        <SettingsListMessage tone="error">
           Couldn't load folders.
-        </p>
+        </SettingsListMessage>
       ) : (
         (foldersQuery.data ?? []).map((folder) => (
-          <ExtraFolderRow
+          <ExtraFolderItem
             key={folder.id}
             folder={folder}
             host={host}
@@ -256,78 +231,81 @@ function MachineFolders({
           />
         ))
       )}
-      <button
-        type="button"
-        disabled={pending || !connected}
-        onClick={onAddFolder}
-        className="flex items-center gap-2 py-1.5 text-xs text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-50"
-      >
-        <Icon name="Plus" className="size-3.5" />
-        {connected ? "Add folder" : "Add folder (machine offline)"}
-      </button>
-    </div>
+    </>
   );
 }
 
-interface MachineRowProps extends Omit<MachineFoldersProps, "source"> {
+interface MachineItemProps extends Omit<MachineFoldersProps, "source"> {
   isPrimary: boolean;
   source: LocalPathProjectSource | null;
   onSetUp: () => void;
+  onAddFolder: () => void;
 }
 
-function MachineRow({
+function MachineItem({
   host,
   isPrimary,
   source,
   pending,
   onSetUp,
+  onAddFolder,
   ...folderProps
-}: MachineRowProps) {
+}: MachineItemProps) {
   const connected = host.status === "connected";
   return (
-    <SettingsRow className="block">
-      <div className="flex min-w-0 items-center gap-1.5">
+    <SettingsListItem
+      leading={
         <Icon
           name="Laptop"
           className={cn(
-            "size-4 shrink-0 text-muted-foreground",
+            "size-4 text-muted-foreground",
             !connected && "opacity-60",
           )}
         />
-        <MachineStatusDot connected={connected} />
+      }
+      title={
         <Link
           to={getSettingsTargetPath({ machineId: host.id })}
-          className="min-w-0 truncate text-sm font-medium text-foreground hover:underline"
+          className="hover:underline"
         >
           {host.name}
         </Link>
-        {isPrimary ? <SettingsBadge>primary</SettingsBadge> : null}
-        {source === null ? (
+      }
+      badge={isPrimary ? "primary" : undefined}
+      meta={[!connected && "Offline"]}
+      description={source === null ? "Not set up on this machine" : undefined}
+      control={
+        source === null ? (
           <Button
             type="button"
             variant="outline"
             size="sm"
-            className="ml-auto shrink-0"
+            aria-label={`Set up on ${host.name}`}
             disabled={pending || !connected}
             onClick={onSetUp}
           >
-            {connected ? "Set up" : "Offline"}
+            Set up
           </Button>
-        ) : null}
-      </div>
-      {source === null ? (
-        <p className="mt-0.5 text-xs italic text-subtle-foreground/75">
-          Not set up on this machine
-        </p>
-      ) : (
-        <MachineFolders
-          host={host}
-          source={source}
-          pending={pending}
-          {...folderProps}
-        />
+        ) : undefined
+      }
+    >
+      {source === null ? undefined : (
+        <>
+          <MachineFolders
+            host={host}
+            source={source}
+            pending={pending}
+            {...folderProps}
+          />
+          <SettingsListAction
+            disabled={pending || !connected}
+            onClick={onAddFolder}
+          >
+            {connected ? "Add folder" : "Add folder (machine offline)"}
+          </SettingsListAction>
+        </>
       )}
-    </SettingsRow>
+    </SettingsListItem>
   );
 }
 
@@ -585,7 +563,7 @@ export function ProjectDetailSettingsView() {
               No machines are paired yet.
             </p>
           ) : (
-            <SettingsRowList>
+            <SettingsListRows label="Machines" dividers={false}>
               {hosts.map((host) => {
                 const source = findLocalPathProjectSourceForHost(
                   sources,
@@ -593,7 +571,7 @@ export function ProjectDetailSettingsView() {
                 );
                 const isPickerHost = host.id === pickerHostId;
                 return (
-                  <MachineRow
+                  <MachineItem
                     key={host.id}
                     host={host}
                     isPrimary={hosts.length > 1 && host.id === primaryHostId}
@@ -651,7 +629,7 @@ export function ProjectDetailSettingsView() {
                   />
                 );
               })}
-            </SettingsRowList>
+            </SettingsListRows>
           )}
           {hiddenMachineCount > 0 ? (
             <button

@@ -16,7 +16,7 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
 import { sdk } from "@/lib/sdk";
-import { SettingsSection } from "@/components/ui/settings-section";
+import { SettingsSection } from "@bb/shared-ui/settings-section";
 import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 import { MachineEnvironmentImportDialog } from "@/components/settings/MachineEnvironmentImportDialog";
 import type { ParsedEnvEntry } from "@/lib/parse-env-file";

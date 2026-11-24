@@ -322,6 +322,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "settings-section",
+      "type": "registry:ui"
+    },
+    {
       "name": "shared-resize-observer",
       "type": "registry:lib"
     },

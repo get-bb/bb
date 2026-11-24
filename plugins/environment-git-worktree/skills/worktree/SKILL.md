@@ -11,11 +11,15 @@ they sit on, and how many threads took one or missed since the server started.
 
 ```sh
 bb worktree pool status [--json]
-bb worktree pool set <project-id> <size> [--json]
+bb worktree pool set <project-id> <size> [--host <host-id>] [--json]
 ```
 
 `size` is 0 to 4 per checkout; `0` turns the pool off and deletes its idle
-worktrees. Resolve the project id with `bb project list`. Only turn a pool on
+worktrees. Without `--host` it sets the project's count, which every machine
+with a checkout keeps. With `--host` (an id from `bb host list`) it sets that
+machine's own count, which wins over the project's; the size `project` makes
+the machine follow the project's count again. Status JSON gives each checkout's
+effective `size` and its own `hostSize` (`null` when it follows the project). Resolve the project id with `bb project list`. Only turn a pool on
 when the user asks for it: each warm worktree runs the project's
 `.bb-env-setup.sh` in the background, and it is replaced every eight hours or
 when the default branch is rewritten.
