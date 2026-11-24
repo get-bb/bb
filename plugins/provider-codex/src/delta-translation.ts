@@ -15,6 +15,7 @@ import {
   type ProviderRuntimeEvent,
   experimental_COMPACTION_PRESENTATION as COMPACTION_PRESENTATION,
   experimental_REASONING_PRESENTATION as REASONING_PRESENTATION,
+  experimental_imageViewPresentation as imageViewPresentation,
   experimental_toolPresentation as toolPresentation,
   experimental_webFetchPresentation as webFetchPresentation,
   experimental_webSearchPresentation as webSearchPresentation,
@@ -41,7 +42,6 @@ import {
   commandPresentation,
   fileChangePresentation,
   imageGenerationPresentation,
-  imageViewPresentation,
   mcpToolPresentation,
   planStepsPresentation,
 } from "./presentation.js";

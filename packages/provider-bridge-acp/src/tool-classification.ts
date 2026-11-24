@@ -7,6 +7,7 @@ import {
   REASONING_PRESENTATION,
   extractResultText,
   fileReadPresentation,
+  imageViewPresentation,
   searchPresentation,
   toOptionalString,
   toolPresentation,
@@ -396,11 +397,7 @@ function fileReadItem(
   if (isAcpLocalAbsolutePath(readPath) && IMAGE_PATH_PATTERN.test(readPath)) {
     return {
       item: { type: "imageView", path: readPath },
-      presentation: {
-        ...fileReadPresentation(readPath),
-        label: { pending: "Viewing image", completed: "Viewed image" },
-        icon: { glyph: "Eye" },
-      },
+      presentation: imageViewPresentation(readPath),
     };
   }
   return {

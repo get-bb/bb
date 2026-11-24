@@ -52,6 +52,16 @@ export function fileReadPresentation(path: string): DeltaPresentation {
   );
 }
 
+export function imageViewPresentation(path: string): DeltaPresentation {
+  return withTitle(
+    {
+      label: { pending: "Viewing image", completed: "Viewed image" },
+      icon: { glyph: "Eye" },
+    },
+    presentationTitle(presentationFileName(path)),
+  );
+}
+
 export function searchPresentation(args: {
   mode: "content" | "path";
   query: string;

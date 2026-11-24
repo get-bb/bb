@@ -1619,6 +1619,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_COMPACTION_PRESENTATION",
           "experimental_REASONING_PRESENTATION",
           "experimental_fileReadPresentation",
+          "experimental_imageViewPresentation",
           "experimental_searchPresentation",
           "experimental_webSearchPresentation",
           "experimental_webFetchPresentation",
