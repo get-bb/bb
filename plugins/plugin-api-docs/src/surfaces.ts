@@ -1385,6 +1385,9 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Stream setup progress, and clean up when the thread is done",
           "Restore a workspace, or keep ready ones to hand to new threads",
         ],
+        reference: [
+          "Keep prebuilt environments by creating them with bb.sdk.environments.experimental_create({ projectId, hostId, provider: { id }, hold: 'plugin' }). Core runs your create and setup without a thread, and threads cannot join them. Your create also runs for these, with heldBy set to your plugin; for any other environment, list yours with sdk.environments.list({ heldBy: 'plugin:<id>' }), call ctx.adopt(environmentId, resource) on a ready one, and return created with its path and resource. The thread takes the environment as it is, setup and additionalPaths included; returning additionalPaths replaces them. A rejected adopt changes nothing. restore builds a new environment, so return the folders it built (previous.environment.additionalPaths lists the ones it had), or adopt a warm one.",
+        ],
         apiSymbols: [
           "PluginEnvironments",
           "PluginEnvironmentProviderDeclaration",

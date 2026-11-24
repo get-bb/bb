@@ -326,3 +326,109 @@ its thread, and `remove()` later receives the recorded resource. Environment res
 warm pool is built on this. Environment responses
 expose only the read-only lifecycle projection: phase, retireAt, and
 teardown status/attempt/message.
+
+### Keeping prebuilt environments for your provider
+
+A provider can build environments ahead of time and hand one to each new
+thread. Here each environment is an app checkout with sibling `api` and
+`docs` checkouts, which threads also read and write. `cloneStack` and
+`removeStack` stand for your own build and cleanup:
+
+```ts
+const PROVIDER_ID = "stack";
+
+export default async function plugin(bb: BbPluginApi) {
+  const holder = `plugin:${bb.pluginId}` as const;
+
+  function warmUp(projectId: string, hostId: string) {
+    return bb.sdk.environments.experimental_create({
+      projectId,
+      hostId,
+      provider: { id: PROVIDER_ID },
+      hold: "plugin",
+    });
+  }
+
+  bb.experimental_environments.register({
+    apiVersion: 2,
+    id: PROVIDER_ID,
+    displayName: "Stack",
+    description: "The app with its api and docs checkouts.",
+    icon: "Folder",
+    requires: { projectCheckout: true },
+    async create(context) {
+      const creating = await bb.sdk.environments.get({
+        environmentId: context.environment.id,
+        signal: context.signal,
+      });
+      if (creating.heldBy === null) {
+        const warm = await bb.sdk.environments.list({
+          projectId: context.project.id,
+          hostId: context.host.id,
+          heldBy: holder,
+          environmentProviderId: PROVIDER_ID,
+          limit: 20,
+          signal: context.signal,
+        });
+        for (const candidate of warm) {
+          if (candidate.status !== "ready" || candidate.path === null) continue;
+          try {
+            await context.adopt(candidate.id, { root: candidate.path });
+          } catch {
+            continue;
+          }
+          context.report.step(`Adopted warm stack ${candidate.id}`);
+          void warmUp(context.project.id, context.host.id);
+          return {
+            status: "created",
+            path: candidate.path,
+            ownsPath: true,
+            resource: { root: candidate.path },
+          };
+        }
+      }
+      const stack = await cloneStack(context);
+      return {
+        status: "created",
+        path: stack.app,
+        ownsPath: true,
+        additionalPaths: [stack.api, stack.docs],
+        resource: { root: stack.app },
+      };
+    },
+    async restore(context) {
+      const stack = await cloneStack(context);
+      return {
+        status: "created",
+        path: stack.app,
+        ownsPath: true,
+        additionalPaths: [stack.api, stack.docs],
+        resource: { root: stack.app },
+      };
+    },
+    async remove(context) {
+      await removeStack(context.resource);
+      return { status: "removed" };
+    },
+  });
+}
+```
+
+- `warmUp` builds one environment ahead of time: call it to fill the pool,
+  and after each hand-off to refill it. `create` also runs for those, and
+  they are held by your plugin (`heldBy` is `plugin:<id>`), so build them,
+  and adopt only for an environment nobody holds.
+- After `adopt`, omit `additionalPaths` to keep the folders the warm
+  environment was built with; return a list to replace them. Return its
+  `path`, or the thread fails, and return its `resource`: the one create
+  returns replaces the one `adopt` recorded, and `remove()` receives it.
+- `adopt` rejects an environment that is not ready, is held by another
+  plugin, or was just taken by another create; then nothing changed, so try
+  the next one or build a new one.
+- `restore` builds a new environment, so return the folders it built.
+  `previous.environment.additionalPaths` lists the ones the destroyed
+  environment had. A restore may also adopt a warm environment, which keeps
+  that environment's folders.
+- Your plugin decides how many to keep and when to refill or discard them.
+  The Worktree plugin's `warm-pools.ts` keeps a per-project count, refills
+  after each hand-off and discards members that fell behind.
