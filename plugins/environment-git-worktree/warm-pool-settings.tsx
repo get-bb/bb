@@ -33,23 +33,19 @@ function changeKey(change: Pick<WarmPoolSizeChange, "projectId" | "hostId">) {
   return `${change.projectId}\0${change.hostId ?? ""}`;
 }
 
-function checkoutSummary(checkout: Checkout): string {
-  const counts =
-    checkout.preparing > 0
-      ? `${checkout.ready} ready, ${checkout.preparing} being set up`
-      : `${checkout.ready} ready`;
-  return checkout.base === null ? counts : `${counts} on ${checkout.base}`;
+function checkoutSummary(checkout: Checkout): string | null {
+  if (checkout.size === 0) return null;
+  return checkout.preparing > 0
+    ? `${checkout.ready} ready · ${checkout.preparing} setting up`
+    : `${checkout.ready} ready`;
 }
 
-function CheckoutStatus({ checkout }: { checkout: Checkout }) {
-  if (checkout.size === 0) return null;
+function CheckoutError({ checkout }: { checkout: Checkout }) {
+  if (checkout.size === 0 || checkout.lastError === null) return null;
   return (
-    <div className="text-xs break-words">
-      <div className="text-muted-foreground">{checkoutSummary(checkout)}</div>
-      {checkout.lastError === null ? null : (
-        <div className="text-destructive">{checkout.lastError}</div>
-      )}
-    </div>
+    <p className="mt-1 text-xs break-words text-destructive">
+      {checkout.lastError}
+    </p>
   );
 }
 
@@ -92,25 +88,17 @@ function PoolRow(props: {
 }) {
   const { pool, saving, onChange } = props;
   const perMachine = pool.checkouts.length > 1;
-  const projectSize = sizeLabel(String(pool.size));
+  const single = perMachine ? null : (pool.checkouts[0] ?? null);
+  const singleSummary = single === null ? null : checkoutSummary(single);
   return (
-    <div className="rounded-md px-2 py-2">
-      <div className="flex min-h-8 items-center gap-3">
+    <div className="space-y-2">
+      <div className="flex min-h-9 items-center gap-3">
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium text-foreground">
             {pool.projectName}
           </div>
-          {perMachine ? (
-            <div className="text-xs text-muted-foreground">
-              {`${pool.checkouts.length} machines. Each keeps the project's count unless set below.`}
-            </div>
-          ) : (
-            pool.checkouts.map((checkout) => (
-              <CheckoutStatus
-                key={`${checkout.hostId}:${checkout.path}`}
-                checkout={checkout}
-              />
-            ))
+          {singleSummary === null ? null : (
+            <div className="text-xs text-muted-foreground">{singleSummary}</div>
           )}
         </div>
         <SizeSelect
@@ -129,53 +117,54 @@ function PoolRow(props: {
           }}
         />
       </div>
-      {perMachine ? (
-        <div className="mt-2 space-y-1 border-l border-border/60 pl-3">
-          {pool.checkouts.map((checkout) => (
-            <div
-              key={`${checkout.hostId}:${checkout.path}`}
-              className="flex min-h-10 items-center gap-3 py-1"
-            >
-              <div className="min-w-0 flex-1">
-                <div className="flex min-w-0 items-baseline gap-2">
-                  <span className="shrink-0 text-sm text-foreground">
-                    {checkout.hostName}
-                  </span>
-                  <span
-                    className="truncate text-xs text-muted-foreground"
+      {single === null ? null : <CheckoutError checkout={single} />}
+      {perMachine
+        ? pool.checkouts.map((checkout) => {
+            const summary = checkoutSummary(checkout);
+            return (
+              <div key={`${checkout.hostId}:${checkout.path}`} className="pl-4">
+                <div className="flex min-h-9 items-center gap-3">
+                  <div
+                    className="flex min-w-0 flex-1 items-baseline gap-2"
                     title={checkout.path}
                   >
-                    {checkout.path}
-                  </span>
+                    <span className="truncate text-sm text-foreground">
+                      {checkout.hostName}
+                    </span>
+                    {summary === null ? null : (
+                      <span className="shrink-0 text-xs text-muted-foreground">
+                        {summary}
+                      </span>
+                    )}
+                  </div>
+                  <SizeSelect
+                    label={`${pool.projectName} warm worktrees on ${checkout.hostName}`}
+                    value={
+                      checkout.hostSize === null
+                        ? FOLLOW_PROJECT
+                        : String(checkout.hostSize)
+                    }
+                    disabled={saving.has(
+                      changeKey({
+                        projectId: pool.projectId,
+                        hostId: checkout.hostId,
+                      }),
+                    )}
+                    followProjectLabel={`Project (${sizeLabel(String(pool.size))})`}
+                    onChange={(value) => {
+                      onChange({
+                        projectId: pool.projectId,
+                        hostId: checkout.hostId,
+                        size: value === FOLLOW_PROJECT ? null : Number(value),
+                      });
+                    }}
+                  />
                 </div>
-                <CheckoutStatus checkout={checkout} />
+                <CheckoutError checkout={checkout} />
               </div>
-              <SizeSelect
-                label={`${pool.projectName} warm worktrees on ${checkout.hostName}`}
-                value={
-                  checkout.hostSize === null
-                    ? FOLLOW_PROJECT
-                    : String(checkout.hostSize)
-                }
-                disabled={saving.has(
-                  changeKey({
-                    projectId: pool.projectId,
-                    hostId: checkout.hostId,
-                  }),
-                )}
-                followProjectLabel={`Project (${projectSize})`}
-                onChange={(value) => {
-                  onChange({
-                    projectId: pool.projectId,
-                    hostId: checkout.hostId,
-                    size: value === FOLLOW_PROJECT ? null : Number(value),
-                  });
-                }}
-              />
-            </div>
-          ))}
-        </div>
-      ) : null}
+            );
+          })
+        : null}
     </div>
   );
 }
@@ -192,10 +181,9 @@ export function WarmPoolSettingsContent(props: {
       <div className="pr-2">
         <h3 className="text-sm font-medium text-foreground">Warm worktrees</h3>
         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Set up worktrees ahead of time so new worktree threads on the default
-          branch start right away. If the branch has moved on, the worktree is
-          updated and setup runs again before the thread starts. A project
-          checked out on several machines can keep a different count on each.
+          Worktrees set up ahead of time, so new threads on the default branch
+          start right away. Each machine keeps the project&apos;s count unless
+          you set its own.
         </p>
       </div>
       {status === null ? (
@@ -212,7 +200,7 @@ export function WarmPoolSettingsContent(props: {
       ) : status.pools.length === 0 ? (
         <p className="text-sm text-muted-foreground">No projects yet.</p>
       ) : (
-        <div className="ml-2 space-y-1 border-l border-border/60 pl-2">
+        <div className="ml-2 space-y-5 border-l border-border/60 py-1 pl-4">
           {status.pools.map((pool) => (
             <PoolRow
               key={pool.projectId}
