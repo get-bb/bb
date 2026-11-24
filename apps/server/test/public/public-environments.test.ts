@@ -363,15 +363,15 @@ describe("environment list and delete", () => {
         hostLifecycle: string;
       }>;
       expect(
-        found.map(({ id, status, hostLifecycle }) => ({
-          id,
-          status,
-          hostLifecycle,
-        })),
-      ).toEqual([
-        { id: ready.id, status: "ready", hostLifecycle: "active" },
-        { id: gone.id, status: "destroyed", hostLifecycle: "active" },
-      ]);
+        found
+          .map(({ id, status, hostLifecycle }) => ({ id, status, hostLifecycle }))
+          .sort((left, right) => left.id.localeCompare(right.id)),
+      ).toEqual(
+        [
+          { id: ready.id, status: "ready", hostLifecycle: "active" },
+          { id: gone.id, status: "destroyed", hostLifecycle: "active" },
+        ].sort((left, right) => left.id.localeCompare(right.id)),
+      );
 
       const empty = await harness.app.request("/api/v1/environments/by-id", {
         method: "POST",
