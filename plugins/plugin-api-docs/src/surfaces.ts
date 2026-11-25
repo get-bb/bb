@@ -1110,6 +1110,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "desktop-browsers",
           "ai-services",
           "host-components",
+          "lazy-components",
         ],
       },
       {
@@ -1971,6 +1972,27 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Tasks",
           "Thread list",
         ],
+      },
+      {
+        id: "lazy-components",
+        tagline: "Keep surfaces out of startup",
+        title: "Lazy components",
+        summary:
+          "Use separate chunks for surfaces that are not on screen at startup. With this, a plugin can:",
+        bullets: [
+          "Register settings sections, panels, tabs and dialogs whose code downloads after startup",
+          "Open them later in their first frame, because bb loads lazy chunks once startup settles",
+          "Stack lazy Info rows, context card rows and rail items in order as their code arrives",
+          "Keep a failed chunk to its own slot, which crashes like any render error",
+        ],
+        reference: [
+          "experimental_lazy(() => import('./Panel.js')) returns a component to pass straight to a slot's component field. load resolves to { default: Component }, as for React.lazy; call it once at module scope.",
+          "Every dynamic import() becomes a chunk in dist/chunks/, served under the bundle's content hash. A bundle with chunks has artifactFormatVersion 2, which older bb versions refuse.",
+          "Hosts that stack entries reveal one only after the entries above it are ready, holding the rest for at most 3 seconds behind a slow entry, which then appears in its place when it loads; a page waits for the lazy parts of the plugin that owns it. bb's own core contributions use the same helper.",
+        ],
+        apiSymbols: ["experimental_lazy", "ExperimentalLazyComponent"],
+        firstParty: ["Account Pooler [Experimental]", "Automations", "bb connect", "Git"],
+        experimental: true,
       },
       {
         id: "testing",

@@ -4,5 +4,6 @@ export const SHARED_UI_ICON_SPECIFIER: "@bb/shared-ui/icon";
 export const SHARED_UI_VOICE_INPUT_TEXTAREA_SPECIFIER: "@bb/shared-ui/voice-input-textarea";
 export const RUNTIME_SLOT_BY_SPECIFIER: Readonly<Record<string, string>>;
 export const VERSIONED_RUNTIME_SLOT_BY_SPECIFIER: Readonly<Record<string, string>>;
+export const HOST_LOADED_RUNTIME_SLOTS: readonly string[];
 export const RUNTIME_SHIM_NPM_SPECIFIERS: readonly string[];
 export const SHIMMED_TYPE_PACKAGES: readonly string[];

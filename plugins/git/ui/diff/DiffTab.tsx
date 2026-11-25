@@ -52,15 +52,6 @@ function readBorderBoxWidth(element: HTMLElement): number {
   return element.getBoundingClientRect().width;
 }
 
-export function useDiffTabVisible({
-  environment,
-}: ExperimentalThreadTabProps): boolean {
-  const status = useGitStatus(environment?.id ?? null);
-  const notApplicable = status.result?.outcome === "not_applicable";
-  const repoCount = useGitRepoCount(environment?.id ?? null, notApplicable);
-  return environment !== null && (!notApplicable || (repoCount ?? 0) > 0);
-}
-
 const diffFiltersByEnvironment = new Map<string, DiffFileFilters>();
 
 export function DiffTab({ environment }: ExperimentalThreadTabProps) {

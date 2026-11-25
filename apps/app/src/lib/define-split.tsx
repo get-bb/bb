@@ -46,7 +46,7 @@ class SplitErrorBoundary extends Component<
 
 const DOWNLOAD_RETRY_DELAYS = [500, 1500];
 
-async function loadWithDownloadRetries<T>(load: () => Promise<T>): Promise<T> {
+export async function loadWithDownloadRetries<T>(load: () => Promise<T>): Promise<T> {
   for (let attempt = 0; ; attempt += 1) {
     try {
       return await load();

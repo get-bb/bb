@@ -179,8 +179,11 @@
         },
         {
           "path": "apps/app/src/core-contributions/thread-outline.tsx",
+          "anchors": ["app.slots.experimental_threadRailOutline"]
+        },
+        {
+          "path": "apps/app/src/core-contributions/components/ThreadOutline.tsx",
           "anchors": [
-            "app.slots.experimental_threadRailOutline",
             "aria-label=\"Thread table of contents\"",
             "h-[3px] shrink-0 rounded-full",
             "w-5 bg-foreground/30"

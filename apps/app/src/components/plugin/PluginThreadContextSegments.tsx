@@ -6,6 +6,7 @@ import {
   type ReactNode,
   type RefCallback,
 } from "react";
+import { useOrderedReveal } from "@/lib/lazy-parts";
 import type {
   ExperimentalThreadContextSegmentInput,
   ExperimentalThreadContextSegmentProps,
@@ -174,13 +175,24 @@ export function useThreadContextSegments(
   observers: ReactNode;
 } {
   const threadContextSegments = usePluginSlotKind("threadContextSegments");
-  const entries = sortThreadContextSegments([
-    ...core.map((slot) => ({ owner: "core" as const, slot })),
-    ...threadContextSegments.map((slot) => ({
-      owner: "plugin" as const,
-      slot,
-    })),
-  ]);
+  const { threadId } = input;
+  const entries = useOrderedReveal(
+    sortThreadContextSegments([
+      ...core.map((slot) => ({ owner: "core" as const, slot })),
+      ...threadContextSegments.map((slot) => ({
+        owner: "plugin" as const,
+        slot,
+      })),
+    ]),
+    {
+      key: (entry) => entryKey(entry, threadId),
+      parts: (entry) => [
+        entry.slot.summary,
+        entry.slot.action,
+        entry.slot.details,
+      ],
+    },
+  );
   const [visibility, setVisibility] = useState<
     ReadonlyMap<
       ExperimentalThreadContextSegmentRegistration,
@@ -210,7 +222,6 @@ export function useThreadContextSegments(
         });
       },
   );
-  const { threadId } = input;
   return {
     entries: entries.filter(({ slot }) => {
       if (slot.useVisible === undefined) return true;

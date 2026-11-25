@@ -15,7 +15,8 @@ import { makeWorkspaceStatus } from "../../testing.js";
 import { gitRpcContract } from "../../rpc-contract.js";
 import type { GitStatusRow } from "../../contract.js";
 import { makeDiffFileEntry } from "./diff-file-fixtures.js";
-import { DiffTab, useDiffTabVisible } from "./DiffTab.js";
+import { DiffTab } from "./DiffTab.js";
+import { useDiffTabVisible } from "./diff-tab-visible.js";
 
 vi.mock("@tanstack/react-virtual", () => ({
   useVirtualizer: ({ count }: { count: number }) => ({

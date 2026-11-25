@@ -5,6 +5,7 @@ import { useMeasuredValue } from "@bb/shared-ui/hooks/use-measured-value";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
+import { useOrderedReveal } from "@/lib/lazy-parts";
 import coreThreadOutline from "@/core-contributions/thread-outline";
 import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import {
@@ -101,6 +102,16 @@ function BuiltInThreadRailOutline(props: ExperimentalThreadRailProps) {
   );
 }
 
+type RailEntry =
+  | { kind: "outline"; slot: PluginThreadRailOutlineSlot }
+  | { kind: "item"; slot: PluginThreadRailSlot };
+
+const ORDERED_RAIL_ENTRIES = {
+  key: (entry: RailEntry) =>
+    `${entry.kind}/${entry.slot.pluginId}/${entry.slot.id}/${entry.slot.generation}`,
+  parts: (entry: RailEntry) => [entry.slot.component],
+};
+
 interface PluginThreadRailProps {
   threadId: string;
   projectId: string;
@@ -116,6 +127,15 @@ export function PluginThreadRail({
   const visible = useThreadRailVisible(rootElement);
   const outline = useThreadRailOutline();
   const items = usePluginSlotKind("threadRails");
+  const entries = useOrderedReveal<RailEntry>(
+    [
+      ...(outline === null
+        ? []
+        : [{ kind: "outline" as const, slot: outline }]),
+      ...sortRailItems(items).map((slot) => ({ kind: "item" as const, slot })),
+    ],
+    ORDERED_RAIL_ENTRIES,
+  );
   const props = useMemo<ExperimentalThreadRailProps>(
     () => ({
       threadId,
@@ -135,33 +155,32 @@ export function PluginThreadRail({
       )}
       inert={!visible}
     >
-      {outline === null ? null : (
-        <PluginSlotMount
-          key={`${outline.pluginId}/${outline.id}/${outline.generation}/${threadId}`}
-          pluginId={outline.pluginId}
-          slotKind="threadRailOutline"
-          slotId={outline.id}
-          instanceId={threadId}
-          crashFallback={
-            outline === BUILT_IN_THREAD_RAIL_OUTLINE ? null : (
-              <BuiltInThreadRailOutline {...props} />
-            )
-          }
-        >
-          <outline.component {...props} />
-        </PluginSlotMount>
-      )}
-      {sortRailItems(items).map(
-        ({ pluginId, id, generation, component: Component }) => (
+      {entries.map((entry) =>
+        entry.kind === "outline" ? (
           <PluginSlotMount
-            key={`${pluginId}/${id}/${generation}/${threadId}`}
-            pluginId={pluginId}
+            key={`${entry.slot.pluginId}/${entry.slot.id}/${entry.slot.generation}/${threadId}`}
+            pluginId={entry.slot.pluginId}
+            slotKind="threadRailOutline"
+            slotId={entry.slot.id}
+            instanceId={threadId}
+            crashFallback={
+              entry.slot === BUILT_IN_THREAD_RAIL_OUTLINE ? null : (
+                <BuiltInThreadRailOutline {...props} />
+              )
+            }
+          >
+            <entry.slot.component {...props} />
+          </PluginSlotMount>
+        ) : (
+          <PluginSlotMount
+            key={`${entry.slot.pluginId}/${entry.slot.id}/${entry.slot.generation}/${threadId}`}
+            pluginId={entry.slot.pluginId}
             slotKind="threadRail"
-            slotId={id}
+            slotId={entry.slot.id}
             instanceId={threadId}
             crashFallback={null}
           >
-            <Component {...props} />
+            <entry.slot.component {...props} />
           </PluginSlotMount>
         ),
       )}

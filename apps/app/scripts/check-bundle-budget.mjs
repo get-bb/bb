@@ -154,8 +154,28 @@ if (
   );
 }
 
+const appModules = [...new Set(stats.chunks.flatMap((chunk) => chunk.appModules))];
+
+function boundaryModules(pattern) {
+  if (!pattern.endsWith("/*")) return [pattern];
+  const directory = pattern.slice(0, -1);
+  const matched = appModules.filter(
+    (module) =>
+      module.startsWith(directory) &&
+      !module.slice(directory.length).includes("/"),
+  );
+  if (matched.length === 0) {
+    failures.push(
+      `${pattern} matches no module in bundle module metadata. It may have been removed or renamed.`,
+    );
+  }
+  return matched;
+}
+
 for (const [module, protectedClosures] of Object.entries(
   budget.splitBoundaries ?? {},
+).flatMap(([pattern, closures]) =>
+  boundaryModules(pattern).map((match) => [match, closures]),
 )) {
   const gates = stats.chunks.filter((chunk) =>
     chunk.appModules.includes(module),

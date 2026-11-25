@@ -3,6 +3,7 @@ import type { ExperimentalThreadInfoProps } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
+import { useOrderedReveal } from "@/lib/lazy-parts";
 import { InfoSectionCollapseIdContext } from "./useInfoSectionCollapse";
 
 export interface CoreThreadInfoRegistration {
@@ -49,13 +50,28 @@ function sortThreadInfoEntries(
     .map(({ entry }) => entry);
 }
 
+function entryKey(entry: ThreadInfoEntry): string {
+  return entry.owner === "core"
+    ? `core/${entry.registration.id}`
+    : `${entry.registration.pluginId}/${entry.registration.id}/${entry.registration.generation}`;
+}
+
+const ORDERED_INFO_ENTRIES = {
+  key: entryKey,
+  parts: (entry: ThreadInfoEntry) => [entry.registration.component],
+};
+
 interface ThreadInfoSlotsProps extends ExperimentalThreadInfoProps {
   core: readonly CoreThreadInfoRegistration[];
 }
 
 export function ThreadInfoRows({ core, ...props }: ThreadInfoSlotsProps) {
   const threadInfoRows = usePluginSlotKind("threadInfoRows");
-  return sortThreadInfoEntries(core, threadInfoRows).map((entry) => {
+  const entries = useOrderedReveal(
+    sortThreadInfoEntries(core, threadInfoRows),
+    ORDERED_INFO_ENTRIES,
+  );
+  return entries.map((entry) => {
     const Component = entry.registration.component;
     if (entry.owner === "core") {
       return <Component key={`core/${entry.registration.id}`} {...props} />;
@@ -78,7 +94,11 @@ export function ThreadInfoRows({ core, ...props }: ThreadInfoSlotsProps) {
 
 export function ThreadInfoSections({ core, ...props }: ThreadInfoSlotsProps) {
   const threadInfoSections = usePluginSlotKind("threadInfoSections");
-  return sortThreadInfoEntries(core, threadInfoSections).map((entry) => {
+  const entries = useOrderedReveal(
+    sortThreadInfoEntries(core, threadInfoSections),
+    ORDERED_INFO_ENTRIES,
+  );
+  return entries.map((entry) => {
     const Component = entry.registration.component;
     if (entry.owner === "core") {
       return (

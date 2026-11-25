@@ -72,6 +72,9 @@ vi.mock("@/hooks/queries/thread-panel-queries", async (importActual) => ({
   },
 }));
 
+import coreThreadOutline from "@/core-contributions/thread-outline";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
+import { lazyPartOf } from "@/lib/lazy-parts";
 import { PluginThreadRail } from "./PluginThreadRail";
 import { threadRailOutlineProviderAtom } from "./thread-rail-outline-pick";
 
@@ -98,6 +101,14 @@ class ResizeObserverMock implements ResizeObserver {
   };
   unobserve: ResizeObserver["unobserve"] = vi.fn();
   disconnect: ResizeObserver["disconnect"] = vi.fn();
+}
+
+
+for (const { component } of collectCoreContributionSlots(
+  coreThreadOutline,
+  "threadRailOutlines",
+)) {
+  await lazyPartOf(component)?.load();
 }
 
 function rect(top: number, bottom: number): DOMRect {

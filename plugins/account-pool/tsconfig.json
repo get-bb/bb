@@ -17,5 +17,5 @@
       "@/*": ["../../packages/shared-ui/src/*"]
     }
   },
-  "include": ["src/**/*.ts", "app.tsx", "app.test.tsx", "vitest.config.ts"]
+  "include": ["src/**/*.ts", "app.tsx", "settings-section.tsx", "app.test.tsx", "vitest.config.ts"]
 }

@@ -69,6 +69,9 @@ function candidate(
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      staticChunkUrls: [],
+      lazyChunkUrls: [],
+      lazyRuntimeSlots: [],
       ...overrides,
     },
   };
@@ -275,6 +278,7 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     flushSlotBatch: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    pageOwnerPluginId: () => null,
     whenScreenPainted: () => Promise.resolve(),
   };
 }

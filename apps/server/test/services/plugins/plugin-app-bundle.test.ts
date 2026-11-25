@@ -596,6 +596,98 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
     expect(await js.text()).toContain("export default 2");
   });
 
+  it("serves a split bundle's chunks only under the hash of the bundle they belong to", async () => {
+    const rootDir = join(harness.config.dataDir, "fixtures", "bb-plugin-split");
+    await writeAppPluginFixture(rootDir, { name: "bb-plugin-split" });
+    const dist = join(rootDir, "dist");
+    await mkdir(join(dist, "chunks"), { recursive: true });
+    await writeFile(
+      join(dist, "app.js"),
+      'import "./chunks/chunk-SHARED.js";\nexport const load = () => import("./chunks/Panel-AAAA.js");\n',
+    );
+    await writeFile(join(dist, "chunks", "chunk-SHARED.js"), "export {};\n");
+    await writeFile(
+      join(dist, "chunks", "Panel-AAAA.js"),
+      'export const panel = "first";\n',
+    );
+    await writeFile(
+      join(dist, "app.meta.json"),
+      JSON.stringify({
+        sdkMajor: PLUGIN_SDK_MAJOR,
+        sdkVersion: PLUGIN_SDK_VERSION,
+        artifactFormatVersion: 2,
+        pluginId: "split",
+        pluginVersion: "0.1.0",
+        builtWith: {
+          bbVersion: "0.0.0-test",
+          pluginSdkVersion: PLUGIN_SDK_VERSION,
+        },
+        runtimeSlots: ["react"],
+        chunks: ["chunks/Panel-AAAA.js", "chunks/chunk-SHARED.js"],
+        entryChunks: ["chunks/chunk-SHARED.js"],
+        chunkRuntimeSlots: ["pierreDiffs"],
+      }),
+    );
+    upsertInstalledPlugin(harness.db, {
+      ...npmPersistence("bb-plugin-split", "0.1.0"),
+      id: "split",
+      source: "npm:bb-plugin-split@0.1.0",
+      rootDir,
+      version: "0.1.0",
+      enabled: true,
+      enabledFollowsDefault: false,
+    });
+    await harness.pluginService.reload("split");
+    const bundleOf = () =>
+      harness.pluginService.list().find((plugin) => plugin.id === "split")
+        ?.app.bundle;
+    const first = bundleOf();
+    if (first === null || first === undefined) throw new Error("no bundle");
+    const base = `/api/v1/plugin-app-assets/${first.hash}`;
+    expect(first.runtimeSlots).toEqual(["react"]);
+    expect(first.staticChunkUrls).toEqual([`${base}/chunks/chunk-SHARED.js`]);
+    expect(first.lazyChunkUrls).toEqual([`${base}/chunks/Panel-AAAA.js`]);
+    expect(first.lazyRuntimeSlots).toEqual(["pierreDiffs"]);
+    expect(first.jsBytes).toBe(
+      (await stat(join(dist, "app.js"))).size +
+        (await stat(join(dist, "chunks", "chunk-SHARED.js"))).size,
+    );
+
+    const chunk = await harness.app.request(`${BASE}${base}/chunks/Panel-AAAA.js`);
+    expect(chunk.status).toBe(200);
+    expect(chunk.headers.get("content-type")).toContain("text/javascript");
+    expect(chunk.headers.get("cache-control")).toBe(
+      "public, max-age=31536000, immutable",
+    );
+    expect(await chunk.text()).toContain('"first"');
+    for (const unknown of ["Missing-BBBB.js", "app.js", "..%2Fapp.js"]) {
+      const response = await harness.app.request(
+        `${BASE}${base}/chunks/${unknown}`,
+      );
+      expect(response.status, unknown).toBe(404);
+    }
+
+    await writeFile(
+      join(dist, "chunks", "Panel-AAAA.js"),
+      'export const panel = "second";\n',
+    );
+    const changedOnDisk = await harness.app.request(
+      `${BASE}${base}/chunks/Panel-AAAA.js`,
+    );
+    expect(changedOnDisk.status).toBe(404);
+
+    await harness.pluginService.reload("split");
+    const second = bundleOf();
+    expect(second?.hash).not.toBe(first.hash);
+    const stale = await harness.app.request(`${BASE}${base}/chunks/Panel-AAAA.js`);
+    expect(stale.status).toBe(404);
+    const fresh = await harness.app.request(
+      `${BASE}${second?.lazyChunkUrls[0] ?? ""}`,
+    );
+    expect(fresh.status).toBe(200);
+    expect(await fresh.text()).toContain('"second"');
+  });
+
   it("clears the served bundle and sets a status detail when a required rebuild fails", async () => {
     const rootDir = join(
       harness.config.dataDir,
@@ -699,6 +791,24 @@ describe("plugin app bundles (build policy, inventory, asset routes)", () => {
         sdkVersion: PLUGIN_SDK_VERSION,
         runtimeSlots: "pierreDiffs",
       },
+      ...[undefined, 1].map((artifactFormatVersion) => ({
+        sdkMajor: PLUGIN_SDK_MAJOR,
+        sdkVersion: PLUGIN_SDK_VERSION,
+        ...(artifactFormatVersion === undefined
+          ? {}
+          : {
+              artifactFormatVersion,
+              pluginId: "malformed",
+              pluginVersion: "0.1.0",
+              builtWith: {
+                bbVersion: "0.0.0-test",
+                pluginSdkVersion: PLUGIN_SDK_VERSION,
+              },
+            }),
+        chunks: ["chunks/Panel-AAAA.js"],
+        entryChunks: [],
+        chunkRuntimeSlots: [],
+      })),
     ];
     for (const badMeta of badMetas) {
       await writeFile(

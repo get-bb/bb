@@ -4,6 +4,8 @@ import type { SetStateAction } from "react";
 import { createStore, type WritableAtom } from "jotai";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+await import("@/components/promptbox/composer-provider");
+
 afterEach(() => {
   window.localStorage.clear();
   vi.resetModules();
