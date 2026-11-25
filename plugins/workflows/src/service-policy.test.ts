@@ -2595,6 +2595,9 @@ describe("provider retry classification", () => {
       ),
     ).toBe(true);
     expect(isRetryableProviderFailure("API error 529")).toBe(true);
+    expect(
+      isRetryableProviderFailure("Provider error (rate-limit, HTTP 429)"),
+    ).toBe(true);
     expect(isRetryableProviderFailure("read ECONNRESET")).toBe(true);
     expect(
       isRetryableProviderFailure(

@@ -1562,7 +1562,8 @@ export interface GetLatestCompletedThreadContextClearSequenceArgs {
   threadId: string;
 }
 
-export interface GetLatestThreadSystemErrorEventRowArgs {
+export interface GetLatestThreadErrorEventRowArgs {
+  afterSequence: number;
   threadId: string;
 }
 
@@ -4332,18 +4333,19 @@ export function listLatestTurnFinalAgentMessageEventRows(
   return replies;
 }
 
-export function getLatestThreadSystemErrorEventRow(
+export function getLatestThreadErrorEventRow(
   db: DbConnection,
-  args: GetLatestThreadSystemErrorEventRowArgs,
+  args: GetLatestThreadErrorEventRowArgs,
 ): StoredEventRow | null {
   return (
     db
-      .select(storedEventRowFields)
-      .from(events)
+      .select(storedEventRowSqlFields(null))
+      .from(sql`${events} INDEXED BY events_thread_type_sequence_idx`)
       .where(
         and(
           eq(events.threadId, args.threadId),
-          eq(events.type, "system/error"),
+          inArray(events.type, ["system/error", "provider/error"]),
+          gt(events.sequence, args.afterSequence),
         ),
       )
       .orderBy(desc(events.sequence))
