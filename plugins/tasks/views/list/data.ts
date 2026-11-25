@@ -7,6 +7,7 @@ import {
   CLOSED_TASK_STATUSES,
   OPEN_TASK_STATUSES,
   selectCards,
+  selectTaskThreads,
   selectTasks,
   useTasksQuery,
   type TasksInput,
@@ -19,12 +20,6 @@ import {
   type TaskStatus,
   type TaskThread,
 } from "../../shared/contract.js";
-
-interface ListTaskFilters {
-  statuses: readonly TaskStatus[];
-  priorities: readonly TaskPriority[];
-  labelIds: readonly string[] | null;
-}
 
 export interface TaskEdit {
   status?: TaskStatus;
@@ -43,28 +38,6 @@ export function applyEdit(task: Task, edit: TaskEdit): Task {
   };
 }
 
-export function matchesFilters(
-  task: Task,
-  statuses: readonly TaskStatus[],
-  priorities: readonly TaskPriority[],
-  labelIds: readonly string[],
-): boolean {
-  return (
-    (statuses.length === 0 || statuses.includes(task.status)) &&
-    (priorities.length === 0 || priorities.includes(task.priority)) &&
-    (labelIds.length === 0 || task.labelIds.some((id) => labelIds.includes(id)))
-  );
-}
-
-export function matchesSearch(task: Task, search: string): boolean {
-  const needle = search.trim().toLowerCase();
-  if (needle === "") return true;
-  return (
-    task.key.toLowerCase().includes(needle) ||
-    task.title.toLowerCase().includes(needle)
-  );
-}
-
 export function widestKeysByPrefix(tasks: readonly Task[]): string[] {
   const widest = new Map<string, string>();
   for (const task of tasks) {
@@ -80,17 +53,11 @@ export function widestKeysByPrefix(tasks: readonly Task[]): string[] {
 export function listTasksQuery(
   projectId: string | null,
   activeOnly: boolean,
-  filters: ListTaskFilters,
 ): TasksInput<"listAllTasks"> {
   return {
     ...(projectId === null ? {} : { projectId }),
-    ...(filters.statuses.length > 0 ? { statuses: [...filters.statuses] } : {}),
-    ...(filters.priorities.length > 0
-      ? { priorities: [...filters.priorities] }
-      : {}),
-    ...(filters.labelIds !== null ? { labelIds: [...filters.labelIds] } : {}),
     activeOnly,
-    parentTaskId: null,
+    ...(activeOnly ? {} : { parentTaskId: null }),
   };
 }
 
@@ -101,13 +68,9 @@ function mergeOpenFirst(open: readonly Task[], closed: readonly Task[]) {
   return [...byId.values()];
 }
 
-export function useListTasks(
-  projectId: string | null,
-  activeOnly: boolean,
-  filters: ListTaskFilters,
-) {
-  const query = listTasksQuery(projectId, activeOnly, filters);
-  const single = filters.statuses.length > 0 || activeOnly;
+export function useListTasks(projectId: string | null, activeOnly: boolean) {
+  const query = listTasksQuery(projectId, activeOnly);
+  const single = activeOnly;
   const openInput = { ...query, statuses: [...OPEN_TASK_STATUSES] };
   const closedInput = { ...query, statuses: [...CLOSED_TASK_STATUSES] };
   const all = useTasksQuery("listAllTasks", query, selectTasks, {
@@ -210,4 +173,60 @@ export function useTaskListMeta(projectId: string | null) {
     [cards.data],
   );
   return { data };
+}
+
+export interface PendingThread {
+  id: string;
+  attentionAt: number;
+}
+
+export function useTaskPendingThreads(
+  taskId: string,
+  pendingThreadById: ReadonlyMap<string, number>,
+): readonly PendingThread[] | undefined {
+  const attached = useTasksQuery(
+    "listTaskThreads",
+    { taskId },
+    selectTaskThreads,
+    { enabled: pendingThreadById.size > 0 },
+  );
+  return useMemo(() => {
+    const threads = attached.data;
+    if (threads === undefined) return undefined;
+    const pending: PendingThread[] = [];
+    for (const thread of threads) {
+      const attentionAt = pendingThreadById.get(thread.threadId);
+      if (attentionAt !== undefined) {
+        pending.push({ id: thread.threadId, attentionAt });
+      }
+    }
+    pending.sort((a, b) => a.attentionAt - b.attentionAt);
+    return pending;
+  }, [attached.data, pendingThreadById]);
+}
+
+export function mergePendingThreads(
+  own: readonly PendingThread[] | undefined,
+  rolledUp: readonly PendingThread[] | undefined,
+): readonly PendingThread[] | undefined {
+  if (own === undefined) return rolledUp;
+  if (rolledUp === undefined || rolledUp.length === 0) return own;
+  return [...own, ...rolledUp].sort((a, b) => a.attentionAt - b.attentionAt);
+}
+
+const selectTimings = (result: {
+  timings: { taskId: string; start: number; working: boolean }[];
+}) => result.timings;
+
+export function useTaskListTiming(projectId: string | null) {
+  const timings = useTasksQuery(
+    "listTaskTiming",
+    projectId === null ? {} : { projectId },
+    selectTimings,
+  );
+  return useMemo(
+    () =>
+      new Map((timings.data ?? []).map((timing) => [timing.taskId, timing])),
+    [timings.data],
+  );
 }

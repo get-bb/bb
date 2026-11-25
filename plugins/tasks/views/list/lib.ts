@@ -6,6 +6,7 @@ import {
   type TaskStatus,
 } from "../../shared/contract.js";
 import type { TaskSort } from "../../shared/pagination.js";
+import { sortTasks } from "../../shared/sort.js";
 
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
@@ -135,3 +136,185 @@ export const DUE_DATE_PRESETS: readonly [label: string, days: number][] = [
   ["Tomorrow", 1],
   ["Next week", 7],
 ];
+
+function matchesFilters(
+  task: Task,
+  statuses: readonly TaskStatus[],
+  priorities: readonly TaskPriority[],
+  labelIds: readonly string[] | null,
+): boolean {
+  return (
+    (statuses.length === 0 || statuses.includes(task.status)) &&
+    (priorities.length === 0 || priorities.includes(task.priority)) &&
+    (labelIds === null ||
+      (labelIds.length > 0 &&
+        task.labelIds.some((id) => labelIds.includes(id))))
+  );
+}
+
+function matchesSearch(task: Task, search: string): boolean {
+  const needle = search.trim().toLowerCase();
+  if (needle === "") return true;
+  return (
+    task.key.toLowerCase().includes(needle) ||
+    task.title.toLowerCase().includes(needle)
+  );
+}
+
+export interface TaskMatchCriteria {
+  statuses: readonly TaskStatus[];
+  priorities: readonly TaskPriority[];
+  labelIds: readonly string[] | null;
+  search: string;
+  activeIds: ReadonlySet<string> | null;
+}
+
+export function parentIsOpen(
+  parentId: string,
+  collapsed: readonly string[],
+  criteria: TaskMatchCriteria,
+  visibleChildren: ReadonlyMap<string, readonly Task[]>,
+): boolean {
+  const filtering =
+    criteria.search.trim() !== "" ||
+    criteria.statuses.length > 0 ||
+    criteria.priorities.length > 0 ||
+    criteria.labelIds !== null ||
+    criteria.activeIds !== null;
+  return (
+    !collapsed.includes(parentId) ||
+    (filtering && (visibleChildren.get(parentId)?.length ?? 0) > 0)
+  );
+}
+
+export function taskMatches(task: Task, criteria: TaskMatchCriteria): boolean {
+  return (
+    (criteria.activeIds === null || criteria.activeIds.has(task.id)) &&
+    matchesFilters(
+      task,
+      criteria.statuses,
+      criteria.priorities,
+      criteria.labelIds,
+    ) &&
+    matchesSearch(task, criteria.search)
+  );
+}
+
+export function childrenByParent(
+  tasks: readonly Task[],
+): ReadonlyMap<string, Task[]> {
+  const result = new Map<string, Task[]>();
+  for (const task of tasks) {
+    if (task.parentTaskId === null) continue;
+    const children = result.get(task.parentTaskId) ?? [];
+    children.push(task);
+    result.set(task.parentTaskId, children);
+  }
+  return result;
+}
+
+export function visibleChildrenByParent(
+  childrenByParent: ReadonlyMap<string, readonly Task[]>,
+  criteria: TaskMatchCriteria,
+  sort: TaskSort,
+): ReadonlyMap<string, Task[]> {
+  const result = new Map<string, Task[]>();
+  for (const [parentId, children] of childrenByParent) {
+    result.set(
+      parentId,
+      sortTasks(
+        children.filter((child) => taskMatches(child, criteria)),
+        sort,
+      ),
+    );
+  }
+  return result;
+}
+
+export function activeTopRows(
+  activeTasks: readonly Task[],
+  allTasks: readonly Task[],
+): Task[] {
+  const activeTopIds = new Set(
+    activeTasks
+      .filter((task) => task.parentTaskId === null)
+      .map((task) => task.id),
+  );
+  return [
+    ...activeTasks.filter((task) => task.parentTaskId === null),
+    ...allTasks.filter(
+      (task) => task.parentTaskId === null && !activeTopIds.has(task.id),
+    ),
+  ];
+}
+
+export function displayRows(
+  rows: readonly Task[],
+  criteria: TaskMatchCriteria,
+  childrenByParent: ReadonlyMap<string, readonly Task[]>,
+): Task[] {
+  return rows.filter(
+    (task) =>
+      taskMatches(task, criteria) ||
+      (childrenByParent.get(task.id) ?? []).some((child) =>
+        taskMatches(child, criteria),
+      ),
+  );
+}
+
+export function subTaskTotals(children: readonly Task[]): {
+  done: number;
+  total: number;
+} {
+  let done = 0;
+  let total = 0;
+  for (const child of children) {
+    if (child.status === "canceled") continue;
+    total += 1;
+    if (child.status === "done") done += 1;
+  }
+  return { done, total };
+}
+
+export function childrenForList(
+  all: ReadonlyMap<string, readonly Task[]>,
+  criteria: TaskMatchCriteria,
+  sort: TaskSort,
+) {
+  const visible = visibleChildrenByParent(all, criteria, sort);
+  const totals = new Map<string, { done: number; total: number }>();
+  for (const [parentId, children] of all) {
+    totals.set(parentId, subTaskTotals(children));
+  }
+  return { visible, totals };
+}
+
+export function listCounts(
+  rows: readonly Task[],
+  criteria: TaskMatchCriteria,
+  visibleChildrenByParent: ReadonlyMap<string, readonly Task[]>,
+  activeOnly: boolean,
+): { tasks: number; subTasks: number } {
+  let subTasks = 0;
+  for (const task of rows) {
+    subTasks += visibleChildrenByParent.get(task.id)?.length ?? 0;
+  }
+  const matchingTasks = rows.filter((task) =>
+    taskMatches(task, criteria),
+  ).length;
+  const tasks = activeOnly ? matchingTasks + subTasks : matchingTasks;
+  return { tasks, subTasks };
+}
+
+export function formatElapsed(seconds: number): string {
+  const clamped = Math.max(0, Math.floor(seconds));
+  const hours = Math.floor(clamped / 3600);
+  const days = Math.floor(hours / 24);
+  const minutes = Math.floor((clamped % 3600) / 60);
+  return [
+    ...(days > 0 ? [`${days}d`] : []),
+    ...(hours > 0 ? [`${hours % 24}h`] : []),
+    ...(minutes > 0 || hours > 0 ? [`${minutes}m`] : []),
+    `${clamped % 60}s`,
+  ].join(" ");
+}

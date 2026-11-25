@@ -1047,6 +1047,64 @@ export function registerHandlers(
     listTaskCardMeta(input) {
       return { cards: store.tasks.listTaskCardMeta(input.projectId ?? null) };
     },
+    async listTaskTiming(input) {
+      const byTask = new Map<string, string[]>();
+      for (const thread of store.tasks.listProjectTaskThreads(
+        input.projectId ?? null,
+      )) {
+        const ids = byTask.get(thread.taskId) ?? [];
+        ids.push(thread.threadId);
+        byTask.set(thread.taskId, ids);
+      }
+      const attached = [...byTask].map(([taskId, ids]) => ({ taskId, ids }));
+      const roots = [...new Set(attached.flatMap((task) => task.ids))];
+      const descendants = new Map<string, string[]>();
+      for (let i = 0; i < roots.length; i += 200) {
+        const result = await bb.sdk.threads.experimental_listDescendants({
+          threadIds: roots.slice(i, i + 200),
+          includeArchived: true,
+          includeHidden: true,
+        });
+        for (const thread of result.threads)
+          descendants.set(thread.threadId, thread.descendantIds);
+      }
+      const ids = [
+        ...new Set(roots.flatMap((id) => [id, ...(descendants.get(id) ?? [])])),
+      ];
+      const threads = new Map<
+        string,
+        Awaited<ReturnType<typeof bb.sdk.threads.list>>[number]
+      >();
+      for (let i = 0; i < ids.length; i += 200) {
+        const batch = await bb.sdk.threads.list({
+          threadIds: ids.slice(i, i + 200),
+          includeHidden: true,
+          limit: 200,
+        });
+        for (const thread of batch) threads.set(thread.id, thread);
+      }
+      return {
+        timings: attached.flatMap((task) => {
+          const taskThreads = [
+            ...new Set(
+              task.ids.flatMap((id) => [id, ...(descendants.get(id) ?? [])]),
+            ),
+          ].flatMap((id) => threads.get(id) ?? []);
+          if (taskThreads.length === 0) return [];
+          return [
+            {
+              taskId: task.taskId,
+              start: Math.min(...taskThreads.map((thread) => thread.createdAt)),
+              working: taskThreads.some((thread) =>
+                ["pending", "starting", "active", "stopping"].includes(
+                  thread.status,
+                ),
+              ),
+            },
+          ];
+        }),
+      };
+    },
     async listTaskPullRequests(input) {
       const result = await listTaskPullRequests(bb, store, input.taskId);
       if (result.pullRequests.some(isActivePullRequest))

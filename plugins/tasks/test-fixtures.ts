@@ -1,4 +1,5 @@
-import type { Label, Task } from "./shared/contract.js";
+import type { PluginSidebarThread } from "@get-bb/plugin-sdk/app";
+import type { Label, Task, TaskThread } from "./shared/contract.js";
 
 export function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -16,6 +17,72 @@ export function makeTask(overrides: Partial<Task> = {}): Task {
     createdAt: "2026-07-15T00:00:00.000Z",
     updatedAt: "2026-07-15T00:00:00.000Z",
     labelIds: [],
+    ...overrides,
+  };
+}
+
+export function makeTaskThread(
+  threadId: string,
+  taskId: string,
+  overrides: Partial<TaskThread> = {},
+): TaskThread {
+  return {
+    id: "01HZT1ZZZZZZZZZZZZZZZZZZAT",
+    taskId,
+    threadId,
+    presetName: "Worker",
+    title: `Thread ${threadId}`,
+    liveStatus: "working",
+    attachedAt: "2026-07-15T00:00:00.000Z",
+    updatedAt: "2026-07-15T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+export function makeSidebarThread(
+  id: string,
+  overrides: Partial<PluginSidebarThread> = {},
+): PluginSidebarThread {
+  return {
+    id,
+    projectId: "01HZZZZZZZZZZZZZZZZZZZZZP1",
+    title: id,
+    titleFallback: null,
+    displayTitle: id,
+    parentThreadId: null,
+    lifecycleOwnerThreadId: null,
+    parentNotifications: "auto",
+    sourceThreadId: null,
+    sectionId: null,
+    originKind: null,
+    originPluginId: null,
+    providerId: "test-provider",
+    status: "active",
+    runtimeStatus: "active",
+    queuedWork: "none",
+    hasPendingInteraction: false,
+    activity: {
+      workflows: 0,
+      backgroundAgents: 0,
+      backgroundCommands: 0,
+      planMode: 0,
+    },
+    indicator: "none",
+    indicatorLabel: null,
+    isUnread: false,
+    isPinned: false,
+    pinnedAt: null,
+    pinSortKey: null,
+    isArchived: false,
+    archivedAt: null,
+    href: `/threads/${id}`,
+    isHidden: false,
+    environment: null,
+    host: null,
+    createdAt: 0,
+    updatedAt: 0,
+    lastReadAt: null,
+    latestAttentionAt: 1000,
     ...overrides,
   };
 }
