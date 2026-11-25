@@ -5,10 +5,8 @@ import {
   updateProjectSourceFolderPath,
 } from "@bb/db";
 import {
-  areHostPathsEqual,
   canonicalizeHostPath,
   getHostPathDirname,
-  isHostPathWithin,
   resolveHostPath,
   type ProjectSource,
   type ProjectSourceFolder,
@@ -26,14 +24,35 @@ import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import {
   MAX_WORKSPACE_FOLDERS,
   workspaceFolderPathProblem,
+  type WorkspaceFolderPathProblem,
 } from "./workspace-folder-paths.js";
 
-function duplicateFolder(path: string): ApiError {
-  return new ApiError(
-    409,
-    "project_source_folder_conflict",
-    `Folder ${path} is already listed`,
-  );
+type FolderProblem =
+  | WorkspaceFolderPathProblem
+  | { kind: "limit" | "not_found"; message: string };
+
+function duplicateFolderProblem(path: string): FolderProblem {
+  return { kind: "duplicate", message: `Folder ${path} is already listed` };
+}
+
+function folderProblemError(problem: FolderProblem): ApiError {
+  switch (problem.kind) {
+    case "duplicate":
+      return new ApiError(
+        409,
+        "project_source_folder_conflict",
+        problem.message,
+      );
+    case "limit":
+      return new ApiError(409, "invalid_request", problem.message);
+    case "not_found":
+      return new ApiError(400, "path_not_found", problem.message);
+    case "relative":
+    case "main_folder":
+    case "inside_main_folder":
+    case "contains_main_folder":
+      return new ApiError(400, "invalid_request", problem.message);
+  }
 }
 
 function isDuplicateFolderError(error: unknown): boolean {
@@ -47,24 +66,26 @@ function isDuplicateFolderError(error: unknown): boolean {
   );
 }
 
-async function assertUsableFolderPath(
+async function folderProblem(
   deps: WorkSessionDeps,
   args: {
+    atLimit: boolean;
     existingPaths: readonly string[];
     path: string;
     source: ProjectSource;
   },
-): Promise<void> {
-  const problem = workspaceFolderPathProblem({
+): Promise<FolderProblem | null> {
+  const pathProblem = workspaceFolderPathProblem({
     existingPaths: args.existingPaths,
     mainPath: args.source.path,
     path: args.path,
   });
-  if (problem?.kind === "duplicate") {
-    throw duplicateFolder(args.path);
-  }
-  if (problem !== null) {
-    throw new ApiError(400, "invalid_request", problem.message);
+  if (pathProblem !== null) return pathProblem;
+  if (args.atLimit) {
+    return {
+      kind: "limit",
+      message: `A project checkout can have at most ${MAX_WORKSPACE_FOLDERS} folders`,
+    };
   }
   const { existence } = await callHostRetryableOnlineRpc(deps, {
     hostId: args.source.hostId,
@@ -72,11 +93,39 @@ async function assertUsableFolderPath(
     command: { type: "host.paths_exist", paths: [args.path] },
   });
   if (existence[args.path] !== true) {
-    throw new ApiError(
-      400,
-      "path_not_found",
-      `Folder ${args.path} does not exist on this machine`,
-    );
+    return {
+      kind: "not_found",
+      message: `Folder ${args.path} does not exist on this machine`,
+    };
+  }
+  return null;
+}
+
+async function tryAddProjectSourceFolder(
+  deps: WorkSessionDeps,
+  args: { path: string; source: ProjectSource },
+): Promise<{ folder: ProjectSourceFolder } | { problem: FolderProblem }> {
+  const existing = listProjectSourceFolders(deps.db, args.source.id);
+  const problem = await folderProblem(deps, {
+    atLimit: existing.length >= MAX_WORKSPACE_FOLDERS,
+    existingPaths: existing.map((folder) => folder.path),
+    path: args.path,
+    source: args.source,
+  });
+  if (problem !== null) return { problem };
+  try {
+    return {
+      folder: createProjectSourceFolder(deps.db, deps.hub, {
+        projectId: args.source.projectId,
+        projectSourceId: args.source.id,
+        path: args.path,
+      }),
+    };
+  } catch (error) {
+    if (isDuplicateFolderError(error)) {
+      return { problem: duplicateFolderProblem(args.path) };
+    }
+    throw error;
   }
 }
 
@@ -84,31 +133,9 @@ export async function addProjectSourceFolder(
   deps: WorkSessionDeps,
   args: { path: string; source: ProjectSource },
 ): Promise<ProjectSourceFolder> {
-  const existing = listProjectSourceFolders(deps.db, args.source.id);
-  if (existing.length >= MAX_WORKSPACE_FOLDERS) {
-    throw new ApiError(
-      409,
-      "invalid_request",
-      `A project checkout can have at most ${MAX_WORKSPACE_FOLDERS} folders`,
-    );
-  }
-  await assertUsableFolderPath(deps, {
-    existingPaths: existing.map((folder) => folder.path),
-    path: args.path,
-    source: args.source,
-  });
-  try {
-    return createProjectSourceFolder(deps.db, deps.hub, {
-      projectId: args.source.projectId,
-      projectSourceId: args.source.id,
-      path: args.path,
-    });
-  } catch (error) {
-    if (isDuplicateFolderError(error)) {
-      throw duplicateFolder(args.path);
-    }
-    throw error;
-  }
+  const result = await tryAddProjectSourceFolder(deps, args);
+  if ("problem" in result) throw folderProblemError(result.problem);
+  return result.folder;
 }
 
 export async function updateProjectSourceFolder(
@@ -123,13 +150,15 @@ export async function updateProjectSourceFolder(
   if (current.path === args.path) {
     return current;
   }
-  await assertUsableFolderPath(deps, {
+  const problem = await folderProblem(deps, {
+    atLimit: false,
     existingPaths: existing
       .filter((folder) => folder.id !== args.folderId)
       .map((folder) => folder.path),
     path: args.path,
     source: args.source,
   });
+  if (problem !== null) throw folderProblemError(problem);
   try {
     const updated = updateProjectSourceFolderPath(deps.db, deps.hub, {
       projectId: args.source.projectId,
@@ -147,19 +176,26 @@ export async function updateProjectSourceFolder(
     return updated;
   } catch (error) {
     if (isDuplicateFolderError(error)) {
-      throw duplicateFolder(args.path);
+      throw folderProblemError(duplicateFolderProblem(args.path));
     }
     throw error;
   }
 }
 
 function importSkipReason(
-  error: ApiError,
+  kind: FolderProblem["kind"],
 ): ProjectSourceFolderImportSkipReason {
-  if (error.body.code === "project_source_folder_conflict") return "duplicate";
-  if (error.body.code === "path_not_found") return "not_found";
-  if (error.status === 409) return "limit";
-  return "invalid";
+  switch (kind) {
+    case "main_folder":
+    case "inside_main_folder":
+    case "duplicate":
+    case "not_found":
+    case "limit":
+      return kind;
+    case "relative":
+    case "contains_main_folder":
+      return "invalid";
+  }
 }
 
 async function readCodeWorkspaceFile(
@@ -203,6 +239,14 @@ export async function importCodeWorkspaceFolders(
   const directory = getHostPathDirname(args.path) ?? args.path;
   const result: ImportProjectSourceFoldersResponse = { added: [], skipped: [] };
   for (const folder of folders) {
+    if (folder.kind === "invalid") {
+      result.skipped.push({
+        path: folder.entry,
+        reason: "invalid",
+        message: `${folder.entry} has no folder path or uri`,
+      });
+      continue;
+    }
     if (folder.kind === "unsupported-uri") {
       result.skipped.push({
         path: folder.uri,
@@ -224,32 +268,17 @@ export async function importCodeWorkspaceFolders(
       continue;
     }
     const path = canonicalizeHostPath(resolved);
-    if (areHostPathsEqual(path, args.source.path)) {
+    const added = await tryAddProjectSourceFolder(deps, {
+      path,
+      source: args.source,
+    });
+    if ("folder" in added) {
+      result.added.push(added.folder);
+    } else {
       result.skipped.push({
         path,
-        reason: "main_folder",
-        message: `Folder ${path} is the main folder`,
-      });
-      continue;
-    }
-    if (isHostPathWithin({ rootPath: args.source.path, candidatePath: path })) {
-      result.skipped.push({
-        path,
-        reason: "inside_main_folder",
-        message: `Folder ${path} is inside the main folder, which threads can already use`,
-      });
-      continue;
-    }
-    try {
-      result.added.push(
-        await addProjectSourceFolder(deps, { path, source: args.source }),
-      );
-    } catch (error) {
-      if (!(error instanceof ApiError)) throw error;
-      result.skipped.push({
-        path,
-        reason: importSkipReason(error),
-        message: error.body.message,
+        reason: importSkipReason(added.problem.kind),
+        message: added.problem.message,
       });
     }
   }

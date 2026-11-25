@@ -66,11 +66,18 @@ const DIRECTORY_ENTRY_OVERSCAN_ROWS = 10;
 const NO_ENTRIES: HostDirectoryListing["entries"] = [];
 const NO_ROOTS: HostDirectoryListing["roots"] = [];
 
+interface RemotePathBrowserFileSelection {
+  accepts: (name: string) => boolean;
+  selectedPath: string | null;
+  onSelect: (path: string) => void;
+}
+
 interface RemotePathBrowserProps {
   hostId: string;
   initialPath?: string | null;
   allowCreateFolder: boolean;
-  onDirectoryChange: (directory: string | null) => void;
+  onDirectoryChange?: (directory: string | null) => void;
+  fileSelection?: RemotePathBrowserFileSelection;
   disabled?: boolean;
 }
 
@@ -79,6 +86,7 @@ export function RemotePathBrowser({
   initialPath = null,
   allowCreateFolder,
   onDirectoryChange,
+  fileSelection,
   disabled = false,
 }: RemotePathBrowserProps) {
   const [currentPath, setCurrentPath] = useState<string | null>(initialPath);
@@ -198,7 +206,7 @@ export function RemotePathBrowser({
   };
 
   useEffect(() => {
-    onDirectoryChange(directory);
+    onDirectoryChange?.(directory);
   }, [directory, onDirectoryChange]);
 
   useEffect(() => {
@@ -260,6 +268,40 @@ export function RemotePathBrowser({
         {entryVirtualItems.map((virtualItem) => {
           const entry = entries[virtualItem.index];
           if (!entry) return null;
+          if (entry.kind === "file" && fileSelection?.accepts(entry.name)) {
+            const selected = fileSelection.selectedPath === entry.path;
+            return (
+              <li
+                key={entry.path}
+                data-index={virtualItem.index}
+                ref={measureEntryElement}
+                className="absolute left-0 w-full"
+                style={{ top: virtualItem.start }}
+              >
+                <button
+                  type="button"
+                  disabled={interactionDisabled}
+                  aria-pressed={selected}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-sm px-2 py-1 text-left text-sm hover:bg-muted disabled:pointer-events-none",
+                    selected && "bg-muted font-medium",
+                  )}
+                  onClick={() => fileSelection.onSelect(entry.path)}
+                >
+                  <Icon
+                    name="FileText"
+                    className="size-4 shrink-0 text-muted-foreground"
+                  />
+                  <span className="min-w-0 truncate" title={entry.name}>
+                    {entry.name}
+                  </span>
+                  {selected ? (
+                    <Icon name="Check" className="ml-auto size-4 shrink-0" />
+                  ) : null}
+                </button>
+              </li>
+            );
+          }
           if (entry.kind === "file") {
             return (
               <li

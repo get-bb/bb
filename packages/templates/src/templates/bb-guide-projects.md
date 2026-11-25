@@ -156,9 +156,9 @@ Folders:
   machine (comments and trailing commas are allowed), resolves relative
   folder paths against the file's folder, and adds each folder with the same
   rules as `add`. Folders that are the main folder or inside it are skipped;
-  missing, duplicate and over-limit folders and non-file `uri` entries are
-  reported per folder. A relative file path is read from the CLI's current
-  folder when no --machine is given.
+  missing, duplicate and over-limit folders, malformed entries and non-file
+  `uri` entries are reported per folder. A relative file path is read from
+  the CLI's current folder when no --machine is given.
 
   An environment provider can add folders of its own environment
   (`Environment.additionalPaths`, the Folder lines of `bb environment show`);

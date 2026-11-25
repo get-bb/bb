@@ -5581,7 +5581,8 @@ allowed), resolves each `folders[].path` against the file's folder (a `file:`
 `add`. It returns `{ added, skipped }`: folders that are the main folder or
 inside it are skipped (`main_folder`, `inside_main_folder`), and the rest are
 reported as `duplicate`, `not_found`, `limit`, `invalid` or
-`unsupported_uri`. A file that is not a workspace document fails with 400.
+`unsupported_uri`; a malformed `folders` entry is reported as `invalid` under
+its index (`folders[3]`). A file that is not a workspace document fails with 400.
 Every thread of the project on that machine can read and write the folders
 from its next turn. Routes: `GET|POST /projects/:id/sources/:sourceId/folders`,
 `POST …/folders/import`, `PATCH|DELETE …/folders/:folderId`.

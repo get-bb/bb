@@ -109,6 +109,7 @@ describe("project source folders", () => {
     { "path": "../gone" },
     { "path": "/work/docs/" },
     { "path": ".." },
+    { "path": 7 },
     { "uri": "vscode-remote://ssh-remote+box/srv/app" },
   ],
 }`,
@@ -138,6 +139,7 @@ describe("project source folders", () => {
             reason: "invalid",
             message: expect.stringContaining("contains the main folder"),
           }),
+          expect.objectContaining({ path: "folders[8]", reason: "invalid" }),
           expect.objectContaining({
             path: "vscode-remote://ssh-remote+box/srv/app",
             reason: "unsupported_uri",

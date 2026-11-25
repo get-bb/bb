@@ -42,6 +42,19 @@ describe("parseCodeWorkspaceFolders", () => {
         uri: "vscode-remote://ssh-remote+box/home/me/app",
       },
       { kind: "unsupported-uri", uri: "file://server/share/app" },
+      { kind: "invalid", entry: "folders[5]" },
+    ]);
+  });
+
+  it("reports a malformed folder entry without rejecting the rest of the file", () => {
+    expect(
+      parseCodeWorkspaceFolders(
+        '{ "folders": [{ "path": 5 }, "api", { "path": "../web" }] }',
+      ),
+    ).toEqual([
+      { kind: "invalid", entry: "folders[0]" },
+      { kind: "invalid", entry: "folders[1]" },
+      { kind: "path", path: "../web" },
     ]);
   });
 

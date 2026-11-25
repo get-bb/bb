@@ -13,33 +13,42 @@ interface WorkspaceFolderPathProblemArgs {
   path: string;
 }
 
-interface WorkspaceFolderPathProblem {
-  kind: "invalid" | "duplicate";
+export interface WorkspaceFolderPathProblem {
+  kind:
+    | "relative"
+    | "main_folder"
+    | "inside_main_folder"
+    | "contains_main_folder"
+    | "duplicate";
   message: string;
 }
 
 export function workspaceFolderPathProblem(
   args: WorkspaceFolderPathProblemArgs,
 ): WorkspaceFolderPathProblem | null {
-  const invalid = (message: string): WorkspaceFolderPathProblem => ({
-    kind: "invalid",
-    message,
-  });
   if (!isAbsoluteHostPath(args.path) || args.path.includes("\0")) {
-    return invalid(`Folder ${args.path} must be an absolute path`);
+    return {
+      kind: "relative",
+      message: `Folder ${args.path} must be an absolute path`,
+    };
   }
   if (areHostPathsEqual(args.path, args.mainPath)) {
-    return invalid(`Folder ${args.path} is the main folder`);
+    return {
+      kind: "main_folder",
+      message: `Folder ${args.path} is the main folder`,
+    };
   }
   if (isHostPathWithin({ rootPath: args.mainPath, candidatePath: args.path })) {
-    return invalid(
-      `Folder ${args.path} is inside the main folder ${args.mainPath}`,
-    );
+    return {
+      kind: "inside_main_folder",
+      message: `Folder ${args.path} is inside the main folder ${args.mainPath}`,
+    };
   }
   if (isHostPathWithin({ rootPath: args.path, candidatePath: args.mainPath })) {
-    return invalid(
-      `Folder ${args.path} contains the main folder ${args.mainPath}`,
-    );
+    return {
+      kind: "contains_main_folder",
+      message: `Folder ${args.path} contains the main folder ${args.mainPath}`,
+    };
   }
   if (
     args.existingPaths.some((existing) =>

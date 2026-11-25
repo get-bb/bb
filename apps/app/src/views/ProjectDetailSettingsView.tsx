@@ -628,6 +628,7 @@ export function ProjectDetailSettingsView() {
                       setImportTarget({
                         projectId: project.id,
                         sourceId: source.id,
+                        hostId: host.id,
                         hostName: host.name,
                         checkoutPath: source.path,
                       });

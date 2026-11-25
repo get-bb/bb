@@ -12,13 +12,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@bb/shared-ui/dialog";
+import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { Input } from "@bb/shared-ui/input";
 import { TruncateStart } from "@bb/shared-ui/truncate-start";
+import { LazyRemotePathBrowser } from "@/components/dialogs/LazyRemotePathBrowser";
 import { useImportCodeWorkspaceFolders } from "@/hooks/mutations/project-mutations";
 
 export interface ImportCodeWorkspaceTarget {
   projectId: string;
   sourceId: string;
+  hostId: string;
   hostName: string;
   checkoutPath: string;
 }
@@ -58,6 +61,10 @@ const SKIP_REASON_LABELS: Record<
   limit: "Folder limit reached",
   unsupported_uri: "Not a folder on this machine",
 };
+
+function isCodeWorkspaceFile(name: string): boolean {
+  return name.endsWith(".code-workspace");
+}
 
 function ImportResultList({
   result,
@@ -134,6 +141,7 @@ function ImportCodeWorkspaceDialogContent({
   onDone: () => void;
 }) {
   const inputId = useId();
+  const isPointerCoarse = usePointerCoarse();
   const [path, setPath] = useState("");
   const importFolders = useImportCodeWorkspaceFolders();
   const result = importFolders.data;
@@ -152,20 +160,31 @@ function ImportCodeWorkspaceDialogContent({
       <DialogHeader>
         <DialogTitle>Import .code-workspace</DialogTitle>
         <DialogDescription>
-          bb reads a VS Code workspace file on {target.hostName} and adds the
-          folders it lists. Folders inside the main folder are skipped, since
+          Choose a VS Code workspace file on {target.hostName}. bb adds the
+          folders it lists; folders inside the main folder are skipped, since
           threads can already use them.
         </DialogDescription>
       </DialogHeader>
       {result === undefined ? (
         <form className="space-y-4" onSubmit={submit}>
+          <LazyRemotePathBrowser
+            hostId={target.hostId}
+            initialPath={target.checkoutPath}
+            allowCreateFolder={false}
+            fileSelection={{
+              accepts: isCodeWorkspaceFile,
+              selectedPath: path.trim(),
+              onSelect: setPath,
+            }}
+            disabled={importFolders.isPending}
+          />
           <div className="space-y-1.5">
             <label htmlFor={inputId} className="text-sm text-foreground">
               Workspace file
             </label>
             <Input
               id={inputId}
-              autoFocus
+              autoFocus={!isPointerCoarse}
               value={path}
               placeholder={`${target.checkoutPath}/project.code-workspace`}
               onChange={(event) => setPath(event.target.value)}
