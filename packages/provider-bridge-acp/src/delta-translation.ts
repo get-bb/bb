@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import { providerRawEventSchema, threadUsageCostSchema } from "@bb/domain";
 import type { ProviderRawEvent, ThreadUsageCost } from "@bb/domain";
 import {
@@ -166,7 +167,7 @@ function mergeAcpToolCallEvents(
 interface AcpOpenToolCall {
   event: AcpToolCallUpdateEvent;
   clientFileWrites?: Extract<AcpToolCallContent, { type: "diff" }>[];
-  openedType: DeltaItemShape["type"];
+  openedItem: DeltaItemShape;
   permissionTitle?: string;
   delegation?: AcpDelegationReport;
 }
@@ -372,7 +373,7 @@ export function createAcpDeltaTranslator(
     const writePath = resolveAcpToolCallPath(write.path, pathOptions);
     const fileChangeCalls = threadCallEntries(context).flatMap(
       ([key, open]) => {
-        if (open.openedType !== "fileChange") {
+        if (open.openedItem.type !== "fileChange") {
           return [];
         }
         const classified = classifyCall(context, open.event);
@@ -794,7 +795,7 @@ export function createAcpDeltaTranslator(
         const classified = classifyCall(context, event);
         mergedToolCalls.set(announcedKey, {
           event,
-          openedType: classified.item.type,
+          openedItem: classified.item,
         });
         return [
           ...flush,
@@ -841,23 +842,35 @@ export function createAcpDeltaTranslator(
         const previous =
           open === undefined ? undefined : classifyCall(context, open.event);
         const refreshed: ThreadDelta[] = [];
+        let refreshedItem: DeltaItemShape | undefined;
         if (
           previous?.item.type === "command" &&
           classified.item.type === "command" &&
           (previous.item.command !== classified.item.command ||
             previous.presentation?.title !== classified.presentation?.title)
         ) {
+          refreshedItem = classified.item;
+        } else if (
+          open !== undefined &&
+          previous !== undefined &&
+          (classified.item.type === "fileRead" ||
+            classified.item.type === "search") &&
+          !isDeepStrictEqual(previous.presentation, classified.presentation)
+        ) {
+          refreshedItem = open.openedItem;
+        }
+        if (refreshedItem !== undefined) {
           refreshed.push({
             kind: "item.open",
             key: { providerItemId: event.toolCallId },
-            item: classified.item,
+            item: refreshedItem,
             presentation: classified.presentation,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           });
         }
         mergedToolCalls.set(key, {
           event: merged,
-          openedType: open?.openedType ?? mergedType,
+          openedItem: open?.openedItem ?? classified.item,
           ...(open?.permissionTitle === undefined
             ? {}
             : { permissionTitle: open.permissionTitle }),
@@ -871,7 +884,7 @@ export function createAcpDeltaTranslator(
         if (
           event.status === "in_progress" &&
           mergedType === "command" &&
-          open?.openedType === "command"
+          open?.openedItem.type === "command"
         ) {
           const normalizedEvent =
             dialect.normalizeCommandEvent?.(event, merged) ?? event;
@@ -900,6 +913,7 @@ export function createAcpDeltaTranslator(
         }
         if (mergedType !== "command" && mergedType !== "fileChange") {
           return [
+            ...refreshed,
             {
               kind: "item.progress",
               key: {
@@ -1292,7 +1306,7 @@ export function createAcpDeltaTranslator(
         ? { rawOutput: toolCall.rawOutput }
         : {}),
     });
-    if (classifyCall(context, merged).item.type === open.openedType) {
+    if (classifyCall(context, merged).item.type === open.openedItem.type) {
       mergedToolCalls.set(boundKey, { ...open, event: merged });
       return { toolCallId: merged.toolCallId, event: merged };
     }
