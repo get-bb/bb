@@ -2656,7 +2656,7 @@ describe("DesktopBrowserViewManager", () => {
           ...attached,
         ]);
         expect(parkingWindow.isDestroyed()).toBe(true);
-        expect(view.webContents.getBackgroundThrottling()).toBe(false);
+        expect(view.webContents.getBackgroundThrottling()).toBe(true);
         expect(requireFakeView(0).webContents.getBackgroundThrottling()).toBe(
           true,
         );
@@ -2909,7 +2909,7 @@ describe("DesktopBrowserViewManager", () => {
       expect(view.options.webPreferences.partition).toBe(
         userTab.options.webPreferences.partition,
       );
-      expect(view.options.webPreferences.backgroundThrottling).toBe(false);
+      expect(view.options.webPreferences.backgroundThrottling).toBe(true);
     }
     expect(userTab.options.webPreferences.backgroundThrottling).toBe(true);
     expect(electronMock.fakeSessions).toHaveLength(1);
@@ -5251,35 +5251,62 @@ describe("archived thread discarding", () => {
     manager.destroyAll();
   });
 
-  it("restores an evicted agent tab as an agent tab", async () => {
-    vi.useFakeTimers();
-    const manager = createDesktopBrowserViewManager();
-    const hostWindow = new FakeHostWindow({
-      webContentsId: 1,
-      contentBounds: { width: 1000, height: 800 },
-    });
-    manager.createTab({
-      hostWindow,
-      tabId: "agent",
-      threadId: "thread-1",
-      url: "https://example.com/agent",
-      viewport: { width: 800, height: 600 },
-    });
-    setDiscarded(manager, hostWindow, true);
-    expect(requireFakeView(0).webContents.isDestroyed()).toBe(true);
-    setDiscarded(manager, hostWindow, false);
-
-    await manager.evaluate({
-      hostWindow,
-      request: {
+  it.each([false, true])(
+    "resumes throttling after automation ends and retains agent ownership (restored: %s)",
+    async (restored) => {
+      vi.useFakeTimers();
+      const manager = createDesktopBrowserViewManager();
+      const hostWindow = new FakeHostWindow({
+        webContentsId: 1,
+        contentBounds: { width: 1000, height: 800 },
+      });
+      manager.createTab({
+        hostWindow,
         tabId: "agent",
-        expression: "null",
-        world: "main",
-        channel: "test",
-      },
-    });
-    vi.advanceTimersByTime(6 * 60_000);
-    expect(requireFakeView(1).webContents.isDestroyed()).toBe(false);
-    manager.destroyAll();
-  });
+        threadId: "thread-1",
+        url: "https://example.com/agent",
+        viewport: { width: 800, height: 600 },
+      });
+      if (restored) {
+        setDiscarded(manager, hostWindow, true);
+        expect(requireFakeView(0).webContents.isDestroyed()).toBe(true);
+        setDiscarded(manager, hostWindow, false);
+      }
+
+      await manager.evaluate({
+        hostWindow,
+        request: {
+          tabId: "agent",
+          expression: "null",
+          world: "main",
+          channel: "test",
+        },
+      });
+      const view = requireFakeView(restored ? 1 : 0);
+      const adapter = createDesktopBrowserCdpAdapter({
+        manager,
+        createTab: async () => "agent",
+        activateTab: async () => undefined,
+        closeTab: async () => undefined,
+      });
+      const [page] = adapter.listTabs({
+        hostWebContentsId: 1,
+        threadId: "thread-1",
+      });
+      if (!page) throw new Error("Expected the agent page");
+      try {
+        page.attach();
+        expect(view.webContents.getBackgroundThrottling()).toBe(false);
+        await expect(page.send("Runtime.enable", {})).resolves.toEqual({});
+        page.detach();
+        expect(view.visible).toBe(false);
+        expect(view.webContents.getBackgroundThrottling()).toBe(true);
+        vi.advanceTimersByTime(6 * 60_000);
+        expect(view.webContents.isDestroyed()).toBe(false);
+      } finally {
+        page.detach();
+        manager.destroyAll();
+      }
+    },
+  );
 });
