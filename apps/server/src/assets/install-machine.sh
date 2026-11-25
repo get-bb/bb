@@ -1186,6 +1186,7 @@ else
   escaped_bb_app_npm_prefix=$(systemd_escape "$bb_app_npm_prefix")
   escaped_server=$(systemd_escape "$server_url")
   escaped_data_dir=$(systemd_escape "$data_dir")
+  escaped_home=$(systemd_escape "$HOME")
   legacy_service_name="bb-host-daemon-$legacy_service_slug"
   legacy_service_file="$service_dir/$legacy_service_name.service"
   if [ -f "$legacy_service_file" ] && \
@@ -1204,6 +1205,7 @@ Wants=network-online.target
 ExecStart="$escaped_node_bin" "$escaped_bb_app" host-daemon --auto-update --host-daemon-port "$host_daemon_port" --server-url "$escaped_server"
 Environment="BB_APP_NPM_PREFIX=$escaped_bb_app_npm_prefix"
 Environment="BB_DATA_DIR=$escaped_data_dir"
+Environment="HOME=$escaped_home"
 Restart=always
 RestartSec=2
 OOMPolicy=continue

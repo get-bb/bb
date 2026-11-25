@@ -31,12 +31,16 @@ const FIXTURE_ARTIFACT_DIGEST = createHash("sha256")
   .update("fixture-tarball")
   .digest("hex");
 
-function createFixture(): { binDir: string; dataDir: string; homeDir: string } {
+function createFixture(homeName = "home"): {
+  binDir: string;
+  dataDir: string;
+  homeDir: string;
+} {
   const root = mkdtempSync(join(tmpdir(), "bb-install-script-test-"));
   createdDirectories.push(root);
   const binDir = join(root, "bin");
   const dataDir = join(root, "data");
-  const homeDir = join(root, "home");
+  const homeDir = join(root, homeName);
   mkdirSync(binDir, { recursive: true });
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(homeDir, { recursive: true });
@@ -1861,10 +1865,14 @@ fi
     );
   });
 
-  it.each([false, true])(
-    "installs a persistent root system unit (container=%s)",
-    (container) => {
-      const fixture = createFixture();
+  it.each([
+    { container: false, homeName: "home" },
+    { container: true, homeName: "home" },
+    { container: false, homeName: "root % home" },
+  ])(
+    "installs a persistent root unit that keeps HOME (%j)",
+    ({ container, homeName }) => {
+      const fixture = createFixture(homeName);
       writeJoinedState(fixture);
       writeServerInstallTools(fixture, 200);
       writeExecutable(join(fixture.binDir, "uname"), "#!/bin/sh\necho Linux\n");
@@ -1917,6 +1925,9 @@ fi
         `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
       );
       expect(unit).toContain("ManagedOOMPreference=avoid");
+      expect(unit).toContain(
+        `Environment="HOME=${fixture.homeDir.replaceAll("%", "%%")}"`,
+      );
       expect(unit).toContain(
         container ? "WantedBy=default.target" : "WantedBy=multi-user.target",
       );
