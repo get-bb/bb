@@ -122,13 +122,17 @@ describe("MarkdownPreview remounts", () => {
     expect(second.container.innerHTML).toBe(firstHtml);
   });
 
-  it("does not keep a message larger than the parsed tree budget", () => {
+  it("does not keep a message larger than the parsed tree budget, and keeps the smaller ones", () => {
+    const small = "A short note about `readRows`.";
     const content = `Long report ${"word ".repeat(110_000)}`;
 
+    render(<MarkdownPreview content={small} incrementalBlocks />).unmount();
     render(<MarkdownPreview content={content} incrementalBlocks />).unmount();
-    render(<MarkdownPreview content={content} incrementalBlocks />);
+    render(<MarkdownPreview content={content} incrementalBlocks />).unmount();
+    render(<MarkdownPreview content={small} incrementalBlocks />);
 
     expect(parseCount(content)).toBe(2);
+    expect(parseCount(small)).toBe(1);
   });
 
   it("parses again when the remount adds message directive syntax", () => {

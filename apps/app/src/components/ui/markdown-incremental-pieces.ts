@@ -324,6 +324,9 @@ function remarkReuseParsedTree(
 ): void {
   const parse = this.parser!;
   this.parser = (document, file) => {
+    if (document.length > PARSED_MARKDOWN_SOURCE_BUDGET) {
+      return parse(document, file);
+    }
     const cached = parsedMarkdownTrees.get(document);
     if (cached !== undefined) {
       parsedMarkdownTrees.delete(document);
