@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
-import type {
-  HostDaemonServerRoutes,
-  HostDaemonSessionOpenResponse,
+import {
+  hostDaemonDaemonWsMessageSchema,
+  type HostDaemonServerRoutes,
+  type HostDaemonSessionOpenResponse,
 } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
@@ -1133,6 +1134,43 @@ describe("ServerConnection", () => {
         await connection.shutdown();
       }
     });
+  });
+
+  it("sends router-validated RPC successes without a second parse and still parses failures", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    const parse = vi.spyOn(hostDaemonDaemonWsMessageSchema, "parse");
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+      const success = {
+        type: "host-rpc.response" as const,
+        requestId: "rpc-ok",
+        commandType: "plugin.host.call" as const,
+        ok: true as const,
+        result: { output: { files: [{ path: "a.ts", status: "modified" }] } },
+      };
+      const failure = {
+        type: "host-rpc.response" as const,
+        requestId: "rpc-failed",
+        commandType: "plugin.host.call" as const,
+        ok: false as const,
+        errorCode: "invalid_command" as const,
+        errorMessage: "Invalid host RPC command",
+      };
+      parse.mockClear();
+
+      expect(connection.sendMessage(success)).toBe(true);
+      expect(parse).not.toHaveBeenCalled();
+      expect(connection.sendMessage(failure)).toBe(true);
+      expect(parse).toHaveBeenCalledTimes(1);
+      expect(webSocket.sentMessages(socket)).toEqual([success, failure]);
+    } finally {
+      parse.mockRestore();
+      await connection.shutdown();
+    }
   });
 
   it("delivers a terminal exit that happened while disconnected once the session resumes", async () => {

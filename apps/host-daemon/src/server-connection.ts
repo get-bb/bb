@@ -199,7 +199,10 @@ export class ServerConnection {
   }
 
   sendMessage(message: HostDaemonDaemonWsMessage): boolean {
-    const parsed = hostDaemonDaemonWsMessageSchema.parse(message);
+    const parsed =
+      message.type === "host-rpc.response" && message.ok
+        ? message
+        : hostDaemonDaemonWsMessageSchema.parse(message);
     const recoverableKey = recoverableMessageKey(parsed);
     const recoverable =
       recoverableKey === null ? null : { key: recoverableKey, message: parsed };
