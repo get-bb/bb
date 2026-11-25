@@ -2759,7 +2759,10 @@ async function handleBackgroundTaskStop(
       timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
     });
     if (!result.terminated) {
-      session.translator.cancelBackgroundCommandStop(stopArgs);
+      sendThreadDeltas(
+        session,
+        session.translator.settleBackgroundCommand(stopArgs),
+      );
     }
     sendResult(id, {});
   } catch (error) {

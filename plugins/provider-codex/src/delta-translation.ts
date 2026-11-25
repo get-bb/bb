@@ -76,6 +76,8 @@ interface CodexRetryErrorContext {
 interface CodexRunningCommand {
   processId: string;
   command: string;
+  cwd: string;
+  turnId: string;
   background: boolean;
   stopRequested: boolean;
 }
@@ -152,11 +154,26 @@ function buildBackgroundCommandShape(
 
 function openBackgroundCommands(
   state: CodexEventTranslationState,
-  providerThreadId: string,
-  providerTurnId: string,
+  args: {
+    providerThreadId: string;
+    providerTurnId: string;
+    turnStatus: ThreadEventTurnStatus;
+  },
 ): ThreadDelta[] {
+  const { providerThreadId, providerTurnId } = args;
   const running = state.runningCommandsByThreadId.get(providerThreadId);
   if (running === undefined) {
+    return [];
+  }
+  if (args.turnStatus === "interrupted") {
+    for (const [itemId, command] of running) {
+      if (!command.background) {
+        running.delete(itemId);
+      }
+    }
+    if (running.size === 0) {
+      state.runningCommandsByThreadId.delete(providerThreadId);
+    }
     return [];
   }
   const deltas: ThreadDelta[] = [];
@@ -174,6 +191,74 @@ function openBackgroundCommands(
     });
   }
   return deltas;
+}
+
+function settleRunningCommand(
+  itemId: string,
+  command: CodexRunningCommand,
+): ThreadDelta[] {
+  const closes: ThreadDelta[] = [
+    {
+      kind: "item.close",
+      key: { providerItemId: itemId },
+      status: "interrupted",
+      item: { type: "command", command: command.command, cwd: command.cwd },
+      presentation: commandPresentation(command.command),
+      providerTurnId: command.turnId,
+    },
+  ];
+  if (command.background) {
+    const shape = buildBackgroundCommandShape(itemId, command, "stopped");
+    closes.push({
+      kind: "item.close",
+      key: backgroundCommandKey(itemId),
+      status: shape.status,
+      item: shape,
+      presentation: backgroundCommandPresentation(command.command),
+    });
+  }
+  return closes;
+}
+
+function forgetRunningCommand(
+  state: CodexEventTranslationState,
+  providerThreadId: string,
+  running: Map<string, CodexRunningCommand>,
+  itemId: string,
+): void {
+  running.delete(itemId);
+  if (running.size === 0) {
+    state.runningCommandsByThreadId.delete(providerThreadId);
+  }
+}
+
+export function settleCodexRunningCommands(
+  state: CodexEventTranslationState,
+  args: { providerThreadId: string },
+): ThreadDelta[] {
+  const running = state.runningCommandsByThreadId.get(args.providerThreadId);
+  if (running === undefined) {
+    return [];
+  }
+  const closes: ThreadDelta[] = [];
+  for (const [itemId, command] of running) {
+    closes.push(...settleRunningCommand(itemId, command));
+    forgetRunningCommand(state, args.providerThreadId, running, itemId);
+  }
+  return closes;
+}
+
+export function settleCodexRunningCommand(
+  state: CodexEventTranslationState,
+  args: { providerThreadId: string; itemId: string },
+): ThreadDelta[] {
+  const running = state.runningCommandsByThreadId.get(args.providerThreadId);
+  const command = running?.get(args.itemId);
+  if (running === undefined || command === undefined) {
+    return [];
+  }
+  forgetRunningCommand(state, args.providerThreadId, running, args.itemId);
+  return settleRunningCommand(args.itemId, command);
 }
 
 function finalBackgroundTaskStatus(
@@ -203,6 +288,7 @@ function trackCodexCommandExecution(
   state: CodexEventTranslationState,
   args: {
     providerThreadId: string;
+    providerTurnId: string;
     started: boolean;
     item: CodexHandledThreadItem;
   },
@@ -226,6 +312,8 @@ function trackCodexCommandExecution(
       running.set(item.id, {
         processId: item.processId,
         command: item.command,
+        cwd: item.cwd,
+        turnId: args.providerTurnId,
         background: false,
         stopRequested: false,
       });
@@ -1254,11 +1342,11 @@ export function translateCodexEventToDeltas(
       });
       const status = toTurnStatus(handledEvent.params.turn.status);
       return [
-        ...openBackgroundCommands(
-          state,
-          handledEvent.params.threadId,
-          handledEvent.params.turn.id,
-        ),
+        ...openBackgroundCommands(state, {
+          providerThreadId: handledEvent.params.threadId,
+          providerTurnId: handledEvent.params.turn.id,
+          turnStatus: status,
+        }),
         {
           kind: "turn.boundary",
           providerTurnId: handledEvent.params.turn.id,
@@ -1345,6 +1433,7 @@ export function translateCodexEventToDeltas(
       const key = { providerItemId: handledEvent.params.item.id };
       const commandTracking = trackCodexCommandExecution(state, {
         providerThreadId: handledEvent.params.threadId,
+        providerTurnId: handledEvent.params.turnId,
         started: handledEvent.method === "item/started",
         item: parsedItem.data,
       });

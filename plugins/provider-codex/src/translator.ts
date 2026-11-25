@@ -13,6 +13,8 @@ import {
   beginCodexBackgroundCommandStop,
   cancelCodexBackgroundCommandStop,
   normalizeCodexRateLimits,
+  settleCodexRunningCommand,
+  settleCodexRunningCommands,
   clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
   setCodexInjectedTools,
@@ -574,7 +576,12 @@ export function createCodexEventTranslator(
   }): ThreadDelta[] {
     rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
     responseHandledTurnsByThreadId.delete(providerThreadId);
-    return clearCodexDelegationParentState(providerThreadId);
+    return [
+      ...settleCodexRunningCommands(eventTranslationState, {
+        providerThreadId,
+      }),
+      ...clearCodexDelegationParentState(providerThreadId),
+    ];
   }
 
   function clearCodexDelegationParentState(
@@ -1723,10 +1730,18 @@ export function createCodexEventTranslator(
     cancelCodexBackgroundCommandStop(eventTranslationState, args);
   }
 
+  function settleBackgroundCommand(args: {
+    providerThreadId: string;
+    itemId: string;
+  }): ThreadDelta[] {
+    return settleCodexRunningCommand(eventTranslationState, args);
+  }
+
   return {
     activateThreadGitWritableRoots,
     beginBackgroundCommandStop,
     cancelBackgroundCommandStop,
+    settleBackgroundCommand,
     recoverRateLimits,
     resetRateLimits,
     clearExitedChildThreadState,

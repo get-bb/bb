@@ -30,11 +30,34 @@ let providerThreadId: string;
 beforeEach(() => {
   workspaceDir = mkdtempSync(join(tmpdir(), "bb-codex-bg-stop-ws-"));
   requestLogPath = join(workspaceDir, "requests.ndjson");
-  const scriptPath = join(workspaceDir, "script.json");
-  writeFileSync(scriptPath, JSON.stringify({ requestLogPath }));
-  stubFakeCodexAppServer(scriptPath);
   harness = createBridgeJsonRpcTestHarness(handleLine);
 });
+
+function startFakeCodex(script: Record<string, unknown> = {}): void {
+  const scriptPath = join(workspaceDir, "script.json");
+  writeFileSync(scriptPath, JSON.stringify({ requestLogPath, ...script }));
+  stubFakeCodexAppServer(scriptPath);
+}
+
+async function startBackgroundCommand(): Promise<void> {
+  harness.sendRequest(1, "thread/start", {
+    threadId: THREAD_ID,
+    cwd: workspaceDir,
+    instructionMode: "append",
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  providerThreadId = z
+    .object({ providerThreadId: z.string() })
+    .parse((await harness.waitForResponse(1)).result).providerThreadId;
+  harness.sendRequest(2, "turn/start", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    clientRequestId: "creq_bgstqpxyzw",
+    input: [{ type: "text", text: "/background-command", mentions: [] }],
+    options: { ...FULL_ACCESS_SESSION_OPTIONS },
+  });
+  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+}
 
 afterEach(async () => {
   const cleanupId = 995_001;
@@ -92,23 +115,8 @@ function terminateRequests(): unknown[] {
 }
 
 it("stops one background command through Codex's terminal API", async () => {
-  harness.sendRequest(1, "thread/start", {
-    threadId: THREAD_ID,
-    cwd: workspaceDir,
-    instructionMode: "append",
-    options: { ...FULL_ACCESS_SESSION_OPTIONS },
-  });
-  providerThreadId = z
-    .object({ providerThreadId: z.string() })
-    .parse((await harness.waitForResponse(1)).result).providerThreadId;
-  harness.sendRequest(2, "turn/start", {
-    threadId: THREAD_ID,
-    providerThreadId,
-    clientRequestId: "creq_bgstqpxyzw",
-    input: [{ type: "text", text: "/background-command", mentions: [] }],
-    options: { ...FULL_ACCESS_SESSION_OPTIONS },
-  });
-  expect((await harness.waitForResponse(2)).error).toBeUndefined();
+  startFakeCodex();
+  await startBackgroundCommand();
   const [opened] = await waitForBackgroundTaskDeltas(1);
   expect(opened).toEqual({
     kind: "item.open",
@@ -150,4 +158,26 @@ it("stops one background command through Codex's terminal API", async () => {
     "not running background command exec-fx-1",
   );
   expect(terminateRequests()).toHaveLength(1);
+}, 30_000);
+
+it("settles a background command Codex no longer runs instead of leaving it stoppable", async () => {
+  startFakeCodex({ terminateFindsNoTerminal: true });
+  await startBackgroundCommand();
+  await waitForBackgroundTaskDeltas(1);
+
+  harness.sendRequest(3, "thread/backgroundTask/stop", {
+    threadId: THREAD_ID,
+    providerThreadId,
+    familyId: "exec-fx-1",
+  });
+
+  expect(await harness.waitForResponse(3)).toMatchObject({ result: {} });
+  const [, closed] = await waitForBackgroundTaskDeltas(2);
+  expect(closed).toEqual({
+    kind: "item.close",
+    item: expect.objectContaining({
+      familyId: "exec-fx-1",
+      taskStatus: "stopped",
+    }),
+  });
 }, 30_000);

@@ -2551,4 +2551,92 @@ describe("codex background commands", () => {
       ).toBeNull();
     }
   });
+  it("stops a background command whose Codex app-server went away", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+    completeTurn(harness);
+
+    const events = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.clearExitedChildThreadState({
+        providerThreadId: "t1",
+      }),
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "commandExecution",
+          status: "interrupted",
+        }),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/backgroundTask/completed",
+        item: expect.objectContaining({ taskStatus: "stopped" }),
+      }),
+    );
+    expect(
+      harness.translator.beginBackgroundCommandStop({
+        providerThreadId: "t1",
+        itemId: "exec-1",
+      }),
+    ).toBeNull();
+  });
+
+  it("does not background a command whose turn was interrupted, even when the next turn ends", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+
+    const interrupted = harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "interrupted", error: null }),
+      }),
+    );
+    harness.translate(
+      codexEvent("turn/started", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-2", status: "inProgress", error: null }),
+      }),
+    );
+    const nextTurn = harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-2", status: "completed", error: null }),
+      }),
+    );
+
+    expect([...interrupted, ...nextTurn].map((event) => event.type)).toEqual([
+      "turn/completed",
+      "turn/completed",
+    ]);
+  });
+
+  it("stops a background command Codex no longer runs when asked to stop it", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+    completeTurn(harness);
+
+    const events = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.settleBackgroundCommand({
+        providerThreadId: "t1",
+        itemId: "exec-1",
+      }),
+    });
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/completed",
+      "item/backgroundTask/completed",
+    ]);
+    expect(
+      harness.translator.settleBackgroundCommand({
+        providerThreadId: "t1",
+        itemId: "exec-1",
+      }),
+    ).toEqual([]);
+  });
 });

@@ -916,6 +916,10 @@ async function handleRequest(message) {
       respond(id, { goal: goalsByThreadId.get(params.threadId) ?? null });
       return;
     case "thread/backgroundTerminals/terminate": {
+      if (script?.terminateFindsNoTerminal) {
+        respond(id, { terminated: false });
+        return;
+      }
       const running = backgroundCommandsByProcessId.get(params.processId);
       backgroundCommandsByProcessId.delete(params.processId);
       respond(id, { terminated: running !== undefined });
