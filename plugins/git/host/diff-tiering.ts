@@ -1,12 +1,12 @@
-import type {
-  DiffFileEntry,
-  GitDiffFileChangeKind,
-  RawDiffFileStat,
+import {
+  DIFF_FILES_INLINE_PATCH_MAX_FILES,
+  type DiffFileEntry,
+  type GitDiffFileChangeKind,
+  type RawDiffFileStat,
 } from "../contract.js";
 
 export const DIFF_FILE_AUTO_LOAD_MAX_CHANGED_LINES = 500;
 export const DIFF_FILE_TOO_LARGE_CHANGED_LINES = 20_000;
-export const DIFF_FILES_INLINE_PATCH_MAX_FILES = 10;
 
 const CHANGE_KIND_BY_LETTER: Record<
   RawDiffFileStat["statusLetter"],

@@ -5,7 +5,12 @@ import {
 } from "@get-bb/plugin-sdk/testing";
 import { makeWorkspaceStatus } from "./testing.js";
 import { describe, expect, it, vi } from "vitest";
-import { gitPatchKey, gitViewedTag } from "./contract.js";
+import {
+  gitFilesTag,
+  gitPatchKey,
+  gitStatusTag,
+  gitViewedTag,
+} from "./contract.js";
 import plugin from "./server.js";
 import { VIEWED_MARKS_FROM_CORE_KEY } from "./server/viewed.js";
 
@@ -47,12 +52,14 @@ function hostResult(call: ExperimentalFakeHostRpcCall): unknown {
     case "files":
       return {
         outcome: "available",
+        fingerprint: "files-fingerprint",
         value: {
           files: [],
           truncated: true,
           shortstat: "",
           mergeBaseRef: null,
           initialPatches: [],
+          reusedPatchPaths: [],
         },
       };
     case "patches": {
@@ -488,6 +495,311 @@ describe("Git plugin server", () => {
   });
 });
 
+describe("Git plugin workspace change refreshes", () => {
+  const filesInput = {
+    environmentId: "env-1",
+    target: { type: "uncommitted" as const },
+    ignoreWhitespace: false,
+  };
+  const changedFile = {
+    path: "a.ts",
+    previousPath: null,
+    changeKind: "modified" as const,
+    additions: 1,
+    deletions: 1,
+    binary: false,
+    origin: "tracked" as const,
+    loadMode: "auto" as const,
+    revision: "100644:aaa:100644:bbb",
+  };
+  const patch = {
+    path: "a.ts",
+    patch: "@@ -1 +1 @@\n-a\n+b\n",
+    truncated: false,
+  };
+
+  function changeHarness() {
+    const subscriptions = new Set<
+      Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+    >();
+    const state = {
+      branch: "feature",
+      revision: changedFile.revision,
+      snapshotError: null as Error | null,
+      statusDelay: null as Promise<void> | null,
+    };
+    const filesFingerprint = () => `files:${state.revision}`;
+    const filesValue = (knownPatches: { path: string; revision: string }[]) => {
+      const reused = knownPatches.some(
+        (known) => known.path === "a.ts" && known.revision === state.revision,
+      );
+      return {
+        files: [{ ...changedFile, revision: state.revision }],
+        truncated: false,
+        shortstat: " 1 file changed, 1 insertion(+), 1 deletion(-)\n",
+        mergeBaseRef: null,
+        initialPatches: reused ? [] : [patch],
+        reusedPatchPaths: reused ? ["a.ts"] : [],
+      };
+    };
+    const fake = createFakePluginHost({
+      pluginId: "bb--git",
+      sdk: {
+        environments: {
+          get: async () => environment(),
+          experimental_repos: async () => reposOf(environment()),
+        },
+        subscribe: (args: Parameters<BbPluginApi["sdk"]["subscribe"]>[0]) => {
+          subscriptions.add(args);
+          return () => subscriptions.delete(args);
+        },
+      },
+      experimental_callHostRpc: async (call) => {
+        const status = {
+          outcome: "available",
+          value: statusOnBranch(state.branch),
+        };
+        switch (call.method) {
+          case "status":
+            await state.statusDelay;
+            return status;
+          case "files": {
+            const input = call.input as {
+              knownPatches: { path: string; revision: string }[];
+            };
+            return {
+              outcome: "available",
+              value: filesValue(input.knownPatches),
+              fingerprint: filesFingerprint(),
+            };
+          }
+          case "snapshot": {
+            if (state.snapshotError) throw state.snapshotError;
+            const input = call.input as {
+              statusUnless?: string;
+              files: {
+                knownPatches: { path: string; revision: string }[];
+                unless?: string;
+              }[];
+            };
+            const statusFingerprint = `status:${state.branch}`;
+            return {
+              outcome: "available",
+              value: {
+                status:
+                  input.statusUnless === statusFingerprint
+                    ? { outcome: "unchanged" }
+                    : { ...status, fingerprint: statusFingerprint },
+                files: input.files.map((query) =>
+                  query.unless === filesFingerprint()
+                    ? { outcome: "unchanged" }
+                    : {
+                        outcome: "available",
+                        value: filesValue(query.knownPatches),
+                        fingerprint: filesFingerprint(),
+                      },
+                ),
+              },
+            };
+          }
+          default:
+            return hostResult(call);
+        }
+      },
+    });
+    plugin(fake.bb);
+    fake.harness.experimental_watchRpc("status", { key: "env-1" });
+    fake.harness.experimental_watchRpc("files", { input: filesInput });
+    const workspaceChanged = () => {
+      for (const subscription of subscriptions) {
+        if (subscription.event !== "environment:changed") continue;
+        subscription.callback({
+          type: "changed",
+          entity: "environment",
+          id: "env-1",
+          changes: ["work-status-changed"],
+        });
+      }
+    };
+    const hostCalls = (method: string) =>
+      fake.harness.experimental_hostRpcCalls.filter(
+        (call) => call.method === method,
+      ).length;
+    const readBoth = () =>
+      Promise.all([
+        fake.harness.callRpc("status", { keys: ["env-1"] }),
+        fake.harness.callRpc("files", filesInput),
+      ]);
+    return { fake, state, workspaceChanged, hostCalls, readBoth };
+  }
+
+  it("checks a burst of workspace writes with one host snapshot and refreshes nothing while the diff is unchanged", async () => {
+    const { fake, workspaceChanged, hostCalls, readBoth } = changeHarness();
+    await readBoth();
+    workspaceChanged();
+    workspaceChanged();
+    await vi.waitFor(() => expect(hostCalls("snapshot")).toBe(1));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fake.harness.experimental_rpcInvalidations).toEqual([]);
+
+    await readBoth();
+    expect([hostCalls("status"), hostCalls("files")]).toEqual([1, 1]);
+  });
+
+  it("refreshes only the reads whose result changed and answers their refetch from the snapshot", async () => {
+    const { fake, state, workspaceChanged, hostCalls, readBoth } =
+      changeHarness();
+    await readBoth();
+    state.branch = "renamed";
+    workspaceChanged();
+    await vi.waitFor(() =>
+      expect(fake.harness.experimental_rpcInvalidations).toEqual([
+        [gitStatusTag("env-1")],
+      ]),
+    );
+
+    const [status] = await readBoth();
+    expect(status).toMatchObject({
+      "env-1": { workspace: { branch: { currentBranch: "renamed" } } },
+    });
+    expect([
+      hostCalls("status"),
+      hostCalls("files"),
+      hostCalls("snapshot"),
+    ]).toEqual([1, 1, 1]);
+  });
+
+  it("reads a fresh revision when opening a file list the snapshot did not cover", async () => {
+    const { fake, state, workspaceChanged, readBoth } = changeHarness();
+    const alternate = { ...filesInput, ignoreWhitespace: true };
+    await readBoth();
+    await fake.harness.callRpc("files", alternate);
+    state.revision = "100644:aaa:100644:ccc";
+    workspaceChanged();
+    await vi.waitFor(() =>
+      expect(fake.harness.experimental_rpcInvalidations).toContainEqual([
+        gitFilesTag("env-1"),
+      ]),
+    );
+    fake.harness.experimental_watchRpc("files", { input: alternate });
+    await expect(
+      fake.harness.callRpc("files", alternate),
+    ).resolves.toMatchObject({
+      files: [{ revision: state.revision }],
+    });
+  });
+
+  it("refreshes both reads after a snapshot transport failure", async () => {
+    const { fake, state, workspaceChanged, readBoth } = changeHarness();
+    await readBoth();
+    state.snapshotError = new Error("Host disconnected");
+    state.branch = "renamed";
+    state.revision = "100644:aaa:100644:ccc";
+    workspaceChanged();
+    await vi.waitFor(() =>
+      expect(fake.harness.experimental_rpcInvalidations).toContainEqual([
+        gitStatusTag("env-1"),
+        gitFilesTag("env-1"),
+      ]),
+    );
+    await expect(readBoth()).resolves.toMatchObject([
+      { "env-1": { workspace: { branch: { currentBranch: "renamed" } } } },
+      { files: [{ revision: state.revision }] },
+    ]);
+  });
+
+  it("lets the host answer unchanged for reads the server already holds", async () => {
+    const { fake, workspaceChanged, hostCalls, readBoth } = changeHarness();
+    await readBoth();
+    workspaceChanged();
+    await vi.waitFor(() => expect(hostCalls("snapshot")).toBe(1));
+    workspaceChanged();
+    await vi.waitFor(() => expect(hostCalls("snapshot")).toBe(2), {
+      timeout: 3_000,
+    });
+    const snapshots = fake.harness.experimental_hostRpcCalls.filter(
+      (call) => call.method === "snapshot",
+    );
+    expect(snapshots[0]?.input).toMatchObject({
+      files: [{ unless: "files:100644:aaa:100644:bbb" }],
+    });
+    expect(snapshots[1]?.input).toMatchObject({
+      statusUnless: "status:feature",
+      files: [{ unless: "files:100644:aaa:100644:bbb" }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(fake.harness.experimental_rpcInvalidations).toEqual([]);
+    const [status, files] = await readBoth();
+    expect(status).toMatchObject({
+      "env-1": { workspace: { branch: { currentBranch: "feature" } } },
+    });
+    expect(files).toMatchObject({ initialPatches: [patch] });
+    expect([hostCalls("status"), hostCalls("files")]).toEqual([1, 1]);
+  });
+
+  it("does not let a read that started before a change stand in for the check after it", async () => {
+    const { fake, state, workspaceChanged } = changeHarness();
+    let release = () => {};
+    state.statusDelay = new Promise((resolve) => {
+      release = resolve;
+    });
+    const slowRead = fake.harness.callRpc("status", { keys: ["env-1"] });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    state.branch = "renamed";
+    workspaceChanged();
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    release();
+    await slowRead;
+    await vi.waitFor(() =>
+      expect(fake.harness.experimental_rpcInvalidations).toContainEqual(
+        expect.arrayContaining([gitStatusTag("env-1")]),
+      ),
+    );
+    await expect(
+      fake.harness.callRpc("status", { keys: ["env-1"] }),
+    ).resolves.toMatchObject({
+      "env-1": { workspace: { branch: { currentBranch: "renamed" } } },
+    });
+  });
+
+  it("asks the host only for patches the server does not already hold", async () => {
+    const { fake, state, workspaceChanged, hostCalls } = changeHarness();
+    await expect(
+      fake.harness.callRpc("files", filesInput),
+    ).resolves.toMatchObject({ initialPatches: [patch] });
+
+    state.branch = "renamed";
+    workspaceChanged();
+    await vi.waitFor(() => expect(hostCalls("snapshot")).toBe(1));
+    const snapshot = fake.harness.experimental_hostRpcCalls.find(
+      (call) => call.method === "snapshot",
+    );
+    expect(snapshot?.input).toMatchObject({
+      files: [{ knownPatches: [{ path: "a.ts", revision: state.revision }] }],
+    });
+    await expect(
+      fake.harness.callRpc("files", filesInput),
+    ).resolves.toMatchObject({ initialPatches: [patch] });
+
+    state.revision = "100644:aaa:100644:ccc";
+    workspaceChanged();
+    await vi.waitFor(
+      () =>
+        expect(fake.harness.experimental_rpcInvalidations.at(-1)).toContain(
+          gitFilesTag("env-1"),
+        ),
+      { timeout: 3_000 },
+    );
+    await expect(
+      fake.harness.callRpc("files", filesInput),
+    ).resolves.toMatchObject({
+      files: [{ revision: "100644:aaa:100644:ccc" }],
+      initialPatches: [patch],
+    });
+    expect(hostCalls("files")).toBe(1);
+  });
+});
+
 describe("Git plugin Viewed marks", () => {
   async function viewedHost(
     options: { coreMarks?: unknown; existing?: string[] } = {},
@@ -513,7 +825,10 @@ describe("Git plugin Viewed marks", () => {
       },
     });
     if (options.coreMarks !== undefined) {
-      await fake.bb.storage.kv.set(VIEWED_MARKS_FROM_CORE_KEY, options.coreMarks);
+      await fake.bb.storage.kv.set(
+        VIEWED_MARKS_FROM_CORE_KEY,
+        options.coreMarks,
+      );
     }
     plugin(fake.bb);
     const call = (method: string, input: Record<string, unknown>) =>
@@ -527,10 +842,22 @@ describe("Git plugin Viewed marks", () => {
 
   it("keeps marks per environment and diff target", async () => {
     const { call, list } = await viewedHost();
-    await call("markViewed", { target: uncommitted, path: "b.ts", revision: "rev-b" });
-    await call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev-1" });
+    await call("markViewed", {
+      target: uncommitted,
+      path: "b.ts",
+      revision: "rev-b",
+    });
+    await call("markViewed", {
+      target: uncommitted,
+      path: "a.ts",
+      revision: "rev-1",
+    });
     await expect(
-      call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev-2" }),
+      call("markViewed", {
+        target: uncommitted,
+        path: "a.ts",
+        revision: "rev-2",
+      }),
     ).resolves.toEqual({ ok: true });
     await call("markViewed", {
       target: { type: "commit", sha: "ABCDEF1" },
@@ -544,7 +871,9 @@ describe("Git plugin Viewed marks", () => {
         { path: "b.ts", revision: "rev-b" },
       ],
     });
-    await expect(list(uncommitted, ["b.ts", "missing.ts", "b.ts"])).resolves.toEqual({
+    await expect(
+      list(uncommitted, ["b.ts", "missing.ts", "b.ts"]),
+    ).resolves.toEqual({
       files: [{ path: "b.ts", revision: "rev-b" }],
     });
     await expect(list(uncommitted, [])).resolves.toEqual({ files: [] });
@@ -613,7 +942,11 @@ describe("Git plugin Viewed marks", () => {
     fake.harness.experimental_watchRpc("viewed", {
       input: { environmentId: "env-1", target: uncommitted },
     });
-    await call("markViewed", { target: uncommitted, path: "a.ts", revision: "rev" });
+    await call("markViewed", {
+      target: uncommitted,
+      path: "a.ts",
+      revision: "rev",
+    });
     await vi.waitFor(() =>
       expect(fake.harness.experimental_rpcInvalidations).toContainEqual([
         gitViewedTag("env-1"),
@@ -654,10 +987,27 @@ describe("Git plugin server across several repos", () => {
 
   function multiRepoSetup() {
     const reads: unknown[] = [];
+    const subscriptions = new Set<
+      Parameters<BbPluginApi["sdk"]["subscribe"]>[0]
+    >();
+    const state = { apiFile: "server.ts" };
+    const repoFiles = (path: string) => ({
+      files: [
+        changed(path === "/mono" ? "packages/app/file.txt" : state.apiFile),
+      ],
+      truncated: false,
+      shortstat: " 1 file changed, 1 insertion(+)\n",
+      mergeBaseRef: path === "/mono" ? "a".repeat(40) : null,
+      initialPatches: [],
+      reusedPatchPaths: [],
+    });
     const fake = createFakePluginHost({
       pluginId: "bb--git",
       sdk: {
-        subscribe: () => () => {},
+        subscribe: (args: Parameters<BbPluginApi["sdk"]["subscribe"]>[0]) => {
+          subscriptions.add(args);
+          return () => subscriptions.delete(args);
+        },
         environments: {
           get: async () => environment({ path: "/mono/packages/app" }),
           experimental_repos: async () => ({ repos: REPOS, truncated: false }),
@@ -687,28 +1037,128 @@ describe("Git plugin server across several repos", () => {
           case "files":
             return {
               outcome: "available",
+              fingerprint: `files:${input.path}:${state.apiFile}`,
+              value: repoFiles(input.path),
+            };
+          case "snapshot": {
+            const snapshot = call.input as {
+              files: { unless?: string }[];
+            };
+            const fingerprint = `files:${input.path}:${state.apiFile}`;
+            return {
+              outcome: "available",
               value: {
-                files: [
-                  changed(
-                    input.path === "/mono"
-                      ? "packages/app/file.txt"
-                      : "server.ts",
-                  ),
-                ],
-                truncated: false,
-                shortstat: " 1 file changed, 1 insertion(+)\n",
-                mergeBaseRef: input.path === "/mono" ? "a".repeat(40) : null,
-                initialPatches: [],
+                status: {
+                  outcome: "available",
+                  fingerprint: "status",
+                  value: makeWorkspaceStatus({
+                    branch: {
+                      currentBranch: "feature",
+                      defaultBranch: "develop",
+                    },
+                  }),
+                },
+                files: snapshot.files.map((query) =>
+                  query.unless === fingerprint
+                    ? { outcome: "unchanged" }
+                    : {
+                        outcome: "available",
+                        fingerprint,
+                        value: repoFiles(input.path),
+                      },
+                ),
               },
             };
+          }
           default:
             return hostResult(call);
         }
       },
     });
     plugin(fake.bb);
-    return { fake, reads };
+    const workspaceChanged = () => {
+      for (const subscription of subscriptions) {
+        if (subscription.event !== "environment:changed") continue;
+        subscription.callback({
+          type: "changed",
+          entity: "environment",
+          id: "env-1",
+          changes: ["work-status-changed"],
+        });
+      }
+    };
+    return { fake, reads, state, workspaceChanged };
   }
+
+  it("checks every repo in the workspace change snapshot and serves the grouped refetch from it", async () => {
+    const { fake, state, workspaceChanged } = multiRepoSetup();
+    const input = {
+      environmentId: "env-1",
+      target: { type: "all" as const, mergeBaseBranch: "main" },
+      ignoreWhitespace: false,
+    };
+    fake.harness.experimental_watchRpc("files", { input });
+    await fake.harness.callRpc("files", input);
+    const hostCalls = (method: string) =>
+      fake.harness.experimental_hostRpcCalls.filter(
+        (call) => call.method === method,
+      );
+    const filesCalls = hostCalls("files").length;
+
+    state.apiFile = "routes.ts";
+    workspaceChanged();
+    await vi.waitFor(() =>
+      expect(fake.harness.experimental_rpcInvalidations.flat()).toContain(
+        gitFilesTag("env-1"),
+      ),
+    );
+    expect(
+      hostCalls("snapshot").map((call) => {
+        const snapshot = call.input as {
+          path: string;
+          files: { target: unknown; unless?: string }[];
+        };
+        return {
+          path: snapshot.path,
+          files: snapshot.files.map(({ target, unless }) => ({
+            target,
+            unless,
+          })),
+        };
+      }),
+    ).toEqual(
+      expect.arrayContaining([
+        { path: "/mono/packages/app", files: [] },
+        {
+          path: "/mono",
+          files: [
+            {
+              target: { type: "all", mergeBaseBranch: "main" },
+              unless: "files:/mono:server.ts",
+            },
+          ],
+        },
+        {
+          path: "/work/api",
+          files: [
+            {
+              target: { type: "all", mergeBaseBranch: "develop" },
+              unless: "files:/work/api:server.ts",
+            },
+          ],
+        },
+      ]),
+    );
+
+    await expect(fake.harness.callRpc("files", input)).resolves.toMatchObject({
+      repos: [{ label: "" }, { label: "../../../work/api" }],
+      files: [
+        { path: "packages/app/file.txt" },
+        { path: "../../../work/api/routes.ts" },
+      ],
+    });
+    expect(hostCalls("files")).toHaveLength(filesCalls);
+  });
 
   it("lists every repo's changes under its label and compares extra repos with their own default branch", async () => {
     const { fake } = multiRepoSetup();

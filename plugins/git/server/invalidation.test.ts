@@ -55,22 +55,22 @@ describe("createCoalescedInvalidator", () => {
     const publish = vi.fn();
     const invalidator = createCoalescedInvalidator(publish);
     invalidator.invalidate("env_1", ["a"]);
-    vi.advanceTimersByTime(100);
+    vi.advanceTimersByTime(30);
     invalidator.invalidate("env_1", ["b"]);
-    vi.advanceTimersByTime(249);
+    vi.advanceTimersByTime(49);
     expect(publish).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(publish).toHaveBeenCalledTimes(1);
-    expect(publish.mock.calls[0]?.[0]).toEqual(["a", "b"]);
+    expect(publish.mock.calls[0]).toEqual(["env_1", ["a", "b"]]);
     invalidator.dispose();
   });
 
   it("flushes a continuous stream of changes within the maximum wait", () => {
     const publish = vi.fn();
     const invalidator = createCoalescedInvalidator(publish);
-    for (let elapsed = 0; elapsed < 500; elapsed += 100) {
+    for (let elapsed = 0; elapsed < 250; elapsed += 25) {
       invalidator.invalidate("env_1", ["a"]);
-      vi.advanceTimersByTime(100);
+      vi.advanceTimersByTime(25);
     }
     expect(publish).toHaveBeenCalledTimes(1);
     invalidator.dispose();
@@ -80,14 +80,14 @@ describe("createCoalescedInvalidator", () => {
     const publish = vi.fn();
     const invalidator = createCoalescedInvalidator(publish);
     invalidator.invalidate("env_1", ["a"]);
-    vi.advanceTimersByTime(250);
+    vi.advanceTimersByTime(50);
     expect(publish).toHaveBeenCalledTimes(1);
     invalidator.invalidate("env_1", ["b"]);
     vi.advanceTimersByTime(999);
     expect(publish).toHaveBeenCalledTimes(1);
     vi.advanceTimersByTime(1);
     expect(publish).toHaveBeenCalledTimes(2);
-    expect(publish.mock.calls[1]?.[0]).toEqual(["b"]);
+    expect(publish.mock.calls[1]).toEqual(["env_1", ["b"]]);
     invalidator.dispose();
   });
 
@@ -95,10 +95,13 @@ describe("createCoalescedInvalidator", () => {
     const publish = vi.fn();
     const invalidator = createCoalescedInvalidator(publish);
     invalidator.invalidate("env_1", ["a"]);
-    vi.advanceTimersByTime(250);
+    vi.advanceTimersByTime(50);
     invalidator.invalidate("env_2", ["b"]);
-    vi.advanceTimersByTime(250);
-    expect(publish.mock.calls.map(([tags]) => tags)).toEqual([["a"], ["b"]]);
+    vi.advanceTimersByTime(50);
+    expect(publish.mock.calls).toEqual([
+      ["env_1", ["a"]],
+      ["env_2", ["b"]],
+    ]);
     invalidator.dispose();
   });
 

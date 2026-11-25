@@ -50,6 +50,89 @@ describe("Git plugin host patches", () => {
   });
 });
 
+describe("Git plugin host file lists", () => {
+  it("reads only the inline patches whose revision the server does not hold, also inside a snapshot", async () => {
+    const repo = await initRepo(await makeTempDir("bb-git-host-files-"));
+    const tempDir = await makeTempDir("bb-git-host-files-temp-");
+    await fs.writeFile(path.join(repo, "README.md"), "changed\n");
+    await fs.writeFile(path.join(repo, "notes.txt"), "new\n");
+    const harness = experimental_createHostEntryHarness(hostEntry, {
+      experimental_paths: { dataDir: tempDir, tempDir },
+    });
+    const query = {
+      target: { type: "uncommitted" as const },
+      ignoreWhitespace: false,
+    };
+    try {
+      const first = await harness.experimental_call("files", {
+        path: repo,
+        freshness: { work: "w1", refs: "r" },
+        ...query,
+        knownPatches: [],
+      });
+      if (first.outcome !== "available") throw new Error("files unavailable");
+      expect(first.value.initialPatches.map((entry) => entry.path).sort())
+        .toEqual(["README.md", "notes.txt"]);
+      expect(first.value.reusedPatchPaths).toEqual([]);
+
+      await fs.writeFile(path.join(repo, "notes.txt"), "newer\n");
+      const snapshot = await harness.experimental_call("snapshot", {
+        path: repo,
+        freshness: { work: "w2", refs: "r" },
+        files: [
+          {
+            ...query,
+            knownPatches: first.value.files.map(({ path, revision }) => ({
+              path,
+              revision,
+            })),
+          },
+        ],
+      });
+      if (snapshot.outcome !== "available") {
+        throw new Error("snapshot unavailable");
+      }
+      expect(snapshot.value.status).toMatchObject({
+        outcome: "available",
+        value: { workingTree: { fileCount: 2 } },
+      });
+      expect(snapshot.value.files).toMatchObject([
+        {
+          outcome: "available",
+          value: {
+            reusedPatchPaths: ["README.md"],
+            initialPatches: [
+              { path: "notes.txt", patch: expect.stringContaining("+newer") },
+            ],
+          },
+        },
+      ]);
+      const status = snapshot.value.status;
+      const [files] = snapshot.value.files;
+      if (status.outcome !== "available" || files?.outcome !== "available") {
+        throw new Error("snapshot parts unavailable");
+      }
+
+      await fs.writeFile(path.join(repo, "notes.txt"), "newer\n");
+      const unchanged = await harness.experimental_call("snapshot", {
+        path: repo,
+        freshness: { work: "w3", refs: "r" },
+        statusUnless: status.fingerprint,
+        files: [{ ...query, knownPatches: [], unless: files.fingerprint }],
+      });
+      expect(unchanged).toEqual({
+        outcome: "available",
+        value: {
+          status: { outcome: "unchanged" },
+          files: [{ outcome: "unchanged" }],
+        },
+      });
+    } finally {
+      await harness.experimental_dispose();
+    }
+  });
+});
+
 describe("Git plugin host branches", () => {
   it("fetches remote branches when asked, never on a branch read", async () => {
     const repo = await initRepo(await makeTempDir("bb-git-host-branches-"));

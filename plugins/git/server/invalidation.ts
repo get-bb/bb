@@ -12,8 +12,8 @@ type EnvironmentChangedEvent = Parameters<
 >[0];
 export type EnvironmentChangeKind = EnvironmentChangedEvent["changes"][number];
 
-const DEBOUNCE_MS = 250;
-const MAX_WAIT_MS = 500;
+const DEBOUNCE_MS = 50;
+const MAX_WAIT_MS = 250;
 const MIN_FLUSH_INTERVAL_MS = 1_000;
 
 const CACHE_KEEPING_CHANGES: ReadonlySet<EnvironmentChangeKind> = new Set([
@@ -68,7 +68,7 @@ interface PendingFlush {
 }
 
 export function createCoalescedInvalidator(
-  publish: (tags: string[]) => void,
+  publish: (environmentId: string, tags: string[]) => void,
   now: () => number = Date.now,
 ) {
   const pending = new Map<string, PendingFlush>();
@@ -79,7 +79,7 @@ export function createCoalescedInvalidator(
     if (entry === undefined) return;
     pending.delete(environmentId);
     lastFlushAt.set(environmentId, now());
-    publish([...entry.tags]);
+    publish(environmentId, [...entry.tags]);
   }
 
   function schedule(environmentId: string, entry: PendingFlush): void {

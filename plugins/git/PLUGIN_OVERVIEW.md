@@ -5,7 +5,7 @@ See each thread's git status where you work: the Diff tab, the changed-files seg
 - The Diff tab, with uncommitted, branch, all-changes and per-commit views, Viewed marks, whitespace and file filters, and Add to chat on selected lines. `Mod+D` toggles it.
 - A changed-files segment above the composer with a merge-base picker.
 - Branch, merge base, ahead/behind status, commits and uncommitted files in the Info tab.
-- Live updates: views refresh after the environment's files or refs change, at most once a second, and only rows someone is watching are re-read.
+- Live updates: after the environment's files or refs change, at most once a second, the server re-reads the watched status and file lists in one host call per repo and refreshes only the views whose result changed.
 
 ## How it works
 
