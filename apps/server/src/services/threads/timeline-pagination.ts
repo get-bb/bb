@@ -170,16 +170,17 @@ export function paginateTimelineRows(
     const updates = changed.map((row) =>
       timelineRowChangesFrom(row, windowStart),
     );
-    const reported =
-      timelineRowsJsonBytes(updates) > remainingBytes ? [] : changed;
+    const reportUpdates =
+      updates.length > 0 && timelineRowsJsonBytes(updates) <= remainingBytes;
     return {
-      olderRowsSourceSeqEnd: omitted
-        .filter((row) => !reported.includes(row))
-        .reduce<number | null>(
-          (sourceSeqEnd, row) => Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
-          omittedContentSourceSeqEnd,
-        ),
-      ...(reported.length > 0 ? { olderRowUpdates: updates } : {}),
+      olderRowsSourceSeqEnd: omitted.reduce<number | null>(
+        (sourceSeqEnd, row) =>
+          reportUpdates && row.sourceSeqEnd >= windowStart
+            ? sourceSeqEnd
+            : Math.max(sourceSeqEnd ?? 0, row.sourceSeqEnd),
+        omittedContentSourceSeqEnd,
+      ),
+      ...(reportUpdates ? { olderRowUpdates: updates } : {}),
     };
   };
   if (selectedSegments.length === 0) {
