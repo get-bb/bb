@@ -9,10 +9,12 @@ import type {
   TimelineRowStatus,
   TimelineToolWorkRow,
   TimelineSystemRow,
+  TimelineTurnRow,
 } from "@bb/server-contract";
 import {
   buildTimelineWorkSummaryLabel,
   buildTimelineViewRows,
+  createTimelineViewRowsCache,
   type ThreadTimelineViewRow,
   type TimelineBundleSummaryRow,
   type TimelineStepSummaryRow,
@@ -544,6 +546,42 @@ describe("buildTimelineViewRows", () => {
     expect(buildTimelineWorkSummaryLabel(summary, { active: true })).toBe(
       "Running 2 tools",
     );
+  });
+
+  it("keeps view rows of unchanged turns and delegations when siblings change", () => {
+    const cache = createTimelineViewRowsCache();
+    const turn: TimelineTurnRow = {
+      ...baseRow("turn-1"),
+      kind: "turn",
+      turnId: "turn-1",
+      status: "completed",
+      summaryCount: 1,
+      completedAt: 2,
+      children: [
+        assistantRow({ id: "assistant-0", text: "done" }),
+        commandRow({ id: "child-command-0" }),
+      ],
+    };
+    const delegation = delegationRow({
+      childRows: [commandRow({ id: "child-command-1" })],
+      turnId: "turn-2",
+    });
+    const build = (text: string) =>
+      buildTimelineViewRows(
+        [
+          turn,
+          delegation,
+          assistantRow({ id: "assistant-1", text, turnId: "turn-2" }),
+        ],
+        { cache },
+      );
+    const first = build("a");
+    const second = build("ab");
+
+    expect(first[0]).not.toBe(turn);
+    expect(second[0]).toBe(first[0]);
+    expect(first[1]).not.toBe(delegation);
+    expect(second[1]).toBe(first[1]);
   });
 
   it("collapses completed delegation children into a step-summary", () => {
