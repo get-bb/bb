@@ -1832,7 +1832,9 @@ describe("workflow service policy integration", () => {
       status: "error" | "active";
       queuedRetryReason: string | null;
       latestRequest: Record<string, unknown>;
-      providerRetry: "absent" | { decidedRequestId: string | null };
+      providerRetry:
+        | "absent"
+        | { decidedRequestId: string | null; declineReason?: string };
       retryQueuedWithDecision?: boolean;
     },
   ) {
@@ -1889,7 +1891,10 @@ describe("workflow service policy integration", () => {
             decision:
               state.retryQueuedWithDecision === true
                 ? { kind: "retry", reason: "Provider unavailable" }
-                : { kind: "decline", reason: "not-retryable" },
+                : {
+                    kind: "decline",
+                    reason: providerRetry.declineReason ?? "not-retryable",
+                  },
           };
     });
   }
@@ -1951,6 +1956,19 @@ describe("workflow service policy integration", () => {
       reRuns: true,
     },
     {
+      name: "provider retry declined a rate limit it has no reset time for",
+      thread: {
+        status: "error",
+        queuedRetryReason: null,
+        latestRequest: { requestId: "creq_failed" },
+        providerRetry: {
+          decidedRequestId: "creq_failed",
+          declineReason: "no-rate-limit-state",
+        },
+      },
+      reRuns: true,
+    },
+    {
       name: "provider retry is not installed",
       thread: {
         status: "error",
@@ -1987,6 +2005,44 @@ describe("workflow service policy integration", () => {
           expect(getRunRequired(test.db, run.id).status).toBe("succeeded"),
         );
         expect(test.childCount()).toBe(reRuns ? 2 : 1);
+      } finally {
+        controller.abort();
+        await worker;
+      }
+    },
+  );
+
+  it.each(["attempts-exhausted", "beyond-maximum-wait", "pool-unavailable"])(
+    "fails the call without a replacement when provider retry declined it as %s",
+    async (declineReason) => {
+      const test = setup();
+      harnesses.push(test.harness);
+      const run = await test.start(source(`return await agent("retry");`));
+      const controller = new AbortController();
+      const worker = test.service.runWorker(controller.signal);
+      try {
+        await eventually(() =>
+          expect(getCall(test.db, run.id, 0)?.childThreadId).toBe("child-1"),
+        );
+        stubFailedWorker(test, {
+          status: "error",
+          queuedRetryReason: null,
+          latestRequest: { requestId: "creq_failed" },
+          providerRetry: { decidedRequestId: "creq_failed", declineReason },
+        });
+        test.service.onThreadFailed("child-1", "HTTP 429: Too many requests");
+
+        await eventually(() =>
+          expect(getRunRequired(test.db, run.id)).toMatchObject({
+            status: "failed",
+            error: "HTTP 429: Too many requests",
+          }),
+        );
+        expect(getCall(test.db, run.id, 0)).toMatchObject({
+          status: "failed",
+          providerRetryAttempts: 0,
+        });
+        expect(test.childCount()).toBe(1);
       } finally {
         controller.abort();
         await worker;
@@ -2595,6 +2651,9 @@ describe("provider retry classification", () => {
       ),
     ).toBe(true);
     expect(isRetryableProviderFailure("API error 529")).toBe(true);
+    expect(
+      isRetryableProviderFailure("Provider error (rate-limit, HTTP 429)"),
+    ).toBe(true);
     expect(isRetryableProviderFailure("read ECONNRESET")).toBe(true);
     expect(
       isRetryableProviderFailure(

@@ -42,7 +42,7 @@ import {
   getLatestStoredThreadEventOfTypes,
   getLatestThreadStopAim,
   getLatestThreadSequence,
-  getLatestThreadSystemErrorEventRow,
+  getLatestThreadErrorEventRow,
   getLatestTokenUsageRow,
   getStoredConversationOutlineProjectionState,
   findStoredItemTurnIdInRange,
@@ -1333,9 +1333,12 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#getLatestThreadSystemErrorEventRow`,
+    name: `${EVENTS}#getLatestThreadErrorEventRow`,
     run: (db, fixture) =>
-      getLatestThreadSystemErrorEventRow(db, { threadId: fixture.threadId }),
+      getLatestThreadErrorEventRow(db, {
+        afterSequence: 0,
+        threadId: fixture.threadId,
+      }),
   },
   {
     name: `${EVENTS}#getLatestModelFallbackRowSinceTurnRequest`,
