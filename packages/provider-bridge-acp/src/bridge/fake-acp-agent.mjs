@@ -49,6 +49,9 @@
  * - FAKE_ACP_REQUEST_LOG     → append each client request as JSON
  * - FAKE_ACP_MODEL_COUNT=<n> → pad the catalog to n reasoning-capable models
  *                              (exercises large-catalog reasoning discovery)
+ * - FAKE_ACP_COMMAND_COUNT=<n>
+ *                            → advertise-commands sends n skills with
+ *                              600-character descriptions
  * - FAKE_ACP_AUTH_METHODS    → comma-separated auth method ids to advertise;
  *                              session creation requires authenticate first
  * - FAKE_ACP_TERMINAL_AUTH_ARGS
@@ -873,10 +876,21 @@ async function handlePrompt(message) {
         });
     }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("advertise-commands")) {
-    const availableCommands = [
-      { name: "review", description: "Review the current diff" },
-      { name: "web", description: "Search the web", input: { hint: "query" } },
-    ];
+    const commandCount = Number(process.env.FAKE_ACP_COMMAND_COUNT ?? "0");
+    const availableCommands =
+      commandCount > 0
+        ? Array.from({ length: commandCount }, (_, index) => ({
+            name: `skill-${index}`,
+            description: `Skill ${index}: ${"x".repeat(600)}`,
+          }))
+        : [
+            { name: "review", description: "Review the current diff" },
+            {
+              name: "web",
+              description: "Search the web",
+              input: { hint: "query" },
+            },
+          ];
     notifyUpdate({
       sessionUpdate: "available_commands_update",
       availableCommands,

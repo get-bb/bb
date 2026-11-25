@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const EXTENSION_PAYLOAD_MAX_BYTES = 64 * 1024;
+
 export const EXTENSION_KIND_PATTERN = /^[a-z0-9-]+\/[a-z0-9-]+$/u;
 
 export type ExtensionKind = `${string}/${string}`;
