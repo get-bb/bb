@@ -44,6 +44,8 @@ function makeThread(
     hasPendingInteraction: false,
     environmentHostId: null,
     environmentPath: null,
+    environmentStatus: null,
+    environmentHostLifecycle: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
     environmentName: null,

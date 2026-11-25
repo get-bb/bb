@@ -8,7 +8,9 @@ import {
   createProject,
   createQueuedThreadMessage,
   createThread,
+  environments,
   hostDaemonSessions,
+  hosts,
   listQueuedThreadMessages,
   listThreadsWithPendingInteractionState,
   noopNotifier,
@@ -236,6 +238,8 @@ function createThreadListEntry(
     statusChangedAt: args.thread.updatedAt,
     environmentBranchName: null,
     environmentPath: null,
+    environmentStatus: null,
+    environmentHostLifecycle: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
     environmentHostId: args.environmentHostId,
@@ -482,6 +486,42 @@ describe("thread runtime display", () => {
 
     expect(providerIdByThreadId.get(provided.thread.id)).toBe("git-worktree");
     expect(providerIdByThreadId.get(checkout.thread.id)).toBeNull();
+  });
+
+  it("carries the environment's setup status and its machine's lifecycle into the list entry", () => {
+    const { db, hostId, hub } = setup();
+    const { environment, project } = createThreadWithEnvironment({
+      db,
+      hostId,
+    });
+    const listEntry = () =>
+      toThreadListEntryResponses(
+        { db, hub, providerRegistry },
+        {
+          threads: listThreadsWithPendingInteractionState(db, {
+            projectId: project.id,
+          }),
+        },
+      )[0];
+
+    expect(listEntry()).toMatchObject({
+      environmentStatus: "ready",
+      environmentHostLifecycle: "active",
+    });
+
+    db.update(environments)
+      .set({ status: "error" })
+      .where(eq(environments.id, environment.id))
+      .run();
+    db.update(hosts)
+      .set({ phase: "removing" })
+      .where(eq(hosts.id, hostId))
+      .run();
+
+    expect(listEntry()).toMatchObject({
+      environmentStatus: "error",
+      environmentHostLifecycle: "removing",
+    });
   });
 
   it("reports the selected machine before a new thread has an environment", () => {

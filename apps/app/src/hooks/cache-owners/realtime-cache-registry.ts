@@ -475,6 +475,7 @@ export const REALTIME_ENVIRONMENT_CHANGE_REGISTRY = {
     dirty: [
       dirtyEnvironmentRecordQueries,
       dirtyEnvironmentWorkspaceStateQueries,
+      dirtyEnvironmentThreadListQueries,
     ],
   },
   "work-status-changed": {

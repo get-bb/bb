@@ -1,7 +1,6 @@
 import type {
   PluginBoundThreadAction,
   PluginThreadActionsInlineItem,
-  PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
 import { Fragment } from "react";
 import {
@@ -61,7 +60,7 @@ export function useThreadActionMenuGroups({
   inline = [],
   requestRename,
 }: {
-  thread: PluginThreadActionTarget;
+  thread: { id: string };
   inline?: readonly PluginThreadActionsInlineItem[];
   requestRename?: (threadId: string) => void;
 }): ThreadActionMenuEntry[][] {
@@ -82,7 +81,7 @@ export function useThreadBulkActionMenuGroups({
   threads,
   inline = [],
 }: {
-  threads: readonly PluginThreadActionTarget[];
+  threads: readonly { id: string }[];
   inline?: readonly PluginThreadActionsInlineItem[];
 }): ThreadActionMenuEntry[][] {
   const rename = useDefaultRequestRename();

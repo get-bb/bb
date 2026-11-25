@@ -18,6 +18,8 @@ import type {
   RefObject,
 } from "react";
 import type {
+  EnvironmentHostLifecycle,
+  EnvironmentStatus,
   PermissionMode,
   PromptInput,
   ProviderInfo,
@@ -2554,7 +2556,10 @@ export interface ExperimentalPluginBrowserToolbarActionRegistration {
 
 /**
  * The thread a thread action is evaluated for: the fields bb's own actions
- * read, copied from the thread payload by the surface that shows the menu.
+ * read. bb builds it from the thread's id the same way on every surface (the
+ * thread header, sidebar rows and their menus, selection menus, the command
+ * palette, and plugin lists), so an action sees the same target wherever it
+ * shows.
  */
 export interface PluginThreadActionTarget {
   id: string;
@@ -2573,10 +2578,19 @@ export interface PluginThreadActionTarget {
   isHidden: boolean;
   status: ThreadStatus;
   /**
-   * The thread's environment when a new thread can reuse it, null otherwise.
-   * `path` is the checkout path, null when the environment has none.
+   * The thread's environment, null when the thread has none or bb cannot
+   * read it. `path` is its checkout path, null while the environment has no
+   * checkout (not created yet, or removed). `status` is its setup state
+   * ("error" when setup failed) and `hostLifecycle` its machine's ("active"
+   * unless the machine is being removed or is gone). Experimental: see
+   * docs/api_to_audit.md.
    */
-  environment: { id: string; path: string | null } | null;
+  environment: {
+    id: string;
+    path: string | null;
+    status: EnvironmentStatus;
+    hostLifecycle: EnvironmentHostLifecycle;
+  } | null;
 }
 
 /** One row of a thread action's choice list. */
@@ -2648,6 +2662,13 @@ export interface PluginThreadActionDataInput {
    * ids, fetching only ids not loaded yet.
    */
   threadIds: readonly string[];
+  /**
+   * The targets `item` receives for `threadIds`, in the same order, kept
+   * current as the threads change. A thread bb has not loaded yet is left out
+   * until it loads. Read thread fields such as `environment` here instead of
+   * fetching each thread. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_threads: readonly PluginThreadActionTarget[];
 }
 
 /** What a registration's `item` receives for each thread it is shown for. */
@@ -2812,7 +2833,12 @@ export interface PluginThreadActionsInlineItem {
 export type PluginThreadActionsTriggerProps = ComponentPropsWithRef<"button">;
 
 interface PluginThreadActionsMenuBaseProps {
-  thread: PluginThreadActionTarget;
+  /**
+   * The thread the menu acts on. bb reads only its `id` and resolves the
+   * target its actions receive itself, so pass the thread object you hold
+   * (a `PluginSidebarThread`, an `ExperimentalThread`) or `{ id }`.
+   */
+  thread: { id: string };
   inline?: readonly PluginThreadActionsInlineItem[];
   /** See {@link PluginThreadActionsOptions.requestRename}. */
   requestRename?(threadId: string): void;
@@ -2849,10 +2875,10 @@ export interface PluginThreadActionsContextMenuProps extends PluginThreadActions
    * registration's `experimental_bulkItem` under a count of the
    * selection, including bb's own Mark read, Pin, Archive and Delete, which
    * confirm and clean up as the single-thread actions do, then `inline`.
-   * Omit it, or pass fewer than two, for `thread`'s own menu. Experimental:
-   * see docs/api_to_audit.md.
+   * Omit it, or pass fewer than two, for `thread`'s own menu. As with
+   * `thread`, bb reads only each `id`. Experimental: see docs/api_to_audit.md.
    */
-  experimental_bulkThreads?: readonly PluginThreadActionTarget[];
+  experimental_bulkThreads?: readonly { id: string }[];
   /** Called when Escape dismisses the desktop menu, e.g. to clear a selection. */
   onEscapeKeyDown?(event: KeyboardEvent): void;
 }
@@ -6374,10 +6400,12 @@ export interface PluginSdkApp {
    * then plugins' in registration order. Registrations' `useData` hooks run
    * once for the app, so calling this per sidebar row costs one store
    * subscription and a pure `item` call per registration. Pass `keys` for a
-   * row's quick actions. Experimental: see docs/api_to_audit.md.
+   * row's quick actions. bb reads only `thread.id` and resolves the target
+   * as its menus do; the list is empty until bb has loaded the thread.
+   * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadActions(
-    thread: PluginThreadActionTarget,
+    thread: { id: string },
     options?: PluginThreadActionsOptions,
   ): readonly PluginThreadActionEntry[];
   /**

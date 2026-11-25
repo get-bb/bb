@@ -120,7 +120,8 @@ only on the topmost selected threads.
 
 A thread list with multi-selection passes a selected row's
 `experimental_ThreadActionsContextMenu` the selection as
-`experimental_bulkThreads` (two or more targets in list order), its own
+`experimental_bulkThreads` (two or more selected threads in list order; bb
+reads only their ids), its own
 `inline` entries such as Clear selection, and `onEscapeKeyDown` to clear the
 selection when Escape closes the menu; with fewer than two the row gets its
 own thread menu. In tests, `renderSlot(..., { threadBulkActions })` sets what

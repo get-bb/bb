@@ -68,6 +68,7 @@ const NON_PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
 ] as const;
 
 interface CachedThreadListEntryFixture {
+  environmentId?: string;
   hasPendingInteraction: boolean;
   id: string;
 }
@@ -1260,6 +1261,43 @@ describe("createRealtimeCacheEffects", () => {
     vi.advanceTimersByTime(250);
 
     expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      true,
+    );
+
+    effects.dispose();
+  });
+
+  it("refreshes the sidebar threads in an environment when the environment's status changes", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    queryClient.setQueryData<CachedSidebarNavigationFixture>(
+      sidebarNavigationKey,
+      {
+        projects: [
+          {
+            threads: [
+              {
+                environmentId: "env_1",
+                hasPendingInteraction: false,
+                id: "thr_1",
+              },
+            ],
+          },
+        ],
+        personalProject: { threads: [] },
+      },
+    );
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env_1",
+      changes: ["status-changed"],
+    });
+    vi.advanceTimersByTime(250);
+
+    expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
       true,
     );
 

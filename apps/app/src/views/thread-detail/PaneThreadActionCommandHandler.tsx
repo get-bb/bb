@@ -1,4 +1,3 @@
-import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk";
 import { useIndexedAppCommandHandlers } from "@/components/commands/AppCommandProvider";
 import { CORE_PLUGIN_ID } from "@bb/domain";
 import { useThreadActionEntries } from "@/lib/thread-actions/thread-action-registry";
@@ -19,7 +18,7 @@ const PANE_THREAD_ACTION_KEYS = [
 export function PaneThreadActionCommandHandler({
   thread,
 }: {
-  thread: PluginThreadActionTarget;
+  thread: { id: string; archivedAt: number | null };
 }) {
   const { isFocused } = usePaneContext();
   const entries = useThreadActionEntries(thread, {

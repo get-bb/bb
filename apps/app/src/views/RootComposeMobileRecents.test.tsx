@@ -10,7 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Provider, createStore } from "jotai";
 import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 import { MemoryRouter } from "react-router-dom";
@@ -22,6 +22,7 @@ import { RootComposeMobileRecents } from "./RootComposeMobileRecents";
 import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
 import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
 import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
+import { holdSidebarThreads } from "@/test/fixtures/related-threads";
 
 const threadActions = vi.hoisted(() => ({
   requestArchive: vi.fn(),
@@ -67,13 +68,20 @@ const personalProvider: SystemEnvironmentProvider = {
 function TestProviders({
   children,
   store = createStore(),
+  threads = [],
 }: {
   children: ReactNode;
   store?: ReturnType<typeof createStore>;
+  threads?: readonly ThreadListEntry[];
 }) {
+  const [queryClient] = useState(() => {
+    const client = new QueryClient();
+    holdSidebarThreads(client, threads);
+    return client;
+  });
   return (
     <Provider store={store}>
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={queryClient}>
         <MemoryRouter>
           <ThreadActionCollectors
             coreRegistrations={CORE_THREAD_ACTIONS}
@@ -499,7 +507,7 @@ describe("RootComposeMobileRecents", () => {
     vi.useFakeTimers();
     const thread = makeThread();
     render(
-      <TestProviders>
+      <TestProviders threads={[thread]}>
         <CompactViewportOverrideProvider isCompactViewport>
           <RootComposeMobileRecents
             highlightedThreadId={null}

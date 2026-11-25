@@ -587,6 +587,8 @@ function toThreadListEntryResponseFromLatestSession(
     environmentHostId: args.thread.environmentHostId,
     environmentName: args.thread.environmentName,
     environmentPath: args.thread.environmentPath,
+    environmentStatus: args.thread.environmentStatus,
+    environmentHostLifecycle: args.thread.environmentHostLifecycle,
     environmentProviderId: args.thread.environmentProviderId,
     environmentIsWorktree: args.thread.environmentIsWorktree,
     environmentWorkspaceDisplayKind: resolveEnvironmentWorkspaceDisplayKind({

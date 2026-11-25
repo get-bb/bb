@@ -33,6 +33,12 @@ import {
   usePluginSlotKind,
   type PluginThreadActionSlot,
 } from "@/lib/plugin-slots";
+import {
+  ThreadActionTargetLoaders,
+  useStableThreadIds,
+  useThreadActionTarget,
+  useThreadActionTargets,
+} from "./thread-action-target";
 
 export interface ThreadActionRegistrationRecord {
   key: string;
@@ -240,6 +246,7 @@ type ThreadActionUseData = PluginThreadActionRegistration<unknown>["useData"];
 interface ThreadActionDataHostProps {
   record: ThreadActionRegistrationRecord;
   threadIds: readonly string[];
+  threads: readonly PluginThreadActionTarget[];
 }
 
 function createThreadActionDataHost(useData: ThreadActionUseData) {
@@ -253,21 +260,22 @@ function createThreadActionDataHost(useData: ThreadActionUseData) {
   return function ThreadActionDataHost({
     record,
     threadIds,
+    threads,
   }: ThreadActionDataHostProps) {
-    const data = useData({ threadIds });
+    const data = useData({ threadIds, experimental_threads: threads });
     return <ThreadActionPublisher record={record} data={data} />;
   };
 }
 
 function ThreadActionCollector({
   record,
+  threadIds,
+  threads,
 }: {
   record: ThreadActionRegistrationRecord;
+  threadIds: readonly string[];
+  threads: readonly PluginThreadActionTarget[];
 }) {
-  const threadIds = useSyncExternalStore(
-    subscribeThreadIds,
-    getSubscribedThreadIds,
-  )[record.placement];
   const useData = record.registration.useData;
   const [dataHost, setDataHost] = useState(() => ({
     useData,
@@ -277,7 +285,7 @@ function ThreadActionCollector({
     setDataHost({ useData, Component: createThreadActionDataHost(useData) });
   }
   const { Component } = dataHost;
-  return <Component record={record} threadIds={threadIds} />;
+  return <Component record={record} threadIds={threadIds} threads={threads} />;
 }
 
 function ThreadActionPublisher({
@@ -354,6 +362,18 @@ export function ThreadActionCollectors({
   requestRename: (threadId: string) => void;
 }) {
   const records = useThreadActionRecords(coreRegistrations);
+  const threadIds = useSyncExternalStore(
+    subscribeThreadIds,
+    getSubscribedThreadIds,
+  );
+  const threads = {
+    menu: useThreadActionTargets(threadIds.menu),
+    header: useThreadActionTargets(threadIds.header),
+  };
+  const loadedThreadIds = useMemo(
+    () => [...new Set([...threadIds.menu, ...threadIds.header])],
+    [threadIds],
+  );
   const latestRename = useRef(requestRename);
   useLayoutEffect(() => {
     latestRename.current = requestRename;
@@ -372,13 +392,18 @@ export function ThreadActionCollectors({
   }, []);
   return (
     <FocusedAppNavigationSurfaceProvider>
+      <ThreadActionTargetLoaders threadIds={loadedThreadIds} />
       {records.map((record) => (
         <PluginContext.Provider
           key={record.instanceKey}
           value={record.pluginId}
         >
           <ThreadActionCollectorBoundary registrationKey={record.key}>
-            <ThreadActionCollector record={record} />
+            <ThreadActionCollector
+              record={record}
+              threadIds={threadIds[record.placement]}
+              threads={threads[record.placement]}
+            />
           </ThreadActionCollectorBoundary>
         </PluginContext.Provider>
       ))}
@@ -526,61 +551,68 @@ function retainThreadActionEntries(
   return retained.entries;
 }
 
+const NO_THREAD_ACTION_ENTRIES: readonly PluginThreadActionEntry[] = [];
+
 function useThreadEntries(
-  thread: PluginThreadActionTarget,
+  threadId: string,
   options: PluginThreadActionsOptions | undefined,
   placement: PluginThreadActionPlacement,
 ): readonly PluginThreadActionEntry[] {
   const [owner] = useState(() => ({}));
+  const thread = useThreadActionTarget(threadId);
   const entries = useSyncExternalStore(subscribe, () =>
-    retainThreadActionEntries(
-      owner,
-      evaluateThreadActions(
-        getSnapshot(),
-        { kind: "thread", thread },
-        options,
-        placement,
-      ).filter(
-        (entry) => placement === "menu" || entry.action.choices === undefined,
-      ),
-    ),
+    thread === null
+      ? NO_THREAD_ACTION_ENTRIES
+      : retainThreadActionEntries(
+          owner,
+          evaluateThreadActions(
+            getSnapshot(),
+            { kind: "thread", thread },
+            options,
+            placement,
+          ).filter(
+            (entry) =>
+              placement === "menu" || entry.action.choices === undefined,
+          ),
+        ),
   );
   const surfaceVisible = useContext(ThreadActionSurfaceVisibleContext);
   useEffect(
-    () => (surfaceVisible ? retainThreadId(thread.id, placement) : undefined),
-    [placement, surfaceVisible, thread.id],
+    () => (surfaceVisible ? retainThreadId(threadId, placement) : undefined),
+    [placement, surfaceVisible, threadId],
   );
   return entries;
 }
 
 export function useThreadActionEntries(
-  thread: PluginThreadActionTarget,
+  thread: { id: string },
   options?: PluginThreadActionsOptions,
 ): readonly PluginThreadActionEntry[] {
-  return useThreadEntries(thread, options, "menu");
+  return useThreadEntries(thread.id, options, "menu");
 }
 
-export function useThreadHeaderActionEntries(
-  thread: PluginThreadActionTarget,
-): readonly PluginThreadActionEntry[] {
-  return useThreadEntries(thread, undefined, "header");
+export function useThreadHeaderActionEntries(thread: {
+  id: string;
+}): readonly PluginThreadActionEntry[] {
+  return useThreadEntries(thread.id, undefined, "header");
 }
 
 export function useThreadBulkActionEntries(
-  threads: readonly PluginThreadActionTarget[],
+  selection: readonly { id: string }[],
 ): readonly PluginThreadActionEntry[] {
   const registry = useSyncExternalStore(subscribe, getSnapshot);
   const surfaceVisible = useContext(ThreadActionSurfaceVisibleContext);
-  const threadIdsKey = threads.map((thread) => thread.id).join("\n");
+  const threadIds = useStableThreadIds(selection);
+  const threads = useThreadActionTargets(threadIds);
   useEffect(() => {
-    if (!surfaceVisible || threadIdsKey === "") return undefined;
-    const releases = threadIdsKey
-      .split("\n")
-      .map((threadId) => retainThreadId(threadId, "menu"));
+    if (!surfaceVisible || threadIds.length === 0) return undefined;
+    const releases = threadIds.map((threadId) =>
+      retainThreadId(threadId, "menu"),
+    );
     return () => {
       for (const release of releases) release();
     };
-  }, [surfaceVisible, threadIdsKey]);
+  }, [surfaceVisible, threadIds]);
   return evaluateThreadActions(
     registry,
     { kind: "bulk", threads },
