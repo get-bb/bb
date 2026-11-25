@@ -36,6 +36,7 @@ import {
 import {
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
+  getPullRequestListNames,
   getPullRequestNextStep,
   isPullRequestAutoMergeOn,
   PULL_REQUEST_STATE_DISPLAY,
@@ -57,6 +58,13 @@ export function useOpenUrlClick(
     }
     if (navigate.openUrl(url)) event.preventDefault();
   };
+}
+
+function useThreadPullRequests(
+  environment: ExperimentalThreadContextSegmentInput["environment"],
+): readonly PullRequest[] {
+  const { pullRequests } = useEnvironmentPullRequest(environment?.id ?? null);
+  return pullRequests.map((entry) => entry.pullRequest);
 }
 
 function useThreadPullRequest(
@@ -130,12 +138,62 @@ export function PullRequestLink({
   );
 }
 
+function PullRequestCompactLink({
+  pullRequest,
+  name,
+}: {
+  pullRequest: PullRequest;
+  name: string;
+}) {
+  const handleClick = useOpenUrlClick(pullRequest.url);
+  return (
+    <a
+      href={pullRequest.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={handleClick}
+      aria-label={`Pull request ${name}: ${describePullRequestStatus(pullRequest)}`}
+      title={`${pullRequest.title} (${describePullRequestStatus(pullRequest)})`}
+      className="flex min-w-0 shrink items-center gap-1 rounded-sm text-muted-foreground no-underline transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+    >
+      <PullRequestStatusPill pullRequest={pullRequest} className="h-4" />
+      <span className="min-w-0 truncate">{name}</span>
+    </a>
+  );
+}
+
+export function PullRequestLinks({
+  pullRequests,
+}: {
+  pullRequests: readonly PullRequest[];
+}) {
+  const names = getPullRequestListNames(pullRequests);
+  return (
+    <span
+      className={cn(
+        "flex min-w-0 items-center gap-2 overflow-hidden text-xs",
+        CONTEXT_CARD_SEGMENT_CLASS,
+      )}
+    >
+      {pullRequests.map((pullRequest, index) => (
+        <PullRequestCompactLink
+          key={pullRequest.url}
+          pullRequest={pullRequest}
+          name={names[index]!}
+        />
+      ))}
+    </span>
+  );
+}
+
 export function PullRequestSummaryLabel({
   pullRequest,
+  name = `PR #${pullRequest.number}`,
   showState,
   hideNumberWhenCompact,
 }: {
   pullRequest: PullRequest;
+  name?: string;
   showState: boolean;
   hideNumberWhenCompact: boolean;
 }) {
@@ -150,7 +208,7 @@ export function PullRequestSummaryLabel({
         className="min-w-0 truncate"
         data-promptbox-hide-compact={hideNumberWhenCompact ? "" : undefined}
       >
-        PR #{pullRequest.number}
+        {name}
         {showState && pullRequest.state !== "open"
           ? ` · ${PULL_REQUEST_STATE_DISPLAY[pullRequest.state].label}`
           : ""}
@@ -319,7 +377,7 @@ function PullRequestAction({
   environmentId: string;
   pullRequest: PullRequest;
 }) {
-  const actions = usePullRequestActions(environmentId);
+  const actions = usePullRequestActions(environmentId, null);
   return (
     <PullRequestActionButtons
       pullRequest={pullRequest}
@@ -336,16 +394,25 @@ export function PullRequestSegmentSummary({
   environment,
   segments,
 }: ExperimentalThreadContextSegmentProps) {
-  const pullRequest = useThreadPullRequest(environment);
-  if (pullRequest === null) return null;
+  const pullRequests = useThreadPullRequests(environment);
+  const [pullRequest] = pullRequests;
+  if (pullRequest === undefined) return null;
+  if (pullRequests.length > 1)
+    return <PullRequestLinks pullRequests={pullRequests} />;
   return <PullRequestLink pullRequest={pullRequest} segments={segments} />;
 }
 
 export function PullRequestSegmentAction({
   environment,
 }: ExperimentalThreadContextSegmentProps) {
-  const pullRequest = useThreadPullRequest(environment);
-  if (environment === null || pullRequest === null) return null;
+  const pullRequests = useThreadPullRequests(environment);
+  const [pullRequest] = pullRequests;
+  if (
+    environment === null ||
+    pullRequest === undefined ||
+    pullRequests.length > 1
+  )
+    return null;
   return (
     <PullRequestAction
       environmentId={environment.id}

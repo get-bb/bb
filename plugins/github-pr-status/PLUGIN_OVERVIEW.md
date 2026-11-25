@@ -3,6 +3,7 @@ See the GitHub pull request for each thread's branch where you already work: a b
 ## What you get
 
 - A badge under each sidebar thread's title with the pull request's number in its state's color, followed by a red cross when it needs action (failing checks, changes requested, conflicts, behind its base or blocked by rules) or else a yellow dot while checks run; hover it for the title and check counts. Turn on Organize → Rows → Metadata.
+- Every pull request of a thread: the one for each repo's checked-out branch when a thread spans several repos, plus any pull request you or the agent link, such as one per split or stacked branch. The badge shows the first one's number and how many more; the Info panel and the thread's card list each one with its own actions.
 - One rolled-up status per pull request: checks, review, conflicts, merge queue and auto-merge.
 - Ready for review, Convert to draft and Merge (merge, squash or rebase).
 - Live updates while you watch: pending checks are re-checked every 30 seconds and other open or draft PRs every 5 minutes, in one batched GitHub request per machine, and views refresh only when something changed.
@@ -13,9 +14,10 @@ The plugin batches GitHub reads through `gh api graphql` in the environment's wo
 
 Use the CLI from any thread:
 
-- `bb pull-request show <environment-id>` prints the pull request.
+- `bb pull-request show <environment-id>` prints its pull requests.
 - `bb pull-request ready|draft <environment-id>` changes draft state.
-- `bb pull-request merge <environment-id> --method squash` merges it.
+- `bb pull-request merge <environment-id> --method squash` merges it; `--url` picks one of several.
+- `bb pull-request link|unlink <environment-id> <url>` adds or removes another pull request.
 
 Turn off Show pull request above the composer on this page to hide the composer segment; the Info panel keeps its Pull request row.
 

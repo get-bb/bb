@@ -17,6 +17,7 @@ import {
   PULL_REQUEST_STATE_DISPLAY,
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
+  getPullRequestListNames,
   getPullRequestNextStep,
   type GithubCheckStatus,
 } from "./display";
@@ -54,21 +55,20 @@ function AttentionGlyph({ kind }: { kind: "blocked" | "running" }) {
   );
 }
 
-export function PullRequestBadge({
-  pullRequest,
-}: {
-  pullRequest: PullRequest;
-}) {
-  const [hovered, setHovered] = useState(false);
+function badgeGlyph(pullRequest: PullRequest): "blocked" | "running" | null {
+  if (getPullRequestNextStep(pullRequest)?.tone === "action") return "blocked";
+  return getPullRequestGithubCheckStatus(pullRequest) === "pending"
+    ? "running"
+    : null;
+}
+
+function describeBadgePullRequest(pullRequest: PullRequest): string {
   const state = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
   const checks = getPullRequestGithubCheckStatus(pullRequest);
-  const counts = checks === null ? null : checkCounts(pullRequest);
   const nextStep = getPullRequestNextStep(pullRequest);
   const action =
     nextStep?.tone === "action" ? nextStep.label.toLowerCase() : null;
-  const glyph =
-    action !== null ? "blocked" : checks === "pending" ? "running" : null;
-  const label = [
+  return [
     ...new Set([
       `Pull request #${pullRequest.number}`,
       state.label.toLowerCase(),
@@ -78,6 +78,52 @@ export function PullRequestBadge({
   ]
     .filter((part) => part !== null)
     .join(", ");
+}
+
+function BadgeTooltipLine({
+  pullRequest,
+  name,
+}: {
+  pullRequest: PullRequest;
+  name: string;
+}) {
+  const counts =
+    getPullRequestGithubCheckStatus(pullRequest) === null
+      ? null
+      : checkCounts(pullRequest);
+  return (
+    <>
+      <div className="truncate">
+        {name} {pullRequest.title}
+      </div>
+      <div className="text-primary-foreground/75">
+        {describePullRequestStatus(pullRequest)}
+        {counts === null ? null : ` · ${counts}`}
+      </div>
+    </>
+  );
+}
+
+export function PullRequestBadge({
+  pullRequests,
+}: {
+  pullRequests: readonly [PullRequest, ...PullRequest[]];
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [pullRequest] = pullRequests;
+  const state = PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
+  const glyphs = pullRequests.map(badgeGlyph);
+  const glyph = glyphs.includes("blocked")
+    ? "blocked"
+    : glyphs.includes("running")
+      ? "running"
+      : null;
+  const names = getPullRequestListNames(pullRequests);
+  const others = pullRequests.length - 1;
+  const label =
+    others === 0
+      ? describeBadgePullRequest(pullRequest)
+      : `${pullRequests.length} pull requests: ${pullRequests.map(describeBadgePullRequest).join("; ")}`;
   const badge = (
     <span
       role="img"
@@ -95,6 +141,9 @@ export function PullRequestBadge({
       >
         #{pullRequest.number}
       </span>
+      {others === 0 ? null : (
+        <span className="text-subtle-foreground">+{others}</span>
+      )}
       {glyph === null ? null : <AttentionGlyph kind={glyph} />}
     </span>
   );
@@ -103,13 +152,11 @@ export function PullRequestBadge({
     <Tooltip>
       <TooltipTrigger asChild>{badge}</TooltipTrigger>
       <TooltipContent side="top" className="max-w-72">
-        <div className="truncate">
-          #{pullRequest.number} {pullRequest.title}
-        </div>
-        <div className="text-primary-foreground/75">
-          {describePullRequestStatus(pullRequest)}
-          {counts === null ? null : ` · ${counts}`}
-        </div>
+        {pullRequests.map((entry, index) => (
+          <div key={entry.url} className={index > 0 ? "mt-1" : undefined}>
+            <BadgeTooltipLine pullRequest={entry} name={names[index]!} />
+          </div>
+        ))}
       </TooltipContent>
     </Tooltip>
   );
@@ -151,8 +198,13 @@ export function PullRequestRowMetadata({
 }: ExperimentalThreadRowMetadataProps<PullRequestRows>) {
   const environmentId = thread.environment?.id ?? null;
   const row = environmentId === null ? undefined : data?.[environmentId];
-  const pullRequest = row?.outcome === "available" ? row.pullRequest : null;
-  return pullRequest === null ? null : (
-    <PullRequestBadge pullRequest={pullRequest} />
+  if (row?.outcome !== "available") return null;
+  return (
+    <PullRequestBadge
+      pullRequests={[
+        row.pullRequest,
+        ...row.pullRequests.slice(1).map((entry) => entry.pullRequest),
+      ]}
+    />
   );
 }

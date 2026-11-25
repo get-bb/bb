@@ -213,7 +213,7 @@ const harness = experimental_createHostEntryHarness(hostEntry);
 
 async function view(read: { path: string; refresh: boolean }) {
   const [result] = await harness.experimental_call("views", {
-    reads: [{ ...read, known: null }],
+    reads: [{ kind: "branch" as const, ...read, known: null }],
   });
   return result?.lookup;
 }
@@ -257,6 +257,7 @@ describe("pull request lookup for differently named upstream branches", () => {
 
     const views = await harness.experimental_call("views", {
       reads: [localBranch, "bb/previous-branch"].map((branchName) => ({
+        kind: "branch" as const,
         path: workspacePath,
         known: { url, branchName },
         refresh: true,
@@ -269,6 +270,25 @@ describe("pull request lookup for differently named upstream branches", () => {
     expect(queries[0]!.match(/resource\(url: /g)).toEqual(["resource(url: "]);
     expect(queries[0]).toContain(`p0: resource(url: ${JSON.stringify(url)})`);
     expect(queries[0]).toContain(`headRefName: "${localBranch}"`);
+  });
+
+  it("reads a linked PR by URL beside a branch read, without branch refs", async () => {
+    const workspacePath = await createManagedBaseTrackedWorkspace();
+    const gh = await installFakeGh(sameRepository);
+    const linked = "https://github.com/acme/bb/pull/1300";
+
+    const views = await harness.experimental_call("views", {
+      reads: [
+        { kind: "branch", path: workspacePath, known: null, refresh: false },
+        { kind: "url", path: workspacePath, url: linked },
+      ],
+    });
+
+    expect(views[0]!.refs).toMatchObject({ branchName: localBranch });
+    expect(views[1]!.refs).toBeNull();
+    const queries = (await gh.readQueries()).join("\n");
+    expect(queries).toContain(`headRefName: "${localBranch}"`);
+    expect(queries).toContain(`resource(url: ${JSON.stringify(linked)})`);
   });
 
   it("uses the local branch when a differently named remote aliases origin", async () => {

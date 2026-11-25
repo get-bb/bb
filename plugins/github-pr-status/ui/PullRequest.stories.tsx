@@ -599,6 +599,7 @@ const CARD_HANDLERS = {
   onMarkReady: noop,
   onMarkDraft: noop,
   onMerge: noop,
+  onUnlink: null,
 };
 
 export function ContextCardRow() {

@@ -188,3 +188,21 @@ export function getPullRequestStateDisplay(
 ): PullRequestStateDisplay {
   return PULL_REQUEST_STATE_DISPLAY[pullRequest.state];
 }
+
+function repositoryName(url: string): string {
+  const [, owner = "", repository = ""] = new URL(url).pathname.split("/");
+  return `${owner}/${repository}`;
+}
+
+export function getPullRequestListNames(
+  pullRequests: readonly PullRequest[],
+): string[] {
+  const repositories = new Set(
+    pullRequests.map((pullRequest) => repositoryName(pullRequest.url)),
+  );
+  return pullRequests.map((pullRequest) =>
+    repositories.size > 1
+      ? `${repositoryName(pullRequest.url).split("/")[1]} #${pullRequest.number}`
+      : `#${pullRequest.number}`,
+  );
+}

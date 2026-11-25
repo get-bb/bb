@@ -83,7 +83,13 @@ const CHANGED_FILES = { key: "bb--git/changed-files", pluginId: "bb--git" };
 const PARENT = { key: "bb--core/parent-thread", pluginId: "bb--core" };
 
 function show(pullRequest: PullRequest) {
-  sdk.rows = { env_1: { outcome: "available", pullRequest } };
+  sdk.rows = {
+    env_1: {
+      outcome: "available",
+      pullRequest,
+      pullRequests: [{ pullRequest, linked: false }],
+    },
+  };
 }
 
 const PARTS = {

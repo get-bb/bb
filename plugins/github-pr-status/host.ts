@@ -36,15 +36,17 @@ async function readRefs(path: string): Promise<HostRefs> {
 
 type PreparedView = { read: PreparedRead; refs: HostRefs | null };
 
-async function prepareView({
-  path,
-  known,
-  refresh,
-}: {
-  path: string;
-  known: { url: string; branchName: string | null } | null;
-  refresh: boolean;
-}): Promise<PreparedView> {
+type ViewRead =
+  | {
+      kind: "branch";
+      path: string;
+      known: { url: string; branchName: string | null } | null;
+      refresh: boolean;
+    }
+  | { kind: "url"; path: string; url: string };
+
+async function prepareView(read: ViewRead): Promise<PreparedView> {
+  const { path } = read;
   if (!(await pathExists(path)))
     return {
       read: preparedResult({
@@ -53,6 +55,9 @@ async function prepareView({
       }),
       refs: null,
     };
+  if (read.kind === "url")
+    return { read: await prepareUrlRead(read.url, path), refs: null };
+  const { known, refresh } = read;
   let refs: HostRefs;
   try {
     refs = await readRefs(path);
