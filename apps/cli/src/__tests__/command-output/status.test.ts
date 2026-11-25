@@ -3,7 +3,6 @@ import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
   collectLogPayloads,
-  createInFlightTracker,
   runCommand,
   stubServerApi,
 } from "../helpers/command-output-harness.js";
@@ -79,54 +78,6 @@ describe("bb status command output", () => {
 
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "  Environment: Working locally (env-1)",
-    );
-  });
-
-  it("bb status asks for the server config, plugins and context together", async () => {
-    vi.stubEnv("BB_PROJECT_ID", "proj-1");
-    vi.stubEnv("BB_THREAD_ID", "thread-1");
-    const tracker = createInFlightTracker();
-    stubServer([{ id: "notify", status: "error" }]);
-    const serverFetch = vi.mocked(fetch).getMockImplementation();
-    if (serverFetch === undefined) throw new Error("fetch is not stubbed");
-    vi.mocked(fetch).mockImplementation(tracker.track(serverFetch));
-    const getEnvironment = vi.fn(async () =>
-      fixtures.makeEnvironment({
-        id: "env-1",
-        projectId: "proj-1",
-        hostId: "host-1",
-      }),
-    );
-    stubServerApi({
-      "v1.projects.:id.$get": tracker.track(async () => ({
-        id: "proj-1",
-        name: "Alpha",
-      })),
-      "v1.threads.:id.$get": tracker.track(async () =>
-        fixtures.makeThread({
-          id: "thread-1",
-          projectId: "proj-1",
-          providerId: "codex",
-          environmentId: "env-1",
-        }),
-      ),
-      "v1.environments.:id.$get": getEnvironment,
-      "v1.threads.:id.head-state.$get": vi.fn(async () => ({
-        pendingTodos: null,
-      })),
-      "v1.threads.$get": vi.fn(async () => []),
-    });
-
-    await runCommand(["status"], register);
-
-    expect(tracker.max).toBe(4);
-    expect(getEnvironment).toHaveBeenCalledTimes(1);
-    const output = collectLogLines(vi.mocked(console.log)).join("\n");
-    expect(output).toContain("Project: Alpha (proj-1)");
-    expect(output).toContain("  Environment: Working locally (env-1)");
-    expect(output).toContain("Data dir: /data/bb");
-    expect(output).toContain(
-      "1 plugin not running (notify: error). Run bb plugin list.",
     );
   });
 

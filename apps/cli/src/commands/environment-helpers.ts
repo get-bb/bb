@@ -36,27 +36,23 @@ async function resolveEnvironmentProvider(args: {
 }
 
 export async function fetchEnvironmentInfo(args: {
-  environment: Promise<Environment | null>;
+  environment: Environment;
   sdk: BbSdk;
 }): Promise<ThreadEnvironmentInfo | null> {
   try {
-    const env = await args.environment;
-    if (env === null) {
-      return null;
-    }
     return {
       display: formatEnvironmentDisplay({
-        environment: env,
+        environment: args.environment,
         host: {
           locality: "local",
           identity: null,
         },
         providerLookup: await resolveEnvironmentProvider({
-          environmentProviderId: env.environmentProviderId,
+          environmentProviderId: args.environment.environmentProviderId,
           sdk: args.sdk,
         }),
       }),
-      hostId: env.hostId,
+      hostId: args.environment.hostId,
     };
   } catch {
     return null;

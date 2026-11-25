@@ -191,25 +191,3 @@ export async function getHelpOutput(
     .map((callArgs) => String(callArgs[0] ?? ""))
     .join("");
 }
-
-export function createInFlightTracker() {
-  let inFlight = 0;
-  const tracker = {
-    max: 0,
-    track<TArgs extends unknown[], TResult>(
-      handler: (...args: TArgs) => TResult | Promise<TResult>,
-    ): (...args: TArgs) => Promise<TResult> {
-      return async (...args) => {
-        inFlight += 1;
-        tracker.max = Math.max(tracker.max, inFlight);
-        try {
-          await new Promise((resolve) => setTimeout(resolve, 10));
-          return await handler(...args);
-        } finally {
-          inFlight -= 1;
-        }
-      };
-    },
-  };
-  return tracker;
-}

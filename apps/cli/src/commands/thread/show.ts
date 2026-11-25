@@ -379,33 +379,22 @@ export function registerShowCommand(
           });
         }
 
-        const [
-          fetchedPullRequest,
-          environmentInfo,
-          pendingTodos,
-          jsonEnvironment,
-        ] = await Promise.all([
-          thread.environmentId
-            ? fetchPullRequest({
-                environmentId: thread.environmentId,
-                sdk,
-              })
-            : null,
-          opts.json
-            ? null
-            : fetchEnvironmentInfo({ environment: getEnvironment(), sdk }),
-          fetchThreadPendingTodos({
-            sdk,
-            threadId,
-          }),
-          opts.json ? getEnvironment() : null,
-        ]);
+        const pullRequestRead = thread.environmentId
+          ? fetchPullRequest({ environmentId: thread.environmentId, sdk })
+          : Promise.resolve(null);
+        const pendingTodosRead = fetchThreadPendingTodos({ sdk, threadId });
 
         if (opts.json) {
+          const [environment, fetchedPullRequest, pendingTodos] =
+            await Promise.all([
+              getEnvironment(),
+              pullRequestRead,
+              pendingTodosRead,
+            ]);
           const jsonPayload: ThreadShowJsonPayload = {
             ...statusPayload,
             environment: threadShowEnvironmentJson(
-              jsonEnvironment,
+              environment,
               fetchedPullRequest,
             ),
             pendingTodos,
@@ -423,6 +412,19 @@ export function registerShowCommand(
           outputJson(opts, jsonPayload);
           return;
         }
+
+        const [environmentInfo, fetchedPullRequest, pendingTodos] =
+          await Promise.all([
+            getEnvironment().then(
+              (environment) =>
+                environment === null
+                  ? null
+                  : fetchEnvironmentInfo({ environment, sdk }),
+              () => null,
+            ),
+            pullRequestRead,
+            pendingTodosRead,
+          ]);
 
         printThreadStatus(statusPayload, environmentInfo, fetchedPullRequest);
 

@@ -64,10 +64,10 @@ async function fetchStatusWithEnvironment(args: {
   });
   const environmentId = status.thread?.environmentId;
   const environmentInfo = environmentId
-    ? await fetchEnvironmentInfo({
-        environment: args.sdk.environments.get({ environmentId }),
-        sdk: args.sdk,
-      })
+    ? await args.sdk.environments.get({ environmentId }).then(
+        (environment) => fetchEnvironmentInfo({ environment, sdk: args.sdk }),
+        () => null,
+      )
     : null;
   return { status, environmentInfo };
 }

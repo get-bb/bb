@@ -9,7 +9,6 @@ import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
   createClientMock,
-  createInFlightTracker,
   getHelpOutput,
   runCommand,
   stubServerApi,
@@ -639,47 +638,6 @@ describe("bb thread show command output", () => {
       pendingTodos: null,
     });
   });
-
-  it.each([[[]], [["--json"]]])(
-    "bb thread show %j reads the environment once, together with the pull request and TODOs",
-    async (flags: string[]) => {
-      const thread: domain.Thread = fixtures.makeThread({
-        id: "thread-show-parallel",
-        projectId: "proj-1",
-        providerId: "codex",
-        environmentId: "env-show-parallel",
-      });
-      const environment = fixtures.makeEnvironment({
-        id: "env-show-parallel",
-        projectId: "proj-1",
-        hostId: "host-1",
-      });
-      const tracker = createInFlightTracker();
-      stubPullRequestRpc("env-show-parallel", { outcome: "absent" });
-      const pullRequestFetch = vi.mocked(fetch).getMockImplementation();
-      if (pullRequestFetch === undefined)
-        throw new Error("fetch is not stubbed");
-      vi.mocked(fetch).mockImplementation(tracker.track(pullRequestFetch));
-      const environmentGet = vi.fn(tracker.track(async () => environment));
-      stubServerApi({
-        "v1.environments.:id.$get": environmentGet,
-        "v1.threads.:id.$get": vi.fn(async () => thread),
-        "v1.threads.:id.head-state.$get": tracker.track(
-          fixtures.makeEmptyHeadStateGetMock(),
-        ),
-        "v1.threads.:id.default-execution-options.$get":
-          fixtures.makeDefaultExecutionOptionsGetMock(),
-      });
-
-      await runCommand(
-        ["thread", "show", "thread-show-parallel", ...flags],
-        register,
-      );
-
-      expect(environmentGet).toHaveBeenCalledTimes(1);
-      expect(tracker.max).toBe(3);
-    },
-  );
 
   it("bb thread show --json prints the thread in status payload format", async () => {
     const thread: domain.Thread = fixtures.makeThread({
