@@ -5523,6 +5523,73 @@ export function listCommandItemDataByItemIds(
   `);
 }
 
+export interface OpenCommandItemRow {
+  data: string;
+  itemId: string;
+  turnId: string;
+}
+
+export function listOpenCommandItemRowsByItemIds(
+  db: DbQueryConnection,
+  args: { itemIds: readonly string[]; threadId: string },
+): OpenCommandItemRow[] {
+  if (args.itemIds.length === 0) {
+    return [];
+  }
+  return db.all<OpenCommandItemRow>(sql`
+    SELECT started.data AS data, started.item_id AS itemId, started.turn_id AS turnId
+    FROM ${events} AS started
+      INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+    WHERE started.thread_id = ${args.threadId}
+      AND started.item_id IN (${sql.join(
+        args.itemIds.map((itemId) => sql`${itemId}`),
+        sql`, `,
+      )})
+      AND started.type IN (
+        'item/started',
+        'item/completed',
+        'item/backgroundTask/completed'
+      )
+      AND started.type = 'item/started'
+      AND started.item_kind = 'commandExecution'
+      AND started.turn_id IS NOT NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ${events} AS finished
+          INDEXED BY events_item_lifecycle_thread_item_sequence_idx
+        WHERE finished.thread_id = started.thread_id
+          AND finished.item_id = started.item_id
+          AND finished.type IN (
+            'item/started',
+            'item/completed',
+            'item/backgroundTask/completed'
+          )
+          AND finished.type = 'item/completed'
+      )
+    ORDER BY started.sequence
+  `);
+}
+
+export function listCommandOutputDeltaTexts(
+  db: DbQueryConnection,
+  args: { itemId: string; threadId: string; turnId: string },
+): string[] {
+  return db
+    .all<{ delta: string | null }>(
+      sql`
+        SELECT json_extract(output.data, '$.delta') AS delta
+        FROM ${events} AS output
+          INDEXED BY events_thread_turn_type_item_sequence_idx
+        WHERE output.thread_id = ${args.threadId}
+          AND output.turn_id = ${args.turnId}
+          AND output.type = 'item/commandExecution/outputDelta'
+          AND output.item_id = ${args.itemId}
+        ORDER BY output.sequence
+      `,
+    )
+    .flatMap((row) => (typeof row.delta === "string" ? [row.delta] : []));
+}
+
 export function findStoredEditMessageOperationRow(
   db: DbQueryConnection,
   args: { operationId: string; threadId: string },
