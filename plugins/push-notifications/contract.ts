@@ -93,12 +93,22 @@ export const sendNotificationRpcContract = defineRpcContract({
 
 export const THREAD_NOTIFICATIONS_LIST_MAX_IDS = 200;
 
+export const PRESENCE_TOUCH_INTERVAL_MS = 30_000;
+
 const emptyInputSchema = z.object({}).strict();
 export const listPushSubscriptionsOutputSchema = z
   .object({ subscriptions: z.array(pushSubscriptionSummarySchema) })
   .strict();
 
 export const pushNotificationsRpcContract = defineRpcContract({
+  "notifications.received": {
+    input: z.object({ id: z.string().min(1) }).strict(),
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
+  "presence.touch": {
+    input: z.object({ channel: deliveryChannelSchema }).strict(),
+    output: z.object({ ok: z.literal(true) }).strict(),
+  },
   "notifications.test": {
     input: z.object({ channel: clientChannelSchema }).strict(),
     output: z.object({ ok: z.literal(true) }).strict(),

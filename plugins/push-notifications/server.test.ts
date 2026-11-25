@@ -7,6 +7,7 @@ import { EnvHttpProxyAgent } from "undici";
 import { describe, expect, it, vi } from "vitest";
 import {
   CLIENT_NOTIFICATION_CHANNEL,
+  clientNotificationSchema,
   listPushSubscriptionsOutputSchema,
 } from "./contract.js";
 import {
@@ -25,6 +26,8 @@ type PendingInteraction =
   PluginThreadEventPayloads["interaction.pending"]["interaction"];
 
 const COALESCE_MS = 10;
+const HANDOFF_MS = 200;
+const RECEIPT_MS = 100;
 const EXPO_URL = "http://expo.test/push";
 
 interface FakeExpo {
@@ -193,6 +196,8 @@ async function setup(options: SetupOptions = {}) {
   });
   await createPushNotificationsPlugin({
     coalesceMs: COALESCE_MS,
+    handoffMs: HANDOFF_MS,
+    receiptMs: RECEIPT_MS,
     createId: () => `subscription-${nextId++}`,
     fetch: options.fetch ?? expo.fetch,
     ...(options.now === undefined ? {} : { now: options.now }),
@@ -298,6 +303,10 @@ async function waitForCoalesce(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, COALESCE_MS * 4));
 }
 
+async function waitForHandoff(): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, HANDOFF_MS * 3));
+}
+
 describe("push subscription RPC and CLI", () => {
   it("upserts by token, redacts lists, and reports stable RPC errors", async () => {
     const host = await setup();
@@ -383,6 +392,8 @@ describe("push subscription RPC and CLI", () => {
         mobileEnabled: true,
         webEnabled: true,
         desktopEnabled: true,
+        activeDeviceFirst: false,
+        activeChannels: [],
         defaultLevel: "all",
         childLevel: "input-only",
         subscriptionCount: 1,
@@ -968,6 +979,185 @@ describe("web and desktop delivery", () => {
         host.harness.behavior.callRpc("notifications.test", { channel: "ios" }),
       ).rejects.toMatchObject({ code: "invalid_input" });
       expect(host.clientSignals()).toHaveLength(2);
+    } finally {
+      await host.cleanup();
+    }
+  });
+});
+
+describe("active device first", () => {
+  type Host = Awaited<ReturnType<typeof setup>>;
+
+  async function setupActive(options: SetupOptions = {}) {
+    const host = await setup(options);
+    await host.harness.behavior.setSettings({ activeDeviceFirst: true });
+    await host.addSubscription();
+    return host;
+  }
+
+  async function touch(host: Host, channel: string) {
+    await host.harness.behavior.callRpc("presence.touch", { channel });
+  }
+
+  async function finishTurn(host: Host, thread: ThreadResponse, text: string) {
+    await host.harness.behavior.emitThreadEvent("thread.idle", {
+      thread,
+      lastAssistantText: text,
+    });
+    await waitForCoalesce();
+  }
+
+  async function confirmLatest(host: Host) {
+    const { id } = clientNotificationSchema.parse(
+      host.clientSignals().at(-1)?.payload,
+    );
+    await host.harness.behavior.callRpc("notifications.received", { id });
+  }
+
+  function phoneAlerts(host: Host) {
+    return host.expo.requests
+      .flat()
+      .filter((message) => "title" in message)
+      .map((message) => alertMessage(message).body);
+  }
+
+  function clientDeliveries(host: Host) {
+    return host.clientSignals().map((signal) => {
+      const { body, channels } = clientNotificationSchema.parse(
+        signal.payload,
+      );
+      return [body, channels];
+    });
+  }
+
+  it("notifies the device in use now and the others later only while unread", async () => {
+    const host = await setupActive();
+    try {
+      const thread = host.setThread();
+      await touch(host, "desktop");
+      await finishTurn(host, thread, "Done");
+      await confirmLatest(host);
+      expect(clientDeliveries(host)).toEqual([["Done", ["desktop"]]]);
+      expect(phoneAlerts(host)).toEqual([]);
+      await waitForHandoff();
+      expect(clientDeliveries(host)).toEqual([
+        ["Done", ["desktop"]],
+        ["Done", ["web"]],
+      ]);
+      expect(phoneAlerts(host)).toEqual(["Done"]);
+
+      await finishTurn(host, thread, "Read on desktop");
+      await confirmLatest(host);
+      host.threads.set(thread.id, { ...thread, lastReadAt: Date.now() });
+      await waitForHandoff();
+      expect(clientDeliveries(host)).toHaveLength(3);
+      expect(phoneAlerts(host)).toEqual(["Done"]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("notifies the other devices at once when no open client confirms delivery", async () => {
+    const host = await setupActive();
+    try {
+      const thread = host.setThread();
+      await touch(host, "desktop");
+      await finishTurn(host, thread, "Window closed");
+      await new Promise((resolve) => setTimeout(resolve, RECEIPT_MS * 2));
+      expect(clientDeliveries(host)).toEqual([
+        ["Window closed", ["desktop"]],
+        ["Window closed", ["web"]],
+      ]);
+      expect(phoneAlerts(host)).toEqual(["Window closed"]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("skips the fallback for a thread read or muted while waiting for a receipt", async () => {
+    const host = await setupActive();
+    try {
+      const thread = host.setThread();
+      await touch(host, "desktop");
+      await finishTurn(host, thread, "Muted while waiting");
+      await host.setLevel(thread.id, "muted");
+      await new Promise((resolve) => setTimeout(resolve, RECEIPT_MS * 2));
+      await host.setLevel(thread.id, "inherit");
+      await finishTurn(host, thread, "Read while waiting");
+      await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
+        thread,
+      });
+      await new Promise((resolve) => setTimeout(resolve, RECEIPT_MS * 2));
+      expect(clientDeliveries(host)).toEqual([
+        ["Muted while waiting", ["desktop"]],
+        ["Read while waiting", ["desktop"]],
+      ]);
+      expect(phoneAlerts(host)).toEqual([]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("sends a held notification only while it is current, unread, and allowed", async () => {
+    const host = await setupActive();
+    try {
+      const thread = host.setThread();
+      await touch(host, "web");
+      await finishTurn(host, thread, "First");
+      await confirmLatest(host);
+      await finishTurn(host, thread, "Second");
+      await confirmLatest(host);
+      await waitForHandoff();
+      expect(phoneAlerts(host)).toEqual(["Second"]);
+
+      await finishTurn(host, thread, "Read");
+      await confirmLatest(host);
+      await host.harness.behavior.emitThreadEvent("experimental_thread.read", {
+        thread,
+      });
+      await finishTurn(host, thread, "Muted");
+      await confirmLatest(host);
+      await host.setLevel(thread.id, "muted");
+      await waitForHandoff();
+      expect(phoneAlerts(host)).toEqual(["Second"]);
+      expect(clientDeliveries(host).map(([body]) => body)).toEqual([
+        "First",
+        "Second",
+        "Second",
+        "Read",
+        "Muted",
+      ]);
+    } finally {
+      await host.cleanup();
+    }
+  });
+
+  it("notifies everywhere at once when the device in use goes quiet, can't be reached, or the setting is off", async () => {
+    let clock = 1_000_000;
+    const host = await setup({ now: () => clock });
+    try {
+      await host.harness.behavior.setSettings({ activeDeviceFirst: true });
+      const thread = host.setThread();
+      await touch(host, "desktop");
+      clock += 121_000;
+      await expect(
+        host.harness.behavior.runCli(["status", "--json"]),
+      ).resolves.toMatchObject({
+        stdout: expect.stringContaining('"activeChannels":[]'),
+      });
+      await finishTurn(host, thread, "Stale presence");
+      await touch(host, "mobile");
+      await finishTurn(host, thread, "No phone registered");
+      await host.addSubscription();
+      await touch(host, "desktop");
+      await host.harness.behavior.setSettings({ activeDeviceFirst: false });
+      await finishTurn(host, thread, "Setting off");
+      expect(clientDeliveries(host)).toEqual([
+        ["Stale presence", ["web", "desktop"]],
+        ["No phone registered", ["web", "desktop"]],
+        ["Setting off", ["web", "desktop"]],
+      ]);
+      expect(phoneAlerts(host)).toEqual(["Setting off"]);
     } finally {
       await host.cleanup();
     }

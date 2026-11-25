@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createClientDelivery } from "./client.js";
+import { createClientDelivery, createPresenceReporter } from "./client.js";
 
 class TestNotification {
   static permission: NotificationPermission = "granted";
@@ -283,5 +283,45 @@ describe("client system notifications", () => {
     await delivery.deliver(message, true);
     expect(TestNotification.instances).toHaveLength(1);
     delivery.dispose();
+  });
+});
+
+describe("presence reporter", () => {
+  it("reports use at most every 30 seconds, never while hidden, and hover only while focused", () => {
+    let clock = 0;
+    let visibility: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(
+      () => visibility,
+    );
+    vi.spyOn(document, "hasFocus").mockReturnValue(true);
+    const touch = vi.fn();
+    const stop = createPresenceReporter(touch, () => clock);
+    try {
+      expect(touch).toHaveBeenCalledTimes(1);
+      clock = 29_000;
+      window.dispatchEvent(new Event("keydown"));
+      expect(touch).toHaveBeenCalledTimes(1);
+      clock = 31_000;
+      visibility = "hidden";
+      window.dispatchEvent(new Event("pointerdown"));
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(touch).toHaveBeenCalledTimes(1);
+      visibility = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      expect(touch).toHaveBeenCalledTimes(2);
+      vi.mocked(document.hasFocus).mockReturnValue(false);
+      clock = 70_000;
+      window.dispatchEvent(new Event("pointermove"));
+      expect(touch).toHaveBeenCalledTimes(2);
+      window.dispatchEvent(new Event("keydown"));
+      expect(touch).toHaveBeenCalledTimes(3);
+      stop();
+      clock = 200_000;
+      window.dispatchEvent(new Event("keydown"));
+      expect(touch).toHaveBeenCalledTimes(3);
+    } finally {
+      stop();
+      vi.restoreAllMocks();
+    }
   });
 });

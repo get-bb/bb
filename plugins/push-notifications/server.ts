@@ -36,13 +36,16 @@ import {
   type CreatePushSenderArgs,
   type LastSendOutcome,
 } from "./sender.js";
+import { createPresence } from "./presence.js";
 import { createPushSubscriptionStore } from "./subscriptions.js";
 
 interface PushNotificationsPluginOptions {
   coalesceMs?: number;
   createId?: () => string;
   fetch?: CreatePushSenderArgs["fetch"];
+  handoffMs?: number;
   now?: () => number;
+  receiptMs?: number;
 }
 
 interface StatusView {
@@ -51,6 +54,8 @@ interface StatusView {
   mobileEnabled: boolean;
   webEnabled: boolean;
   desktopEnabled: boolean;
+  activeDeviceFirst: boolean;
+  activeChannels: DeliveryChannel[];
   defaultLevel: string;
   childLevel: string;
   relayUrl: string;
@@ -94,6 +99,8 @@ function formatStatus(status: StatusView): string {
     `Mobile: ${status.mobileEnabled}`,
     `Web: ${status.webEnabled}`,
     `Desktop: ${status.desktopEnabled}`,
+    `Active device first: ${status.activeDeviceFirst}`,
+    `In use now: ${status.activeChannels.length === 0 ? "none" : status.activeChannels.join(", ")}`,
     `Default level: ${status.defaultLevel}`,
     `Child thread level: ${status.childLevel}`,
     `Subscriptions: ${status.subscriptionCount}`,
@@ -148,6 +155,13 @@ export function createPushNotificationsPlugin(
           "Show system notifications while the bb desktop app is running.",
         default: true,
       },
+      activeDeviceFirst: {
+        type: "boolean",
+        label: "Notify the device you're using first",
+        description:
+          "While you're using bb on a phone, browser, or the desktop app, that kind of device is notified right away and the others 90 seconds later, only if the thread is still unread.",
+        default: false,
+      },
       defaultLevel: {
         type: "select",
         label: "Default notifications",
@@ -197,6 +211,7 @@ export function createPushNotificationsPlugin(
       publish: (threadIds) =>
         bb.rpc.experimental_invalidate(threadIds.map((id) => `thread:${id}`)),
     });
+    const presence = createPresence(options.now);
     const subscriptions = createPushSubscriptionStore(bb, {
       ...(options.now === undefined ? {} : { now: options.now }),
       ...(options.createId === undefined ? {} : { createId: options.createId }),
@@ -205,12 +220,19 @@ export function createPushNotificationsPlugin(
       bb,
       subscriptions,
       getDeliverySettings: () => settings.get(),
+      presence,
       getExpoPushUrl: async () => (await settings.get()).expoPushUrl,
       getNotificationLevel: (thread) => preferences.effectiveLevel(thread),
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
       ...(options.coalesceMs === undefined
         ? {}
         : { coalesceMs: options.coalesceMs }),
+      ...(options.handoffMs === undefined
+        ? {}
+        : { handoffMs: options.handoffMs }),
+      ...(options.receiptMs === undefined
+        ? {}
+        : { receiptMs: options.receiptMs }),
       ...(options.now === undefined ? {} : { now: options.now }),
     });
 
@@ -221,6 +243,7 @@ export function createPushNotificationsPlugin(
           mobileEnabled,
           webEnabled,
           desktopEnabled,
+          activeDeviceFirst,
           defaultLevel,
           childLevel,
         },
@@ -232,6 +255,8 @@ export function createPushNotificationsPlugin(
         mobileEnabled,
         webEnabled,
         desktopEnabled,
+        activeDeviceFirst,
+        activeChannels: presence.activeChannels(),
         defaultLevel,
         childLevel,
         relayUrl: expoPushUrl,
@@ -271,6 +296,14 @@ export function createPushNotificationsPlugin(
 
     bb.rpc.register(pushNotificationsRpcContract, {
       "notifications.test": ({ channel }) => sendTest(channel),
+      "notifications.received": ({ id }) => {
+        sender.receive(id);
+        return { ok: true as const };
+      },
+      "presence.touch": ({ channel }) => {
+        presence.touch(channel);
+        return { ok: true as const };
+      },
       "pushSubscriptions.list": async () => ({
         subscriptions: await subscriptions.listSummaries(),
       }),
