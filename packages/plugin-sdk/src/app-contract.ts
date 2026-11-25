@@ -6158,11 +6158,6 @@ export interface ExperimentalServers {
 }
 
 /**
- * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
- * the real implementation and `satisfies` this interface; `bb plugin build`
- * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
- */
-/**
  * A component that `experimental_lazy` loads from a separate chunk. Pass it
  * straight to a slot's `component` so bb can see that it is lazy: hosts load
  * it before they reveal it, and bb downloads it once startup settles.
@@ -6170,6 +6165,11 @@ export interface ExperimentalServers {
  */
 export type ExperimentalLazyComponent<P> = (props: P) => ReactNode;
 
+/**
+ * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
+ * the real implementation and `satisfies` this interface; `bb plugin build`
+ * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
+ */
 export interface PluginSdkApp {
   /**
    * Load a component from a separate chunk instead of the plugin's startup
