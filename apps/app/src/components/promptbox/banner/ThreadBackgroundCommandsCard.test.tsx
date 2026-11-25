@@ -97,7 +97,7 @@ describe("ThreadBackgroundCommandsCard", () => {
     expect(setIntervalSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("offers Stop only on rows the provider can stop and stops that row", () => {
+  it("lists every command, the newest included, as a drawer row and offers Stop only where the provider can stop it", () => {
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
     const onStop = vi.fn();
     const devServer = backgroundCommandRow({
@@ -135,6 +135,9 @@ describe("ThreadBackgroundCommandsCard", () => {
       </CompactViewportOverrideProvider>,
     );
 
+    expect(
+      screen.getByRole("button", { name: "Running 3 background commands" }),
+    ).not.toBeNull();
     expect(
       screen
         .getAllByRole("button", { name: /^Stop background command/ })
@@ -285,6 +288,11 @@ describe("prompt-stack card bodies", () => {
       );
     }
     render(<Card />);
+    expect(
+      screen.getByRole("button", {
+        name: "Running 3 background agents: Background agent 1",
+      }),
+    ).not.toBeNull();
     expect(screen.queryByText("Background agent 2")).toBeNull();
     expect(setInterval).not.toHaveBeenCalled();
 
