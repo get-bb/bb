@@ -372,6 +372,16 @@ export function forceTerminalFontMeasurement(
   terminal.refresh(0, terminal.rows - 1);
 }
 
+function fontFaceKey(fontFace: FontFace): string {
+  return [
+    fontFace.family,
+    fontFace.style,
+    fontFace.weight,
+    fontFace.stretch,
+    fontFace.unicodeRange,
+  ].join("\u0000");
+}
+
 export function observeTerminalFontLoading(
   fontSet: Pick<
     FontFaceSet,
@@ -380,16 +390,30 @@ export function observeTerminalFontLoading(
   onFontsLoaded: () => void,
 ): () => void {
   let disposed = false;
+  const measuredFontFaces = new Set<string>();
   const refresh = () => {
     if (!disposed) {
       onFontsLoaded();
     }
   };
-  fontSet.addEventListener("loadingdone", refresh);
+  const handleLoadingDone = (event: FontFaceSetLoadEvent) => {
+    let loadedNewFontFace = false;
+    for (const fontFace of event.fontfaces) {
+      const key = fontFaceKey(fontFace);
+      if (!measuredFontFaces.has(key)) {
+        measuredFontFaces.add(key);
+        loadedNewFontFace = true;
+      }
+    }
+    if (loadedNewFontFace) {
+      refresh();
+    }
+  };
+  fontSet.addEventListener("loadingdone", handleLoadingDone);
   void fontSet.ready.then(refresh);
   return () => {
     disposed = true;
-    fontSet.removeEventListener("loadingdone", refresh);
+    fontSet.removeEventListener("loadingdone", handleLoadingDone);
   };
 }
 
