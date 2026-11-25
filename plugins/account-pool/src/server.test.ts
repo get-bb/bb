@@ -7754,7 +7754,8 @@ it("publishes pooled subscription usage without a display plugin and does not in
     observedAt: null,
     usage: {
       status: "error",
-      message: "Usage has not been observed for this account.",
+      message:
+        "Usage could not be refreshed: the usage response could not be read.",
     },
   });
   await expect(
@@ -7769,6 +7770,132 @@ it("publishes pooled subscription usage without a display plugin and does not in
     ),
   ).toEqual(expect.arrayContaining([usageListMethod, usageFetchMethod]));
 });
+
+it.each([
+  { provider: "claude", failure: 401 },
+  { provider: "claude", failure: 429 },
+  { provider: "claude", failure: "schema" },
+  { provider: "claude", failure: "transport" },
+  { provider: "codex", failure: 503 },
+  { provider: "codex", failure: "schema" },
+] as const)(
+  "reports a failed $provider usage refresh ($failure) on the account and in the log, then clears it",
+  async ({ provider, failure }) => {
+    let failing = false;
+    let usageRequests = 0;
+    const usageUrl = "https://usage.example/usage";
+    const fixture = await createFixture({
+      upstreamUrl: "https://upstream.example",
+      source: "oauth",
+      provider,
+      options: {
+        usageUrl,
+        codexUsageUrl: usageUrl,
+        claudeLogin: async () => claudeCredentials(),
+        codexLogin: async () => ({
+          accessToken: "access",
+          refreshToken: "refresh",
+          idToken: null,
+          accountId: "account",
+          email: null,
+          expiresAt: null,
+        }),
+        fetch: async (input) => {
+          if (String(input) !== usageUrl)
+            return Response.json({
+              account: { uuid: "11111111-1111-4111-8111-111111111111" },
+            });
+          usageRequests += 1;
+          if (!failing)
+            return Response.json(
+              provider === "claude"
+                ? { five_hour: { utilization: 37 } }
+                : { rate_limit: { primary_window: { used_percent: 37 } } },
+            );
+          if (failure === "transport")
+            throw new Error("Synthetic network failure");
+          if (failure === "schema")
+            return Response.json(
+              provider === "claude"
+                ? { five_hour: [] }
+                : { rate_limit: { primary_window: { used_percent: "high" } } },
+            );
+          return Response.json({}, { status: failure });
+        },
+      },
+    });
+    const read = async () =>
+      usageMeasurementSchema.parse(
+        await fixture.host.harness.behavior.callRpc(usageFetchMethod, {
+          resourceId: fixture.account.id,
+          refresh: true,
+        }),
+      );
+    const warnings = () =>
+      fixture.host.harness.inspection.logEntries.filter(
+        (entry) =>
+          entry.level === "warn" &&
+          entry.message.includes("usage refresh failed"),
+      );
+    const before = await read();
+    expect(before.usage).toMatchObject({ status: "ok" });
+    expect(before.observedAt).not.toBeNull();
+
+    failing = true;
+    const requestsBefore = usageRequests;
+    const failed = await read();
+    const reason =
+      failure === "transport"
+        ? "Synthetic network failure"
+        : failure === "schema"
+          ? "the usage response could not be read"
+          : `the usage endpoint returned HTTP ${failure}`;
+    expect(usageRequests).toBeGreaterThan(requestsBefore);
+    expect(failed).toEqual({
+      accountKey: before.accountKey,
+      observedAt: before.observedAt,
+      usage: expect.objectContaining({
+        status: "error",
+        message: `Usage could not be refreshed: ${reason}.`,
+      }),
+    });
+    expect(warnings()).toEqual([
+      {
+        level: "warn",
+        message: `Account Pooler ${provider} account ${fixture.account.id} usage refresh failed: ${reason}.`,
+      },
+    ]);
+    expect(
+      statusSchema
+        .parse(await fixture.host.harness.behavior.callRpc("status.get", null))
+        .accounts.find((account) => account.id === fixture.account.id),
+    ).toMatchObject({ error: null });
+
+    await read();
+    const cliFailure = await fixture.host.harness.behavior.runCli([
+      "account",
+      "refresh",
+      fixture.account.id,
+    ]);
+    expect(cliFailure.exitCode).toBe(1);
+    expect(cliFailure.stderr).toContain(
+      `Could not refresh usage for ${fixture.account.id}: ${reason}.`,
+    );
+    expect(warnings()).toHaveLength(1);
+
+    failing = false;
+    expect((await read()).usage).toMatchObject({ status: "ok" });
+    const cliSuccess = await fixture.host.harness.behavior.runCli([
+      "account",
+      "refresh",
+      fixture.account.id,
+    ]);
+    expect(cliSuccess).toMatchObject({
+      exitCode: 0,
+      stdout: `Refreshed usage for ${fixture.account.id}.\n`,
+    });
+  },
+);
 
 it("publishes an empty shared usage group before any accounts or settings are configured", async () => {
   const dataDir = await mkdtemp(path.join(tmpdir(), "bb-empty-usage-pool-"));

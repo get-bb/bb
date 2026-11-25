@@ -84,6 +84,11 @@ interface HubOptions {
   getParentRoute: () => ParentPool | null;
   onAccountsChanged: () => void;
   onUpstreamError: (provider: PoolProvider, error: unknown) => void;
+  onUsageRefreshFailed: (
+    provider: PoolProvider,
+    accountId: string,
+    message: string,
+  ) => void;
   onOAuthRefresh: (
     provider: PoolProvider,
     accountId: string,
@@ -152,6 +157,7 @@ export class AccountPoolHub {
   private affinityBindings = new Map<string, AccountBinding>();
   private activeAccounts = new Map<PoolProvider, ActiveAccount>();
   private readonly usageRefreshes = new Map<string, Promise<void>>();
+  private readonly usageRefreshFailures = new Map<string, string>();
   private readonly lastUsageRefreshAt = new Map<string, number>();
   private readonly drainWaiters = new Set<() => void>();
 
@@ -385,10 +391,28 @@ export class AccountPoolHub {
         fetch: this.options.fetch,
         now: this.options.now,
       })
-      .catch(() => undefined)
+      .then(
+        () => {
+          this.usageRefreshFailures.delete(account.id);
+        },
+        (error: unknown) => {
+          const message = errorMessage(error);
+          if (this.usageRefreshFailures.get(account.id) === message) return;
+          this.usageRefreshFailures.set(account.id, message);
+          this.options.onUsageRefreshFailed(
+            account.provider,
+            account.id,
+            message,
+          );
+        },
+      )
       .finally(() => this.usageRefreshes.delete(account.id));
     this.usageRefreshes.set(account.id, refresh);
     return refresh;
+  }
+
+  usageRefreshFailure(accountId: string): string | null {
+    return this.usageRefreshFailures.get(accountId) ?? null;
   }
 
   async stop(): Promise<void> {
@@ -1511,6 +1535,7 @@ export function createHub(options: {
   getParentRoute?: () => ParentPool | null;
   onAccountsChanged?: () => void;
   onUpstreamError?: (provider: PoolProvider, error: unknown) => void;
+  onUsageRefreshFailed?: HubOptions["onUsageRefreshFailed"];
   onOAuthRefresh?: HubOptions["onOAuthRefresh"];
 }): AccountPoolHub {
   const adapters: ReadonlyMap<PoolProvider, ProviderAdapter> = new Map([
@@ -1544,6 +1569,7 @@ export function createHub(options: {
     getParentRoute: options.getParentRoute ?? (() => null),
     onAccountsChanged: options.onAccountsChanged ?? (() => {}),
     onUpstreamError: options.onUpstreamError ?? (() => {}),
+    onUsageRefreshFailed: options.onUsageRefreshFailed ?? (() => {}),
     onOAuthRefresh: options.onOAuthRefresh ?? (() => {}),
   });
 }
