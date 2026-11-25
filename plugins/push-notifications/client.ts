@@ -1,7 +1,9 @@
 import {
   clientNotificationDismissalSchema,
   clientNotificationSchema,
+  PRESENCE_TOUCH_INTERVAL_MS,
   type ClientNotification,
+  type DeliveryChannel,
 } from "./contract.js";
 
 export type ClientChannel = "web" | "desktop";
@@ -16,6 +18,48 @@ export function clientChannel(): ClientChannel | null {
   )
     return null;
   return "web";
+}
+
+export function presenceChannel(): DeliveryChannel {
+  return clientChannel() ?? "mobile";
+}
+
+const INPUT_EVENTS = ["keydown", "pointerdown", "touchstart"] as const;
+const ATTENTION_EVENTS = ["focus", "pointermove", "wheel"] as const;
+
+export function createPresenceReporter(
+  touch: () => void,
+  now: () => number = Date.now,
+): () => void {
+  let lastTouchAt = Number.NEGATIVE_INFINITY;
+  function report(): void {
+    if (document.visibilityState !== "visible") return;
+    const at = now();
+    if (at - lastTouchAt < PRESENCE_TOUCH_INTERVAL_MS) return;
+    lastTouchAt = at;
+    touch();
+  }
+  function reportIfFocused(): void {
+    if (document.hasFocus()) report();
+  }
+  const options = { capture: true, passive: true } as const;
+  for (const type of INPUT_EVENTS) {
+    window.addEventListener(type, report, options);
+  }
+  for (const type of ATTENTION_EVENTS) {
+    window.addEventListener(type, reportIfFocused, options);
+  }
+  document.addEventListener("visibilitychange", reportIfFocused);
+  reportIfFocused();
+  return () => {
+    for (const type of INPUT_EVENTS) {
+      window.removeEventListener(type, report, options);
+    }
+    for (const type of ATTENTION_EVENTS) {
+      window.removeEventListener(type, reportIfFocused, options);
+    }
+    document.removeEventListener("visibilitychange", reportIfFocused);
+  };
 }
 
 export function notificationPermission():

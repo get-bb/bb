@@ -1437,7 +1437,10 @@ The builtin Push notifications plugin's `mobileEnabled`, `webEnabled`, and
 `desktopEnabled` booleans default to `true`. `expoPushUrl` (default
 `https://exp.host/--/api/v2/push/send`) is the relay URL, read on every send.
 `defaultLevel` (default `all`) and `childLevel` (default `input-only`) set
-top-level and child thread levels. Set them with
+top-level and child thread levels. `activeDeviceFirst` (default `false`) sends
+thread notifications first to the kind of device (phone, browser, or desktop
+app) used in the last two minutes, and to the others 90 seconds later only if
+the thread is still unread. Set them with
 `bb plugin config push-notifications set <key> <value>`. Web and desktop
 notifications need an open bb tab or window, HTTPS or localhost, and
 per-device permission; the plugin's settings page offers permission and test

@@ -21,7 +21,7 @@ bb push-notifications remove <id> [--json]
 bb push-notifications test <web|desktop> [--json]
 bb push-notifications send --title <text> [--body <text>] [--thread <thread>] [--json]
 bb push-notifications thread <thread> [--level inherit|all|input-only|muted]
-bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled> <true|false>
+bb plugin config push-notifications set <mobileEnabled|webEnabled|desktopEnabled|activeDeviceFirst> <true|false>
 bb plugin config push-notifications set defaultLevel <all|input-only|muted>
 bb plugin config push-notifications set childLevel <inherit|all|input-only|muted>
 bb plugin config push-notifications set expoPushUrl <url>
@@ -33,6 +33,14 @@ bb plugin config push-notifications set expoPushUrl <url>
 - `list` shows token suffixes only.
 - The three channel switches default to `true` and apply immediately to this
   server. `bb plugin disable push-notifications` stops all delivery.
+- `activeDeviceFirst` (default `false`) routes thread notifications to the
+  device in use: a phone, browser, or desktop app where bb saw input in the
+  last two minutes is notified right away, and the other channels 90 seconds
+  later, only if the thread is still unread and its level still allows it.
+  Browsers and the desktop app count only with notification permission, and
+  an open one must confirm receipt within 5 seconds. With no device in use,
+  or none reachable, every channel is notified at once. `send` ignores it. `status`
+  prints which kinds of device are in use now (`activeChannels` in `--json`).
 - `test` broadcasts to every connected, permitted client of that type and
   fails when the channel is disabled. Success confirms the broadcast, not that
   the OS showed a banner; system notification settings can still suppress it.
