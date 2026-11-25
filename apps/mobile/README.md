@@ -312,21 +312,21 @@ server the phone cannot reach, so the shell never loads a dead origin; it
 does not use the harness backend.
 `shell-connect.yaml` drives bb connect end to end against the stub apex +
 gate (`pnpm --filter @bb/integration-tests e2e:mobile-connect-stub`, see
-"bb connect" below): manual code entry with the handle and the self-hosted
-apex → enrolled screen (session signed in, account servers listed) → Done →
-the shell through the gate (cookie on fetch and on `/ws`) → the stub expires
-the session (the app re-mints and reconnects by itself) → the stub revokes
-the machine ("needs to be paired again" banner) → "Sign in again" re-pairs
-the same profile with a new code. The flow needs the stub started with
+"bb connect" below). It enters the self-hosted apex and server handle in the
+first-run form, submits an expired code with the server field's Go key, and
+corrects the code in place. It checks the saved profiles in native Servers
+settings, opens a thread after the stub expires the session, and verifies that
+the same machine received a replacement session.
+After the stub revokes the machine, **Pair again** re-pairs the saved profile.
+The flow needs the stub started with
 `BB_MOBILE_E2E_SIMULATOR=<udid>` once (it installs its root certificate in
 that simulator) and drives the stub through `e2e/scripts/connect-stub-control.js`
 (plain-HTTP control port 42997).
 Flows open `bb://` links through `subflows/open-bb-link.yaml` and pair through
 `subflows/pair-direct-server.yaml`; `src/lib/e2e/mobile-e2e-flows.test.ts`
 enforces both.
-Flows dismiss the keyboard by tapping a static label ("Server URL",
-"Pairing code"): Maestro's `hideKeyboard` looks for a Return/Done key and the
-Add server and connect fields use "next".
+The direct pairing and re-pairing steps tap a static label to dismiss the
+keyboard.
 Flows cold-start the dev client (`stopApp`) because a warm reload keeps the
 last deep link as the initial URL. Without `EXPO_PUBLIC_BB_E2E=1`, open `bb://e2e/reset`
 (dev builds) to return the simulator to first run.
