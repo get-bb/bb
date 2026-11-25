@@ -1,7 +1,8 @@
 import { Buffer } from "node:buffer";
-import type {
-  HostDaemonServerRoutes,
-  HostDaemonSessionOpenResponse,
+import {
+  hostDaemonDaemonWsMessageSchema,
+  type HostDaemonServerRoutes,
+  type HostDaemonSessionOpenResponse,
 } from "@bb/host-daemon-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostDaemonLogger } from "./logger.js";
@@ -1160,6 +1161,52 @@ describe("ServerConnection", () => {
       expect(webSocket.sentMessages(socket)).toEqual([exited]);
       expect(openSession).toHaveBeenCalledTimes(1);
     } finally {
+      await connection.shutdown();
+    }
+  });
+
+  it("sends terminal output and replay without a schema parse and still parses other messages", async () => {
+    const { connection, webSocket } = createConnectionFixture();
+    const parse = vi.spyOn(hostDaemonDaemonWsMessageSchema, "parse");
+    try {
+      await connection.start();
+      const socket = webSocket.sockets[0];
+      if (!socket) {
+        throw new Error("Expected test socket");
+      }
+      const chunk = {
+        seq: 0,
+        dataBase64: Buffer.from("hello").toString("base64"),
+      };
+      const output = {
+        type: "terminal.output" as const,
+        terminalId: "term-1",
+        chunk,
+      };
+      const replay = {
+        type: "terminal.replay" as const,
+        requestId: "attach-1",
+        terminalId: "term-1",
+        chunks: [chunk],
+        replayStartSeq: 0,
+        nextSeq: 1,
+      };
+      const exited = {
+        type: "terminal.exited" as const,
+        terminalId: "term-1",
+        exitCode: 0,
+        closeReason: "process-exit" as const,
+      };
+      parse.mockClear();
+
+      expect(connection.sendMessage(output)).toBe(true);
+      expect(connection.sendMessage(replay)).toBe(true);
+      expect(parse).not.toHaveBeenCalled();
+      expect(connection.sendMessage(exited)).toBe(true);
+      expect(parse).toHaveBeenCalledTimes(1);
+      expect(webSocket.sentMessages(socket)).toEqual([output, replay, exited]);
+    } finally {
+      parse.mockRestore();
       await connection.shutdown();
     }
   });
