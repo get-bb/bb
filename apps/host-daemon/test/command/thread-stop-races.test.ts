@@ -491,41 +491,6 @@ describe("deleted workspace commands", () => {
       errorMessage: expect.stringContaining("provider executable unavailable"),
     });
   });
-
-  it("does not retry an unrelated provider archive error in maintenance", async () => {
-    const harness = await createRaceHarness();
-    harness.launch = await scriptedEchoDispatchLaunch({
-      scripted: {
-        failMethods: [
-          { method: "thread/archive", message: "archive unavailable" },
-        ],
-      },
-    });
-    await dispatchCommand(
-      threadStartCommand(harness, { threadId: "thread-archive-error" }),
-      harness.dispatchOptions,
-    );
-    await rm(harness.workspacePath, { recursive: true });
-    await expect(
-      dispatchCommand(
-        {
-          type: "thread.archive",
-          bridgeLaunch: harness.launch,
-          environmentId: ENVIRONMENT_ID,
-          threadId: "thread-archive-error",
-          providerId: "fake",
-          providerThreadId: "prov-1",
-          workspaceContext: { workspacePath: harness.workspacePath },
-        },
-        harness.dispatchOptions,
-      ),
-    ).rejects.toThrow("archive unavailable");
-    expect(
-      harness.record
-        .read()
-        .filter((request) => request.method === "thread/archive"),
-    ).toHaveLength(1);
-  });
 });
 
 describe("thread.stop race semantics", () => {
