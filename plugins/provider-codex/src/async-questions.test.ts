@@ -144,6 +144,33 @@ describe("Codex async questions", () => {
     expect(host.harness.sdk.callsTo("threads.send")).toEqual([]);
   });
 
+  it("writes the cursor only when a new event row moved it", async () => {
+    const rows: ReturnType<typeof questionRow>[] = [];
+    const host = createHost(rows);
+    const kvSet = vi.spyOn(host.bb.storage.kv, "set");
+
+    await notify(host);
+    await notify(host);
+    await vi.waitFor(() =>
+      expect(host.harness.sdk.callsTo("threads.events.list")).toHaveLength(2),
+    );
+    expect(kvSet).not.toHaveBeenCalled();
+
+    rows.push(questionRow(7));
+    await notify(host);
+    await vi.waitFor(() =>
+      expect(host.harness.pendingInteractions).toHaveLength(1),
+    );
+    await notify(host);
+    await vi.waitFor(() =>
+      expect(host.harness.sdk.callsTo("threads.events.list")).toHaveLength(4),
+    );
+    expect(kvSet.mock.calls).toEqual([["async-question-cursor:thr_async", 7]]);
+    expect(host.harness.sdk.callsTo("threads.events.list")[3]?.[0]).toEqual(
+      expect.objectContaining({ afterSeq: "7" }),
+    );
+  });
+
   it("ignores threads from other providers", async () => {
     const host = createHost([questionRow(5)]);
 
