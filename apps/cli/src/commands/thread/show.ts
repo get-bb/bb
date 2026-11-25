@@ -379,31 +379,33 @@ export function registerShowCommand(
           });
         }
 
-        const fetchedPullRequest = thread.environmentId
-          ? await fetchPullRequest({
-              environmentId: thread.environmentId,
-              sdk,
-            })
-          : null;
-
-        const environmentInfo = thread.environmentId
-          ? await fetchEnvironmentInfo({
-              environmentId: thread.environmentId,
-              sdk,
-            })
-          : null;
-
-        const pendingTodos = await fetchThreadPendingTodos({
-          sdk,
-          threadId,
-        });
+        const [
+          fetchedPullRequest,
+          environmentInfo,
+          pendingTodos,
+          jsonEnvironment,
+        ] = await Promise.all([
+          thread.environmentId
+            ? fetchPullRequest({
+                environmentId: thread.environmentId,
+                sdk,
+              })
+            : null,
+          opts.json
+            ? null
+            : fetchEnvironmentInfo({ environment: getEnvironment(), sdk }),
+          fetchThreadPendingTodos({
+            sdk,
+            threadId,
+          }),
+          opts.json ? getEnvironment() : null,
+        ]);
 
         if (opts.json) {
-          const environment = await getEnvironment();
           const jsonPayload: ThreadShowJsonPayload = {
             ...statusPayload,
             environment: threadShowEnvironmentJson(
-              environment,
+              jsonEnvironment,
               fetchedPullRequest,
             ),
             pendingTodos,
