@@ -80,7 +80,7 @@ it.each(["initial connect", "reconnect", "reload notification"])(
       flushSlotBatch: () => {},
       warn: () => {},
       priorityPluginIds: () => [],
-      pageOwnerPluginId: () => null,
+      restoredLazyParts: () => [],
       whenScreenPainted: () => Promise.resolve(),
     };
     const effects = createRealtimeCacheEffects({ queryClient });

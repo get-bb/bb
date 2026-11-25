@@ -6178,7 +6178,7 @@ export interface PluginSdkApp {
    * settles, so a surface opened later renders in its first frame. A host that
    * stacks entries (Info rows and sections, context card rows, the rail,
    * settings sections) reveals an entry only after the entries above it are
-   * ready, and a page waits for the lazy parts of the plugin that owns it. A
+   * ready, and a plugin's own page waits for the lazy parts it shows. A
    * chunk that fails to load crashes only its slot, which reaches `onCrash`
    * like any render error. Call it once at module scope, never during render.
    * Experimental: see docs/api_to_audit.md.

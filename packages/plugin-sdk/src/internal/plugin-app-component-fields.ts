@@ -92,6 +92,15 @@ function componentsAt(registration: object, path: string): unknown[] {
   );
 }
 
+export function registrationComponents<K extends Kind>(
+  kind: K,
+  registration: CollectedPluginAppRegistrations[K][number],
+): unknown[] {
+  return PLUGIN_APP_COMPONENT_FIELDS[kind].flatMap((path) =>
+    componentsAt(registration, path),
+  );
+}
+
 export function registeredComponents(
   registrations: CollectedPluginAppRegistrations,
 ): unknown[] {

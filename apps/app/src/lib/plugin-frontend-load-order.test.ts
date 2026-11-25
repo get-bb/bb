@@ -73,7 +73,7 @@ function makeDeps(
     settlePluginLoad: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
-    pageOwnerPluginId: () => null,
+    restoredLazyParts: () => [],
     whenScreenPainted: () => Promise.resolve(),
     beginSlotBatch: () => () => {},
     flushSlotBatch: () => {},
@@ -123,7 +123,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
       {
         importModule: imports.importModule,
         priorityPluginIds: () => ["panel"],
-        pageOwnerPluginId: () => null,
+        restoredLazyParts: () => [],
       },
     );
     const done = reconcilePluginFrontends(state, deps);
@@ -171,7 +171,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
         {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list", "not-installed"],
-          pageOwnerPluginId: () => null,
+          restoredLazyParts: () => [],
           setRegistrations: (pluginId) => events.push(`register ${pluginId}`),
           beginSlotBatch: () => {
             events.push("open batch");
@@ -216,7 +216,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
         {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list"],
-          pageOwnerPluginId: () => null,
+          restoredLazyParts: () => [],
           prefetchModule,
           whenScreenPainted: () => screenPainted,
         },
@@ -256,7 +256,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
         {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list"],
-          pageOwnerPluginId: () => null,
+          restoredLazyParts: () => [],
           prefetchModule,
         },
       ),
@@ -299,7 +299,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
         {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list"],
-          pageOwnerPluginId: () => null,
+          restoredLazyParts: () => [],
           prefetchModule,
         },
       ),
@@ -320,24 +320,38 @@ describe("reconcilePluginFrontends load scheduling", () => {
     );
   });
 
-  it("publishes the plugin that owns the page only once its lazy parts load, and fetches their chunks with its entry", async () => {
+  function lazyPart() {
     let finish: () => void = () => {};
-    const loaded = new Promise<void>((resolve) => {
+    const download = new Promise<void>((resolve) => {
       finish = resolve;
     });
-    let partLoaded = false;
-    function SettingsBody() {
+    let loaded = false;
+    const load = vi.fn(() =>
+      download.then(() => {
+        loaded = true;
+      }),
+    );
+    function Part() {
       return null;
     }
-    registerLazyPart(SettingsBody, {
-      load: () => loaded.then(() => {
-        partLoaded = true;
-      }),
-      isLoaded: () => partLoaded,
-    });
-    const lazyModule = {
+    registerLazyPart(Part, { load, isLoaded: () => loaded });
+    return { Part, load, finish };
+  }
+
+  it("publishes a plugin's settings page once the sections it shows load, without loading its other lazy parts", async () => {
+    const section = lazyPart();
+    const tab = lazyPart();
+    const ownerModule = {
       default: definePluginApp((app) => {
-        app.slots.settingsSection({ id: "accounts", component: SettingsBody });
+        app.slots.settingsSection({ id: "accounts", component: section.Part });
+        app.slots.experimental_tab({
+          id: "diff",
+          title: "Diff",
+          icon: "FileDiff",
+          context: { kind: "thread" },
+          availability: "fixed",
+          component: tab.Part,
+        });
       }),
     };
     const owner = candidate("owner", 10);
@@ -351,9 +365,9 @@ describe("reconcilePluginFrontends load scheduling", () => {
       createPluginFrontendReconcileState(),
       makeDeps([owner, other], {
         importModule: async (url) =>
-          url.includes("/owner/") ? lazyModule : pluginModule(),
+          url.includes("/owner/") ? ownerModule : pluginModule(),
         priorityPluginIds: () => ["owner"],
-        pageOwnerPluginId: () => "owner",
+        restoredLazyParts: () => [{ kind: "settings-page", pluginId: "owner" }],
         setRegistrations,
         prefetchModule,
       }),
@@ -363,15 +377,71 @@ describe("reconcilePluginFrontends load scheduling", () => {
     expect(prefetchModule.mock.calls.map(([url]) => url)).toContain(
       "/api/v1/plugin-app-assets/0123456789abcdef/chunks/settings-A.js",
     );
-    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual(
-      ["other"],
+    expect(section.load).toHaveBeenCalledTimes(1);
+    expect(tab.load).not.toHaveBeenCalled();
+    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual([
+      "other",
+    ]);
+
+    section.finish();
+    await done;
+    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual([
+      "other",
+      "owner",
+    ]);
+    expect(tab.load).not.toHaveBeenCalled();
+  });
+
+  it("starts the open panel tab's lazy part as soon as its plugin registers, without holding the plugin back", async () => {
+    const tab = lazyPart();
+    const other = lazyPart();
+    const gitModule = {
+      default: definePluginApp((app) => {
+        app.slots.experimental_tab({
+          id: "diff",
+          title: "Diff",
+          icon: "FileDiff",
+          context: { kind: "thread" },
+          availability: "fixed",
+          component: tab.Part,
+        });
+        app.slots.experimental_tab({
+          id: "history",
+          title: "History",
+          icon: "Zap",
+          context: { kind: "thread" },
+          availability: "fixed",
+          component: other.Part,
+        });
+      }),
+    };
+    const git = candidate("git", 10);
+    git.bundle.lazyChunkUrls = [
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/DiffTab-A.js",
+    ];
+    const setRegistrations = vi.fn();
+    const prefetchModule = vi.fn();
+    await reconcilePluginFrontends(
+      createPluginFrontendReconcileState(),
+      makeDeps([git], {
+        importModule: async () => gitModule,
+        restoredLazyParts: () => [
+          { kind: "panel-tab", pluginId: "git", tabId: "diff" },
+        ],
+        setRegistrations,
+        prefetchModule,
+      }),
     );
 
-    finish();
-    await done;
-    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual(
-      ["other", "owner"],
+    expect(prefetchModule.mock.calls.map(([url]) => url)).toContain(
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/DiffTab-A.js",
     );
+    expect(tab.load).toHaveBeenCalledTimes(1);
+    expect(other.load).not.toHaveBeenCalled();
+    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual([
+      "git",
+    ]);
+    tab.finish();
   });
 
   it("a rejected import in one lane does not stall the remaining candidates", async () => {

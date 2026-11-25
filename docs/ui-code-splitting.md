@@ -219,13 +219,22 @@ it is ready. A lazy entry still loading after `ORDERED_REVEAL_BOUND_MS`
 (3 seconds) stops holding the entries below it: they show what is ready, and
 the late entry is inserted in its place when it arrives, moving the entries
 below it once. A missing row is worse than one shift on a slow link. Eager
-entries that register later still appear in their place. The page owner and
-core page preparation find lazy components through
+entries that register later still appear in their place. Restored-part
+loading and core page preparation find lazy components through
 `PLUGIN_APP_COMPONENT_FIELDS` in the SDK's collector, where every slot kind
-lists its component fields. The plugin that owns
-the current page (`getRouteOwnerPluginId`) preloads its lazy chunks with its
-bundle and publishes its registrations once its lazy parts load, bounded the
-same way. Core contributions register at startup (`src/lib/core-contribution-parts.ts`
+lists its component fields.
+
+Before plugin frontends load, `restoredLazyParts` (`src/lib/restored-lazy-parts.ts`)
+lists the parts the restored screen shows: a plugin's settings sections on its
+settings page, the nav panel on its own page, and on a thread route the open
+right-panel tab from the thread's saved panel state (a plugin tab, a plugin
+panel action, or every plugin's Info rows and sections when Info is open). A
+plugin a listed part names prefetches its lazy chunks with its bundle. As soon
+as a plugin's registrations are collected, its listed lazy parts start loading
+instead of waiting for render or idle warming. A plugin's own page or settings
+page publishes its registrations once the parts that page shows load, bounded
+the same way; the other listed parts do not hold anything. Lazy parts the
+screen does not show wait for idle warming. Core contributions register at startup (`src/lib/core-contribution-parts.ts`
 lists them), and the thread route starts their lazy parts alongside the thread
 view chunk, so a part the page shows, such as the rail outline, arrives with
 the page instead of after it.

@@ -117,7 +117,7 @@ function liveDeps(): PluginFrontendReconcileDeps {
     flushSlotBatch: flushPluginSlotChanges,
     warn: vi.fn(),
     priorityPluginIds: () => [],
-    pageOwnerPluginId: () => null,
+    restoredLazyParts: () => [],
     whenScreenPainted: () => Promise.resolve(),
   };
 }
