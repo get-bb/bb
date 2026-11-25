@@ -1355,6 +1355,8 @@ git installs) so people installing your plugin never need npm.
 - \`bb.skills\` — skill roots; omitted here, so BB reads \`skills/\`. Each
   directory with a \`SKILL.md\` is one skill, named after the directory.
 - \`bb.name\` and \`bb.description\` — required human-facing identity.
+- \`keywords\` and \`bbMarketplace\` — the public marketplace listing; see
+  [Publish](#publish). BB ignores both when it loads the plugin.
 - \`bb.branding\` — required; declare \`icon\` as a BB icon name or a
   plugin-relative compact SVG, or declare \`logo.light\` (with optional
   \`logo.dark\`). Logo assets must be relative \`.svg\`, \`.png\`, or
@@ -1386,12 +1388,33 @@ same claim at length, shown in an Overview section under that paragraph.
 Rewrite the scaffold's copy for your plugin, and update it whenever
 \`bb.description\` changes, so the two never disagree.
 
-The submission to the public BB Community marketplace requires the file. Keep
-it under 4000 characters (aim for 700 to 1800) and use headings, paragraphs,
-emphasis, code, blockquotes, lists, thematic breaks, and absolute https links
-only — raw HTML, images, tables, footnotes, and task lists are rejected. Do
-not open with a \`#\` title or repeat \`bb.description\` verbatim; the page
-shows both directly above.
+The public marketplace reads this file from your release. Keep it under 4000
+characters (aim for 700 to 1800) and use headings, paragraphs, emphasis, code,
+blockquotes, lists, thematic breaks, and absolute https links only — raw HTML,
+images, tables, footnotes, and task lists are rejected. Do not open with a
+\`#\` title or repeat \`bb.description\` verbatim; the page shows both
+directly above.
+
+## Publish
+
+Listing on the public marketplace is self-service, and listings are not
+reviewed by BB:
+
+1. Set \`bbMarketplace.category\` in package.json to a marketplace category
+   (\`bb plugin publish --check\` lists them). It is optional but
+   recommended: without one, people browsing by category miss the plugin.
+   Optionally add
+   \`secondaryCategories\` (up to 3) and \`screenshots\` (up to 6 relative
+   PNG, JPEG, or WebP paths, at least 1200 px wide and at most 2 MiB each).
+   Other \`keywords\` become search tags.
+2. Run \`bb plugin publish --check\`. It checks everything the marketplace
+   checks and prints the exact next steps. It never pushes or publishes.
+3. GitHub: give the public repository the \`bb-plugin\` topic, then push a
+   release tag such as \`v0.1.0\` (the \`v\` is required). npm: keep
+   \`bb-plugin\` in \`keywords\` and run \`npm publish\`.
+
+The listing appears within about 30 minutes. To update it, release a new
+version the same way.
 
 ## Install
 
@@ -1468,6 +1491,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
         name: packageName,
         version: "0.1.0",
         type: "module",
+        keywords: ["bb-plugin"],
         engines: {
           bb: enginesRange(bbVersion),
           bbPluginSdk: `>=${PLUGIN_SDK_VERSION}`,
@@ -1479,6 +1503,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           server: "./server.ts",
           app: "./app.tsx",
         },
+        bbMarketplace: {},
         dependencies: {
           ...PLUGIN_STARTER_DEPENDENCIES,
           zod: "^4.6.5",

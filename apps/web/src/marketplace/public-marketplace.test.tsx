@@ -14,6 +14,7 @@ import {
   PublicMarketplaceUnavailablePage,
 } from "./public-marketplace.js";
 import type { MarketplaceV2Entry } from "./marketplace-v2.js";
+import { PublicMarketplacePublishPage } from "./marketplace-publish.js";
 
 describe("public marketplace route rendering", () => {
   it.each([
@@ -429,6 +430,87 @@ describe("public marketplace route rendering", () => {
     expect(card("bb-guide")).toContain("Built in");
     expect(card("tasks")).toContain('aria-label="1,357 installs"');
     expect(card("tasks")).not.toContain("Built in");
+  });
+
+  it("marks community listings as unreviewed and links a report", () => {
+    const community = MARKETPLACE_V2_FIXTURE.plugins[0]!;
+    const communityHtml = renderToStaticMarkup(
+      <PublicMarketplaceDetailPage
+        manifest={MARKETPLACE_V2_FIXTURE}
+        entry={community}
+        stats={null}
+      />,
+    );
+    expect(communityHtml).toContain("Not reviewed by BB");
+    expect(communityHtml).toContain(
+      'href="https://github.com/get-bb/marketplace/issues/new?template=report-plugin.yml&amp;plugin=prompt-library"',
+    );
+    expect(communityHtml).toContain(">Report<");
+
+    const bundled: MarketplaceV2Entry = {
+      ...community,
+      id: "tasks",
+      source: { bundled: { plugin: "tasks" } },
+    };
+    const bundledHtml = renderToStaticMarkup(
+      <PublicMarketplaceDetailPage
+        manifest={{ ...MARKETPLACE_V2_FIXTURE, plugins: [bundled] }}
+        entry={bundled}
+        stats={null}
+      />,
+    );
+    expect(bundledHtml).not.toContain("Not reviewed by BB");
+    expect(bundledHtml).not.toContain("report-plugin.yml");
+  });
+
+  it("links the publish page from the marketplace hero", () => {
+    const html = renderToStaticMarkup(
+      <PublicMarketplacePage
+        manifest={MARKETPLACE_V2_FIXTURE}
+        stats={null}
+        state={{}}
+        onStateChange={() => {}}
+      />,
+    );
+    expect(html).toContain("Community listings are not reviewed by BB.");
+    expect(html).toContain('href="/marketplace/publish">Publish a plugin</a>');
+  });
+
+  it("renders the publish page with the steps and only publishable categories", () => {
+    const bundledOnly: MarketplaceV2Entry = {
+      ...MARKETPLACE_V2_FIXTURE.plugins[0]!,
+      id: "worktrees",
+      category: "environments",
+      source: { bundled: { plugin: "environment-git-worktree" } },
+    };
+    const html = renderToStaticMarkup(
+      <PublicMarketplacePublishPage
+        manifest={{
+          ...MARKETPLACE_V2_FIXTURE,
+          categories: [
+            ...MARKETPLACE_V2_FIXTURE.categories,
+            { id: "environments", displayName: "Environments" },
+          ],
+          plugins: [...MARKETPLACE_V2_FIXTURE.plugins, bundledOnly],
+        }}
+      />,
+    );
+    expect(html).toContain("<h1>Publish a plugin</h1>");
+    expect(html).toContain("Listings are not reviewed by BB.");
+    expect(html).toContain("bb plugin publish --check");
+    expect(html).toContain("gh repo edit OWNER/REPO --add-topic bb-plugin");
+    expect(html).toContain("npm publish");
+    expect(html).toContain(
+      'href="https://getbb.app/marketplace/index/v1/report.json"',
+    );
+    expect(html).toContain("<code>thread-content</code>");
+    expect(html).not.toContain("<code>environments</code>");
+
+    const offline = renderToStaticMarkup(
+      <PublicMarketplacePublishPage manifest={null} />,
+    );
+    expect(offline).toContain("bb plugin publish --check");
+    expect(offline).not.toContain("<h2>Categories</h2>");
   });
 
   it("renders the unavailable route", () => {

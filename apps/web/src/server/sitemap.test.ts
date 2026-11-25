@@ -30,6 +30,7 @@ describe("sitemapXml", () => {
       "/brand",
       "/compare/a-b",
       "/marketplace",
+      "/marketplace/publish",
       "/marketplace?category=thread-content",
       "/marketplace?category=code-and-reviews",
       "/blog/an-agentic-ide",

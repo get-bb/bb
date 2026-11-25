@@ -96,6 +96,7 @@ const ARGUMENTS_BY_COMMAND: Record<string, readonly string[]> = {
   ],
   "environment update": [IDS.environment, "--name", "x"],
   "plugin install": ["path:/tmp/x", "--yes"],
+  "plugin publish": ["x", "--check", "--offline"],
   "terminal close": [IDS.terminal, "--if-clean"],
   "file write": ["/tmp/x", "--host", IDS.host, "--content", "x"],
   "project create": ["--name", "x", "--root", "/tmp/x", "--host", IDS.host],
@@ -139,6 +140,10 @@ const COMMANDS_THAT_NEED_NO_SERVER = new Map([
   ["plugin build", "compiles a local plugin directory"],
   ["plugin dev", "watches a local plugin directory before it calls the server"],
   ["plugin migrate", "rewrites a local plugin directory"],
+  [
+    "plugin publish",
+    "checks a local plugin directory; online lookups go to getbb.app, GitHub, and npm, never the bb server",
+  ],
   ["plugin types", "rewrites a local plugin directory's package.json"],
   [
     "server allow-connect",

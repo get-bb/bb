@@ -60,6 +60,9 @@ describe("marketplaceObjectKey", () => {
     expect(marketplaceObjectKey("/marketplace/v2/marketplace.json")).toBe(
       "v2/marketplace.json",
     );
+    expect(marketplaceObjectKey("/marketplace/index/v1/report.json")).toBe(
+      "index/v1/report.json",
+    );
   });
 
   it("refuses traversal, empty segments, and other paths", () => {
@@ -68,6 +71,12 @@ describe("marketplaceObjectKey", () => {
     expect(marketplaceObjectKey("/marketplace/v1/icons//a.svg")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v1/%2e%2e/secrets")).toBe(null);
     expect(marketplaceObjectKey("/marketplace/v2/%2e%2e/secrets")).toBe(null);
+    expect(marketplaceObjectKey("/marketplace/index/v1/../v2/a.json")).toBe(
+      null,
+    );
+    expect(marketplaceObjectKey("/marketplace/index/v2/report.json")).toBe(
+      null,
+    );
     expect(marketplaceObjectKey("/marketplace/v1/icons/%broken.svg")).toBe(
       null,
     );

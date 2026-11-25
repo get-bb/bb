@@ -401,9 +401,28 @@ Authoring a plugin
                                  and the wrong dependency field
   bb plugin migrate [path] [--yes]  Move a plugin that vendors types/ to the
                                  @get-bb/plugin-sdk npm package
+  bb plugin publish --check [dir] [--source github|npm] [--offline] [--json]
+                                 Check a plugin against the public
+                                 marketplace's listing rules and print the
+                                 exact steps to get listed. Never pushes,
+                                 tags, or publishes; exits 1 on errors.
+                                 --offline skips the live catalog, GitHub,
+                                 and npm lookups
+
+Getting listed on bb-community is self-service; there is no pull request.
+Fill in `bbMarketplace` (a category, recommended; secondaryCategories and
+screenshots, optional) and PLUGIN_OVERVIEW.md, run `bb plugin publish --check`, then
+either give the public GitHub repository the `bb-plugin` topic and push a
+semver tag (`vX.Y.Z`, or `<dir>/vX.Y.Z` for a plugin in a subdirectory listed
+in .bb/plugins.json; the `v` is required), or keep `bb-plugin` in package.json `keywords` and run
+`npm publish`. The crawler reads the newest release, never the default
+branch, and the listing appears within about 30 minutes. A release of a
+plugin already in the catalog updates its listing the same way. Per-source
+results, with the same reason codes the check prints, are at
+https://getbb.app/marketplace/index/v1/report.json.
 
 The full authoring reference (manifest, every API surface, build and release,
-testing, and marketplace publishing) is the built-in `bb-plugin-authoring`
+testing, and getting listed) is the built-in `bb-plugin-authoring`
 skill; in a checkout it lives under plugins/bb-guide/skills/bb-plugin-authoring/.
 `plugins/` holds every bundled plugin and `examples/plugins/` holds reference
 plugins.

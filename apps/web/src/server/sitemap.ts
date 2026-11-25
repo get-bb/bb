@@ -50,6 +50,7 @@ export function sitemapXml(
 
   if (marketplace.status === "available") {
     pages.push({ path: "/marketplace" });
+    pages.push({ path: "/marketplace/publish" });
     for (const category of indexableMarketplaceCategories(
       marketplace.manifest,
     )) {
