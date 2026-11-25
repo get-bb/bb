@@ -1,12 +1,16 @@
-import { useAtom, type WritableAtom } from "jotai";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
+  effectiveReplacementPreference,
   findAutomaticReplacement,
   replacementProviderKey,
+  type ExclusiveRule,
 } from "@/lib/plugin-replacement-preference";
-import { useBuiltinPluginIds } from "@/lib/plugin-slots";
-import { ChoiceDropdownSetting } from "./ChoiceDropdownSetting";
+import { useBbPluginIds } from "@/lib/plugin-slots";
+import {
+  ChoiceDropdownSetting,
+  type ChoiceDropdownOption,
+} from "./ChoiceDropdownSetting";
 
 interface ReplacementProviderSlot {
   pluginId: string;
@@ -15,72 +19,98 @@ interface ReplacementProviderSlot {
   description?: string;
 }
 
+export interface BuiltInChoice {
+  title: string;
+  description: string;
+}
+
 export function ReplacementProviderSetting({
   label,
   description,
   triggerAriaLabel,
-  builtInDescription,
-  allowAutomatic = true,
-  preferenceAtom,
+  builtIn,
+  rule,
   slots,
+  value,
+  onSelect,
 }: {
   label: string;
-  description: string;
+  description: string | null;
   triggerAriaLabel: string;
-  builtInDescription?: string;
-  allowAutomatic?: boolean;
-  preferenceAtom: WritableAtom<string, [string], void>;
+  builtIn: BuiltInChoice | null;
+  rule: ExclusiveRule;
   slots: readonly ReplacementProviderSlot[];
+  value: string;
+  onSelect: (value: string) => void;
 }) {
-  const [preference, setPreference] = useAtom(preferenceAtom);
-
-  const builtinPluginIds = useBuiltinPluginIds();
-  const isBuiltin = (slot: ReplacementProviderSlot) =>
-    builtinPluginIds.has(slot.pluginId);
-  const automaticProvider = findAutomaticReplacement(slots, builtinPluginIds);
-  if (automaticProvider === undefined) return null;
-  const automaticOption = {
-    key: AUTOMATIC_REPLACEMENT_PROVIDER,
-    title: "Automatic",
-    description: `Chooses ${automaticProvider.title} (${
-      isBuiltin(automaticProvider) ? "built-in" : automaticProvider.pluginId
-    }).`,
-  };
-  const builtInOption =
-    builtInDescription === undefined
-      ? null
+  const bbPluginIds = useBbPluginIds();
+  const isBundled = (slot: ReplacementProviderSlot) =>
+    bbPluginIds.has(slot.pluginId);
+  const automaticProvider =
+    rule.automatic === "ranked"
+      ? findAutomaticReplacement(slots, bbPluginIds)
+      : undefined;
+  if (slots.length === 0) return null;
+  const automaticOption: ChoiceDropdownOption =
+    rule.automatic === "none"
+      ? {
+          key: AUTOMATIC_REPLACEMENT_PROVIDER,
+          title: "Not chosen",
+          description:
+            "Shows a plugin picker in the message, with the directive text, until you pick a plugin.",
+        }
       : {
-          key: BUILT_IN_REPLACEMENT_PROVIDER,
-          title: "bb (built-in)",
-          description: builtInDescription,
+          key: AUTOMATIC_REPLACEMENT_PROVIDER,
+          title: "Automatic",
+          description:
+            automaticProvider === undefined
+              ? `Chooses ${builtIn?.title ?? "bb"}.`
+              : `Chooses ${automaticProvider.title} (${
+                  isBundled(automaticProvider)
+                    ? "from bb"
+                    : automaticProvider.pluginId
+                }).`,
         };
-  const optionFor = (slot: ReplacementProviderSlot) =>
-    isBuiltin(slot)
+  const sharedTitles = new Set(
+    slots
+      .filter((slot, index) =>
+        slots.some(
+          (other, otherIndex) =>
+            otherIndex !== index && other.title === slot.title,
+        ),
+      )
+      .map((slot) => slot.title),
+  );
+  const titleOf = (slot: ReplacementProviderSlot) =>
+    sharedTitles.has(slot.title)
+      ? `${slot.title} (${slot.pluginId})`
+      : slot.title;
+  const optionFor = (slot: ReplacementProviderSlot): ChoiceDropdownOption =>
+    isBundled(slot)
       ? {
           key: replacementProviderKey(slot),
-          title: `${slot.title} (built-in)`,
-          description: slot.description ?? "",
+          title: `${titleOf(slot)} (from bb)`,
+          description: slot.description ?? `From the ${slot.pluginId} plugin.`,
         }
       : {
           key: replacementProviderKey(slot),
-          title: slot.title,
+          title: titleOf(slot),
           description:
             slot.description === undefined
               ? `From the ${slot.pluginId} plugin.`
               : `${slot.pluginId} plugin. ${slot.description}`,
         };
   const options = [
-    ...(allowAutomatic ? [automaticOption] : []),
-    ...slots.filter((slot) => !isBuiltin(slot)).map(optionFor),
-    ...slots.filter(isBuiltin).map(optionFor),
-    ...(builtInOption === null ? [] : [builtInOption]),
+    automaticOption,
+    ...slots.filter((slot) => !isBundled(slot)).map(optionFor),
+    ...slots.filter(isBundled).map(optionFor),
+    ...(rule.builtin && builtIn !== null
+      ? [{ key: BUILT_IN_REPLACEMENT_PROVIDER, ...builtIn }]
+      : []),
   ];
+  const effective = effectiveReplacementPreference(slots, value, rule);
   const selected =
-    options.find((option) => option.key === preference) ??
-    builtInOption ??
-    (allowAutomatic
-      ? automaticOption
-      : { key: preference, title: "Unavailable plugin" });
+    options.find((option) => option.key === effective) ?? automaticOption;
 
   return (
     <ChoiceDropdownSetting
@@ -89,7 +119,7 @@ export function ReplacementProviderSetting({
       triggerAriaLabel={triggerAriaLabel}
       options={options}
       selected={selected}
-      onSelect={setPreference}
+      onSelect={onSelect}
     />
   );
 }

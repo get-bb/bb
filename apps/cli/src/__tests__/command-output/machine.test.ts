@@ -29,6 +29,7 @@ const hosts: Host[] = [
     },
     maxPermissionMode: "full",
     lastSeenAt: 1_700_000_000_000,
+    route: null,
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 2,
@@ -48,6 +49,7 @@ const hosts: Host[] = [
     },
     maxPermissionMode: "full",
     lastSeenAt: null,
+    route: null,
     lastRejectedProtocolVersion: null,
     createdAt: 1,
     updatedAt: 2,
@@ -232,7 +234,11 @@ describe("bb machine command output", () => {
     async (command) => {
       const pending = { ...creating, id: "host-pending", name: "pending" };
       const get = vi.fn(async () => pending);
-      const remove = vi.fn(async () => undefined);
+      const remove = vi.fn(async () => ({
+        ok: true as const,
+        progress: "complete" as const,
+        warnings: [],
+      }));
       stubServerApi({
         "v1.hosts.$get": vi.fn(
           async ({ query }: { query: { includeCreating?: string } }) =>
@@ -269,7 +275,19 @@ describe("bb machine command output", () => {
   it("bb machine list marks the server machine in the table", async () => {
     vi.spyOn(Date, "now").mockReturnValue(1_700_000_120_000);
     stubServerApi({
-      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.$get": vi.fn(async () => [
+        hosts[0],
+        {
+          ...hosts[1],
+          status: "connected",
+          lastSeenAt: 1_700_000_060_000,
+          route: {
+            providerId: "local-network",
+            kind: "local-network",
+            displayName: "Local network",
+          },
+        },
+      ]),
       "v1.system.config.$get": vi.fn(async () => ({
         primaryHostId: "host-primary",
       })),
@@ -279,7 +297,7 @@ describe("bb machine command output", () => {
 
     expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
       "",
-      "Name         Role    ID            Type        Status        Provider       Last seen\n-----------  ------  ------------  ----------  ------------  -------------  ---------\nworkstation  server  host-primary  persistent  connected     user-enrolled  2m ago\n-----------  ------  ------------  ----------  ------------  -------------  ---------\nlaptop               host-remote   persistent  disconnected  ssh            never",
+      "Name         Role    ID            Type        Status     Route          Provider       Last seen\n-----------  ------  ------------  ----------  ---------  -------------  -------------  ---------\nworkstation  server  host-primary  persistent  connected                 user-enrolled  2m ago\n-----------  ------  ------------  ----------  ---------  -------------  -------------  ---------\nlaptop               host-remote   persistent  connected  Local network  ssh            1m ago",
       "",
     ]);
   });
@@ -335,13 +353,13 @@ describe("bb machine command output", () => {
   it.each([
     ["suspend", "v1.hosts.:id.suspend.$post", "suspended"],
     ["resume", "v1.hosts.:id.resume.$post", "resumed"],
-    ["retry-cleanup", "v1.hosts.:id.retry-cleanup.$post", "cleanup retried"],
+    ["retry-cleanup", "v1.hosts.:id.retry-cleanup.$post", "removed"],
   ] as const)(
     "bb machine %s resolves the machine and invokes the lifecycle action",
     async (command, route, message) => {
       const lifecycleAction = vi.fn(async () =>
         command === "retry-cleanup"
-          ? { ok: true as const }
+          ? { ok: true as const, progress: "complete" as const, warnings: [] }
           : {
               ...hosts[1]!,
               lifecycle: {
@@ -400,8 +418,56 @@ describe("bb machine command output", () => {
     ]);
   });
 
+  it("bb machine provider-cli install exits non-zero when the install fails", async () => {
+    const job = {
+      id: "job_1",
+      hostId: "host-primary",
+      provider: "codex",
+      actionKind: "install",
+      startedAt: 1,
+    };
+    const events = [
+      { type: "started", provider: "codex", command: "npm i -g codex" },
+      { type: "error", provider: "codex", message: "npm exited with 1" },
+    ];
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.provider-clis.install-jobs.$post": vi.fn(async () => ({
+        job: { ...job, state: "running" },
+      })),
+      "v1.hosts.:id.provider-clis.install-jobs.:jobId.$get": vi.fn(
+        async () => ({
+          job: { ...job, state: "completed", finishedAt: 2, events },
+        }),
+      ),
+    });
+
+    await expect(
+      runCommand(
+        [
+          "machine",
+          "provider-cli",
+          "install",
+          "workstation",
+          "codex",
+          "--json",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toEqual(events);
+    expect(console.error).toHaveBeenCalledWith("Error: npm exited with 1");
+  });
+
   it("bb machine remove resolves and removes a provider machine", async () => {
-    const remove = vi.fn(async () => undefined);
+    const remove = vi.fn(async () => ({
+      ok: true as const,
+      progress: "complete" as const,
+      warnings: [],
+    }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),
       "v1.hosts.:id.$delete": remove,
@@ -418,8 +484,29 @@ describe("bb machine command output", () => {
     ]);
   });
 
+  it("bb machine remove reports a removal that is still in progress", async () => {
+    stubServerApi({
+      "v1.hosts.$get": vi.fn(async () => hosts),
+      "v1.hosts.:id.$delete": vi.fn(async () => ({
+        ok: true as const,
+        progress: "in-progress" as const,
+        warnings: [],
+      })),
+    });
+
+    await runCommand(["machine", "remove", "laptop", "--yes"], register);
+
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      "Machine host-remote is still being removed; check progress with bb machine show host-remote",
+    ]);
+  });
+
   it("bb machine remove --force skips cleanup for a stranded machine", async () => {
-    const remove = vi.fn(async () => undefined);
+    const remove = vi.fn(async () => ({
+      ok: true as const,
+      progress: "complete" as const,
+      warnings: [],
+    }));
     stubServerApi({
       "v1.hosts.$get": vi.fn(async () => hosts),
       "v1.hosts.:id.$delete": remove,

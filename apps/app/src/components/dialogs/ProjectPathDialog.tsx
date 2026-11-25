@@ -28,6 +28,7 @@ import { LazyRemotePathBrowser } from "@/components/dialogs/LazyRemotePathBrowse
 import { MachineStatusDot } from "@/components/machines/MachineStatusDot";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import { selectHosts } from "@/hooks/queries/host-queries";
+import { projectPathDialogTargetHostId } from "./project-path-dialog-target";
 
 export type ProjectPathDialogTarget =
   | {
@@ -45,6 +46,24 @@ export type ProjectPathDialogTarget =
       kind: "add-source";
       projectId: string;
       projectName: string;
+    }
+  | {
+      kind: "add-folder";
+      projectId: string;
+      projectName: string;
+      sourceId: string;
+      hostId: string;
+      hostName: string;
+    }
+  | {
+      kind: "change-folder";
+      projectId: string;
+      projectName: string;
+      sourceId: string;
+      folderId: string;
+      currentPath: string;
+      hostId: string;
+      hostName: string;
     };
 
 export type ProjectPathDialogSubmitHandler = (
@@ -117,6 +136,10 @@ function getDialogTitle(kind: ProjectPathDialogTarget["kind"]): string {
       return "Update project path";
     case "add-source":
       return "Add project source";
+    case "add-folder":
+      return "Add folder";
+    case "change-folder":
+      return "Change folder";
   }
 }
 
@@ -128,6 +151,10 @@ function getDialogSubmitLabel(kind: ProjectPathDialogTarget["kind"]): string {
       return "Save path";
     case "add-source":
       return "Add source";
+    case "add-folder":
+      return "Add folder";
+    case "change-folder":
+      return "Save folder";
   }
 }
 
@@ -166,8 +193,19 @@ export function ProjectPathDialogContent({
 }: ProjectPathDialogContentProps) {
   const inputId = useId();
   const isPointerCoarse = usePointerCoarse();
-  const targetHostId = target.kind === "update" ? target.hostId : hostId;
-  const targetHostName = target.kind === "update" ? target.hostName : hostName;
+  const targetHostId = projectPathDialogTargetHostId(target) ?? hostId;
+  const targetHostName =
+    target.kind === "update" ||
+    target.kind === "add-folder" ||
+    target.kind === "change-folder"
+      ? target.hostName
+      : hostName;
+  const targetCurrentPath =
+    target.kind === "update" || target.kind === "change-folder"
+      ? target.currentPath
+      : null;
+  const isFolderTarget =
+    target.kind === "add-folder" || target.kind === "change-folder";
   const machineOptions =
     target.kind === "create" ? selectHosts(hosts, "all") : undefined;
   const firstConnectedHostId = machineOptions?.find(
@@ -192,20 +230,15 @@ export function ProjectPathDialogContent({
   const showMachinePicker = (machineOptions?.length ?? 0) > 1;
   const noMachineAvailable =
     machineOptions !== undefined && selectedHostId === null;
-  const [manualPath, setManualPath] = useState(
-    target.kind === "update" ? target.currentPath : "",
-  );
+  const [manualPath, setManualPath] = useState(targetCurrentPath ?? "");
   const [browserDirectory, setBrowserDirectory] = useState<string | null>(
-    target.kind === "update" ? target.currentPath : null,
+    targetCurrentPath,
   );
   const [validationMessage, setValidationMessage] = useState<string | null>(
     null,
   );
   const copy = getPlatformCopy(platform, selectedHostName);
-  const placeholder =
-    target.kind === "update"
-      ? target.currentPath || copy.placeholder
-      : copy.placeholder;
+  const placeholder = targetCurrentPath || copy.placeholder;
 
   const selectedPath = selectedHostId
     ? browserDirectory
@@ -225,7 +258,11 @@ export function ProjectPathDialogContent({
     if (pending) return;
 
     if (!selectedPath) {
-      setValidationMessage("Choose a project folder.");
+      setValidationMessage(
+        isFolderTarget
+          ? "Choose a folder."
+          : "Choose a project folder.",
+      );
       return;
     }
 
@@ -253,13 +290,15 @@ export function ProjectPathDialogContent({
       <DialogHeader>
         <DialogTitle>{getDialogTitle(target.kind)}</DialogTitle>
         <DialogDescription>
-          {selectedHostId
-            ? `Browse to the project folder${
-                selectedHostName ? ` on ${selectedHostName}` : ""
-              }, or edit the path directly.`
-            : noMachineAvailable
-              ? "No machine is online. Start one to choose a project folder."
-              : copy.description}
+          {isFolderTarget
+            ? `Every thread in ${target.projectName} on ${target.hostName} can read and write this folder. Pick a folder outside the project's checkout.`
+            : selectedHostId
+              ? `Browse to the project folder${
+                  selectedHostName ? ` on ${selectedHostName}` : ""
+                }, or edit the path directly.`
+              : noMachineAvailable
+                ? "No machine is online. Start one to choose a project folder."
+                : copy.description}
         </DialogDescription>
       </DialogHeader>
       <form className="min-w-0 space-y-4" onSubmit={handleSubmit}>
@@ -331,7 +370,7 @@ export function ProjectPathDialogContent({
           <LazyRemotePathBrowser
             key={selectedHostId}
             hostId={selectedHostId}
-            initialPath={target.kind === "update" ? target.currentPath : null}
+            initialPath={targetCurrentPath}
             allowCreateFolder={target.kind === "create"}
             onDirectoryChange={setBrowserDirectory}
             disabled={pending || !selectedHostConnected}

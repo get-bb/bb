@@ -17,7 +17,6 @@ import type {
 } from "./types.js";
 
 export interface CreateBridgeAdapterOptions {
-  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   bridgeBundleDir?: string;
   bridgeNodeEnv?: Record<string, string>;
@@ -33,11 +32,12 @@ export type ProviderExecutionContext = {
   providerOptions: JsonObject;
   instructions?: string;
   envVars?: Record<string, string>;
+  additionalWorkspaceWriteRoots: readonly string[];
 } & RuntimePermissionPolicy;
 
 export type AdapterCommand =
   | {
-      type: "skills/configure";
+      type: "skills/configure" | "skills/reconfigure";
       skillRoots: readonly AgentRuntimeSkillRoot[];
     }
   | {
@@ -46,19 +46,25 @@ export type AdapterCommand =
       selectedModel?: string;
       envVars: Record<string, string>;
     }
-  | { type: "commands/list"; cwd: string }
-  | { type: "provider/health"; cwd?: string }
+  | { type: "commands/list"; cwd: string; envVars: Record<string, string> }
+  | {
+      type: "provider/health";
+      cwd?: string;
+      envVars: Record<string, string>;
+    }
   | { type: "provider/usage"; cwd?: string }
   | {
       type: "provider/installation/status";
       cwd?: string;
       requirement?: "thread_rewind";
       checkUpdates: boolean;
+      envVars: Record<string, string>;
     }
   | {
       type: "provider/installation/run";
       action: "install" | "update";
       cwd?: string;
+      envVars: Record<string, string>;
     }
   | {
       type: "thread/start";

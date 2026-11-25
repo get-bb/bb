@@ -4,6 +4,7 @@ import {
   experimental_joinHostPath as joinPath,
   experimental_getHostPathDirname as getHostPathDirname,
   experimental_getRelativeHostPath as getRelativeHostPath,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { proposalSchema, type Proposal } from "./proposals.js";
 import os from "node:os";
@@ -16,7 +17,6 @@ import {
   defineCli,
   type BbPluginApi,
   type PluginCliContext,
-  type PluginCliResult,
   type PluginRpcHandlers,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
@@ -276,11 +276,12 @@ function summarizeMarkdown(
     : documentHeadingIndex >= 0
       ? documentHeadingIndex
       : firstContentIndex;
-  const title = (
+  const title = sliceUtf16Head(
     document.title ??
-    (titleLineIndex >= 0 ? cleanedLines[titleLineIndex] : null) ??
-    fallback
-  ).slice(0, 120);
+      (titleLineIndex >= 0 ? cleanedLines[titleLineIndex] : null) ??
+      fallback,
+    120,
+  );
   const firstHeadingIndex = lines.findIndex(
     (line) => markdownHeadingLevel(line) !== null,
   );
@@ -290,16 +291,18 @@ function summarizeMarkdown(
       : firstHeadingIndex >= 0 && cleanedLines[firstHeadingIndex] === title
         ? firstHeadingIndex
         : -1;
-  const preview = cleanedLines
-    .filter(
-      (line, index) =>
-        index !== previewHeadingIndex &&
-        line &&
-        line !== title &&
-        !line.startsWith("::html{"),
-    )
-    .join(" ")
-    .slice(0, PREVIEW_LENGTH);
+  const preview = sliceUtf16Head(
+    cleanedLines
+      .filter(
+        (line, index) =>
+          index !== previewHeadingIndex &&
+          line &&
+          line !== title &&
+          !line.startsWith("::html{"),
+      )
+      .join(" "),
+    PREVIEW_LENGTH,
+  );
   return { title, preview };
 }
 
@@ -317,12 +320,14 @@ function kebabCase(text: string): string {
 }
 
 function sanitizeName(raw: string): string {
-  return raw
-    .replace(/\.(md|html?)$/i, "")
-    .replace(/[/\\:*?"<>|]/g, "-")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 80);
+  return sliceUtf16Head(
+    raw
+      .replace(/\.(md|html?)$/i, "")
+      .replace(/[/\\:*?"<>|]/g, "-")
+      .replace(/\s+/g, " ")
+      .trim(),
+    80,
+  );
 }
 
 function parseVaultRow(value: unknown): Vault {
@@ -2603,19 +2608,6 @@ export default async function plugin(
   );
   routeRpc("/sync/apply", docsRpcContract.syncApply.input, handlers.syncApply);
 
-  async function attemptCli(
-    work: () => Promise<PluginCliResult>,
-  ): Promise<PluginCliResult> {
-    try {
-      return await work();
-    } catch (error) {
-      if (error instanceof PluginCliError) throw error;
-      throw new PluginCliError(errorMessage(error), {
-        code: "operation_failed",
-      });
-    }
-  }
-
   function renderCliResult(
     command: string,
     result: unknown,
@@ -2699,21 +2691,18 @@ export default async function plugin(
           version: proposalVersionOption,
           json: JSON_OPTION,
         },
-        run: (input) =>
-          attemptCli(async () => {
-            const expectedVersion = parseProposalVersion(input.options.version);
-            if (expectedVersion === null)
-              throw new CliUsageError(
-                "This action requires a proposal version.",
-              );
-            const result = await handlers.resolveProposal({
-              vaultId: input.options.vault,
-              path: requireVaultPath(input.positionals.path),
-              action,
-              expectedVersion,
-            });
-            return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
-          }),
+        run: async (input) => {
+          const expectedVersion = parseProposalVersion(input.options.version);
+          if (expectedVersion === null)
+            throw new CliUsageError("This action requires a proposal version.");
+          const result = await handlers.resolveProposal({
+            vaultId: input.options.vault,
+            path: requireVaultPath(input.positionals.path),
+            action,
+            expectedVersion,
+          });
+          return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+        },
       }),
     ]),
   );
@@ -2730,18 +2719,17 @@ export default async function plugin(
           summary: "Read the current proposal and its version",
           positionals: proposalPositionals,
           options: { vault: VAULT_OPTION, json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: JSON.stringify(
-                await handlers.readProposal({
-                  vaultId: input.options.vault,
-                  path: requireVaultPath(input.positionals.path),
-                }),
-                null,
-                2,
-              ),
-            })),
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: JSON.stringify(
+              await handlers.readProposal({
+                vaultId: input.options.vault,
+                path: requireVaultPath(input.positionals.path),
+              }),
+              null,
+              2,
+            ),
+          }),
         }),
         propose: cliCommand({
           summary: "Propose a Markdown revision without changing the document",
@@ -2763,41 +2751,38 @@ export default async function plugin(
             },
             "workspace-host": WORKSPACE_HOST_OPTION,
           },
-          run: (input, context) =>
-            attemptCli(async () => {
-              const candidatePath = resolveHostPath(
-                context.cwd ?? process.cwd(),
-                input.options.file,
-              );
-              const hostId = await resolveWorkspaceHostId(
-                workspaceArgs({
-                  positionals: [],
-                  vaultId: input.options.vault,
-                  into: undefined,
-                  workspaceHostId: input.options["workspace-host"],
-                }),
-                context,
-              );
-              const file = await bb.sdk.files.read({
-                ...hostIdArgs(hostId),
-                path: candidatePath,
-                rootPath: hostPathDirname(candidatePath),
-              });
-              if (file.contentEncoding !== "utf8")
-                throw new CliUsageError(
-                  "Proposal file must be UTF-8 Markdown.",
-                );
-              const result = await handlers.proposeNote({
+          run: async (input, context) => {
+            const candidatePath = resolveHostPath(
+              context.cwd ?? process.cwd(),
+              input.options.file,
+            );
+            const hostId = await resolveWorkspaceHostId(
+              workspaceArgs({
+                positionals: [],
                 vaultId: input.options.vault,
-                path: requireVaultPath(input.positionals.path, {
-                  extension: ".md",
-                }),
-                content: file.content,
-                expectedSha256: input.options["expected-sha256"],
-                expectedVersion: parseProposalVersion(input.options.version),
-              });
-              return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
-            }),
+                into: undefined,
+                workspaceHostId: input.options["workspace-host"],
+              }),
+              context,
+            );
+            const file = await bb.sdk.files.read({
+              ...hostIdArgs(hostId),
+              path: candidatePath,
+              rootPath: hostPathDirname(candidatePath),
+            });
+            if (file.contentEncoding !== "utf8")
+              throw new CliUsageError("Proposal file must be UTF-8 Markdown.");
+            const result = await handlers.proposeNote({
+              vaultId: input.options.vault,
+              path: requireVaultPath(input.positionals.path, {
+                extension: ".md",
+              }),
+              content: file.content,
+              expectedSha256: input.options["expected-sha256"],
+              expectedVersion: parseProposalVersion(input.options.version),
+            });
+            return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+          },
         }),
         "proposal-update": cliCommand({
           summary: "Edit a pending candidate using its version",
@@ -2812,37 +2797,29 @@ export default async function plugin(
               description: "Complete candidate Markdown",
             },
           },
-          run: (input) =>
-            attemptCli(async () => {
-              const expectedVersion = parseProposalVersion(
-                input.options.version,
+          run: async (input) => {
+            const expectedVersion = parseProposalVersion(input.options.version);
+            if (expectedVersion === null)
+              throw new CliUsageError(
+                "This action requires a proposal version.",
               );
-              if (expectedVersion === null)
-                throw new CliUsageError(
-                  "This action requires a proposal version.",
-                );
-              const result = await handlers.updateProposal({
-                vaultId: input.options.vault,
-                path: requireVaultPath(input.positionals.path),
-                content: input.options.content,
-                expectedVersion,
-              });
-              return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
-            }),
+            const result = await handlers.updateProposal({
+              vaultId: input.options.vault,
+              path: requireVaultPath(input.positionals.path),
+              content: input.options.content,
+              expectedVersion,
+            });
+            return { exitCode: 0, stdout: JSON.stringify(result, null, 2) };
+          },
         }),
         vaults: cliCommand({
           summary: "List configured vaults",
           suggestFor: ["vault"],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "vaults",
-                listVaults(),
-                input.options.json,
-              ),
-            })),
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult("vaults", listVaults(), input.options.json),
+          }),
         }),
         "vault-add": cliCommand({
           summary: "Add a vault",
@@ -2866,19 +2843,18 @@ export default async function plugin(
             },
           ],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "vault-add",
-                await handlers.createVault({
-                  name: input.positionals.name,
-                  rootPath: input.positionals["absolute-root"],
-                  hostId: input.positionals["host-id"],
-                }),
-                input.options.json,
-              ),
-            })),
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult(
+              "vault-add",
+              await handlers.createVault({
+                name: input.positionals.name,
+                rootPath: input.positionals["absolute-root"],
+                hostId: input.positionals["host-id"],
+              }),
+              input.options.json,
+            ),
+          }),
         }),
         "vault-remove": cliCommand({
           summary: "Remove a vault configuration",
@@ -2891,29 +2867,27 @@ export default async function plugin(
             },
           ],
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "vault-remove",
-                await handlers.removeVault({ vaultId: input.positionals.id }),
-                input.options.json,
-              ),
-            })),
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult(
+              "vault-remove",
+              await handlers.removeVault({ vaultId: input.positionals.id }),
+              input.options.json,
+            ),
+          }),
         }),
         list: cliCommand({
           summary: "List notes and folders",
           aliases: ["ls"],
           options: { vault: VAULT_OPTION, json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "list",
-                await notebookData(input.options.vault),
-                input.options.json,
-              ),
-            })),
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult(
+              "list",
+              await notebookData(input.options.vault),
+              input.options.json,
+            ),
+          }),
         }),
         read: cliCommand({
           summary: "Read a file",
@@ -2926,22 +2900,21 @@ export default async function plugin(
             },
           ],
           options: { vault: VAULT_OPTION, json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => {
-              const result = await readFile(
-                input.options.vault,
-                input.positionals.path,
-              );
-              return {
-                exitCode: 0,
-                stdout:
-                  !input.options.json &&
-                  isRecord(result) &&
-                  typeof result.content === "string"
-                    ? result.content
-                    : renderCliResult("read", result, input.options.json),
-              };
-            }),
+          run: async (input) => {
+            const result = await readFile(
+              input.options.vault,
+              input.positionals.path,
+            );
+            return {
+              exitCode: 0,
+              stdout:
+                !input.options.json &&
+                isRecord(result) &&
+                typeof result.content === "string"
+                  ? result.content
+                  : renderCliResult("read", result, input.options.json),
+            };
+          },
         }),
         pull: cliCommand({
           summary: "Pull one file, a folder subtree, or a whole vault",
@@ -2977,31 +2950,30 @@ export default async function plugin(
             json: JSON_OPTION,
           },
           constraints: [{ kind: "at-most-one", options: ["all", "folder"] }],
-          run: (input, context) =>
-            attemptCli(async () => {
-              const path = input.positionals.path;
-              const result = await runPull(
-                workspaceArgs({
-                  positionals: path === undefined ? [] : [path],
-                  vaultId: input.options.vault,
-                  into: input.options.into,
-                  workspaceHostId: input.options["workspace-host"],
-                  all: input.options.all,
-                  folder: input.options.folder,
-                }),
-                context,
-              );
-              return {
-                exitCode: !isRecord(result)
-                  ? 0
-                  : result.outcome === "conflict"
-                    ? 3
-                    : result.outcome === "partial"
-                      ? 1
-                      : 0,
-                stdout: renderCliResult("pull", result, input.options.json),
-              };
-            }),
+          run: async (input, context) => {
+            const path = input.positionals.path;
+            const result = await runPull(
+              workspaceArgs({
+                positionals: path === undefined ? [] : [path],
+                vaultId: input.options.vault,
+                into: input.options.into,
+                workspaceHostId: input.options["workspace-host"],
+                all: input.options.all,
+                folder: input.options.folder,
+              }),
+              context,
+            );
+            return {
+              exitCode: !isRecord(result)
+                ? 0
+                : result.outcome === "conflict"
+                  ? 3
+                  : result.outcome === "partial"
+                    ? 1
+                    : 0,
+              stdout: renderCliResult("pull", result, input.options.json),
+            };
+          },
         }),
         status: cliCommand({
           summary: "Show local edits, conflicts, and ignored deletions",
@@ -3020,26 +2992,25 @@ export default async function plugin(
             diff: DIFF_OPTION,
             json: JSON_OPTION,
           },
-          run: (input, context) =>
-            attemptCli(async () => {
-              const directory = input.positionals["workspace-dir"];
-              const result = await runPushPlan(
-                workspaceArgs({
-                  positionals: directory === undefined ? [] : [directory],
-                  vaultId: input.options.vault,
-                  into: undefined,
-                  workspaceHostId: input.options["workspace-host"],
-                  delete: input.options.delete,
-                  diff: input.options.diff,
-                }),
-                context,
-                false,
-              );
-              return {
-                exitCode: statusExitCode(result),
-                stdout: renderCliResult("status", result, input.options.json),
-              };
-            }),
+          run: async (input, context) => {
+            const directory = input.positionals["workspace-dir"];
+            const result = await runPushPlan(
+              workspaceArgs({
+                positionals: directory === undefined ? [] : [directory],
+                vaultId: input.options.vault,
+                into: undefined,
+                workspaceHostId: input.options["workspace-host"],
+                delete: input.options.delete,
+                diff: input.options.diff,
+              }),
+              context,
+              false,
+            );
+            return {
+              exitCode: statusExitCode(result),
+              stdout: renderCliResult("status", result, input.options.json),
+            };
+          },
         }),
         push: cliCommand({
           summary: "Safely push local edits using optimistic concurrency",
@@ -3064,33 +3035,32 @@ export default async function plugin(
             diff: DIFF_OPTION,
             json: JSON_OPTION,
           },
-          run: (input, context) =>
-            attemptCli(async () => {
-              const directory = input.positionals["workspace-dir"];
-              const result = await runPushPlan(
-                workspaceArgs({
-                  positionals: directory === undefined ? [] : [directory],
-                  vaultId: input.options.vault,
-                  into: undefined,
-                  workspaceHostId: input.options["workspace-host"],
-                  delete: input.options.delete,
-                  dryRun: input.options["dry-run"],
-                  diff: input.options.diff,
-                }),
-                context,
-                true,
-              );
-              return {
-                exitCode: !isRecord(result)
-                  ? 0
-                  : result.outcome === "conflict"
-                    ? 3
-                    : result.outcome === "partial"
-                      ? 1
-                      : 0,
-                stdout: renderCliResult("push", result, input.options.json),
-              };
-            }),
+          run: async (input, context) => {
+            const directory = input.positionals["workspace-dir"];
+            const result = await runPushPlan(
+              workspaceArgs({
+                positionals: directory === undefined ? [] : [directory],
+                vaultId: input.options.vault,
+                into: undefined,
+                workspaceHostId: input.options["workspace-host"],
+                delete: input.options.delete,
+                dryRun: input.options["dry-run"],
+                diff: input.options.diff,
+              }),
+              context,
+              true,
+            );
+            return {
+              exitCode: !isRecord(result)
+                ? 0
+                : result.outcome === "conflict"
+                  ? 3
+                  : result.outcome === "partial"
+                    ? 1
+                    : 0,
+              stdout: renderCliResult("push", result, input.options.json),
+            };
+          },
         }),
         write: cliCommand({
           summary: "Deprecated: write a UTF-8 file directly",
@@ -3114,20 +3084,19 @@ export default async function plugin(
             },
             json: JSON_OPTION,
           },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "write",
-                await writeFile({
-                  vaultId: input.options.vault,
-                  rawPath: input.positionals.path,
-                  content: input.options.content,
-                }),
-                input.options.json,
-              ),
-              stderr: DEPRECATED_MUTATION_WARNING,
-            })),
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult(
+              "write",
+              await writeFile({
+                vaultId: input.options.vault,
+                rawPath: input.positionals.path,
+                content: input.options.content,
+              }),
+              input.options.json,
+            ),
+            stderr: DEPRECATED_MUTATION_WARNING,
+          }),
         }),
         mkdir: cliCommand({
           summary: "Deprecated: create a folder directly",
@@ -3141,19 +3110,18 @@ export default async function plugin(
             },
           ],
           options: { vault: VAULT_OPTION, json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "mkdir",
-                await handlers.createFolder({
-                  vaultId: input.options.vault,
-                  path: input.positionals.path,
-                }),
-                input.options.json,
-              ),
-              stderr: DEPRECATED_MUTATION_WARNING,
-            })),
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult(
+              "mkdir",
+              await handlers.createFolder({
+                vaultId: input.options.vault,
+                path: input.positionals.path,
+              }),
+              input.options.json,
+            ),
+            stderr: DEPRECATED_MUTATION_WARNING,
+          }),
         }),
         move: cliCommand({
           summary: "Deprecated: move a path directly",
@@ -3172,20 +3140,19 @@ export default async function plugin(
             },
           ],
           options: { vault: VAULT_OPTION, json: JSON_OPTION },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "move",
-                await movePath(
-                  input.options.vault,
-                  input.positionals.from,
-                  input.positionals.to,
-                ),
-                input.options.json,
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult(
+              "move",
+              await movePath(
+                input.options.vault,
+                input.positionals.from,
+                input.positionals.to,
               ),
-              stderr: DEPRECATED_MUTATION_WARNING,
-            })),
+              input.options.json,
+            ),
+            stderr: DEPRECATED_MUTATION_WARNING,
+          }),
         }),
         remove: cliCommand({
           summary: "Deprecated: remove a file or directory directly",
@@ -3207,20 +3174,19 @@ export default async function plugin(
             },
             json: JSON_OPTION,
           },
-          run: (input) =>
-            attemptCli(async () => ({
-              exitCode: 0,
-              stdout: renderCliResult(
-                "remove",
-                await removePath(
-                  input.options.vault,
-                  input.positionals.path,
-                  input.options.recursive,
-                ),
-                input.options.json,
+          run: async (input) => ({
+            exitCode: 0,
+            stdout: renderCliResult(
+              "remove",
+              await removePath(
+                input.options.vault,
+                input.positionals.path,
+                input.options.recursive,
               ),
-              stderr: DEPRECATED_DELETION_WARNING,
-            })),
+              input.options.json,
+            ),
+            stderr: DEPRECATED_DELETION_WARNING,
+          }),
         }),
       },
     }),
@@ -3229,11 +3195,13 @@ export default async function plugin(
   bb.ui.registerMentionProvider({
     id: "note",
     label: "Docs",
-    async search({ query }) {
+    async search({ query, experimental_signal }) {
       const needle = query.trim().toLowerCase();
       const matches = [];
       for (const vault of listVaults()) {
-        for (const note of await mentionNoteSummaries(vault)) {
+        const notes = await mentionNoteSummaries(vault);
+        experimental_signal.throwIfAborted();
+        for (const note of notes) {
           if (
             needle &&
             !`${vault.name} ${note.title} ${note.preview} ${note.path}`

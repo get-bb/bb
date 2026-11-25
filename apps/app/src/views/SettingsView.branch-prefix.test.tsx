@@ -20,6 +20,8 @@ function renderSection(overrides?: {
 }) {
   return render(
     <GeneralSettingsSection
+      resumeThreadsAfterRestart={false}
+      onResumeThreadsAfterRestartChange={vi.fn()}
       confirmThreadArchive={true}
       onConfirmThreadArchiveChange={vi.fn()}
       keepHistoryAfterContextClear={false}

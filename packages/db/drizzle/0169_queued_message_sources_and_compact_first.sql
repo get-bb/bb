@@ -1,0 +1,2 @@
+ALTER TABLE `queued_thread_messages` ADD `execution_input_sources` text DEFAULT '{}' NOT NULL;--> statement-breakpoint
+ALTER TABLE `queued_thread_messages` ADD `compact_first` integer DEFAULT false NOT NULL;

@@ -745,17 +745,25 @@ function sortNewestNameFirst(entries: string[]): string[] {
   return [...entries].sort((a, b) => b.localeCompare(a));
 }
 
-async function findJetBrainsToolboxApplicationPath(
-  definition: LaunchAdapter,
-  runtime: WorkspaceOpenTargetRuntime,
-): Promise<string | null> {
-  if (
-    definition.macos.openMode === "default-app" ||
-    definition.macos.jetBrainsToolbox === undefined
-  ) {
-    return null;
-  }
+const jetBrainsToolboxApplicationScans = new WeakMap<
+  WorkspaceOpenTargetRuntime,
+  Promise<readonly string[]>
+>();
 
+function listJetBrainsToolboxApplicationPaths(
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<readonly string[]> {
+  let scan = jetBrainsToolboxApplicationScans.get(runtime);
+  if (scan === undefined) {
+    scan = scanJetBrainsToolboxApplicationPaths(runtime);
+    jetBrainsToolboxApplicationScans.set(runtime, scan);
+  }
+  return scan;
+}
+
+async function scanJetBrainsToolboxApplicationPaths(
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<readonly string[]> {
   const toolboxRoot = path.join(
     runtime.env?.HOME ?? os.homedir(),
     "Library",
@@ -764,6 +772,7 @@ async function findJetBrainsToolboxApplicationPath(
     "Toolbox",
     "apps",
   );
+  const applicationPaths: string[] = [];
   const pending: Array<{ depth: number; directory: string }> = [
     { directory: toolboxRoot, depth: 0 },
   ];
@@ -790,28 +799,42 @@ async function findJetBrainsToolboxApplicationPath(
       }
 
       const entryPath = path.join(current.directory, entry.name);
-      const lowerName = entry.name.toLowerCase();
-      if (
-        lowerName.endsWith(".app") &&
-        definition.macos.jetBrainsToolbox.bundlePrefixes.some((prefix) =>
-          lowerName.startsWith(prefix),
-        )
-      ) {
-        const executablePath = path.join(
-          entryPath,
-          "Contents",
-          "MacOS",
-          definition.macos.jetBrainsToolbox.executable,
-        );
-        if (await pathExists(executablePath)) {
-          return entryPath;
-        }
+      if (entry.name.toLowerCase().endsWith(".app")) {
+        applicationPaths.push(entryPath);
       }
-
       pending.push({
         directory: entryPath,
         depth: current.depth + 1,
       });
+    }
+  }
+
+  return applicationPaths;
+}
+
+async function findJetBrainsToolboxApplicationPath(
+  definition: LaunchAdapter,
+  runtime: WorkspaceOpenTargetRuntime,
+): Promise<string | null> {
+  if (
+    definition.macos.openMode === "default-app" ||
+    definition.macos.jetBrainsToolbox === undefined
+  ) {
+    return null;
+  }
+
+  const { bundlePrefixes, executable } = definition.macos.jetBrainsToolbox;
+  for (const applicationPath of await listJetBrainsToolboxApplicationPaths(
+    runtime,
+  )) {
+    const lowerName = path.basename(applicationPath).toLowerCase();
+    if (
+      bundlePrefixes.some((prefix) => lowerName.startsWith(prefix)) &&
+      (await pathExists(
+        path.join(applicationPath, "Contents", "MacOS", executable),
+      ))
+    ) {
+      return applicationPath;
     }
   }
 

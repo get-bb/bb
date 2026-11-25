@@ -1,16 +1,12 @@
 import { useEffect, useState } from "react";
 import { PluginSlotMount } from "../src/components/plugin/PluginSlotMount";
-import {
-  installTestPluginRuntime,
-  loadPluginApp,
-} from "@get-bb/plugin-sdk/testing/app";
+import { collectPluginAppRegistrations } from "../src/lib/plugin-app-definition";
 import type { WorkflowRunView } from "../../../plugins/workflows/src/ui-contract.js";
 
-installTestPluginRuntime();
 const workflowAppModule = await import("../../../plugins/workflows/src/app.js");
 const { EmptyOrError, LoadingPreview, WorkflowRunPanelState } =
   workflowAppModule;
-const workflowApp = await loadPluginApp(async () => workflowAppModule);
+const workflowApp = collectPluginAppRegistrations(workflowAppModule.default);
 const workflowPanel = workflowApp.threadPanelActions.find(
   (registration) => registration.id === "workflow-run",
 )!;

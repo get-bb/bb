@@ -1,26 +1,38 @@
-import { useCallback, useContext, useMemo } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { matchPath, useLocation, useNavigate } from "react-router-dom";
-import type { BbNavigate, PluginBrowserBbSdk } from "@get-bb/plugin-sdk";
+import { useContext, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useNavigate, type NavigateFunction } from "react-router-dom";
+import type {
+  BbNavigate,
+  ExperimentalPluginActionContext,
+  ExperimentalSettingsTarget,
+  PluginBrowserBbSdk,
+} from "@get-bb/plugin-sdk";
 import { usePluginId } from "@/components/plugin/plugin-context";
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { getPluginBoundSdk } from "@/lib/plugin-bound-sdk";
 import {
-  AUTOMATIONS_PLUGIN_ID,
   getPluginPanelRoutePath,
   getProjectComposeRoutePath,
-  getRootComposeRoutePath,
-  getThreadRoutePath,
-  AUTOMATION_EDIT_ROUTE_PATH,
+  getThreadLocationPath,
 } from "@/lib/route-paths";
 import { RouteNavigationCallbackContext } from "@/components/ui/app-route-anchor";
 import { useStore } from "jotai";
+import { useRouteState } from "@/hooks/useRouteState";
+import { useTimelinePaneThreadId } from "@/lib/timeline-viewport";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { lookupCachedThread } from "@/lib/cached-thread";
-import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
-import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
-import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { openThread, type OpenThreadArgs } from "@/lib/split-layout/openThread";
+import { openNewThread } from "@/lib/split-layout/openNewThread";
+import {
+  getSettingsTargetPath,
+  isSettingsSectionId,
+  type SettingsTarget,
+} from "@/components/settings/settings-sections";
+import {
+  useAppNavigationHost,
+  type ResolvedAppNavigationHostCapabilities,
+} from "@/lib/app-navigation-host";
 import {
   normalizeExperimentalFileOpenOptions,
   normalizeExperimentalFilePreviewOptions,
@@ -28,14 +40,11 @@ import {
 import {
   createPluginPanelController,
   createRetiredOpenPanel,
+  withRetiredPanelAlias,
 } from "@/lib/plugin-panel-controller";
-
-export function isAutomationEditRoutePath(pathname: string): boolean {
-  return (
-    matchPath({ path: AUTOMATION_EDIT_ROUTE_PATH, end: true }, pathname) !==
-    null
-  );
-}
+import { getActiveComposerHandle } from "@/lib/active-composer";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
+import { bindThreadRequests } from "@/lib/thread-requests";
 
 export function useSdk(): PluginBrowserBbSdk {
   const pluginId = usePluginId();
@@ -43,34 +52,96 @@ export function useSdk(): PluginBrowserBbSdk {
   return getPluginBoundSdk(sdk, pluginId, queryClient);
 }
 
-export function useBbNavigate(): BbNavigate {
-  const pluginId = usePluginId();
-  const onNavigate = useContext(RouteNavigationCallbackContext);
-  const location = useLocation();
-  const navigate = useNavigate();
-  const appNavigation = useAppNavigationHost();
-  const store = useStore();
-  const queryClient = useQueryClient();
-  const isCompact = useIsCompactViewport();
-  const setRootComposeProjectId = useSetRootComposeProjectId();
-  const toThread = useCallback<BbNavigate["toThread"]>(
-    (threadId, options) => {
+export type BindPluginActionContext = (
+  pluginId: string,
+  host: () => ResolvedAppNavigationHostCapabilities,
+) => ExperimentalPluginActionContext;
+
+interface BbNavigateDeps {
+  navigate: NavigateFunction;
+  onNavigate: (() => void) | null;
+  paneThreadId: string | null;
+  routeThreadId: string | undefined;
+  store: ReturnType<typeof useStore>;
+  queryClient: QueryClient;
+  isCompact: boolean;
+}
+
+function assertMessageSeq(messageSeq: number): void {
+  if (!Number.isSafeInteger(messageSeq) || messageSeq < 0) {
+    throw new RangeError(
+      `messageSeq must be a non-negative integer, got ${messageSeq}`,
+    );
+  }
+}
+
+function settingsTarget(
+  pluginId: string,
+  target: ExperimentalSettingsTarget | undefined,
+): SettingsTarget {
+  if (target === undefined) return { pluginId };
+  if (!isSettingsSectionId(target.section)) {
+    throw new RangeError(
+      `Unknown settings section "${String(target.section)}"`,
+    );
+  }
+  return { section: target.section };
+}
+
+export function openThreadForPlugin({
+  store,
+  isCompact,
+  split,
+  ...args
+}: Omit<OpenThreadArgs, "split"> & {
+  store: ReturnType<typeof useStore>;
+  isCompact: boolean;
+  split: boolean;
+}): void {
+  store.set(getThreadConversationCollapsedAtom(args.threadId), false);
+  openThread({
+    ...args,
+    ...(split ? { split: { zone: "right", store, isCompact } } : {}),
+  });
+}
+
+function createBbNavigate(
+  pluginId: string,
+  host: () => ResolvedAppNavigationHostCapabilities,
+  latest: () => BbNavigateDeps,
+): BbNavigate & {
+  openThreadPanel: ReturnType<typeof createRetiredOpenPanel>;
+} {
+  return {
+    toThread(threadId, options) {
+      const {
+        isCompact,
+        navigate,
+        onNavigate,
+        paneThreadId,
+        queryClient,
+        routeThreadId,
+        store,
+      } = latest();
+      const messageSeq = options?.messageSeq;
+      if (messageSeq !== undefined) assertMessageSeq(messageSeq);
+      const revealInPlace =
+        messageSeq !== undefined &&
+        (routeThreadId === threadId || paneThreadId === threadId);
       onNavigate?.();
       const open = (projectId: string) => {
-        store.set(getThreadConversationCollapsedAtom(threadId), false);
-        if (options?.split) {
-          openThreadInSplit({
-            store,
-            navigate: (route, navigateOptions) => {
-              void navigate(route, navigateOptions);
-            },
-            projectId,
-            threadId,
-            isCompact,
-          });
-          return;
-        }
-        void navigate(getThreadRoutePath({ projectId, threadId }));
+        openThreadForPlugin({
+          store,
+          navigate: (route, navigateOptions) => {
+            void navigate(route, navigateOptions);
+          },
+          projectId,
+          threadId,
+          isCompact,
+          split: options?.split ?? false,
+          ...(messageSeq === undefined ? {} : { messageSeq }),
+          ...(revealInPlace ? { replace: true } : {}),
+        });
       };
       const cached = lookupCachedThread(queryClient, threadId);
       if (cached !== null) {
@@ -80,19 +151,23 @@ export function useBbNavigate(): BbNavigate {
       void sdk.threads
         .get({ threadId })
         .then((thread) => open(thread.projectId))
-        .catch(() => navigate(`/threads/${threadId}`));
+        .catch(() =>
+          navigate(
+            getThreadLocationPath({
+              threadId,
+              ...(messageSeq === undefined ? {} : { messageSeq }),
+            }),
+            revealInPlace ? { replace: true } : undefined,
+          ),
+        );
     },
-    [isCompact, navigate, onNavigate, queryClient, store],
-  );
-  const toProject = useCallback(
-    (projectId: string) => {
+    toProject(projectId) {
+      const { navigate, onNavigate } = latest();
       onNavigate?.();
       void navigate(getProjectComposeRoutePath(projectId));
     },
-    [navigate, onNavigate],
-  );
-  const toPluginPanel = useCallback(
-    (path: string, options?: { subPath?: string; replace?: boolean }) => {
+    toPluginPanel(path, options) {
+      const { navigate, onNavigate } = latest();
       const route = getPluginPanelRoutePath({
         pluginId,
         path,
@@ -101,62 +176,47 @@ export function useBbNavigate(): BbNavigate {
       onNavigate?.();
       void navigate(route, options?.replace ? { replace: true } : undefined);
     },
-    [navigate, onNavigate, pluginId],
-  );
-  const toCompose = useCallback<BbNavigate["toCompose"]>(
-    (options) => {
-      const replacesAutomationEditRoute =
-        pluginId === AUTOMATIONS_PLUGIN_ID &&
-        isAutomationEditRoutePath(location.pathname);
-      if (options?.projectId !== undefined) {
-        setRootComposeProjectId(options.projectId);
-      }
-      const hostId = options?.hostId?.trim() ?? "";
+    toCompose(options) {
+      const { isCompact, navigate, onNavigate, store } = latest();
       onNavigate?.();
-      void navigate(getRootComposeRoutePath(), {
-        ...(replacesAutomationEditRoute ? { replace: true } : {}),
-        state: {
-          focusPrompt: options?.focusPrompt ?? false,
-          initialPrompt: options?.initialPrompt ?? "",
-          ...(options?.placement !== undefined
-            ? { placement: options.placement }
-            : {}),
-          ...(options?.environmentId !== undefined
-            ? { reuseEnvironmentId: options.environmentId }
-            : {}),
-          ...(hostId.length > 0 ? { newEnvironmentHostId: hostId } : {}),
-          ...(replacesAutomationEditRoute
-            ? { replaceInitialPrompt: true }
-            : {}),
-        },
+      openNewThread({
+        navigate,
+        store,
+        isCompact,
+        ...(options?.projectId !== undefined
+          ? { projectId: options.projectId }
+          : {}),
+        ...(options?.initialPrompt !== undefined
+          ? {
+              initialPrompt: initialPromptSeedFromComposer(
+                options.initialPrompt,
+                pluginId,
+              ),
+            }
+          : {}),
+        ...(options?.focusPrompt === true ? { focusPrompt: true } : {}),
+        ...(options?.placement !== undefined
+          ? { placement: options.placement }
+          : {}),
+        ...(options?.environmentId !== undefined
+          ? { environmentId: options.environmentId }
+          : {}),
+        ...(options?.hostId !== undefined ? { hostId: options.hostId } : {}),
+        ...(options?.split === true ? { split: true } : {}),
+        ...(options?.initialPrompt !== undefined &&
+        options.experimental_replacePrompt === true
+          ? { replaceInitialPrompt: true }
+          : {}),
       });
     },
-    [
-      location.pathname,
-      navigate,
-      onNavigate,
-      pluginId,
-      setRootComposeProjectId,
-    ],
-  );
-  const openThreadPanel = useMemo(
-    () =>
-      createRetiredOpenPanel(
-        createPluginPanelController(pluginId, () => appNavigation.panel),
-      ),
-    [appNavigation.panel, pluginId],
-  );
-  const openUrl = useCallback<BbNavigate["openUrl"]>(
-    (url) => appNavigation.openUrl({ url }),
-    [appNavigation],
-  );
-  const experimental_openFilePreview = useCallback<
-    BbNavigate["experimental_openFilePreview"]
-  >(
-    (options) => {
+    openThreadPanel: createRetiredOpenPanel(
+      createPluginPanelController(pluginId, () => host().panel),
+    ),
+    openUrl: (url) => host().openUrl({ url }),
+    experimental_openFilePreview(options) {
       const normalized = normalizeExperimentalFilePreviewOptions(options);
       if (normalized === null) return false;
-      return appNavigation.openFilePreview(
+      return host().openFilePreview(
         normalized.opener === null
           ? normalized.options
           : {
@@ -165,55 +225,74 @@ export function useBbNavigate(): BbNavigate {
             },
       );
     },
-    [appNavigation, pluginId],
-  );
-  const experimental_openFileExternally = useCallback<
-    BbNavigate["experimental_openFileExternally"]
-  >(
-    (options) => {
+    experimental_openFileExternally(options) {
       const normalized = normalizeExperimentalFileOpenOptions(options);
-      return (
-        normalized !== null && appNavigation.openFileExternally(normalized)
-      );
+      return normalized !== null && host().openFileExternally(normalized);
     },
-    [appNavigation],
-  );
-  const experimental_openTerminal = useCallback<
-    BbNavigate["experimental_openTerminal"]
-  >(
-    async ({ terminalId }) => {
+    experimental_toSettings(target) {
+      const { navigate, onNavigate } = latest();
+      onNavigate?.();
+      void navigate(getSettingsTargetPath(settingsTarget(pluginId, target)));
+    },
+    experimental_threadHref(threadId, options) {
+      const messageSeq = options?.messageSeq;
+      if (messageSeq !== undefined) assertMessageSeq(messageSeq);
+      const cached = lookupCachedThread(latest().queryClient, threadId);
+      return getThreadLocationPath({
+        threadId,
+        ...(cached === null ? {} : { projectId: cached.projectId }),
+        ...(messageSeq === undefined ? {} : { messageSeq }),
+      });
+    },
+    experimental_settingsHref(target) {
+      return getSettingsTargetPath(settingsTarget(pluginId, target));
+    },
+    async experimental_openTerminal({ terminalId }) {
       const session = await sdk.terminals
         .get({ terminalId })
         .catch((error: unknown) => {
           if (error instanceof BbHttpError && error.status === 404) return null;
           throw error;
         });
-      return session !== null && appNavigation.openTerminal(session);
+      return session !== null && host().openTerminal(session);
     },
-    [appNavigation],
-  );
-  return useMemo<BbNavigate & { openThreadPanel: typeof openThreadPanel }>(
-    () => ({
-      toThread,
-      toProject,
-      toPluginPanel,
-      toCompose,
-      openThreadPanel,
-      experimental_openFileExternally,
-      experimental_openFilePreview,
-      experimental_openTerminal,
-      openUrl,
-    }),
-    [
-      toThread,
-      toProject,
-      toPluginPanel,
-      toCompose,
-      openThreadPanel,
-      experimental_openFileExternally,
-      experimental_openFilePreview,
-      experimental_openTerminal,
-      openUrl,
-    ],
+  };
+}
+
+export function usePluginActionContextBinder(): BindPluginActionContext {
+  const deps: BbNavigateDeps = {
+    navigate: useNavigate(),
+    onNavigate: useContext(RouteNavigationCallbackContext),
+    paneThreadId: useTimelinePaneThreadId(),
+    routeThreadId: useRouteState().threadId,
+    store: useStore(),
+    queryClient: useQueryClient(),
+    isCompact: useIsCompactViewport(),
+  };
+  const latest = useRef(deps);
+  useLayoutEffect(() => {
+    latest.current = deps;
+  });
+  const [bind] = useState(() => {
+    const bindContext: BindPluginActionContext = (pluginId, host) =>
+      withRetiredPanelAlias({
+        sdk: getPluginBoundSdk(sdk, pluginId, latest.current.queryClient),
+        navigate: createBbNavigate(pluginId, host, () => latest.current),
+        panel: createPluginPanelController(pluginId, () => host().panel),
+        composer: getActiveComposerHandle(pluginId),
+        threadRequests: bindThreadRequests(() => latest.current.store),
+      });
+    return bindContext;
+  });
+  return bind;
+}
+
+export function useBbNavigate(): BbNavigate {
+  const pluginId = usePluginId();
+  const appNavigation = useAppNavigationHost();
+  const bind = usePluginActionContextBinder();
+  return useMemo(
+    () => bind(pluginId, () => appNavigation).navigate,
+    [appNavigation, bind, pluginId],
   );
 }

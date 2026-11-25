@@ -25,6 +25,7 @@ import {
   fetchFrontendCandidates,
   reconcilePluginFrontends,
   type PluginFrontendCandidate,
+  type PluginFrontendCandidates,
   type PluginFrontendReconcileDeps,
 } from "./plugin-frontend";
 import {
@@ -50,10 +51,6 @@ import { PLUGIN_PANEL_ROUTE_PATH } from "./route-paths";
 import { applyAppThemeCss } from "./themes";
 import { PluginPanelView } from "@/views/PluginPanelView";
 import { makeInstalledPlugin } from "@/test/fixtures/plugins";
-import { makeSystemConfig } from "@/test/fixtures/system-config";
-import { systemConfigQueryKey } from "@/hooks/queries/query-keys";
-import { appQueryClient } from "./app-query-client";
-import { defaultExperiments } from "@bb/domain";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
 
 function candidate(
@@ -210,7 +207,7 @@ function cssHrefs(pluginId: string): Array<string | null> {
 }
 
 function pluginSheet(pluginId: string, version: string): string {
-  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+  return `/api/v1/plugins/${pluginId}/assets/app.css?h=${version}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`;
 }
 
 function fireLoad(link: Element | null | undefined): void {
@@ -249,7 +246,7 @@ function accountPoolListResponse(
 }
 
 interface TestReconcileDeps extends PluginFrontendReconcileDeps {
-  fetchCandidates: Mock<() => Promise<PluginFrontendCandidate[]>>;
+  fetchCandidates: Mock<() => Promise<PluginFrontendCandidates>>;
   importModule: Mock<(url: string) => Promise<unknown>>;
   removeRegistrations: Mock<typeof removePluginSlotRegistrations>;
   setRegistrations: Mock<typeof setPluginSlotRegistrations>;
@@ -257,9 +254,10 @@ interface TestReconcileDeps extends PluginFrontendReconcileDeps {
 
 function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
   return {
-    fetchCandidates: vi.fn(
-      async (): Promise<PluginFrontendCandidate[]> => initial,
-    ),
+    fetchCandidates: vi.fn(async (): Promise<PluginFrontendCandidates> => ({
+      candidates: initial,
+      startingPluginIds: [],
+    })),
     importModule: vi.fn(async (_url: string): Promise<unknown> =>
       pluginModule("hello"),
     ),
@@ -271,6 +269,8 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     resetCrashedSlots: vi.fn(),
     setRegistrations: vi.fn(),
     removeRegistrations: vi.fn(),
+    setLoadingPlugins: vi.fn(),
+    settlePluginLoad: vi.fn(),
     beginSlotBatch: () => () => {},
     flushSlotBatch: vi.fn(),
     warn: vi.fn(),
@@ -299,7 +299,11 @@ function reconcileHarness(
     deps.removeRegistrations = vi.fn(removePluginSlotRegistrations);
   }
   const reconcile = (next?: PluginFrontendCandidate[]): Promise<void> => {
-    if (next) deps.fetchCandidates.mockResolvedValue(next);
+    if (next)
+      deps.fetchCandidates.mockResolvedValue({
+        candidates: next,
+        startingPluginIds: [],
+      });
     return reconcilePluginFrontends(state, deps);
   };
   return { state, deps, reconcile };
@@ -357,7 +361,10 @@ describe("reconcilePluginFrontends", () => {
 
       await expect(
         fetchFrontendCandidates(newQueryClient(), "await-refresh"),
-      ).resolves.toEqual([candidate("account-pool", "v1")]);
+      ).resolves.toEqual({
+        candidates: [candidate("account-pool", "v1")],
+        startingPluginIds: [],
+      });
     },
   );
 
@@ -401,9 +408,10 @@ describe("reconcilePluginFrontends", () => {
       await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
       cancel();
 
-      await expect(candidates).resolves.toEqual([
-        candidate("account-pool", "v1"),
-      ]);
+      await expect(candidates).resolves.toEqual({
+        candidates: [candidate("account-pool", "v1")],
+        startingPluginIds: [],
+      });
       expect(fetchMock).toHaveBeenCalledTimes(2);
     },
   );
@@ -1372,39 +1380,13 @@ describe("reconcilePluginFrontends", () => {
 describe("applyPluginCss", () => {
   afterEach(() => {
     resetPluginCssForTest();
-    appQueryClient.removeQueries({ queryKey: systemConfigQueryKey() });
     vi.useRealTimers();
   });
 
   const sheet = (hash: string) =>
-    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`;
+    `/assets/app.css?h=${hash}&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`;
 
-  function setKeyedPluginCss(keyedPluginCss: boolean): void {
-    appQueryClient.setQueryData(
-      systemConfigQueryKey(),
-      makeSystemConfig({
-        experiments: { ...defaultExperiments, keyedPluginCss },
-      }),
-    );
-  }
-
-  it.each([
-    [false, "owned-root-v1"],
-    [true, "plugin-attribute-v1"],
-  ])(
-    "with keyedPluginCss %s, requests the %s stylesheet",
-    (keyedPluginCss, scope) => {
-      setKeyedPluginCss(keyedPluginCss);
-      retainPluginCss("hello");
-      void applyPluginCss("hello", "/assets/app.css?h=aaa");
-      expect(cssHrefs("hello")[0]).toBe(
-        `/assets/app.css?h=aaa&host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=${scope}`,
-      );
-    },
-  );
-
-  it("keys plugin UI labeled the old way once it requests a keyed stylesheet", async () => {
-    setKeyedPluginCss(true);
+  it("keys plugin UI labeled the old way once it requests a stylesheet", async () => {
     retainPluginCss("hello");
     void applyPluginCss("hello", "/assets/app.css?h=aaa");
     const overlay = document.createElement("div");
@@ -1426,7 +1408,7 @@ describe("applyPluginCss", () => {
         .querySelector("link[data-bb-plugin-css-prefetch]")
         ?.getAttribute("href"),
     ).toBe(
-      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=owned-root-v1`,
+      `/assets/prefetched.css?host-tailwind=${HOST_TAILWIND_VERSION}&css-scope=plugin-attribute-v1`,
     );
     void applyPluginCss("hello", "/assets/app.css?h=aaa");
     expect(cssLinks("hello")[0]).toBe(first);

@@ -181,12 +181,14 @@ describe("plugin settings + storage", () => {
 
     it("round-trips secrets through 0600 files and fires onChange with next/prev", async () => {
       await installConfigurable();
-      const view = await service.updateSettings("configurable", {
-        apiKey: "sk-secret-123",
-        autoSync: false,
-        retries: 4.5,
-        note: "hello",
-      });
+      const view = (
+        await service.updateSettings("configurable", {
+          apiKey: "sk-secret-123",
+          autoSync: false,
+          retries: 4.5,
+          note: "hello",
+        })
+      )?.view;
 
       const secretPath = join(
         dataDir,
@@ -225,9 +227,11 @@ describe("plugin settings + storage", () => {
       await service.updateSettings("configurable", { note: "hello" });
       expect(state().changes).toHaveLength(1);
 
-      const cleared = await service.updateSettings("configurable", {
-        apiKey: null,
-      });
+      const cleared = (
+        await service.updateSettings("configurable", {
+          apiKey: null,
+        })
+      )?.view;
       await expect(stat(secretPath)).rejects.toThrow();
       expect(cleared?.values.apiKey).toEqual({ set: false });
       expect((await state().settings.get()).apiKey).toBeUndefined();
@@ -694,6 +698,51 @@ describe("plugin settings + storage", () => {
         const dbFile = join(dataDir, "plugins", "chatty", "data.db");
         expect(await countOpenFdsFor(dbFile)).toBeLessThanOrEqual(1);
       }
+    });
+  });
+
+  describe("files directory", () => {
+    it("creates the plugin's files directory, keeps it across reloads, and deletes only it on remove", async () => {
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-filer",
+        serverSource: `
+          import { readFileSync, writeFileSync } from "node:fs";
+          import { join } from "node:path";
+          export default function plugin(bb: any) {
+            const directory = bb.storage.experimental_directory();
+            const file = join(directory, "state.txt");
+            const g = globalThis as any;
+            let previous = null;
+            try { previous = readFileSync(file, "utf8"); } catch {}
+            g.__filer = { directory, previous };
+            writeFileSync(file, "kept");
+            bb.storage.database();
+            bb.log.info("filer loaded");
+          }
+        `,
+      });
+      const filer = () =>
+        (globalThis as Record<string, unknown>).__filer as {
+          directory: string;
+          previous: string | null;
+        };
+      const pluginDir = join(dataDir, "plugins", "filer");
+      expect((await service.installPath(rootDir)).status).toBe("running");
+      expect(filer()).toEqual({
+        directory: join(pluginDir, "files"),
+        previous: null,
+      });
+      if (process.platform !== "win32") {
+        expect((await stat(join(pluginDir, "files"))).mode & 0o777).toBe(0o700);
+      }
+
+      await service.reload("filer");
+      expect(filer().previous).toBe("kept");
+
+      await service.remove("filer");
+      await expect(stat(join(pluginDir, "files"))).rejects.toThrow();
+      await expect(stat(join(pluginDir, "data.db"))).resolves.toBeDefined();
+      await expect(stat(join(pluginDir, "logs"))).resolves.toBeDefined();
     });
   });
 

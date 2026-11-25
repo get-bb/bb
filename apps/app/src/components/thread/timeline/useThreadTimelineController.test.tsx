@@ -36,6 +36,7 @@ import {
 import { BbHttpError, sdk } from "@/lib/sdk";
 import { appToast } from "@/components/ui/app-toast";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
+import { applyThreadTimelineSignal } from "@/hooks/cache-owners/thread-timeline-push-owner";
 import {
   hasThreadTimelineUnseenEvents,
   markThreadTimelineUnseenEvents,
@@ -260,6 +261,31 @@ function installAutoLoadEnvironment() {
     positionKeeper.reconcile();
   };
   return { anchor, emitIntersection, sentinel };
+}
+
+function holdAnimationFrames() {
+  const held = new Map<number, FrameRequestCallback>();
+  let holding = true;
+  const requestFrame = window.requestAnimationFrame.bind(window);
+  const cancelFrame = window.cancelAnimationFrame.bind(window);
+  vi.stubGlobal("requestAnimationFrame", (frame: FrameRequestCallback) => {
+    if (!holding) return requestFrame(frame);
+    const id = requestFrame(() => {});
+    held.set(id, frame);
+    return id;
+  });
+  vi.stubGlobal("cancelAnimationFrame", (id: number) => {
+    held.delete(id);
+    cancelFrame(id);
+  });
+  return {
+    release() {
+      holding = false;
+      const frames = [...held.values()];
+      held.clear();
+      for (const frame of frames) frame(performance.now());
+    },
+  };
 }
 
 function renderControllerWithAutoLoad(anchor: BottomAnchorContextValue) {
@@ -872,6 +898,7 @@ describe("useThreadTimelineController", () => {
         }),
       );
 
+    const heldFrames = holdAnimationFrames();
     const { result } = renderControllerWithAutoLoad(anchor);
     await waitFor(() => {
       expect(result.current.timeline.hasOlderTimelineRows).toBe(true);
@@ -881,6 +908,7 @@ describe("useThreadTimelineController", () => {
     });
 
     await withReactSchedulerOutsideAct(async () => {
+      heldFrames.release();
       emitIntersection();
       await waitFor(() => {
         expect(result.current.timeline.hasOlderTimelineRows).toBe(false);
@@ -965,6 +993,120 @@ describe("useThreadTimelineController", () => {
       adjacentMessageRow.id,
     ]);
     expect(toastSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it("reveals a message newer than the cached timeline after refreshing", async () => {
+    const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
+    onTestFinished(() => toastSpy.mockRestore());
+    const refresh = createDeferredPromise<ThreadTimelineResponse>();
+    vi.mocked(sdk.threads.timeline).mockReturnValueOnce(refresh.promise);
+    const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness(
+      { queries: { staleTime: 0 } },
+    );
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ rows: [newestLoadedRow], maxSeq: 1 }),
+    );
+    markThreadTimelineUnseenEvents(queryClient, "thread-1", 2);
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      queryWrapper({
+        children: (
+          <MemoryRouter initialEntries={["/threads/thread-1#msg=2"]}>
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
+          </MemoryRouter>
+        ),
+      });
+    const scrollIntoView = vi.fn();
+    const renderedTarget = document.createElement("div");
+    renderedTarget.setAttribute("data-timeline-row-id", realtimeRow.id);
+    renderedTarget.scrollIntoView = scrollIntoView;
+    onTestFinished(() => renderedTarget.remove());
+    const { result } = renderHook(
+      () => {
+        const timeline = useThreadTimelineController({ threadId: "thread-1" });
+        const pending = useScrollToSearchedMessage(
+          timeline.timelineRows,
+          "thread-1",
+          {
+            isCatchingUpRows: timeline.isCatchingUpTimeline,
+            reportsMissingTarget: true,
+          },
+        );
+        return { pending, rows: rowIds(timeline) };
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => expect(sdk.threads.timeline).toHaveBeenCalledOnce());
+    expect(result.current.pending).toBe(true);
+    expect(toastSpy).not.toHaveBeenCalled();
+    document.body.appendChild(renderedTarget);
+    await act(async () => {
+      refresh.resolve(
+        makeTimelineResponse({
+          rows: [newestLoadedRow, realtimeRow],
+          maxSeq: 2,
+        }),
+      );
+    });
+    await waitFor(() => expect(result.current.rows).toContain(realtimeRow.id));
+    await waitFor(() => expect(result.current.pending).toBe(false));
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      inline: "nearest",
+    });
+    expect(toastSpy).not.toHaveBeenCalled();
+  });
+
+  it("keeps a missing message link settled when later rows contain its target", async () => {
+    const toastSpy = vi.spyOn(appToast, "message").mockReturnValue("toast-1");
+    onTestFinished(() => toastSpy.mockRestore());
+    const { queryClient, wrapper: queryWrapper } = createQueryClientTestHarness(
+      { queries: { staleTime: Infinity } },
+    );
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ rows: [newestLoadedRow], maxSeq: 1 }),
+    );
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      queryWrapper({
+        children: (
+          <MemoryRouter initialEntries={["/threads/thread-1#msg=2"]}>
+            <SearchMessageLocationProvider threadId="thread-1">
+              {children}
+            </SearchMessageLocationProvider>
+          </MemoryRouter>
+        ),
+      });
+    const { result } = renderHook(
+      () => {
+        const timeline = useThreadTimelineController({ threadId: "thread-1" });
+        const pending = useScrollToSearchedMessage(
+          timeline.timelineRows,
+          "thread-1",
+          { reportsMissingTarget: true },
+        );
+        return { pending, rows: rowIds(timeline) };
+      },
+      { wrapper },
+    );
+
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledOnce());
+    expect(result.current.pending).toBe(false);
+    act(() => {
+      queryClient.setQueryData(
+        TIMELINE_QUERY_KEY,
+        makeTimelineResponse({
+          rows: [newestLoadedRow, realtimeRow],
+          maxSeq: 2,
+        }),
+      );
+    });
+    await waitFor(() => expect(result.current.rows).toContain(realtimeRow.id));
+    expect(result.current.pending).toBe(false);
+    expect(toastSpy).toHaveBeenCalledOnce();
   });
 
   it("reveals an accepted steer from a link to its request seq", async () => {
@@ -1489,5 +1631,65 @@ describe("useThreadTimelineController commits", () => {
       ]);
     });
     expect(hasThreadTimelineUnseenEvents(queryClient, "thread-1")).toBe(false);
+  });
+
+  it("stops catching up when a push without row changes covers the unseen events", async () => {
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const view = await renderSettledController(wrapper, [newestLoadedRow.id]);
+
+    act(() => {
+      markThreadTimelineUnseenEvents(queryClient, "thread-1", 3);
+      queryClient.setQueryData(
+        TIMELINE_QUERY_KEY,
+        makeTimelineResponse({
+          maxSeq: 2,
+          rows: [newestLoadedRow, realtimeRow],
+        }),
+      );
+    });
+    await flushQueryNotifications();
+    expect(view.latest().isCatchingUpTimeline).toBe(true);
+
+    act(() => {
+      applyThreadTimelineSignal(queryClient, {
+        type: "thread-timeline",
+        target: {
+          kind: "thread-timeline",
+          threadId: "thread-1",
+          segmentLimit: null,
+          deferContent: true,
+        },
+        timeline: makeTimelineResponse({
+          maxSeq: 3,
+          rows: [newestLoadedRow, realtimeRow],
+        }),
+      });
+    });
+    await flushQueryNotifications();
+    expect(view.latest().isCatchingUpTimeline).toBe(false);
+  });
+
+  it("starts catching up when unseen events arrive without a timeline change", async () => {
+    vi.mocked(sdk.threads.timeline).mockResolvedValueOnce(
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const { queryClient, wrapper } = createQueryClientTestHarness();
+    queryClient.setQueryData(
+      TIMELINE_QUERY_KEY,
+      makeTimelineResponse({ maxSeq: 1, rows: [newestLoadedRow] }),
+    );
+    const view = await renderSettledController(wrapper, [newestLoadedRow.id]);
+
+    act(() => {
+      markThreadTimelineUnseenEvents(queryClient, "thread-1", 2);
+    });
+    expect(view.latest().isCatchingUpTimeline).toBe(true);
   });
 });

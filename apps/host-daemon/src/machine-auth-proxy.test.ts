@@ -53,8 +53,10 @@ describe("startMachineAuthProxy", () => {
       });
       const port = await listen(upstream);
       const proxy = await startMachineAuthProxy({
-        serverUrl: `http://127.0.0.1:${port}`,
-        serverHeaders: { "x-bb-connect-machine": "test-machine" },
+        target: () => ({
+          url: `http://127.0.0.1:${port}`,
+          headers: { "x-bb-connect-machine": "test-machine" },
+        }),
       });
       proxies.push(proxy);
       const client = http.request(`${proxy.serverUrl}/models`, {
@@ -90,8 +92,10 @@ describe("startMachineAuthProxy", () => {
     });
     const port = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverUrl: `http://127.0.0.1:${port}`,
-      serverHeaders: { "x-bb-connect-machine": "test-machine" },
+      target: () => ({
+        url: `http://127.0.0.1:${port}`,
+        headers: { "x-bb-connect-machine": "test-machine" },
+      }),
     });
     proxies.push(proxy);
     const agent = new http.Agent({ keepAlive: true, maxSockets: 1 });
@@ -119,6 +123,41 @@ describe("startMachineAuthProxy", () => {
     }
   });
 
+  it("follows the active route on each request with only that route's headers", async () => {
+    const seen: Array<{ upstream: string; machine: string | undefined }> = [];
+    const createUpstream = (name: string) =>
+      http.createServer((request, response) => {
+        const machine = request.headers["x-bb-connect-machine"];
+        seen.push({
+          upstream: name,
+          machine: Array.isArray(machine) ? machine[0] : machine,
+        });
+        response.end(name);
+      });
+    const lanPort = await listen(createUpstream("lan"));
+    const relayPort = await listen(createUpstream("relay"));
+    let active = {
+      url: `http://127.0.0.1:${lanPort}`,
+      headers: {},
+    };
+    const proxy = await startMachineAuthProxy({ target: () => active });
+    proxies.push(proxy);
+
+    const first = await fetch(`${proxy.serverUrl}/api/v1/threads`);
+    expect(await first.text()).toBe("lan");
+    active = {
+      url: `http://127.0.0.1:${relayPort}`,
+      headers: { "x-bb-connect-machine": "bbcm_machine" },
+    };
+    const second = await fetch(`${proxy.serverUrl}/api/v1/threads`);
+    expect(await second.text()).toBe("relay");
+
+    expect(seen).toEqual([
+      { upstream: "lan", machine: undefined },
+      { upstream: "relay", machine: "bbcm_machine" },
+    ]);
+  });
+
   it.each(["upstream", "client"])(
     "contains a %s connection reset after a WebSocket upgrade",
     async (resetSide) => {
@@ -133,8 +172,10 @@ describe("startMachineAuthProxy", () => {
       const upstreamConnected = once(upstream, "connection");
       const upstreamPort = await listen(upstream);
       const proxy = await startMachineAuthProxy({
-        serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-        serverUrl: `http://127.0.0.1:${upstreamPort}`,
+        target: () => ({
+          url: `http://127.0.0.1:${upstreamPort}`,
+          headers: { "x-bb-connect-machine": "bbcm_machine" },
+        }),
       });
       proxies.push(proxy);
       const proxyUrl = new URL(proxy.serverUrl);
@@ -175,8 +216,10 @@ describe("startMachineAuthProxy", () => {
       });
       const upstreamPort = await listen(upstream);
       const proxy = await startMachineAuthProxy({
-        serverHeaders: {},
-        serverUrl: `http://127.0.0.1:${upstreamPort}`,
+        target: () => ({
+          url: `http://127.0.0.1:${upstreamPort}`,
+          headers: {},
+        }),
       });
       proxies.push(proxy);
 
@@ -213,8 +256,10 @@ describe("startMachineAuthProxy", () => {
     });
     const upstreamPort = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      target: () => ({
+        url: `http://127.0.0.1:${upstreamPort}`,
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      }),
     });
     proxies.push(proxy);
 
@@ -274,8 +319,10 @@ describe("startMachineAuthProxy", () => {
     });
     const upstreamPort = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverHeaders: { "x-bb-connect-machine": "bbcm_attachment_machine" },
-      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      target: () => ({
+        url: `http://127.0.0.1:${upstreamPort}`,
+        headers: { "x-bb-connect-machine": "bbcm_attachment_machine" },
+      }),
     });
     proxies.push(proxy);
     const form = new FormData();
@@ -310,8 +357,10 @@ describe("startMachineAuthProxy", () => {
     });
     const upstreamPort = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      target: () => ({
+        url: `http://127.0.0.1:${upstreamPort}`,
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      }),
     });
     proxies.push(proxy);
 
@@ -339,8 +388,10 @@ describe("startMachineAuthProxy", () => {
     });
     const upstreamPort = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      target: () => ({
+        url: `http://127.0.0.1:${upstreamPort}`,
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      }),
     });
     proxies.push(proxy);
     const proxyUrl = new URL(proxy.serverUrl);
@@ -387,8 +438,10 @@ describe("startMachineAuthProxy", () => {
     });
     const upstreamPort = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      target: () => ({
+        url: `http://127.0.0.1:${upstreamPort}`,
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      }),
     });
     proxies.push(proxy);
 
@@ -423,8 +476,10 @@ describe("startMachineAuthProxy", () => {
     });
     const upstreamPort = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      target: () => ({
+        url: `http://127.0.0.1:${upstreamPort}`,
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      }),
     });
     proxies.push(proxy);
     const proxyUrl = new URL(proxy.serverUrl);
@@ -456,8 +511,10 @@ describe("startMachineAuthProxy", () => {
     });
     const upstreamPort = await listen(upstream);
     const proxy = await startMachineAuthProxy({
-      serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
-      serverUrl: `http://127.0.0.1:${upstreamPort}`,
+      target: () => ({
+        url: `http://127.0.0.1:${upstreamPort}`,
+        headers: { "x-bb-connect-machine": "bbcm_machine" },
+      }),
     });
     proxies.push(proxy);
     const proxyUrl = new URL(proxy.serverUrl);
@@ -498,9 +555,11 @@ describe("startMachineAuthProxy", () => {
 
     await expect(
       startMachineAuthProxy({
-        serverHeaders: { "x-bb-connect-machine": "bbcm_machine" },
+        target: () => ({
+          url: "http://server.test",
+          headers: { "x-bb-connect-machine": "bbcm_machine" },
+        }),
         port,
-        serverUrl: "http://server.test",
       }),
     ).rejects.toMatchObject({ code: "EADDRINUSE" });
   });

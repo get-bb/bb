@@ -4,11 +4,18 @@ import {
   getEnvironment,
   getThread,
   threads,
+  updateHost,
 } from "@bb/db";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+import { replaceMachineEnvironment } from "../../src/services/machines/environment-settings.js";
 import { describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { advanceEnvironmentProvisioning } from "../../src/services/environments/environment-engine.js";
-import { registerHostRpcResponder } from "../helpers/host-rpc.js";
+import {
+  registerHostRpcResponder,
+  type HostRpcHandlerResult,
+} from "../helpers/host-rpc.js";
 import { ApiError } from "../../src/errors.js";
 import { runStartupRecoverySweep } from "../../src/services/system/periodic-sweeps.js";
 import { createThreadFromRequest } from "../../src/services/threads/thread-create.js";
@@ -148,8 +155,6 @@ it("does not replace an unresolved RuntimeManager setup with a new successful at
           type: "environment.attach",
           environmentId: environment.id,
           path: environment.path!,
-          setupScriptTimeoutMs: 1000,
-          contributedEnv: [],
           initiator: null,
         },
       },
@@ -188,9 +193,11 @@ it.each([
       const responder = registerHostRpcResponder(harness, {
         hostId: host.id,
         sessionId: session.id,
-        handle: () =>
-          fail
-            ? { ok: false, errorCode, errorMessage: "Setup failed" }
+        handle: (request): HostRpcHandlerResult =>
+          request.command.type === "environment.hook.run"
+            ? fail
+              ? { ok: false, errorCode, errorMessage: "Setup failed" }
+              : { ok: true, result: {} }
             : {
                 ok: true,
                 result: {
@@ -207,8 +214,6 @@ it.each([
           type: "environment.attach" as const,
           environmentId: environment.id,
           path: environment.path!,
-          setupScriptTimeoutMs: 1000,
-          contributedEnv: [],
           initiator: null,
         },
       };
@@ -237,11 +242,10 @@ it.each([
       await expect
         .poll(() => getEnvironment(harness.db, environment.id)?.status)
         .toBe(retryable ? "ready" : "error");
-      expect(
-        responder.requests.filter(
-          (request) => request.command.type === "environment.attach",
-        ),
-      ).toHaveLength(retryable ? 2 : 1);
+      const sent = (type: string) =>
+        responder.requests.filter((request) => request.command.type === type);
+      expect(sent("environment.hook.run")).toHaveLength(retryable ? 2 : 1);
+      expect(sent("environment.attach")).toHaveLength(retryable ? 1 : 0);
       if (retryable)
         expect(operation()).toMatchObject({
           finishedAt: expect.any(Number),
@@ -251,3 +255,126 @@ it.each([
     });
   },
 );
+
+it("fails provisioning before setup when saved setup variables cannot be decrypted", async () => {
+  await withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps);
+    updateHost(harness.db, harness.hub, host.id, {
+      machineProviderId: "manual",
+    });
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      status: "provisioning",
+      environmentProviderId: "git-worktree",
+      environmentProviderInstanceKey: "undecryptable",
+      providerOwnsPath: true,
+    });
+    await replaceMachineEnvironment(harness.db, harness.config.dataDir, {
+      variables: [{ name: "SETUP_VALUE", value: "private-value", note: null }],
+    });
+    await rm(join(harness.config.dataDir, "machine-environment-key"));
+    const responder = registerHostRpcResponder(harness, {
+      hostId: host.id,
+      sessionId: session.id,
+      handle: () => ({ ok: true, result: {} }),
+    });
+
+    await advanceEnvironmentProvisioning(harness.deps, {
+      environmentId: environment.id,
+      request: {
+        command: {
+          type: "environment.attach",
+          environmentId: environment.id,
+          path: environment.path!,
+          initiator: null,
+        },
+      },
+    });
+
+    await expect
+      .poll(() => getEnvironment(harness.db, environment.id)?.status)
+      .toBe("error");
+    expect(responder.requests).toHaveLength(0);
+    expect(
+      harness.db.select().from(environmentHookOperations).all(),
+    ).toHaveLength(0);
+  });
+});
+
+it("runs setup again when provisioning is asked again after a finished setup", async () => {
+  await withTestHarness(async (harness) => {
+    const { host, session } = seedHostSession(harness.deps);
+    const { project } = seedProjectWithSource(harness.deps, {
+      hostId: host.id,
+    });
+    const environment = seedEnvironment(harness.deps, {
+      hostId: host.id,
+      projectId: project.id,
+      status: "provisioning",
+      environmentProviderId: "git-worktree",
+      environmentProviderInstanceKey: "second-attach",
+      providerOwnsPath: true,
+    });
+    const id = `environment:${environment.id}:second-attach:setup`;
+    harness.db
+      .insert(environmentHookOperations)
+      .values({
+        id,
+        operationId: id,
+        hostId: host.id,
+        path: environment.path!,
+        kind: "setup",
+        startedAt: 1,
+        finishedAt: 2,
+      })
+      .run();
+    const responder = registerHostRpcResponder(harness, {
+      hostId: host.id,
+      sessionId: session.id,
+      handle: (request): HostRpcHandlerResult =>
+        request.command.type === "environment.hook.run"
+          ? { ok: true, result: {} }
+          : {
+              ok: true,
+              result: {
+                path: environment.path!,
+                isGitRepo: false,
+                isWorktree: false,
+                branchName: null,
+                defaultBranch: null,
+              },
+            },
+    });
+
+    await advanceEnvironmentProvisioning(harness.deps, {
+      environmentId: environment.id,
+      request: {
+        command: {
+          type: "environment.attach",
+          environmentId: environment.id,
+          path: environment.path!,
+          initiator: null,
+        },
+      },
+    });
+
+    await expect
+      .poll(() => getEnvironment(harness.db, environment.id)?.status)
+      .toBe("ready");
+    expect(responder.requests.map((request) => request.command)).toMatchObject([
+      { type: "environment.hook.run", operationId: id, resumeOnly: false },
+      { type: "environment.attach" },
+    ]);
+    expect(
+      harness.db
+        .select()
+        .from(environmentHookOperations)
+        .where(eq(environmentHookOperations.id, id))
+        .get(),
+    ).toMatchObject({ finishedAt: expect.any(Number), error: null });
+  });
+});

@@ -424,6 +424,10 @@
   }
 }
 
+:root[data-touch-text-selection] [data-touch-selection-passthrough] {
+  pointer-events: none;
+}
+
 @container follow-up-composer style(--follow-up-composer-container-compact: true) {
   [data-follow-up-composer]:not([data-follow-up-composer-footer-visible])
     [data-follow-up-composer-footer] {

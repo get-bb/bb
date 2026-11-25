@@ -154,7 +154,14 @@ describe("plugin slot store structural sharing", () => {
     setPluginSlotRegistrations(
       "actions",
       registrationSet({
-        messageActions: [{ id: "copy", title: "copy", run: () => {} }],
+        messageActions: [
+          {
+            id: "copy",
+            title: "copy",
+            experimental_surfaces: ["thread-view", "embedded-chat"],
+            run: () => {},
+          },
+        ],
       }),
     );
     const before = getPluginSlotSnapshot();
@@ -197,7 +204,14 @@ describe("plugin slot store structural sharing", () => {
     setPluginSlotRegistrations(
       "a",
       registrationSet({
-        messageActions: [{ id: "a-copy", title: "a-copy", run: () => {} }],
+        messageActions: [
+          {
+            id: "a-copy",
+            title: "a-copy",
+            experimental_surfaces: ["thread-view", "embedded-chat"],
+            run: () => {},
+          },
+        ],
       }),
     );
     setPluginSlotRegistrations(
@@ -228,13 +242,27 @@ describe("plugin slot batches", () => {
     setPluginSlotRegistrations(
       "a",
       registrationSet({
-        messageActions: [{ id: "a", title: "a", run: () => {} }],
+        messageActions: [
+          {
+            id: "a",
+            title: "a",
+            experimental_surfaces: ["thread-view", "embedded-chat"],
+            run: () => {},
+          },
+        ],
       }),
     );
     setPluginSlotRegistrations(
       "b",
       registrationSet({
-        messageActions: [{ id: "b", title: "b", run: () => {} }],
+        messageActions: [
+          {
+            id: "b",
+            title: "b",
+            experimental_surfaces: ["thread-view", "embedded-chat"],
+            run: () => {},
+          },
+        ],
       }),
     );
     expect(listener).not.toHaveBeenCalled();
@@ -258,7 +286,14 @@ describe("plugin slot batches", () => {
       setPluginSlotRegistrations(
         "fast",
         registrationSet({
-          messageActions: [{ id: "fast", title: "fast", run: () => {} }],
+          messageActions: [
+            {
+              id: "fast",
+              title: "fast",
+              experimental_surfaces: ["thread-view", "embedded-chat"],
+              run: () => {},
+            },
+          ],
         }),
       );
       vi.advanceTimersByTime(99);

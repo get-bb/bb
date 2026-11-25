@@ -15,7 +15,13 @@ export function isCompactSecondaryPanelSwipeOpening(): boolean {
 }
 
 export function setCompactSecondaryPanelSwipeOpening(opening: boolean): void {
+  if (compactSecondaryPanelSwipeOpening === opening) {
+    return;
+  }
   compactSecondaryPanelSwipeOpening = opening;
+  for (const listener of listeners) {
+    listener();
+  }
 }
 
 export function getCompactSecondaryPanelPresentation(): CompactSecondaryPanelPresentation {
@@ -56,4 +62,17 @@ export function usePanelShelfState({
     () => "closed" as const,
   );
   return isCompactViewport && !isSidebarDrawerOpen ? presentation : undefined;
+}
+
+export function useFixedChromePanelShelfState(args: {
+  isCompactViewport: boolean;
+  isSidebarDrawerOpen: boolean;
+}): CompactSecondaryPanelPresentation | undefined {
+  const presentation = usePanelShelfState(args);
+  const swipeOpening = useSyncExternalStore(
+    subscribeCompactSecondaryPanelShelfShowing,
+    isCompactSecondaryPanelSwipeOpening,
+    () => false,
+  );
+  return presentation !== undefined && swipeOpening ? "full" : presentation;
 }

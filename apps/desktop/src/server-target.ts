@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const SERVER_TARGET_FILE_NAME = "server-target.json";
 export const MAX_SERVER_NAME_LENGTH = 64;
@@ -88,11 +89,10 @@ const persistedServerTargetSchema = z.looseObject({
 type PersistedServerTarget = z.infer<typeof persistedServerTargetSchema>;
 
 export function normalizeServerName(rawName: string): string | null {
-  const name = rawName
-    .trim()
-    .replace(/\s+/gu, " ")
-    .slice(0, MAX_SERVER_NAME_LENGTH)
-    .trimEnd();
+  const name = sliceUtf16Head(
+    rawName.trim().replace(/\s+/gu, " "),
+    MAX_SERVER_NAME_LENGTH,
+  ).trimEnd();
   return name.length === 0 ? null : name;
 }
 

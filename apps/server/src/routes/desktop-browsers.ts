@@ -1,3 +1,4 @@
+import { operationComplete } from "../services/lib/operation-response.js";
 import { browserRequestProblem } from "../browser-request-guard.js";
 import type { Hono } from "hono";
 import {
@@ -36,13 +37,7 @@ export function registerDesktopBrowserRoutes(app: Hono, deps: AppDeps) {
         requireJsonForMutation: true,
       });
       if (problem)
-        throw new ApiError(
-          problem.status,
-          problem.status === 403
-            ? "forbidden_origin"
-            : "unsupported_media_type",
-          problem.error,
-        );
+        throw new ApiError(problem.status, problem.code, problem.error);
       await next();
     });
   }
@@ -76,19 +71,22 @@ export function registerDesktopBrowserRoutes(app: Hono, deps: AppDeps) {
     c.header("Cache-Control", "no-store");
     return c.json(await openDesktopBrowserConnection(deps, input));
   });
-  post(routes.releaseControl, async (c, input) =>
-    c.json(await releaseDesktopBrowserControl(deps, input)),
-  );
+  post(routes.releaseControl, async (c, input) => {
+    await releaseDesktopBrowserControl(deps, input);
+    return c.json(operationComplete());
+  });
   post(routes.captureTab, async (c, input) => {
     c.header("Cache-Control", "no-store");
     return c.json(await captureDesktopBrowserTab(deps, input));
   });
-  post(routes.revealTab, async (c, input) =>
-    c.json(await desktopBrowserTabAction(deps, input, "reveal")),
-  );
-  post(routes.closeTab, async (c, input) =>
-    c.json(await desktopBrowserTabAction(deps, input, "close")),
-  );
+  post(routes.revealTab, async (c, input) => {
+    await desktopBrowserTabAction(deps, input, "reveal");
+    return c.json(operationComplete());
+  });
+  post(routes.closeTab, async (c, input) => {
+    await desktopBrowserTabAction(deps, input, "close");
+    return c.json(operationComplete());
+  });
   post(routes.listImportSources, async (c, input) =>
     c.json(await listDesktopBrowserImportSources(deps, input)),
   );

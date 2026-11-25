@@ -328,3 +328,20 @@ export function pruneExitedTerminalSessions(
 
   return { deleted: result.changes };
 }
+
+export function listOpenTerminalSessionIdsOnHost(
+  db: TerminalSessionConnection,
+  hostId: string,
+): string[] {
+  return db
+    .select({ id: terminalSessions.id })
+    .from(terminalSessions)
+    .where(
+      and(
+        eq(terminalSessions.hostId, hostId),
+        inArray(terminalSessions.status, ["starting", "running", "disconnected"]),
+      ),
+    )
+    .all()
+    .map((row) => row.id);
+}

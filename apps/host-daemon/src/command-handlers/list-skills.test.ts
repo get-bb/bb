@@ -11,17 +11,24 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   ProviderNativeRoot,
   ProviderNativeRootSet,
   ProviderNativeRoots,
 } from "@bb/domain";
-import type { DiscoveredSkill } from "@bb/host-daemon-contract";
+import type {
+  DiscoveredSkill,
+  HostNativeRootScan,
+} from "@bb/host-daemon-contract";
 import { discoverSkills, type SkillScanRoot } from "../command-discovery.js";
-import { CommandDispatchError } from "../command-dispatch-support.js";
+import {
+  CommandDispatchError,
+  type CommandDispatchOptions,
+} from "../command-dispatch-support.js";
 import {
   deleteHostSkill,
+  listHostSkills,
   resolveSkillScanRoots,
   writeHostSkill,
 } from "./list-skills.js";
@@ -112,8 +119,211 @@ afterEach(async () => {
   await rm(tempRoot, { recursive: true, force: true });
 });
 
+type PluginHost = NonNullable<CommandDispatchOptions["pluginHost"]>;
+
+function listingOptions(pluginHost: PluginHost | undefined): {
+  options: Pick<CommandDispatchOptions, "logger" | "pluginHost">;
+  warn: ReturnType<typeof vi.fn>;
+} {
+  const warn = vi.fn();
+  return {
+    options: {
+      logger: { debug: vi.fn(), warn },
+      ...(pluginHost === undefined ? {} : { pluginHost }),
+    },
+    warn,
+  };
+}
+
+function scan(
+  providerId: string,
+  roots: Partial<ProviderNativeRoots>,
+  resolverPluginId: string | null = null,
+): HostNativeRootScan {
+  return {
+    providerId,
+    declaredRoots: {
+      skills: { user: [], project: [], ...roots },
+      commands: { user: [], project: [] },
+    },
+    resolver:
+      resolverPluginId === null
+        ? null
+        : {
+            pluginId: resolverPluginId,
+            generation: "gen-1",
+            artifact: { digest: "a".repeat(64), byteLength: 1 },
+          },
+  };
+}
+
+describe("listHostSkills", () => {
+  it("lists the bb project root once, the shared roots, and each provider's roots in one call", async () => {
+    const fixture = await makeWorkspaceFixture();
+    vi.stubEnv("HOME", fixture.homeDir);
+    vi.stubEnv("USERPROFILE", fixture.homeDir);
+    const vendorRoot = path.join(fixture.homeDir, ".vendor", "skills");
+    await writeSkill(
+      path.join(fixture.cwd, ".bb", "skills", "proj-bb", "SKILL.md"),
+      "proj-bb",
+    );
+    await writeSkill(
+      path.join(fixture.homeDir, ".agents", "skills", "shared", "SKILL.md"),
+      "shared",
+    );
+    await writeSkill(
+      path.join(fixture.homeDir, ".one", "skills", "one", "SKILL.md"),
+      "one",
+    );
+    await writeSkill(path.join(vendorRoot, "vendor", "SKILL.md"), "vendor");
+    const call = vi.fn<PluginHost["call"]>(async () => ({
+      output: {
+        skills: [
+          {
+            path: vendorRoot,
+            origin: "user",
+            recursive: false,
+            ancestors: false,
+            namePrefix: "",
+            shape: "skills",
+          },
+        ],
+        commands: [],
+      },
+    }));
+    const { options } = listingOptions({ call, cancel: vi.fn() });
+
+    try {
+      const result = await listHostSkills(
+        {
+          type: "host.list_skills",
+          cwd: fixture.cwd,
+          providers: [
+            scan("one", { user: [declared(".one/skills")] }),
+            scan("resolving", {}, "provider-resolving"),
+          ],
+          sharedRoots: { user: [declared(".agents/skills")], project: [] },
+          resolution: { contributedEnv: [], timeoutMs: 5_000 },
+        },
+        options,
+        new AbortController().signal,
+      );
+
+      expect(result.workspaceSkills.map((skill) => skill.name)).toEqual([
+        "proj-bb",
+      ]);
+      expect(result.workspaceSkills[0]?.rootKind).toBe("bb-project");
+      expect(result.sharedSkills.map((skill) => skill.rootKind)).toEqual([
+        "shared-user",
+      ]);
+      expect(
+        result.providers.map((provider) => ({
+          providerId: provider.providerId,
+          names: provider.skills.map((skill) => skill.name),
+        })),
+      ).toEqual([
+        { providerId: "one", names: ["one"] },
+        { providerId: "resolving", names: ["vendor"] },
+      ]);
+      expect(call).toHaveBeenCalledTimes(1);
+      expect(call.mock.calls[0]?.[0]).toMatchObject({
+        type: "plugin.host.call",
+        pluginId: "provider-resolving",
+        generation: "gen-1",
+        method: "resolveNativeRoots",
+        input: { providerId: "resolving", cwd: fixture.cwd },
+        timeoutMs: 5_000,
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("scans the declared roots only, and warns, when the resolver fails, answers malformed roots, or has no runtime", async () => {
+    const fixture = await makeWorkspaceFixture();
+    await writeSkill(
+      path.join(fixture.cwd, ".resolving", "skills", "declared", "SKILL.md"),
+      "declared",
+    );
+    const command = {
+      type: "host.list_skills" as const,
+      cwd: fixture.cwd,
+      providers: [
+        scan(
+          "resolving",
+          { project: [declared(".resolving/skills")] },
+          "provider-resolving",
+        ),
+      ],
+      sharedRoots: { user: [], project: [] },
+      resolution: { contributedEnv: [], timeoutMs: 5_000 },
+    };
+    const answers: Array<PluginHost | undefined> = [
+      {
+        call: async () => {
+          throw new Error("plugin.json is not valid JSON");
+        },
+        cancel: vi.fn(),
+      },
+      {
+        call: async () => ({
+          output: { skills: [{ path: "relative/skills", origin: "user" }] },
+        }),
+        cancel: vi.fn(),
+      },
+      undefined,
+    ];
+    for (const pluginHost of answers) {
+      const { options, warn } = listingOptions(pluginHost);
+      const result = await listHostSkills(
+        command,
+        options,
+        new AbortController().signal,
+      );
+      expect(result.providers[0]?.skills.map((skill) => skill.name)).toEqual([
+        "declared",
+      ]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toMatchObject({
+        pluginId: "provider-resolving",
+        providerId: "resolving",
+      });
+    }
+  });
+
+  it("cancels the resolver call when the listing is cancelled", async () => {
+    const fixture = await makeWorkspaceFixture();
+    const abort = new AbortController();
+    const cancel = vi.fn<PluginHost["cancel"]>(() => ({ cancelled: true }));
+    const call = vi.fn<PluginHost["call"]>(async () => {
+      abort.abort();
+      return { output: { skills: [], commands: [] } };
+    });
+    const { options } = listingOptions({ call, cancel });
+
+    await listHostSkills(
+      {
+        type: "host.list_skills",
+        cwd: fixture.cwd,
+        providers: [scan("resolving", {}, "provider-resolving")],
+        sharedRoots: { user: [], project: [] },
+        resolution: { contributedEnv: [], timeoutMs: 5_000 },
+      },
+      options,
+      abort.signal,
+    );
+
+    expect(cancel).toHaveBeenCalledWith({
+      type: "plugin.host.cancel",
+      pluginId: "provider-resolving",
+      generation: "gen-1",
+      callId: call.mock.calls[0]?.[0].callId,
+    });
+  });
+});
+
 describe("resolveSkillScanRoots + discoverSkills", () => {
-  it("classifies the host-owned bb project root and the declared provider roots only", async () => {
+  it("classifies the declared provider roots only, leaving the bb project root to the workspace listing", async () => {
     const fixture = await makeWorkspaceFixture();
     const files = {
       "proj-bb": path.join(fixture.cwd, ".bb", "skills", "proj-bb", "SKILL.md"),
@@ -139,14 +349,7 @@ describe("resolveSkillScanRoots + discoverSkills", () => {
 
     const skills = await listSkills(fixture, fixture.cwd, AGENT_SKILL_ROOTS);
 
-    expect(byName(skills, "proj-bb")).toMatchObject({
-      id: expect.stringMatching(/^skill_[a-f0-9]{64}$/u),
-      name: "proj-bb",
-      description: "proj-bb skill",
-      filePath: files["proj-bb"],
-      rootKind: "bb-project",
-      linked: false,
-    });
+    expect(byName(skills, "proj-bb")).toBeUndefined();
     expect(byName(skills, "data-bb")).toBeUndefined();
     expect(byName(skills, "proj-agent")?.rootKind).toBe("provider-project");
     expect(byName(skills, "user-agent")?.rootKind).toBe("provider-user");

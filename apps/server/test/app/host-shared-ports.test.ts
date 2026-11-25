@@ -390,7 +390,9 @@ describe("HostSharedPortCoordinator", () => {
   });
 
   it("stores only daemon-reported tunnel identity", () => {
-    const { host, sharedPorts } = setup();
+    const { host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected an online host session");
+    hub.registerDaemon(session.id, host.id, createMockHubSocket());
     expect(sharedPorts.getTunnelIdentity(host.id)).toBeNull();
     expect(
       sharedPorts.recordTunnelIdentity(host.id, {
@@ -402,6 +404,21 @@ describe("HostSharedPortCoordinator", () => {
       label: "sawyer-air",
       baseDomain: "getbb.app",
     });
+  });
+
+  it("treats a host as connected while the hub holds its socket, whatever the persisted lease says", () => {
+    const { db, host, hub, session, sharedPorts } = setup();
+    if (!session) throw new Error("expected an online host session");
+    hub.registerDaemon(session.id, host.id, createMockHubSocket());
+    heartbeatSession(db, session.id, Date.now() - 1);
+    expect(sharedPorts.getTunnelIdentity(host.id)).toBeNull();
+
+    hub.unregisterDaemon(session.id);
+    expect(() => sharedPorts.getTunnelIdentity(host.id)).toThrow(
+      expect.objectContaining({
+        body: expect.objectContaining({ code: "connect_host_offline" }),
+      }),
+    );
   });
 });
 
@@ -515,10 +532,10 @@ describe("daemon session connect shares", () => {
         hostId: "host-1",
         sessionId: session.sessionId,
         socket: daemonSocket,
-        raw: JSON.stringify({
+        message: {
           type: "connect-tunnel.identity",
           identity: { label: "sawyer-air", baseDomain: "getbb.app" },
-        }),
+        },
       });
       expect(harness.deps.sharedPorts.getTunnelIdentity("host-1")).toEqual({
         label: "sawyer-air",
@@ -582,15 +599,6 @@ describe("daemon session connect shares", () => {
   });
 });
 
-const NEXT_CONFIG = {
-  domain: "next.getbb.app",
-  server: {
-    protocol: "wss" as const,
-    host: "tunnel.next.getbb.app",
-    port: 443,
-  },
-};
-
 function openDaemonSession(harness: TestAppHarness, protocolVersion: number) {
   return harness.app.request("/internal/session/open", {
     method: "POST",
@@ -613,148 +621,7 @@ function openDaemonSession(harness: TestAppHarness, protocolVersion: number) {
   });
 }
 
-describe("connect next machine tunnels", () => {
-  it("sends the config to enrolled hosts, owned by one plugin and cleared with it", () => {
-    const { host, hub, session, sharedPorts } = setup();
-    if (!session) throw new Error("expected a session");
-    const daemonSocket = createMockHubSocket();
-    hub.registerDaemon(session.id, host.id, daemonSocket);
-    const sent = () =>
-      daemonSocket.messages
-        .map((message) =>
-          hostDaemonServerWsMessageSchema.parse(JSON.parse(message)),
-        )
-        .filter((message) => message.type === "connect-next.replace");
-
-    sharedPorts.setNextTunnelConfig("bb--connect-next", NEXT_CONFIG);
-    expect(sent()).toEqual([
-      { type: "connect-next.replace", generation: 1, config: NEXT_CONFIG },
-    ]);
-    sharedPorts.setNextTunnelConfig("bb--connect-next", NEXT_CONFIG);
-    expect(sent()).toHaveLength(1);
-    expect(() =>
-      sharedPorts.setNextTunnelConfig("other-plugin", NEXT_CONFIG),
-    ).toThrow('already configured by plugin "bb--connect-next"');
-    sharedPorts.setNextTunnelConfig("other-plugin", null);
-    expect(sent()).toHaveLength(1);
-
-    sharedPorts.clearDeclarationsForOwner("bb--connect-next");
-    expect(sent().at(-1)).toEqual({
-      type: "connect-next.replace",
-      generation: 2,
-      config: null,
-    });
-    sharedPorts.setNextTunnelConfig("other-plugin", NEXT_CONFIG);
-    expect(sent().at(-1)?.generation).toBe(3);
-  });
-
-  it("gives an unenrolled host no config", () => {
-    const { host, sharedPorts } = setup({ enrolled: false });
-    sharedPorts.setNextTunnelConfig("bb--connect-next", NEXT_CONFIG);
-    expect(sharedPorts.reconcileNextTunnelForHost(host.id)).toEqual({
-      generation: 1,
-      config: null,
-    });
-  });
-
-  it("keeps the latest status per session and drops it when the session ends", () => {
-    const { host, session, sharedPorts } = setup();
-    if (!session) throw new Error("expected a session");
-    let changes = 0;
-    const unsubscribe = sharedPorts.onNextTunnelStatusChange(() => {
-      changes += 1;
-    });
-    const status = {
-      state: "connected" as const,
-      label: "sawyer-air",
-      lastError: null,
-      nextRetryAt: null,
-      since: 1,
-      shares: [{ port: 3000, state: "active" as const, error: null }],
-    };
-    sharedPorts.recordNextTunnelStatus({
-      hostId: host.id,
-      sessionId: "another-session",
-      status,
-    });
-    expect(sharedPorts.listNextTunnelStatuses()).toEqual([]);
-    sharedPorts.recordNextTunnelStatus({
-      hostId: host.id,
-      sessionId: session.id,
-      status,
-    });
-    sharedPorts.recordNextTunnelStatus({
-      hostId: host.id,
-      sessionId: session.id,
-      status,
-    });
-    expect(changes).toBe(1);
-    expect(sharedPorts.listNextTunnelStatuses()).toEqual([
-      { hostId: host.id, hostName: "test-host", status },
-    ]);
-    sharedPorts.clearHostConnectCapability(session.id);
-    expect(sharedPorts.listNextTunnelStatuses()).toEqual([]);
-    expect(changes).toBe(2);
-    unsubscribe();
-  });
-
-  it("gives a current daemon the config at session open and on the socket", async () => {
-    await withTestHarness(async (harness) => {
-      upsertHost(harness.db, harness.hub, {
-        id: "host-1",
-        name: "Host",
-        connectMachineId: "machine-1",
-      });
-      harness.deps.sharedPorts.setNextTunnelConfig(
-        "bb--connect-next",
-        NEXT_CONFIG,
-      );
-      const response = await openDaemonSession(
-        harness,
-        HOST_DAEMON_PROTOCOL_VERSION,
-      );
-      const session = hostDaemonSessionOpenResponseSchema.parse(
-        await readJson(response),
-      );
-      expect(session.connectNext).toEqual({
-        generation: 1,
-        config: NEXT_CONFIG,
-      });
-      const daemonSocket = createMockHubSocket();
-      onDaemonSocketOpen(harness.deps, {
-        hostId: "host-1",
-        sessionId: session.sessionId,
-        socket: daemonSocket,
-      });
-      onDaemonSocketMessage(harness.deps, {
-        hostId: "host-1",
-        sessionId: session.sessionId,
-        socket: daemonSocket,
-        raw: JSON.stringify({
-          type: "connect-next.status",
-          status: {
-            state: "connecting",
-            label: null,
-            lastError: null,
-            nextRetryAt: null,
-            since: 1,
-            shares: [],
-          },
-        }),
-      });
-      expect(
-        daemonSocket.messages.map((message) => JSON.parse(message)),
-      ).toContainEqual({
-        type: "connect-next.replace",
-        generation: 1,
-        config: NEXT_CONFIG,
-      });
-      expect(harness.deps.sharedPorts.listNextTunnelStatuses()).toMatchObject([
-        { hostId: "host-1", status: { state: "connecting" } },
-      ]);
-    });
-  });
-
+describe("daemon protocol window", () => {
   it("still rejects protocols outside the compatible window", async () => {
     await withTestHarness(async (harness) => {
       upsertHost(harness.db, harness.hub, { id: "host-1", name: "Host" });

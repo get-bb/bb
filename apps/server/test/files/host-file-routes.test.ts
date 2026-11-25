@@ -128,9 +128,12 @@ describe("host file routes", () => {
             ok: true,
             result: {
               path: command.path,
-              content: file.bytes
-                .subarray(command.offset, command.offset + command.length)
-                .toString("base64"),
+              content: new Uint8Array(
+                file.bytes.subarray(
+                  command.offset,
+                  command.offset + command.length,
+                ),
+              ),
               offset: command.offset,
               mimeType: file.mimeType,
               modifiedAtMs: 1234,

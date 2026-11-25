@@ -3,7 +3,6 @@ import {
   cliCommand,
   defineCli,
   type BbPluginApi,
-  type PluginCliResult,
 } from "@get-bb/plugin-sdk";
 import {
   deriveConnectBaseUrl,
@@ -68,9 +67,7 @@ function shareLine(share: ShareListing): string {
   const address =
     share.url === ""
       ? `unavailable: ${share.unavailableReason ?? "unknown reason"}`
-      : share.nextUrl === undefined
-        ? share.url
-        : `${share.url}  ${share.nextUrl}`;
+      : share.url;
   return `${share.hostName} (${share.hostId})  ${share.port}  ${address}`;
 }
 
@@ -154,20 +151,6 @@ function formatMachineCode(payload: MobilePairingPayload): string {
   ].join("\n");
 }
 
-async function attempt(
-  work: () => Promise<PluginCliResult>,
-): Promise<PluginCliResult> {
-  try {
-    return await work();
-  } catch (error) {
-    if (error instanceof PluginCliError) throw error;
-    throw new PluginCliError(
-      error instanceof Error ? error.message : String(error),
-      { code: "connect_failed" },
-    );
-  }
-}
-
 export function registerConnectCli(args: {
   bb: Pick<BbPluginApi, "cli">;
   tunnel: ConnectTunnel;
@@ -211,89 +194,85 @@ export function registerConnectCli(args: {
           { kind: "requires", option: "server", needs: ["code"] },
           { kind: "requires", option: "base-url", needs: ["code"] },
         ],
-        run: (input) =>
-          attempt(async () => {
-            const code = input.options.code;
-            if (code === undefined) {
-              return { exitCode: 0, stdout: input.help };
+        run: async (input) => {
+          const code = input.options.code;
+          if (code === undefined) {
+            return { exitCode: 0, stdout: input.help };
+          }
+          const server = input.options.server;
+          const baseUrl =
+            input.options["base-url"] ??
+            (server === undefined ? null : deriveConnectBaseUrl(server));
+          let status: ConnectStatus;
+          try {
+            status = await tunnel.signIn(
+              async () =>
+                (await account.redeemCode({ code: code.trim(), baseUrl }))
+                  .account,
+            );
+          } catch (error) {
+            const failure = pairError(error);
+            if (failure.code === "profile_unavailable") {
+              await remoteAccess.set(true);
             }
-            const server = input.options.server;
-            const baseUrl =
-              input.options["base-url"] ??
-              (server === undefined ? null : deriveConnectBaseUrl(server));
-            let status: ConnectStatus;
-            try {
-              status = await tunnel.signIn(
-                async () =>
-                  (await account.redeemCode({ code: code.trim(), baseUrl }))
-                    .account,
-              );
-            } catch (error) {
-              const failure = pairError(error);
-              if (failure.code === "profile_unavailable") {
-                await remoteAccess.set(true);
-              }
-              throw failure;
-            }
-            if (!status.enabled) status = await remoteAccess.set(true);
-            if (input.options.json) {
-              return { exitCode: 0, stdout: asJson(status) };
-            }
-            return {
-              exitCode: 0,
-              stdout:
-                `Paired as ${status.handle} — reachable at ${status.url}\n` +
-                "This bb is signed in to your bb account (see `bb account status`); the server holds the tunnel while bb is running.\n",
-            };
-          }),
+            throw failure;
+          }
+          if (!status.enabled) status = await remoteAccess.set(true);
+          if (input.options.json) {
+            return { exitCode: 0, stdout: asJson(status) };
+          }
+          return {
+            exitCode: 0,
+            stdout:
+              `Paired as ${status.handle} — reachable at ${status.url}\n` +
+              "This bb is signed in to your bb account (see `bb account status`); the server holds the tunnel while bb is running.\n",
+          };
+        },
       }),
       commands: {
         status: cliCommand({
           summary: "Show remote-access status",
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const status = await tunnel.refreshStatus();
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? asJson(status)
-                  : `${formatStatus(status)}\n`,
-              };
-            }),
+          run: async (input) => {
+            const status = await tunnel.refreshStatus();
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? asJson(status)
+                : `${formatStatus(status)}\n`,
+            };
+          },
         }),
         off: cliCommand({
           summary: "Turn remote access off and stay signed in",
           description:
             "Closes the tunnel until `bb connect on`. This bb stays signed in to your bb account; `bb account logout` forgets the pairing.",
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const status = await remoteAccess.set(false);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? asJson(status)
-                  : "Remote access is off. This bb stays signed in to your bb account; run `bb connect on` to turn it back on, or `bb account logout` to forget the pairing.\n",
-              };
-            }),
+          run: async (input) => {
+            const status = await remoteAccess.set(false);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? asJson(status)
+                : "Remote access is off. This bb stays signed in to your bb account; run `bb connect on` to turn it back on, or `bb account logout` to forget the pairing.\n",
+            };
+          },
         }),
         on: cliCommand({
           summary: "Turn remote access back on",
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const status = await remoteAccess.set(true);
-              if (input.options.json) {
-                return { exitCode: 0, stdout: asJson(status) };
-              }
-              return {
-                exitCode: 0,
-                stdout: status.paired
-                  ? `Remote access is on — reachable at ${status.url}\n`
-                  : "Remote access is on. Run `bb account login` to sign in; the tunnel starts once you do.\n",
-              };
-            }),
+          run: async (input) => {
+            const status = await remoteAccess.set(true);
+            if (input.options.json) {
+              return { exitCode: 0, stdout: asJson(status) };
+            }
+            return {
+              exitCode: 0,
+              stdout: status.paired
+                ? `Remote access is on — reachable at ${status.url}\n`
+                : "Remote access is on. Run `bb account login` to sign in; the tunnel starts once you do.\n",
+            };
+          },
         }),
         expose: cliCommand({
           summary: "Share an HTTP port from an enrolled host",
@@ -305,28 +284,24 @@ export function registerConnectCli(args: {
             },
           ],
           options: { host: HOST_OPTION, json: JSON_OPTION },
-          run: (input, ctx) =>
-            attempt(async () => {
-              if (!tunnel.status().paired) throw notPairedError();
-              const targetHost = await hostResolver.resolve(
-                ctx,
-                input.options.host,
-              );
-              const listing = await tunnel.expose(
-                parseSharePort(input.positionals.port),
-                targetHost,
-              );
-              if (input.options.json) {
-                return { exitCode: 0, stdout: asJson(listing) };
-              }
-              return {
-                exitCode: 0,
-                stdout:
-                  listing.nextUrl === undefined
-                    ? `${listing.url}\n`
-                    : `${listing.url}\n${listing.nextUrl}\n`,
-              };
-            }),
+          run: async (input, ctx) => {
+            if (!tunnel.status().paired) throw notPairedError();
+            const targetHost = await hostResolver.resolve(
+              ctx,
+              input.options.host,
+            );
+            const listing = await tunnel.expose(
+              parseSharePort(input.positionals.port),
+              targetHost,
+            );
+            if (input.options.json) {
+              return { exitCode: 0, stdout: asJson(listing) };
+            }
+            return {
+              exitCode: 0,
+              stdout: `${listing.url}\n`,
+            };
+          },
         }),
         unexpose: cliCommand({
           summary: "Stop sharing an HTTP port from a host",
@@ -338,28 +313,27 @@ export function registerConnectCli(args: {
             },
           ],
           options: { host: HOST_OPTION, json: JSON_OPTION },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const targetHost =
-                input.options.host ?? (await hostResolver.resolveId(ctx));
-              const result = await tunnel.unexpose(
-                parseSharePort(input.positionals.port),
-                targetHost,
-              );
-              if (input.options.json) {
-                return { exitCode: 0, stdout: asJson(result) };
-              }
-              if (!result.removed) {
-                return {
-                  exitCode: 0,
-                  stdout: `Port ${result.port} was not shared on ${result.hostName} (${result.hostId}) (idempotent).\n`,
-                };
-              }
+          run: async (input, ctx) => {
+            const targetHost =
+              input.options.host ?? (await hostResolver.resolveId(ctx));
+            const result = await tunnel.unexpose(
+              parseSharePort(input.positionals.port),
+              targetHost,
+            );
+            if (input.options.json) {
+              return { exitCode: 0, stdout: asJson(result) };
+            }
+            if (!result.removed) {
               return {
                 exitCode: 0,
-                stdout: `Stopped sharing port ${result.port} on ${result.hostName} (${result.hostId})\n`,
+                stdout: `Port ${result.port} was not shared on ${result.hostName} (${result.hostId}) (idempotent).\n`,
               };
-            }),
+            }
+            return {
+              exitCode: 0,
+              stdout: `Stopped sharing port ${result.port} on ${result.hostName} (${result.hostId})\n`,
+            };
+          },
         }),
         "unexpose-all": cliCommand({
           summary: "Stop sharing all HTTP ports on a machine",
@@ -371,103 +345,99 @@ export function registerConnectCli(args: {
             },
             json: JSON_OPTION,
           },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const hostId =
-                input.options.host ?? (await hostResolver.resolveId(ctx));
-              const result = await tunnel.unexposeAll(hostId);
-              return {
-                exitCode: 0,
-                stdout: input.options.json
-                  ? asJson(result)
-                  : `Stopped sharing ${result.removed} ports on ${hostId}\n`,
-              };
-            }),
+          run: async (input, ctx) => {
+            const hostId =
+              input.options.host ?? (await hostResolver.resolveId(ctx));
+            const result = await tunnel.unexposeAll(hostId);
+            return {
+              exitCode: 0,
+              stdout: input.options.json
+                ? asJson(result)
+                : `Stopped sharing ${result.removed} ports on ${hostId}\n`,
+            };
+          },
         }),
         shares: cliCommand({
           summary: "List shared ports and their public URLs",
           suggestFor: ["list", "ls", "ports"],
           options: { host: HOST_OPTION, json: JSON_OPTION },
-          run: (input, ctx) =>
-            attempt(async () => {
-              const targetHost = await hostResolver.resolve(
-                ctx,
-                input.options.host,
-              );
-              const shares = await tunnel.listShares(targetHost.id);
-              if (input.options.json) {
-                return {
-                  exitCode: 0,
-                  stdout: asJson({ host: targetHost, shares }),
-                };
-              }
-              if (shares.length === 0) {
-                return { exitCode: 0, stdout: "No shared ports\n" };
-              }
-              const lines = shares.map(shareLine);
-              return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
-            }),
+          run: async (input, ctx) => {
+            const targetHost = await hostResolver.resolve(
+              ctx,
+              input.options.host,
+            );
+            const shares = await tunnel.listShares(targetHost.id);
+            if (input.options.json) {
+              return {
+                exitCode: 0,
+                stdout: asJson({ host: targetHost, shares }),
+              };
+            }
+            if (shares.length === 0) {
+              return { exitCode: 0, stdout: "No shared ports\n" };
+            }
+            const lines = shares.map(shareLine);
+            return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
+          },
         }),
         servers: cliCommand({
           summary: "List every bb server on this account",
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              const identity = tunnel.getIdentity();
-              if (identity === null) throw notPairedError();
-              const result = await hosted.listAccountServers(identity);
-              if (input.options.json) {
-                return { exitCode: 0, stdout: asJson(result) };
-              }
-              if (result.servers.length === 0) {
-                return { exitCode: 0, stdout: "No servers on this account\n" };
-              }
-              const handleWidth = Math.max(
-                "HANDLE".length,
-                ...result.servers.map((server) => server.handle.length),
-              );
-              const nameWidth = Math.max(
-                "NAME".length,
-                ...result.servers.map((server) => server.name.length),
-              );
-              const urlWidth = Math.max(
-                "URL".length,
-                ...result.servers.map((server) => server.url.length),
-              );
-              const lines = [
-                `${"HANDLE".padEnd(handleWidth)}  ${"NAME".padEnd(nameWidth)}  ${"URL".padEnd(urlWidth)}  LIVE  SELF`,
-                ...result.servers.map((server) => {
-                  const live = server.live ? "yes" : "no";
-                  const self = server.handle === result.selfHandle ? "*" : "";
-                  return `${server.handle.padEnd(handleWidth)}  ${server.name.padEnd(nameWidth)}  ${server.url.padEnd(urlWidth)}  ${live.padEnd(4)}  ${self}`;
-                }),
-              ];
-              return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
-            }),
+          run: async (input) => {
+            const identity = tunnel.getIdentity();
+            if (identity === null) throw notPairedError();
+            const result = await hosted.listAccountServers(identity);
+            if (input.options.json) {
+              return { exitCode: 0, stdout: asJson(result) };
+            }
+            if (result.servers.length === 0) {
+              return { exitCode: 0, stdout: "No servers on this account\n" };
+            }
+            const handleWidth = Math.max(
+              "HANDLE".length,
+              ...result.servers.map((server) => server.handle.length),
+            );
+            const nameWidth = Math.max(
+              "NAME".length,
+              ...result.servers.map((server) => server.name.length),
+            );
+            const urlWidth = Math.max(
+              "URL".length,
+              ...result.servers.map((server) => server.url.length),
+            );
+            const lines = [
+              `${"HANDLE".padEnd(handleWidth)}  ${"NAME".padEnd(nameWidth)}  ${"URL".padEnd(urlWidth)}  LIVE  SELF`,
+              ...result.servers.map((server) => {
+                const live = server.live ? "yes" : "no";
+                const self = server.handle === result.selfHandle ? "*" : "";
+                return `${server.handle.padEnd(handleWidth)}  ${server.name.padEnd(nameWidth)}  ${server.url.padEnd(urlWidth)}  ${live.padEnd(4)}  ${self}`;
+              }),
+            ];
+            return { exitCode: 0, stdout: `${lines.join("\n")}\n` };
+          },
         }),
         "machine-code": cliCommand({
           summary:
             "Mint a one-time code that enrolls the bb mobile app as a connect machine",
           options: { json: JSON_OPTION },
-          run: (input) =>
-            attempt(async () => {
-              if (tunnel.getIdentity() === null) throw notPairedError();
-              let payload: MobilePairingPayload;
-              try {
-                payload = mobilePairingPayload(
-                  await hosted.createMachineCode(AbortSignal.timeout(10_000)),
-                );
-              } catch (error) {
-                if (error instanceof MachineCodeError) {
-                  throw machineCodeError(error, tunnel.status().dashboardUrl);
-                }
-                throw error;
+          run: async (input) => {
+            if (tunnel.getIdentity() === null) throw notPairedError();
+            let payload: MobilePairingPayload;
+            try {
+              payload = mobilePairingPayload(
+                await hosted.createMachineCode(AbortSignal.timeout(10_000)),
+              );
+            } catch (error) {
+              if (error instanceof MachineCodeError) {
+                throw machineCodeError(error, tunnel.status().dashboardUrl);
               }
-              if (input.options.json) {
-                return { exitCode: 0, stdout: asJson(payload) };
-              }
-              return { exitCode: 0, stdout: `${formatMachineCode(payload)}\n` };
-            }),
+              throw error;
+            }
+            if (input.options.json) {
+              return { exitCode: 0, stdout: asJson(payload) };
+            }
+            return { exitCode: 0, stdout: `${formatMachineCode(payload)}\n` };
+          },
         }),
       },
     }),

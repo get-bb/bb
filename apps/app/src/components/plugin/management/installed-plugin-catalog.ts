@@ -1,14 +1,30 @@
 import type { PluginListItem } from "@/hooks/queries/plugin-settings-queries";
-import type { PluginCatalogSearchEntry } from "@/hooks/queries/plugin-catalog-queries";
+import {
+  catalogEntryListings,
+  type PluginCatalogSearchEntry,
+} from "@/hooks/queries/plugin-catalog-queries";
 import {
   parsePluginDetailKey,
   pluginDetailKey,
 } from "@/components/plugin/plugin-detail-key";
+import { isOfficialMarketplace } from "@/lib/official-plugins";
+
+function catalogEntryListedBy(
+  entry: Pick<PluginCatalogSearchEntry, "entryId" | "marketplace" | "listings">,
+  marketplace: string,
+  entryId: string | null,
+): boolean {
+  return catalogEntryListings(entry).some(
+    (listing) =>
+      listing.marketplace === marketplace &&
+      (entryId === null || listing.entryId === entryId),
+  );
+}
 
 export function installedPluginCatalogEntry<
   Entry extends Pick<
     PluginCatalogSearchEntry,
-    "pluginId" | "entryId" | "marketplace" | "source" | "installed"
+    "pluginId" | "entryId" | "marketplace" | "listings" | "source" | "installed"
   >,
 >(
   plugin: Pick<
@@ -26,7 +42,7 @@ export function installedPluginCatalogEntry<
     return entries.find(
       (entry) =>
         entry.pluginId === plugin.id &&
-        entry.marketplace === "bb-official" &&
+        isOfficialMarketplace(entry.marketplace) &&
         entry.source === plugin.source &&
         (plugin.catalogEntryId === null ||
           entry.entryId === plugin.catalogEntryId),
@@ -47,14 +63,15 @@ export function installedPluginCatalogEntry<
   ) {
     return undefined;
   }
+  const marketplace = plugin.catalogMarketplaceName;
   return entries.find(
     (entry) =>
       entry.pluginId === plugin.id &&
-      (plugin.catalogEntryId === null ||
-        entry.entryId === plugin.catalogEntryId) &&
-      (plugin.catalogMarketplaceName === null
-        ? entry.source === plugin.source
-        : entry.marketplace === plugin.catalogMarketplaceName),
+      (marketplace === null
+        ? (plugin.catalogEntryId === null ||
+            entry.entryId === plugin.catalogEntryId) &&
+          entry.source === plugin.source
+        : catalogEntryListedBy(entry, marketplace, plugin.catalogEntryId)),
   );
 }
 
@@ -66,8 +83,7 @@ export function catalogEntryDetailKey(
 ): string {
   return pluginDetailKey({
     pluginId: entry.pluginId,
-    listing:
-      entry.conflictingInstallSource === null ? null : entry.marketplace,
+    listing: entry.conflictingInstallSource === null ? null : entry.marketplace,
   });
 }
 
@@ -78,7 +94,7 @@ export function resolvePluginDetailKey<
   >,
   Entry extends Pick<
     PluginCatalogSearchEntry,
-    "pluginId" | "entryId" | "marketplace" | "source" | "installed"
+    "pluginId" | "entryId" | "marketplace" | "listings" | "source" | "installed"
   >,
 >(
   detailKey: string,
@@ -97,7 +113,8 @@ export function resolvePluginDetailKey<
   }
   const entry = entries.find(
     (candidate) =>
-      candidate.marketplace === listing && candidate.pluginId === pluginId,
+      candidate.pluginId === pluginId &&
+      catalogEntryListedBy(candidate, listing, null),
   );
   if (entry === undefined) return { plugin: null, entry: null };
   const plugin = entry.installed

@@ -231,12 +231,21 @@ function createWindowOptions(
   };
 }
 
+const NET_ERROR_ABORTED = -3;
+
+function isAbortedLoad(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "errno" in error &&
+    error.errno === NET_ERROR_ABORTED
+  );
+}
+
 async function loadUrlIntoWindow(args: LoadUrlIntoWindowArgs): Promise<void> {
   try {
     await args.browserWindow.loadURL(args.url);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("ERR_ABORTED")) {
+    if (isAbortedLoad(error)) {
       return;
     }
     throw error;

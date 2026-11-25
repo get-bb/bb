@@ -1,3 +1,4 @@
+import type { BbDesktopConnectServersSkipReason } from "@bb/desktop-contract";
 import { z } from "zod";
 import {
   ConnectListError,
@@ -46,12 +47,7 @@ const rpcFailureSchema = z
   })
   .passthrough();
 
-export type ConnectServerSyncSkipReason =
-  | "no-credential"
-  | "plugin-disabled"
-  | "not-paired"
-  | "unauthorized"
-  | "unavailable";
+export type ConnectServerSyncSkipReason = BbDesktopConnectServersSkipReason;
 
 export type FetchConnectAccountServersResult =
   | { ok: true; result: ConnectListAccountServersResult }

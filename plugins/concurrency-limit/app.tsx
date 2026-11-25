@@ -7,12 +7,18 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { Input } from "@/components/ui/input";
 import {
+  SettingsList,
+  SettingsListItem,
+  SettingsListMessage,
+} from "@/components/ui/settings-section";
+import {
   commitGlobalLimitDraft,
   commitHostLimitDraft,
   MAX_LIMIT_VALUE,
   type LimitDraftCommit,
 } from "./limits.js";
 import type { concurrencyLimitRpcContract } from "./server.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 type ConfigurationView = StandardSchemaV1InferOutput<
   (typeof concurrencyLimitRpcContract)["getConfiguration"]["output"]
@@ -130,16 +136,11 @@ function ConcurrencyLimitSettings() {
 
   if (view === null) {
     return (
-      <p
-        className={
-          error === null
-            ? "text-sm text-muted-foreground"
-            : "text-sm text-destructive"
-        }
-        role={error === null ? "status" : "alert"}
-      >
-        {error ?? "Loading limits…"}
-      </p>
+      <SettingsList>
+        <SettingsListMessage tone={error === null ? "muted" : "error"}>
+          {error ?? "Loading limits…"}
+        </SettingsListMessage>
+      </SettingsList>
     );
   }
 
@@ -148,91 +149,76 @@ function ConcurrencyLimitSettings() {
 
   return (
     <div className="w-full space-y-5">
-      <div className="flex items-start justify-between gap-6 pr-2">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground">Overall limit</h3>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Leave blank for no overall limit. Use 0 to pause new work.
-          </p>
-        </div>
-        <Input
-          aria-label="Overall thread limit"
-          aria-invalid={invalidField === GLOBAL_FIELD}
-          className="w-28 shrink-0"
-          disabled={disabled}
-          inputMode="numeric"
-          max={MAX_LIMIT_VALUE}
-          min={0}
-          placeholder="Unlimited"
-          step={1}
-          type="number"
-          value={drafts[GLOBAL_FIELD] ?? ""}
-          onBlur={commitGlobal}
-          onChange={(event) => changeDraft(GLOBAL_FIELD, event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") event.currentTarget.blur();
-          }}
+      <SettingsList>
+        <SettingsListItem
+          title="Overall limit"
+          description="Leave blank for no overall limit. Use 0 to pause new work."
+          control={
+            <Input
+              aria-label="Overall thread limit"
+              aria-invalid={invalidField === GLOBAL_FIELD}
+              className="w-28"
+              disabled={disabled}
+              inputMode="numeric"
+              max={MAX_LIMIT_VALUE}
+              min={0}
+              placeholder="Unlimited"
+              step={1}
+              type="number"
+              value={drafts[GLOBAL_FIELD] ?? ""}
+              onBlur={commitGlobal}
+              onChange={(event) =>
+                changeDraft(GLOBAL_FIELD, event.target.value)
+              }
+              onKeyDown={(event) => {
+                if (isNonImeKey(event, "Enter")) event.currentTarget.blur();
+              }}
+            />
+          }
         />
-      </div>
+      </SettingsList>
 
-      <div className="border-t border-border/60 pt-4">
-        <h3 className="text-sm font-medium text-foreground">Host limits</h3>
-        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-          Auto allows one thread per available processor.
-        </p>
-
-        <div className="ml-2 mt-2 border-l border-border/60 pl-2">
-          {view.hosts.length === 0 ? (
-            <p className="px-2 py-2 text-sm text-muted-foreground">
-              No hosts available.
-            </p>
-          ) : (
-            <div className="space-y-1">
-              {view.hosts.map((host) => (
-                <div
-                  key={host.id}
-                  className="flex min-h-14 items-center gap-3 rounded-md px-2 py-2"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-medium text-foreground">
-                      {host.name}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {host.status === "disconnected"
-                        ? host.availableParallelism === null
-                          ? "Offline"
-                          : `${host.availableParallelism} processors · Offline`
-                        : host.availableParallelism === null
-                          ? "Detecting processors…"
-                          : `${host.availableParallelism} processors`}
-                    </div>
-                  </div>
-                  <Input
-                    aria-label={`${host.name} thread limit`}
-                    aria-invalid={invalidField === host.id}
-                    className="w-28 shrink-0"
-                    disabled={disabled}
-                    inputMode="numeric"
-                    max={MAX_LIMIT_VALUE}
-                    min={0}
-                    placeholder={`Auto (${host.automaticLimit})`}
-                    step={1}
-                    type="number"
-                    value={drafts[host.id] ?? ""}
-                    onBlur={() => commitHost(host.id)}
-                    onChange={(event) =>
-                      changeDraft(host.id, event.target.value)
-                    }
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") event.currentTarget.blur();
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      <SettingsList
+        title="Host limits"
+        description="Auto allows one thread per available processor."
+      >
+        {view.hosts.length === 0 ? (
+          <SettingsListMessage>No hosts available.</SettingsListMessage>
+        ) : (
+          view.hosts.map((host) => (
+            <SettingsListItem
+              key={host.id}
+              title={host.name}
+              meta={[
+                host.availableParallelism === null
+                  ? host.status !== "disconnected" && "Detecting processors…"
+                  : `${host.availableParallelism} processors`,
+                host.status === "disconnected" && "Offline",
+              ]}
+              control={
+                <Input
+                  aria-label={`${host.name} thread limit`}
+                  aria-invalid={invalidField === host.id}
+                  className="w-28"
+                  disabled={disabled}
+                  inputMode="numeric"
+                  max={MAX_LIMIT_VALUE}
+                  min={0}
+                  placeholder={`Auto (${host.automaticLimit})`}
+                  step={1}
+                  type="number"
+                  value={drafts[host.id] ?? ""}
+                  onBlur={() => commitHost(host.id)}
+                  onChange={(event) => changeDraft(host.id, event.target.value)}
+                  onKeyDown={(event) => {
+                    if (isNonImeKey(event, "Enter")) event.currentTarget.blur();
+                  }}
+                />
+              }
+            />
+          ))
+        )}
+      </SettingsList>
 
       <div className="flex min-h-5 justify-end" aria-live="polite">
         {invalidField !== null ? (

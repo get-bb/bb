@@ -133,7 +133,12 @@ function ThreadComposerHostPublisher({
   });
   const host = useMemo<PluginComposerHost>(
     () => ({
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: promptDraft.storageKey,
       getCurrent: promptDraft.getCurrent,
       subscribeDraft: promptDraft.subscribe,
@@ -458,7 +463,12 @@ function ThreadPaneFixture({
   const composerHost = useMemo<PluginComposerHost>(() => {
     const draft = { attachments: [], mentions: [], text: "" };
     return {
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: `test-draft-${threadId}`,
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -1291,7 +1301,12 @@ describe("SplitThreadArea", () => {
     await screen.findByTestId("pane-thr-a");
 
     expect(commandHandlers.get("pane.focus.right")?.()).toBe(true);
-    await waitFor(() => expect(store.get(maximizedPaneIdAtom)).toBe("pane-2"));
+    await waitFor(() => {
+      expect(store.get(maximizedPaneIdAtom)).toBe("pane-2");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
 
     const opened = applyThreadOpenToLayout(
       store.get(splitLayoutAtom),
@@ -2393,6 +2408,31 @@ describe("SplitThreadArea", () => {
     expect(screen.queryAllByTestId(/^pane-/)).toHaveLength(2);
   });
 
+  it("focuses the pane keyboard focus moves into, but not one hidden by maximize", async () => {
+    const store = renderSplitArea({
+      path: threadPath("thr-a"),
+      layout: twoPaneLayout("pane-1"),
+    });
+    const draftB = await screen.findByTestId("draft-thr-b");
+
+    act(() => draftB.focus());
+    await waitFor(() => {
+      expect(screen.getByTestId("pane-thr-b").dataset.focused).toBe("true");
+      expect(screen.getByTestId("location").textContent).toBe(
+        threadPath("thr-b"),
+      );
+    });
+    expect(screen.getByTestId("pane-thr-a").dataset.focused).toBe("false");
+
+    act(() => screen.getByTestId("draft-thr-a").focus());
+    fireEvent.click(screen.getByTestId("maximize-thr-a"));
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+
+    act(() => draftB.focus());
+    expect(store.get(maximizedPaneIdAtom)).toBe("pane-1");
+    expect(store.get(splitLayoutAtom)?.focusedPaneId).toBe("pane-1");
+  });
+
   it("leaves uninvolved panes unrendered and pane callbacks stable when focus moves in a four-pane split", async () => {
     const store = renderSplitArea({
       path: threadPath("thr-a"),
@@ -3414,4 +3454,85 @@ describe("SplitThreadArea compact breakpoint crossings", () => {
     }
     expect(paneMounts.get("new-thread")).toBe(1);
   });
+});
+
+function UnsavedPluginForm() {
+  const [value, setValue] = useState("");
+  return (
+    <input
+      data-testid="plugin-form-input"
+      value={value}
+      onChange={(event) => setValue(event.target.value)}
+    />
+  );
+}
+
+describe("SplitThreadArea single-pane breakpoint contract", () => {
+  const SINGLE_PANE_SURFACES: ReadonlyArray<{
+    name: string;
+    path: string;
+    content: PaneContent;
+    rootTestId: string;
+  }> = [
+    {
+      name: "thread",
+      path: threadPath("thr-a"),
+      content: threadContent("thr-a"),
+      rootTestId: "pane-thr-a",
+    },
+    {
+      name: "new thread",
+      path: "/",
+      content: newThreadContent,
+      rootTestId: "root-compose-view",
+    },
+    {
+      name: "plugin navigation panel",
+      path: "/plugins/docs/docs",
+      content: docsContent,
+      rootTestId: "plugin-browser-host",
+    },
+  ];
+
+  it.each(SINGLE_PANE_SURFACES)(
+    "keeps a single $name pane mounted across compact breakpoint crossings",
+    async ({ path, content, rootTestId }) => {
+      setPluginSlotRegistrations(
+        "docs",
+        makePluginRegistrationSet({
+          navPanels: [
+            {
+              id: "docs",
+              title: "Docs",
+              icon: "FileText",
+              path: "docs",
+              component: UnsavedPluginForm,
+            },
+          ],
+        }),
+      );
+      renderSplitArea({
+        path,
+        layout: {
+          root: { type: "pane", paneId: "pane-1", content },
+          focusedPaneId: "pane-1",
+        },
+        routeAwareContent: true,
+      });
+      const root = await screen.findByTestId(rootTestId);
+      const input = screen.queryByTestId<HTMLInputElement>("plugin-form-input");
+      expect(input !== null).toBe(content.kind === "plugin-panel");
+      if (input !== null)
+        fireEvent.change(input, { target: { value: "unsaved plugin form" } });
+
+      for (const compact of [true, false, true, false]) {
+        setCompactViewport(compact);
+        expect(screen.getByTestId(rootTestId)).toBe(root);
+        if (input !== null) {
+          expect(screen.getByTestId("plugin-form-input")).toBe(input);
+          expect(input.value).toBe("unsaved plugin form");
+        }
+      }
+    },
+  );
 });

@@ -9,6 +9,7 @@ import {
 import { cn } from "@/lib/utils";
 import { PromptMentionLinkContext } from "./prompt-mention-link";
 import { parsePromptEditorMentionAttrs } from "./prompt-editor-serialization";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 const EDITOR_MENTION_PILL_CLASS =
   "group selection:bg-transparent [&_*]:selection:bg-transparent";
@@ -74,7 +75,7 @@ export function PromptMentionPillNodeView({
     : undefined;
   const handleKeyDown = activate
     ? (event: KeyboardEvent<HTMLElement>) => {
-        if (event.key !== "Enter" && event.key !== " ") {
+        if (!isNonImeKey(event, "Enter") && event.key !== " ") {
           return;
         }
         event.preventDefault();

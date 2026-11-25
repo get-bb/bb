@@ -79,9 +79,14 @@ members. Use them in behavioral tests so a new required contract field changes
 one shared default. Keep schema, serialization, and command-output fixtures
 explicit when their exact complete shape is the assertion.
 `experimental_makePanelController(overrides?)` builds the
-`experimental_panel` for a command, thread action or message action called
+`panel` for a command, thread action or message action called
 directly: every method declines and `getTabs()` reports a closed, empty panel
 except the ones you pass, such as `{ toggleTab: vi.fn(() => true) }`.
+`experimental_makeActionContext(overrides?)` builds the whole callback context
+(`sdk`, `navigate`, `panel`, `composer`, `threadRequests`), so a test keeps
+compiling when bb adds a member. Its defaults record calls in `context.calls`
+(`sdk` methods reject until you stub them). Spread it and add the callback's own
+fields: `run({ ...experimental_makeActionContext({ panel }), threadId: "thr-1", projectId: null })`.
 
 Use the named views: `harness.behavior` drives host inputs,
 `harness.inspection` exposes observable state, and `harness.lifecycle` owns
@@ -90,7 +95,14 @@ aliases). `lifecycle.reload(factory)` preserves settings/KV/database state; a
 throwing replacement leaves the current registrations and API live.
 `lifecycle.install()` runs `bb.onInstall` handlers as a fresh install does; a
 throwing handler is logged at warn. `emitThreadEvent` accepts the event
-names `bb.events.on` does.
+names `bb.events.on` does. As on the server, an event for a thread whose
+`createdAt` is at or after the start of a pending `threads.spawn` or
+`threads.fork` waits until that call returns; emit it from inside the stub,
+without awaiting, to test a turn that ends before spawn returns.
+`thread.idle`, `thread.failed`, `thread.archived` and `thread.deleted` are
+each followed by their `experimental_thread.settled` event, as on the server;
+emit the `cancelled` outcome yourself, since the fake has no thread to attach
+to a `message.cancelled`.
 Thread events are observe-only; there are exactly seven `thread.*` events
 (`thread.created`, `thread.active`, `thread.idle`, `thread.failed`,
 `thread.archived`, `thread.unarchived`, `thread.deleted`), and handler return
@@ -181,6 +193,8 @@ import {
 // loadPluginApp and renderSlot install the test runtime. The SDK looks it up
 // when a hook runs, so a static `import app from "./app"` works as well.
 const app = await loadPluginApp(() => import("./app"));
+// Pass { hasServers: true } to define the app as bb Desktop or the mobile app
+// would; experimental_hasServers() is false otherwise, as in a web browser.
 const contentScripts = await mountPluginContentScripts(app, {
   pluginId: "my-plugin",
   generation: 1,
@@ -194,17 +208,21 @@ const slot = renderSlot(
       listNotes: () => ({ root: "/notes", notes: [], error: null }),
     }, // method → handler, calls logged
     settings: { greeting: "hi" }, // useSettings() values
-    context: { projectId: "p1", threadId: null }, // useBbContext()
+    context: { projectId: "p1", threadId: null }, // useBbContext(); experimental_pluginPanel defaults to null
     realtimeConnectionState: "reconnecting", // useRealtimeConnectionState()
     openUrl: (url) => url.startsWith("https://"),
   },
 );
 await slot.findByText("…"); // Testing Library queries
 await slot.behavior.setRealtimeConnectionState("connected");
-await slot.behavior.setComposerScope(
-  { kind: "queued-message", threadId: "t1", queuedMessageId: "q1" },
-  "queued draft",
-);
+await slot.behavior.setComposerScope({
+  kind: "queued-message",
+  threadId: "t1",
+  queuedMessageId: "q1",
+  projectId: "p1",
+  environmentId: null,
+});
+await slot.behavior.setComposerText("queued draft");
 slot.inspection.rpcCalls;
 slot.inspection.navigateCalls;
 slot.inspection.composer; // text, visuals, quotes, mentions, and focus activity
@@ -215,8 +233,10 @@ await contentScripts.lifecycle.dispose();
 `loadPluginApp` validates registrations with the host's own rules (slot id
 patterns, settingsSection optional title, navPanel path,
 fileOpener extensions, code-fence renderer languages (exposed as
-`app.codeFenceRenderers`), and content-script ids/mount functions) and returns
-them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
+`app.codeFenceRenderers`), command shortcuts and composer-command scopes
+(`app.commands`, `app.composerCommands`; call their `isAvailable` and `run`
+with `experimental_makeActionContext()`), and content-script ids/mount
+functions) and returns them typed with defaults filled. `mountPluginContentScripts` mirrors ordered
 mount, abort-before-cleanup, reverse rollback, exact-once disposal, and
 per-window instances. Working examples:
 `examples/plugins/slack-bot/server.test.ts` (webhook → kv → recorded spawn →
@@ -244,7 +264,7 @@ arbitration. Use a live loop for those host boundaries.
   `dist/app.js` + `app.css`; `bb plugin build` and installs minify them.
 - `bb plugin list` shows status, services, schedules (with last_error),
   handler stats, and the CLI command; `bb plugin logs <id> -f` follows
-  `bb.log` output. Use `--json` only when live help lists that option.
+  `bb.log` output and the plugin's failures, with stacks. Use `--json` only when live help lists that option.
 - Exercise wire surfaces directly: `curl -X POST -H "content-type:
 application/json" -d '{}' <server>/api/v1/plugins/<id>/rpc/<method>`,
   `bb <command> …` for the CLI, `bb plugin run <id> …` as the explicit form.

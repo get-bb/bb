@@ -422,7 +422,7 @@ export async function readBranchOptions({
 }
 
 export async function listBranchOptions(
-  args: ReadBranchOptionsArgs & { remoteRefresh: "background" | "none" },
+  args: ReadBranchOptionsArgs & { remoteRefresh: RemoteRefreshMode | "none" },
 ): Promise<GitBranchOptions> {
   const { remoteRefresh, ...readArgs } = args;
   const processOptions: GitProcessOptions = {
@@ -443,7 +443,9 @@ export async function listBranchOptions(
       }),
     };
   }
-  if (remoteRefresh === "background") {
+  if (remoteRefresh === "blocking") {
+    await refreshRemoteBranches(repo, processOptions, "blocking");
+  } else if (remoteRefresh === "background") {
     void refreshRemoteBranches(repo, processOptions, "background").catch(
       () => undefined,
     );

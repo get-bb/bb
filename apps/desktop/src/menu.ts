@@ -5,7 +5,10 @@ import {
   type BaseWindow,
   type MenuItemConstructorOptions,
 } from "electron";
-import type { BbDesktopZoomCommand } from "@bb/desktop-contract";
+import {
+  bbDesktopConnectSignInLabel,
+  type BbDesktopZoomCommand,
+} from "@bb/desktop-contract";
 import type { ApplicationMenuAccelerators } from "./desktop-menu-shortcuts.js";
 import { builtinServerName } from "./server-target.js";
 import type { ConnectServerSyncSkipReason } from "./connect-server-sync.js";
@@ -23,8 +26,6 @@ const UNINSTALL_MENU_LABEL = "How to Uninstall bb";
 const UNINSTALL_URL = "https://getbb.app/uninstall";
 const TOGGLE_DEVELOPER_TOOLS_MENU_LABEL = "Toggle Developer Tools";
 const TOGGLE_DEVELOPER_TOOLS_ACCELERATOR = "Command+Option+I";
-const RELOAD_ACCELERATOR = "CommandOrControl+R";
-const FORCE_RELOAD_ACCELERATOR = "CommandOrControl+Shift+R";
 const DESKTOP_SETTINGS_MENU_LABEL = "Desktop Settings";
 const SERVER_MENU_LABEL = "Server";
 const DESKTOP_SETTINGS_SERVER_MENU_ITEM_ID = "bb-desktop-settings-server-menu";
@@ -34,12 +35,6 @@ const SERVER_MENU_ITEM_IDS = [
   WINDOW_SERVER_MENU_ITEM_ID,
 ];
 export const SET_SERVER_URL_MENU_LABEL = "Edit Server…";
-const CONNECT_SIGN_IN_MENU_LABELS: Partial<
-  Record<ConnectServerSyncSkipReason, string>
-> = {
-  "no-credential": "Sign in to bb Connect…",
-  unauthorized: "Sign in to bb Connect again…",
-};
 
 interface ApplicationMenuServerItem {
   checked: boolean;
@@ -114,14 +109,13 @@ export function createServerMenuItems(
       type: "radio" as const,
     }),
   );
-  const signInLabel =
-    args.connectServersSkipReason === null
-      ? undefined
-      : CONNECT_SIGN_IN_MENU_LABELS[args.connectServersSkipReason];
+  const signInLabel = bbDesktopConnectSignInLabel(
+    args.connectServersSkipReason,
+  );
   return [
     ...serverItems,
     { type: "separator" },
-    ...(signInLabel === undefined
+    ...(signInLabel === null
       ? []
       : [
           {
@@ -271,7 +265,7 @@ export function buildApplicationMenuTemplate(
       label: "View",
       submenu: [
         {
-          accelerator: RELOAD_ACCELERATOR,
+          accelerator: args.accelerators.reloadWindow,
           label: "Reload",
           registerAccelerator: false,
           click(_menuItem, browserWindow) {
@@ -279,7 +273,7 @@ export function buildApplicationMenuTemplate(
           },
         },
         {
-          accelerator: FORCE_RELOAD_ACCELERATOR,
+          accelerator: args.accelerators.forceReloadWindow,
           label: "Force Reload",
           registerAccelerator: false,
           click(_menuItem, browserWindow) {

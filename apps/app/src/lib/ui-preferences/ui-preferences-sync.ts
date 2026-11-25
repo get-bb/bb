@@ -1,10 +1,11 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SetStateAction, WritableAtom } from "jotai";
 import { getDefaultStore } from "jotai";
-import type {
-  UiPreferenceEntry,
-  UiPreferenceKey,
-  UiPreferenceValue,
+import {
+  getUiPreferenceDefault,
+  type UiPreferenceEntry,
+  type UiPreferenceKey,
+  type UiPreferenceValue,
 } from "@bb/domain";
 import type { UiPreferencesResponse } from "@bb/server-contract";
 import { appToast } from "@/components/ui/app-toast";
@@ -23,6 +24,10 @@ type ValueAtom<Key extends UiPreferenceKey> = WritableAtom<
 
 interface RegisteredPreference<Key extends UiPreferenceKey> {
   valueAtom: ValueAtom<Key>;
+  legacy?: {
+    read(): UiPreferenceValue<Key> | null;
+    clear(): void;
+  };
 }
 
 interface PreferenceSyncState<Key extends UiPreferenceKey> {
@@ -106,7 +111,7 @@ export function registerSyncedUiPreference<Key extends UiPreferenceKey>(
   if (context === null) return;
   const cached = getCachedUiPreferences(context.queryClient);
   if (cached !== undefined) {
-    reconcileUiPreference(context, key, registration.valueAtom, cached);
+    reconcileUiPreference(context, key, registration, cached);
   }
 }
 
@@ -130,21 +135,35 @@ export function hasPendingUiPreferenceWrite(key: UiPreferenceKey): boolean {
 
 export function reconcileUiPreferences(response: UiPreferencesResponse): void {
   if (context === null) return;
-  for (const [key, { valueAtom }] of registry) {
-    reconcileUiPreference(context, key, valueAtom, response);
+  for (const [key, registration] of registry) {
+    reconcileUiPreference(context, key, registration, response);
   }
 }
 
 function reconcileUiPreference<Key extends UiPreferenceKey>(
   activeContext: UiPreferencesSyncContext,
   key: Key,
-  valueAtom: ValueAtom<Key>,
+  { valueAtom, legacy }: RegisteredPreference<Key>,
   response: UiPreferencesResponse,
 ): void {
   const state = getSyncState(key);
   if (state.pending !== null || state.inFlight !== null) return;
   const entry = latestEntry(response.preferences[key], state.saved);
   if (entry === undefined) return;
+  const legacyValue = legacy?.read() ?? null;
+  if (legacy !== undefined && legacyValue !== null) {
+    legacy.clear();
+    const defaultValue = getUiPreferenceDefault(key);
+    if (areUiPreferenceValuesEqual(entry.value, defaultValue)) {
+      activeContext.store.set(valueAtom, legacyValue);
+      scheduleUiPreferenceWrite<Key>(key, (current) =>
+        areUiPreferenceValuesEqual(current, defaultValue)
+          ? legacyValue
+          : current,
+      );
+      return;
+    }
+  }
   const cachedEntry = latestEntry(
     getCachedUiPreferences(activeContext.queryClient)?.preferences[key],
     state.saved,

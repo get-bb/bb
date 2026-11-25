@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import type { JsonValue } from "@bb/domain";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { collectPluginAppRegistrations } from "@/lib/plugin-app-definition";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
@@ -10,7 +9,6 @@ import {
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import { loadPluginAppDefinition } from "../../../../.ladle/plugin-app-module";
 
-installTestPluginRuntime();
 const codexApp = await loadPluginAppDefinition(
   import.meta.glob<unknown>("../../../../../../plugins/provider-codex/app.tsx"),
 );

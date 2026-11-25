@@ -2,6 +2,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { lstatSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
+import { skillFrontmatterBlock } from "@bb/skill-index/metadata";
 import { hostDaemonSessions } from "@bb/db";
 import {
   hostDaemonCommandSchema,
@@ -149,7 +150,9 @@ function readWorkspaceAgentContextFromDisk(
         {
           kind: "file" as const,
           directoryName,
-          content: readFileSync(skillFilePath, "utf8"),
+          frontmatter: skillFrontmatterBlock(
+            readFileSync(skillFilePath, "utf8"),
+          ),
         },
       ];
     } catch {
@@ -171,6 +174,7 @@ function readWorkspaceAgentContextFromDisk(
     projectSkills,
     projectSkillsTruncated: false,
     sharedSkills: [],
+    folders: [],
   };
 }
 
@@ -188,6 +192,34 @@ function respondToRuntimeWorkspaceFileCommand(
       commandType: command.type,
       ok: true,
       result: readWorkspaceAgentContextFromDisk(command.rootPath),
+    }),
+    sessionId: args.sessionId,
+  });
+  return true;
+}
+
+function respondToFindGitReposCommand(
+  deps: Pick<TestAppHarness, "hub">,
+  args: RegisterTestHostRpcCaptureArgs,
+  message: HostDaemonOnlineRpcRequestMessage,
+): boolean {
+  const command = message.command;
+  if (command.type !== "host.find_git_repos") return false;
+  deps.hub.recordHostOnlineRpcResponse({
+    message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+      type: "host-rpc.response",
+      requestId: message.requestId,
+      commandType: command.type,
+      ok: true,
+      result: {
+        folders: command.folderPaths.map((folderPath) => ({
+          path: folderPath,
+          exists: true,
+          gitRoot: null,
+          repos: [],
+          truncated: false,
+        })),
+      },
     }),
     sessionId: args.sessionId,
   });
@@ -421,6 +453,9 @@ export function registerTestHostRpcCapture(
         return;
       }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
+        return;
+      }
+      if (respondToFindGitReposCommand(deps, args, message)) {
         return;
       }
       if (respondToProviderModelListCommand(deps, args, message)) {

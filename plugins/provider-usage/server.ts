@@ -161,7 +161,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
     string,
     { value: UsageMeasurement; loadedAt: number }
   >();
-  const failures = new Set<string>();
+  const failures = new Map<string, string>();
   const pending = new Map<
     string,
     { force: boolean; promise: Promise<UsageMeasurement> }
@@ -190,8 +190,13 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       })
       .then((raw) => {
         const value = normalizeUsageMeasurement(raw);
-        if (value.usage.status === "error")
-          throw new Error("Usage could not be refreshed.");
+        if (value.usage.status === "error") {
+          failures.set(
+            key,
+            value.usage.message || "Usage could not be refreshed.",
+          );
+          return value;
+        }
         measurements.set(key, { value, loadedAt: Date.now() });
         failures.delete(key);
         return value;
@@ -208,11 +213,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
         .then((hosts) => hosts.filter((host) => host.type !== "ephemeral")),
       bb.sdk.plugins.experimental_discoverRpc({ method: usageListMethod }),
       bb.sdk.providers
-        .list(
-          hostId === undefined
-            ? { capability: "usage" }
-            : { capability: "usage", hostId },
-        )
+        .list(hostId === undefined ? {} : { hostId })
         .catch(() => []),
       bb.sdk.system.config().catch(() => null),
     ]);
@@ -258,7 +259,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
         source.resources.map((resource) => keyOf(source.pluginId, resource.id)),
       ),
     );
-    for (const key of measurements.keys())
+    for (const key of [...measurements.keys(), ...failures.keys()])
       if (!keys.has(key)) {
         measurements.delete(key);
         failures.delete(key);
@@ -299,7 +300,7 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
           try {
             await fetchResource(source.pluginId, resource.id, request.force);
           } catch {
-            failures.add(key);
+            failures.set(key, "Usage could not be refreshed.");
           }
         }),
       );
@@ -354,11 +355,19 @@ export default function providerUsagePlugin(bb: BbPluginApi): void {
       for (const { source, resource } of visible) {
         const key = keyOf(source.pluginId, resource.id);
         const cached = measurements.get(key);
-        machine.providers.push(
-          resourceProvider(resource, cached?.value, source.pluginId, providers),
+        const provider = resourceProvider(
+          resource,
+          cached?.value,
+          source.pluginId,
+          providers,
         );
-        if (source.error !== null || failures.has(key))
-          machine.error = "Some usage could not be refreshed.";
+        const error = failures.get(key) ?? source.error;
+        if (error !== null) {
+          if (provider.usage === null)
+            provider.usage = { status: "error", message: error };
+          else provider.refreshError = error;
+        }
+        machine.providers.push(provider);
       }
     }
     const providerOrder = new Map(

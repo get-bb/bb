@@ -53,6 +53,7 @@ import {
   type PluginService,
 } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { expectCorePluginFoldersUnclaimable } from "../../helpers/core-plugin-folders.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -580,16 +581,16 @@ describe("plugin update service and routes", () => {
 
   it("checks a subdirectory update when its installed commit is missing remotely", async () => {
     const installedCommit = await installSubdirectoryUpdater();
-    await git(repo, ["checkout", "--orphan", "replacement"]);
+    await rm(join(repo, ".git"), { recursive: true, force: true });
+    await git(repo, ["init", "-q", "-b", "main"]);
+    await git(repo, ["config", "user.email", "test@example.com"]);
+    await git(repo, ["config", "user.name", "Test"]);
     await writeFile(
       join(repo, "plugins", "updater", "server.ts"),
       "export default function plugin() {}",
     );
     await git(repo, ["add", "-A"]);
     await git(repo, ["commit", "-qm", "Replace fixture history"]);
-    await git(repo, ["branch", "-M", "main"]);
-    await git(repo, ["reflog", "expire", "--expire=now", "--all"]);
-    await git(repo, ["prune", "--expire=now"]);
     await expect(
       git(repo, ["cat-file", "-e", installedCommit]),
     ).rejects.toThrow();
@@ -1148,6 +1149,9 @@ describe("plugin update service and routes", () => {
     await expect(
       readdir(join(workDir, "data", "plugins", "snapshots", "updater")),
     ).resolves.toEqual([]);
+    await expectCorePluginFoldersUnclaimable(join(workDir, "data"), [
+      "updater",
+    ]);
     const remaining = listPluginArtifacts(db, "updater");
     expect(remaining).toHaveLength(1);
     expect(remaining[0]?.id).toBe(
@@ -1219,7 +1223,10 @@ describe("plugin update service and routes", () => {
       ok: true,
       result: { applied: true },
     });
-    await expect(disable).resolves.toMatchObject({ enabled: false });
+    await expect(disable).resolves.toMatchObject({
+      ok: true,
+      plugin: { enabled: false },
+    });
     expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
       version: "1.1.0",
       enabled: false,

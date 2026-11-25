@@ -33,7 +33,6 @@ describe("general settings", () => {
         ).toContainEqual({
           type: "provider-session-policy.replace",
           idleProviderSessionTimeoutMinutes: minutes,
-          agentCpuPriority: false,
         });
         const config = systemConfigResponseSchema.parse(
           await readJson(await harness.app.request("/api/v1/system/config")),
@@ -58,7 +57,6 @@ describe("general settings", () => {
       ).toContainEqual({
         type: "provider-session-policy.replace",
         idleProviderSessionTimeoutMinutes: 0,
-        agentCpuPriority: false,
       });
 
       for (const invalid of [-1, 17, null, "never"]) {
@@ -285,10 +283,7 @@ it("preserves telemetry opt-out when older clients update other settings", async
   });
 });
 
-it.each([
-  "confirmThreadArchive",
-  "summarizeShellCommands",
-] as const)(
+it.each(["confirmThreadArchive", "summarizeShellCommands"] as const)(
   "persists %s opt-out and preserves it for older clients",
   async (key) => {
     await withTestHarness(async (harness) => {

@@ -15,6 +15,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 
 const SPLIT_BUTTON_TOOLBAR_CLASS = COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS;
 
+const SPLIT_BUTTON_DESTRUCTIVE_CLASS =
+  "text-destructive hover:text-destructive";
+
 function OptionalTooltip({
   children,
   content,
@@ -48,6 +51,7 @@ interface SplitButtonAction {
   label: string;
   onSelect: () => void;
   content?: ReactNode;
+  variant?: "default" | "destructive";
 }
 
 interface SplitButtonMenuAction extends SplitButtonAction {
@@ -88,7 +92,12 @@ function SplitButton({
     <button
       type="button"
       disabled={disabled || primaryAction.disabled === true}
-      className={cn(base, "rounded-r-none border-r-0 pr-1 focus-visible:z-10")}
+      className={cn(
+        base,
+        "rounded-r-none border-r-0 pr-1 focus-visible:z-10",
+        primaryAction.variant === "destructive" &&
+          SPLIT_BUTTON_DESTRUCTIVE_CLASS,
+      )}
       aria-label={primaryAction.label}
       aria-keyshortcuts={primaryAction.ariaKeyshortcuts}
       onClick={primaryAction.onSelect}
@@ -143,6 +152,7 @@ function SplitButton({
                 ) : null}
                 <DropdownMenuItem
                   disabled={action.disabled}
+                  variant={action.variant}
                   onSelect={action.onSelect}
                   textValue={action.label}
                 >
@@ -157,5 +167,5 @@ function SplitButton({
   );
 }
 
-export { SplitButton };
+export { SplitButton, SPLIT_BUTTON_DESTRUCTIVE_CLASS };
 export type { SplitButtonAction, SplitButtonMenuAction };

@@ -94,7 +94,6 @@ describe("provider registry", () => {
     ];
     try {
       const provider = createProviderForId("pi", {
-        additionalWorkspaceWriteRoots: [],
         bridgeBundleDir: "/tmp",
         bridgeLaunch: PI_BRIDGE_LAUNCH,
       });
@@ -114,7 +113,6 @@ describe("provider registry", () => {
   it("runs the bridge under the configured bridge node runtime", () => {
     const bridgeNodeEnv = { ELECTRON_RUN_AS_NODE: "1" };
     const provider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
       bridgeLaunch: PI_BRIDGE_LAUNCH,
       bridgeNodeEnv,
       bridgeNodeExecutablePath: "/Applications/bb.app/Contents/MacOS/bb",
@@ -128,7 +126,6 @@ describe("provider registry", () => {
 
   it("creates pi provider with expected process config", () => {
     const provider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
       bridgeLaunch: PI_BRIDGE_LAUNCH,
     });
     expect(provider.id).toBe("pi");
@@ -139,7 +136,6 @@ describe("provider registry", () => {
 
   it("passes the requested workspace to Pi model listing", () => {
     const provider = createProviderForId("pi", {
-      additionalWorkspaceWriteRoots: [],
       bridgeLaunch: PI_BRIDGE_LAUNCH,
     });
 
@@ -161,7 +157,6 @@ describe("provider registry", () => {
 
   it("carries a configured acp agent's declared launch spec", () => {
     const provider = createProviderForId("acp-custom", {
-      additionalWorkspaceWriteRoots: ["/extra-root"],
       bridgeLaunch: {
         ...ACP_BRIDGE_LAUNCH,
         providerOptions: { acpLaunchSpec: dynamicAcpLaunchSpec },
@@ -190,6 +185,7 @@ describe("provider registry", () => {
         approvalReviewer: null,
         permissionEscalation: null,
         envVars: { BB_THREAD_ID: "thread-1" },
+        additionalWorkspaceWriteRoots: ["/extra-root"],
       },
       instructionMode: "append",
     });
@@ -200,16 +196,14 @@ describe("provider registry", () => {
         options: {
           providerOptions: {
             acpLaunchSpec: dynamicAcpLaunchSpec,
-            additionalWorkspaceWriteRoots: ["/extra-root"],
           },
         },
       },
     });
   });
 
-  it("carries environment write roots and declared capabilities onto an artifact bridge", () => {
+  it("carries session write roots and declared capabilities onto an artifact bridge", () => {
     const provider = createProviderForId("codex", {
-      additionalWorkspaceWriteRoots: ["/extra-root"],
       bridgeLaunch: {
         pluginId: "provider-fixture",
         dataDir: "/data/plugins/provider-fixture/bridge-data",
@@ -248,6 +242,7 @@ describe("provider registry", () => {
         permissionScope: "full",
         approvalReviewer: null,
         permissionEscalation: null,
+        additionalWorkspaceWriteRoots: ["/extra-root"],
       },
       instructionMode: "append",
     });
@@ -256,9 +251,7 @@ describe("provider registry", () => {
       method: "thread/start",
       params: {
         options: {
-          providerOptions: {
-            additionalWorkspaceWriteRoots: ["/extra-root"],
-          },
+          providerOptions: {},
         },
       },
     });

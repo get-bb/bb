@@ -13,6 +13,7 @@ import {
   type DesktopBrowserResult,
   type HostDaemonCommand,
   type HostDaemonCommandResult,
+  type HostDaemonContributedEnvEntry,
   type HostDaemonOnlineRpcCommand,
   type HostDaemonOnlineRpcCommandType,
   type HostDaemonOnlineRpcResult,
@@ -57,6 +58,7 @@ import {
 } from "./command-handlers/host-files.js";
 import { writeHostFile } from "./command-handlers/file-write.js";
 import { discoverRepos } from "./command-handlers/discover-repos.js";
+import { findGitRepos } from "./command-handlers/find-git-repos.js";
 import {
   mkdirHostPath,
   moveHostPath,
@@ -306,6 +308,7 @@ async function runProviderInstallationOnHost(
     const maintenanceArgs = {
       providerId: command.providerId,
       bridgeLaunch,
+      contributedEnv: command.contributedEnv,
     };
     const run = await options.providerInstallationRun({
       ...maintenanceArgs,
@@ -417,6 +420,7 @@ async function withResolvedBridgeLaunch<TResult>(
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<TResult>,
 ): Promise<TResult> {
   const bridgeLaunch = await resolveRuntimeBridgeLaunch(
@@ -427,6 +431,7 @@ async function withResolvedBridgeLaunch<TResult>(
     providerId: command.providerId,
     ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
     bridgeLaunch,
+    contributedEnv: command.contributedEnv,
   });
 }
 
@@ -569,7 +574,14 @@ const commandHandlers: CommandHandlerMap = {
         options.emitEnvironmentHookProgress?.({
           type: "environment.hook.progress",
           operationId: command.operationId,
-          entry: { type: "output", text, status: null },
+          entry: {
+            type: "output",
+            key: "clone-output",
+            text,
+            status: null,
+            startedAt: null,
+            metadata: null,
+          },
         }),
       ...userExecutableProcessOptions(options.runtimeManager.getShellEnv()),
       ...(command.targetPath !== undefined
@@ -626,6 +638,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
   "host.remove_path": removeHostPath,
   "host.browse_directory": browseHostDirectory,
   "host.paths_exist": checkHostPathsExist,
+  "host.find_git_repos": findGitRepos,
   "project.inspect": async (command, options) =>
     inspectProjectPath(
       command.path,
@@ -681,6 +694,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
         options,
       ),
       cwd,
+      contributedEnv: command.contributedEnv,
     });
   },
   "provider.health": (command, options) =>
@@ -709,6 +723,7 @@ const onlineRpcHandlers: OnlineRpcHandlerMap = {
     return options.providerInstallationStatus({
       providerId: command.providerId,
       bridgeLaunch,
+      contributedEnv: command.contributedEnv,
     });
   },
   "provider.installation.run": runProviderInstallationOnHost,

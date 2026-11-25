@@ -1,9 +1,6 @@
-import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk";
 import { useIndexedAppCommandHandlers } from "@/components/commands/AppCommandProvider";
-import {
-  CORE_THREAD_ACTION_OWNER,
-  useThreadActionEntries,
-} from "@/lib/thread-actions/thread-action-registry";
+import { CORE_PLUGIN_ID } from "@bb/domain";
+import { useThreadActionEntries } from "@/lib/thread-actions/thread-action-registry";
 import { usePaneContext } from "./PaneContext";
 
 const PANE_THREAD_ACTION_COMMANDS = [
@@ -13,15 +10,15 @@ const PANE_THREAD_ACTION_COMMANDS = [
 ] as const;
 
 const PANE_THREAD_ACTION_KEYS = [
-  `${CORE_THREAD_ACTION_OWNER}/pin`,
-  `${CORE_THREAD_ACTION_OWNER}/read`,
-  `${CORE_THREAD_ACTION_OWNER}/archive`,
+  `${CORE_PLUGIN_ID}/pin`,
+  `${CORE_PLUGIN_ID}/read`,
+  `${CORE_PLUGIN_ID}/archive`,
 ];
 
 export function PaneThreadActionCommandHandler({
   thread,
 }: {
-  thread: PluginThreadActionTarget;
+  thread: { id: string; archivedAt: number | null };
 }) {
   const { isFocused } = usePaneContext();
   const entries = useThreadActionEntries(thread, {

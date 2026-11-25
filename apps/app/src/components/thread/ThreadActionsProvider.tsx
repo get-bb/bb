@@ -3,13 +3,16 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type ReactNode,
 } from "react";
 import { useLocation } from "react-router-dom";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useSetAtom } from "jotai";
+import { useSetAtom, useStore } from "jotai";
+import type { ExperimentalThreadRequests } from "@get-bb/plugin-sdk";
 import { appToast } from "@/components/ui/app-toast";
 import {
   closePanesForThreadsAtom,
@@ -47,7 +50,10 @@ import { defineSplit } from "@/lib/define-split";
 import { ArchivedThreadToastDescription } from "@/components/thread/ArchivedThreadToastDescription";
 import { destroyPersistedBrowserViewsForThread } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
 import { getThreadReadToggleAction } from "@bb/client-core";
-import { getRootComposeRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getRootComposeRoutePath,
+  getThreadLocationPath,
+} from "@/lib/route-paths";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { useRouteNavigate } from "@/components/ui/app-route-anchor";
 import { lookupCachedThread, resolveThread } from "@/lib/cached-thread";
@@ -55,6 +61,8 @@ import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
 import { ThreadActionCollectors } from "@/lib/thread-actions/thread-action-registry";
 import { planThreadSelection } from "@/lib/thread-selection-plan";
 import type { ThreadCascadeAction } from "@bb/server-contract";
+import { threadRequestsAtom } from "@/lib/thread-requests";
+import { openThread } from "@/lib/split-layout/openThread";
 
 export interface ThreadActionsContextValue {
   archiveEnvironmentThreads: (environmentId: string) => Promise<void>;
@@ -146,6 +154,51 @@ async function restoreArchivedThreads(
   }
 }
 
+interface DialogSettlement {
+  resolve: () => void;
+  open: boolean;
+  performing: boolean;
+}
+
+function finishSettlement(settlement: DialogSettlement): void {
+  if (!settlement.open && !settlement.performing) settlement.resolve();
+}
+
+interface DialogSettlements {
+  begin: () => Promise<void>;
+  closed: () => void;
+  perform: (run: () => Promise<void>) => Promise<void>;
+}
+
+function createDialogSettlements(): DialogSettlements {
+  let current: DialogSettlement | null = null;
+  const close = (settlement: DialogSettlement | null) => {
+    if (settlement === null) return;
+    settlement.open = false;
+    finishSettlement(settlement);
+  };
+  return {
+    begin: () => {
+      close(current);
+      return new Promise<void>((resolve) => {
+        current = { resolve, open: true, performing: false };
+      });
+    },
+    closed: () => close(current),
+    perform: async (run) => {
+      const settlement = current;
+      if (settlement === null) return run();
+      settlement.performing = true;
+      try {
+        await run();
+      } finally {
+        settlement.performing = false;
+        finishSettlement(settlement);
+      }
+    },
+  };
+}
+
 function hasRunningWork(thread: Thread): boolean {
   return (
     thread.archivedAt === null &&
@@ -197,9 +250,40 @@ export function ThreadActionsProvider({
   const deleteDialog = useDialogState<DeleteDialogRequest>();
   const archiveDialog = useDialogState<ArchiveDialogRequest>();
 
-  const { onClose: closeDeleteDialog, onOpen: openDeleteDialog } = deleteDialog;
-  const { onClose: closeArchiveDialog, onOpen: openArchiveDialog } =
-    archiveDialog;
+  const [deleteSettlements] = useState(createDialogSettlements);
+  const [archiveSettlements] = useState(createDialogSettlements);
+  const {
+    onClose: onCloseDeleteDialog,
+    onOpen: openDeleteDialog,
+    onOpenChange: onDeleteDialogOpenChange,
+  } = deleteDialog;
+  const {
+    onClose: onCloseArchiveDialog,
+    onOpen: openArchiveDialog,
+    onOpenChange: onArchiveDialogOpenChange,
+  } = archiveDialog;
+  const closeDeleteDialog = useCallback(() => {
+    onCloseDeleteDialog();
+    deleteSettlements.closed();
+  }, [deleteSettlements, onCloseDeleteDialog]);
+  const closeArchiveDialog = useCallback(() => {
+    onCloseArchiveDialog();
+    archiveSettlements.closed();
+  }, [archiveSettlements, onCloseArchiveDialog]);
+  const changeDeleteDialogOpen = useCallback(
+    (open: boolean) => {
+      onDeleteDialogOpenChange(open);
+      if (!open) deleteSettlements.closed();
+    },
+    [deleteSettlements, onDeleteDialogOpenChange],
+  );
+  const changeArchiveDialogOpen = useCallback(
+    (open: boolean) => {
+      onArchiveDialogOpenChange(open);
+      if (!open) archiveSettlements.closed();
+    },
+    [archiveSettlements, onArchiveDialogOpenChange],
+  );
 
   useEffect(() => {
     return () => {
@@ -212,7 +296,9 @@ export function ThreadActionsProvider({
     (result: ClosePanesForThreadsResult, navigateAway: () => void) => {
       if (result.removedAny && result.focusedRoute !== null) {
         if (result.focusedRoute.threadId !== viewedThreadIdRef.current) {
-          navigate(getThreadRoutePath(result.focusedRoute), { replace: true });
+          navigate(getThreadLocationPath(result.focusedRoute), {
+            replace: true,
+          });
         }
         return;
       }
@@ -319,6 +405,7 @@ export function ThreadActionsProvider({
       if (threads.length === 0) return;
       const plan = await claimSelectionPlan(threads, "delete");
       if (plan === null) return;
+      const settled = deleteSettlements.begin();
       openDeleteDialog({
         threads,
         roots: plan.roots,
@@ -327,8 +414,9 @@ export function ThreadActionsProvider({
           ? { childThreadCount: plan.childThreadCount }
           : {}),
       });
+      await settled;
     },
-    [claimSelectionPlan, openDeleteDialog],
+    [claimSelectionPlan, deleteSettlements, openDeleteDialog],
   );
 
   const requestDeleteThreads = useCallback(
@@ -342,8 +430,9 @@ export function ThreadActionsProvider({
   );
 
   const confirmDelete = useCallback(
-    (target: DeleteDialogRequest) => void performDeleteThreads(target),
-    [performDeleteThreads],
+    (target: DeleteDialogRequest) =>
+      void deleteSettlements.perform(() => performDeleteThreads(target)),
+    [deleteSettlements, performDeleteThreads],
   );
 
   const unarchiveThreadAction = useCallback(
@@ -382,7 +471,7 @@ export function ThreadActionsProvider({
       });
       const destination = displaced
         ? closeResult.focusedRoute !== null
-          ? getThreadRoutePath(closeResult.focusedRoute)
+          ? getThreadLocationPath(closeResult.focusedRoute)
           : getRootComposeRoutePath()
         : null;
       const previousRoute = viewedRouteRef.current;
@@ -397,12 +486,11 @@ export function ThreadActionsProvider({
               archivedThreadCount={archivedThreadIds.length}
               threadTitle={getThreadDisplayTitle(singleThread)}
               onOpenThread={() => {
-                navigate(
-                  getThreadRoutePath({
-                    projectId: singleThread.projectId,
-                    threadId: singleThread.id,
-                  }),
-                );
+                openThread({
+                  navigate,
+                  projectId: singleThread.projectId,
+                  threadId: singleThread.id,
+                });
                 appToast.dismiss(toastId);
               }}
             />
@@ -514,12 +602,15 @@ export function ThreadActionsProvider({
           ),
       };
       if (confirmThreadArchive && plan.childThreadCount > 0) {
+        const settled = archiveSettlements.begin();
         openArchiveDialog(request);
+        await settled;
       } else {
         await performArchiveThreads(request);
       }
     },
     [
+      archiveSettlements,
       claimSelectionPlan,
       confirmThreadArchive,
       openArchiveDialog,
@@ -539,9 +630,73 @@ export function ThreadActionsProvider({
   );
 
   const confirmArchive = useCallback(
-    (target: ArchiveDialogRequest) => void performArchiveThreads(target),
-    [performArchiveThreads],
+    (target: ArchiveDialogRequest) =>
+      void archiveSettlements.perform(() => performArchiveThreads(target)),
+    [archiveSettlements, performArchiveThreads],
   );
+
+  const resolveRequestedThreads = useCallback(
+    async (
+      threadIds: readonly string[],
+      fallbackMessage: string,
+    ): Promise<Thread[] | null> => {
+      try {
+        return await Promise.all(
+          [...new Set(threadIds)].map((threadId) =>
+            resolveThread(queryClient, threadId),
+          ),
+        );
+      } catch (error) {
+        showMutationErrorToast({ error, fallbackMessage });
+        return null;
+      }
+    },
+    [queryClient],
+  );
+
+  const latestRequestFlows = useRef({
+    planAndArchiveThreads,
+    planAndRequestDeleteThreads,
+    resolveRequestedThreads,
+  });
+  useLayoutEffect(() => {
+    latestRequestFlows.current = {
+      planAndArchiveThreads,
+      planAndRequestDeleteThreads,
+      resolveRequestedThreads,
+    };
+  });
+  const [threadRequests] = useState<ExperimentalThreadRequests>(() => ({
+    requestArchive: async (threadIds) => {
+      const flows = latestRequestFlows.current;
+      const threads = await flows.resolveRequestedThreads(
+        threadIds,
+        threadIds.length === 1
+          ? "Failed to archive thread."
+          : "Failed to archive threads.",
+      );
+      if (threads !== null) await flows.planAndArchiveThreads(threads);
+    },
+    requestDelete: async (threadIds) => {
+      const flows = latestRequestFlows.current;
+      const threads = await flows.resolveRequestedThreads(
+        threadIds,
+        threadIds.length === 1
+          ? "Failed to delete thread."
+          : "Failed to delete threads.",
+      );
+      if (threads !== null) await flows.planAndRequestDeleteThreads(threads);
+    },
+  }));
+  const store = useStore();
+  useLayoutEffect(() => {
+    store.set(threadRequestsAtom, threadRequests);
+    return () => {
+      if (store.get(threadRequestsAtom) === threadRequests) {
+        store.set(threadRequestsAtom, null);
+      }
+    };
+  }, [store, threadRequests]);
 
   const toggleRead = useCallback(
     (thread: Thread) => {
@@ -633,13 +788,13 @@ export function ThreadActionsProvider({
       <ThreadDeleteDialog
         target={deleteDialog.target}
         pending={deleteThread.isPending}
-        onOpenChange={deleteDialog.onOpenChange}
+        onOpenChange={changeDeleteDialogOpen}
         onDelete={confirmDelete}
       />
       <ThreadArchiveDialog
         target={archiveDialog.target}
         pending={archiveThreadAndChildrenMutation.isPending}
-        onOpenChange={archiveDialog.onOpenChange}
+        onOpenChange={changeArchiveDialogOpen}
         onArchive={confirmArchive}
       />
     </ThreadActionsContext.Provider>

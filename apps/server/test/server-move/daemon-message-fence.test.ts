@@ -11,7 +11,6 @@ const SNAPSHOT_FENCE_CLASSIFICATION: Record<
   DaemonMessageType,
   "fenced" | "unfenced"
 > = {
-  "connect-next.status": "unfenced",
   "connect-tunnel.identity": "unfenced",
   "desktop-browser.changed": "fenced",
   "environment-change": "unfenced",
@@ -22,7 +21,9 @@ const SNAPSHOT_FENCE_CLASSIFICATION: Record<
   "machine.shutdown-ack": "unfenced",
   "plugin-host.signal": "fenced",
   "plugin-host.worker-exited": "fenced",
+  "plugin-host.worker-output": "unfenced",
   "server_move.progress": "unfenced",
+  "session.route": "fenced",
   "terminal.error": "unfenced",
   "terminal.exited": "fenced",
   "terminal.opened": "fenced",

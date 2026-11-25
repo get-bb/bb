@@ -9,7 +9,7 @@ import { Button } from "@bb/shared-ui/button";
 import {
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
 import { InstallCliSkillsDialog } from "@/components/settings/InstallCliSkillsDialog";
 import { useInstallCliSkills } from "@/hooks/mutations/settings-mutations";

@@ -36,6 +36,7 @@ import {
   type QuestionFormState,
 } from "./question-form-state";
 import { useQuestionFormDraft } from "./question-form-draft";
+import { isNonImeKey } from "../../lib/ime-keyboard";
 
 const OTHER_OPTION_LABEL = "Other…";
 const FREE_TEXT_MIN_HEIGHT = 84;
@@ -345,8 +346,7 @@ function QuestionInputBlock({
   ): void => {
     if (
       isPointerCoarse ||
-      event.nativeEvent.isComposing ||
-      event.key !== "Enter" ||
+      !isNonImeKey(event, "Enter") ||
       event.shiftKey ||
       event.metaKey ||
       event.ctrlKey ||
@@ -456,7 +456,6 @@ export function QuestionForm({
   const {
     density,
     promptShownAbove,
-    closeInline,
     shortcuts,
     actionShortcuts,
     registerChoiceHandler,
@@ -472,8 +471,7 @@ export function QuestionForm({
     [formState, questions],
   );
   const navigationDisabled = disabled || voiceBusy;
-  const cancelBlocked =
-    closeInline === null && (cancelDisabled || settledAction !== null);
+  const cancelBlocked = cancelDisabled || settledAction !== null;
 
   const updateQuestionState = useCallback(
     (
@@ -541,10 +539,6 @@ export function QuestionForm({
   };
 
   const handleCancel = async (): Promise<void> => {
-    if (closeInline) {
-      closeInline();
-      return;
-    }
     try {
       await onCancel();
       setSettledAction("cancel");
@@ -616,8 +610,7 @@ export function QuestionForm({
         if (
           event.target !== event.currentTarget ||
           event.defaultPrevented ||
-          event.nativeEvent.isComposing ||
-          event.key !== "Enter" ||
+          !isNonImeKey(event, "Enter") ||
           event.shiftKey ||
           event.metaKey ||
           event.ctrlKey ||

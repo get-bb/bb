@@ -10,6 +10,7 @@ export default async function personalWorkspacePlugin(
   });
 
   bb.experimental_environments.register({
+    apiVersion: 2,
     id: PERSONAL_WORKSPACE_ENVIRONMENT_PROVIDER_ID,
     displayName: "Personal workspace",
     description: "Create a personal directory without a project.",

@@ -57,6 +57,7 @@ export interface AcpDialect {
   ): AcpClientRequestOutcome | undefined;
   maintenance?: AcpMaintenanceDialect;
   presentModel?(model: AvailableModel): AvailableModel;
+  readonly elicitationDescriptionIsHeading?: boolean;
 }
 
 export interface AcpClientRequestOutcome {
@@ -420,6 +421,7 @@ export const OMP_ACP_DIALECT: AcpDialect = {
   id: "omp",
   commandResult: ompCommandResult,
   presentModel: presentProviderPrefixedModel,
+  elicitationDescriptionIsHeading: true,
 };
 
 const openCodeCommandRawOutputSchema = z

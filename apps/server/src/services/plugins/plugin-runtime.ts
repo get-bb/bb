@@ -10,7 +10,7 @@ import {
   type Thread,
   type ThreadQueuedMessage,
 } from "@bb/domain";
-import { logPluginBuildWarnings } from "./plugin-log.js";
+import { createPluginEventLog, logPluginBuildWarnings } from "./plugin-log.js";
 import type { MachineEnrollmentService } from "../machines/machine-services.js";
 import { AsyncLocalStorage } from "node:async_hooks";
 import {
@@ -44,12 +44,14 @@ import { createNodeBbSdk, type BbSdk } from "@bb/sdk";
 import {
   getInstalledPlugin,
   getPluginSafeMode,
+  getThread,
   listInstalledPlugins,
   prunePluginSchedules,
   upsertPluginSchedule,
   type InstalledPluginRow,
 } from "@bb/db";
 import { toThreadResponseFromThread } from "../threads/thread-runtime-display.js";
+import { threadOfEvent } from "@get-bb/plugin-sdk/internal/thread-event-gate";
 import {
   brandingAssetHash,
   loadPluginAppBundle,
@@ -109,6 +111,7 @@ import { runEventLoopWork } from "../system/event-loop-work.js";
 import { abortPluginToolCallsForPlugin } from "./plugin-tool-calls.js";
 import { buildCachedPluginServer } from "./plugin-server-cache.js";
 import { createPluginRpcCallerRegistry } from "./plugin-rpc-caller.js";
+import { ApiError } from "../../errors.js";
 
 const serverRuntimeDir = dirname(fileURLToPath(import.meta.url));
 const pluginSdkRuntimePath = join(serverRuntimeDir, "plugin-sdk-runtime.js");
@@ -347,10 +350,24 @@ const DEV_BUILD_PROBLEM_LABELS: Record<PluginDevBuildKind, string> = {
 const PREVIOUS_INSTANCE_KEPT = "the previous instance is still running";
 
 const DEFAULT_LOAD_TIMEOUT_MS = 30_000;
+const DEFAULT_PREPARATION_TIMEOUT_MS = 60_000;
+const EARLIER_LOAD_STILL_WAITING =
+  "an earlier load is still waiting on this plugin's files; reload it once they are readable";
 const DEFAULT_SERVICE_STOP_TIMEOUT_MS = 5_000;
 const DEFAULT_SERVICE_RESTART_BASE_MS = 1_000;
 const SERVICE_RESTART_MAX_MS = 60_000;
 const SERVICE_HEALTHY_RESET_MS = 5 * 60_000;
+
+interface PluginLoadAttempt {
+  readonly signal: AbortSignal;
+  prepare<T>(work: () => Promise<T>): Promise<T>;
+  endPreparation(): void;
+}
+
+function abortMessage(signal: AbortSignal): string {
+  const reason: unknown = signal.reason;
+  return reason instanceof Error ? reason.message : String(reason);
+}
 
 interface ServiceInstance {
   id: string;
@@ -373,7 +390,7 @@ export interface SafeModeActivationRefusalArgs {
   action: "install" | "update";
 }
 
-const PLUGIN_SAFE_MODE_DETAIL = "safe mode is on";
+export const PLUGIN_SAFE_MODE_DETAIL = "safe mode is on";
 
 export interface PluginLoadHold {
   sources: readonly string[];
@@ -409,11 +426,21 @@ function linkCallSignal(
   return { signal: controller.signal, unlink };
 }
 
+function firstLine(text: string): string {
+  return text.split("\n", 1)[0] ?? text;
+}
+
 export function createPluginRuntime(context: PluginRuntimeContext) {
   const { deps } = context;
   const settingsChanged = context.settingsChanged ?? (() => {});
   const logger = deps.logger;
+  const pluginLog = createPluginEventLog({
+    dataDir: deps.dataDir,
+    logger: deps.logger,
+  });
   const loadTimeoutMs = deps.loadTimeoutMs ?? DEFAULT_LOAD_TIMEOUT_MS;
+  const preparationTimeoutMs =
+    deps.preparationTimeoutMs ?? DEFAULT_PREPARATION_TIMEOUT_MS;
   const serviceStopTimeoutMs =
     deps.serviceStopTimeoutMs ?? DEFAULT_SERVICE_STOP_TIMEOUT_MS;
   const serviceRestartBaseMs =
@@ -431,6 +458,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   const withLifecycleLock = createKeyedLock<string>();
   const withArtifactLock = createKeyedLock<string>();
   const withPluginOperationLock = createKeyedLock<string>();
+  const loadAttempts = new Map<string, AbortController>();
+  const abandonedLoadWork = new Map<string, Set<Promise<unknown>>>();
   const REGISTRATION_MUTATION_KEY = "plugin-registration-mutations";
   const builtinSourceWatchers: FSWatcher[] = [];
 
@@ -461,7 +490,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   >();
   const hungServices = new Map<string, Set<string>>();
   const needsConfiguration = new Map<string, string>();
-  const agentToolProblems = new Map<string, string>();
+  const registrationProblems = new Map<string, string>();
   const handlerStats = new Map<string, PluginHandlerStats>();
   let boundSdk: BbSdk | undefined;
   let boundLoopbackBaseUrl: string | undefined;
@@ -539,11 +568,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     setStatus(id, "needs-configuration", message);
   }
 
-  function reportAgentToolProblem(id: string, message: string): void {
-    agentToolProblems.set(id, message);
-    logger.warn(`[plugin:${id}] ${message}`);
+  function reportRegistrationProblem(id: string, message: string): void {
+    const reported = registrationProblems.get(id);
+    if (reported?.split("; ").includes(message)) return;
+    const problems =
+      reported === undefined ? message : `${reported}; ${message}`;
+    registrationProblems.set(id, problems);
+    pluginLog.warn(id, message);
     if (statuses.get(id)?.status === "running") {
-      setStatus(id, "running", message);
+      setStatus(id, "running", problems);
     }
   }
 
@@ -597,6 +630,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   const reportedStaleErrors = new WeakSet<PluginContextStaleError>();
   const pluginCodeLocations = new Map<string, string>();
+  const pluginCodeContext = new AsyncLocalStorage<string>();
 
   function listPluginCodeOwners(): { location: string; owner: string }[] {
     return [...pluginCodeLocations].map(([location, pluginId]) => ({
@@ -619,22 +653,36 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (!(error instanceof PluginContextStaleError)) return false;
     if (!reportedStaleErrors.has(error)) {
       reportedStaleErrors.add(error);
-      logger.warn(
-        { err: error },
-        `[plugin:${error.pluginId}] ${error.message}`,
-      );
+      pluginLog.warn(error.pluginId, error.message, error);
     }
     return true;
   }
 
+  function hasCodeFrames(error: unknown): boolean {
+    if (!(error instanceof Error) || typeof error.stack !== "string")
+      return false;
+    return error.stack.split("\n").some((line) => {
+      const location = /^\s+at (?:async )?(?:.*\()?(.+):\d+:\d+\)?$/.exec(
+        line,
+      )?.[1];
+      return location !== undefined && !location.startsWith("node:");
+    });
+  }
+
   function containPluginError(error: unknown): boolean {
     if (reportStaleError(error)) return true;
-    const pluginId = pluginOwningStack(error);
+    const stackOwner = pluginOwningStack(error);
+    const pluginId =
+      stackOwner ??
+      (hasCodeFrames(error) ? undefined : pluginCodeContext.getStore());
     if (pluginId === undefined) return false;
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn(
-      { err: error },
-      `[plugin:${pluginId}] uncaught error: ${message}`,
+    pluginLog.warn(
+      pluginId,
+      stackOwner === undefined
+        ? `uncaught error from work this plugin started (its stack names no code): ${message}`
+        : `uncaught error: ${message}`,
+      error,
     );
     if (statuses.get(pluginId)?.status === "running") {
       setStatus(pluginId, "running", `uncaught error: ${message}`);
@@ -649,16 +697,18 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const name = service.record.name;
     const message = error instanceof Error ? error.message : String(error);
     if (service.controller !== controller || service.disposed) {
-      logger.warn(
-        `[plugin:${id}] service ${name} raised an uncaught exception from a stopped run: ${message}`,
+      pluginLog.warn(
+        id,
+        `service ${name} raised an uncaught exception from a stopped run: ${message}`,
       );
       return true;
     }
     if (instance.uncaughtError !== undefined) return true;
     instance.uncaughtError = { error };
-    logger.warn(
-      { err: error },
-      `[plugin:${id}] service ${name} raised an uncaught exception outside start(): ${message} — aborting it`,
+    pluginLog.warn(
+      id,
+      `service ${name} raised an uncaught exception outside start(): ${message} — aborting it`,
+      error,
     );
     const current = service.current;
     controller.abort();
@@ -672,8 +722,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         "degraded",
         `service ${name} did not stop after an uncaught exception`,
       );
-      logger.warn(
-        `[plugin:${id}] service ${name} did not stop within ${serviceStopTimeoutMs}ms of its uncaught exception — plugin degraded until it does`,
+      pluginLog.warn(
+        id,
+        `service ${name} did not stop within ${serviceStopTimeoutMs}ms of its uncaught exception — plugin degraded until it does`,
       );
     });
     return true;
@@ -690,7 +741,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const name = service.record.name;
     if (!outcome.crashed) {
       service.state = "stopped";
-      logger.info(`[plugin:${id}] service ${name} stopped`);
+      pluginLog.info(id, `service ${name} stopped`);
       return;
     }
     if (isNeedsConfigurationError(outcome.error)) {
@@ -699,8 +750,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         id,
         outcome.error.message || `service ${name} needs configuration`,
       );
-      logger.info(
-        `[plugin:${id}] service ${name} needs configuration; not restarting until reload`,
+      pluginLog.info(
+        id,
+        `service ${name} needs configuration; not restarting until reload`,
       );
       return;
     }
@@ -711,8 +763,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (stabilizingPluginIds.has(id)) {
       service.state = "stopped";
       setStatus(id, "error", `service ${name} crashed: ${message}`);
-      logger.warn(
-        `[plugin:${id}] service ${name} crashed during activation: ${message}`,
+      pluginLog.warn(
+        id,
+        `service ${name} crashed during activation: ${message}`,
       );
       return;
     }
@@ -726,8 +779,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     });
     service.consecutiveCrashes += 1;
     service.state = "backoff";
-    logger.warn(
-      `[plugin:${id}] service ${name} crashed: ${message} — restarting in ${delayMs}ms`,
+    pluginLog.warn(
+      id,
+      `service ${name} crashed: ${message} — restarting in ${delayMs}ms`,
     );
     const timer = setTimeout(() => {
       service.restartTimer = null;
@@ -759,8 +813,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           }
           hung.add(name);
           setStatus(id, "degraded", `service ${name} did not stop`);
-          logger.warn(
-            `[plugin:${id}] service ${name} did not stop within ${serviceStopTimeoutMs}ms — plugin degraded until it does`,
+          pluginLog.warn(
+            id,
+            `service ${name} did not stop within ${serviceStopTimeoutMs}ms — plugin degraded until it does`,
           );
           void current.then(
             () => onHungServiceSettled(id, name),
@@ -777,8 +832,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     if (!hung) return;
     hung.delete(name);
     if (hung.size === 0) hungServices.delete(id);
-    logger.info(
-      `[plugin:${id}] service ${name} eventually stopped — reload to recover`,
+    pluginLog.info(
+      id,
+      `service ${name} eventually stopped — reload to recover`,
     );
   }
 
@@ -848,8 +904,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     for (const [pluginId, plugin] of loaded) {
       for (const provider of select(plugin)) {
         if (seen.has(provider.id)) {
-          logger.warn(
-            `[plugin:${pluginId}] ${kindLabel} provider "${provider.id}" is already registered by another plugin; ignoring`,
+          pluginLog.warn(
+            pluginId,
+            `${kindLabel} provider "${provider.id}" is already registered by another plugin; ignoring`,
           );
           continue;
         }
@@ -885,11 +942,21 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
   }
 
   function listPluginServerAccessProviders() {
-    return [...loaded].flatMap(([pluginId, plugin]) =>
-      [...plugin.handle.serverAccessProviders.values()].map((provider) =>
-        ownedRecord({ pluginId, provider }, plugin),
-      ),
-    );
+    return [...loaded]
+      .filter(([, plugin]) => plugin.handle.serverAccessProviders.size > 0)
+      .map(([pluginId, plugin]) => ({
+        pluginId,
+        plugin,
+        installedAt:
+          getInstalledPlugin(deps.db, pluginId)?.installedAt ??
+          Number.MAX_SAFE_INTEGER,
+      }))
+      .sort((a, b) => a.installedAt - b.installedAt)
+      .flatMap(({ pluginId, plugin }) =>
+        [...plugin.handle.serverAccessProviders.values()].map((provider) =>
+          ownedRecord({ pluginId, provider }, plugin),
+        ),
+      );
   }
 
   function listPluginMachineProviders(): PluginMachineProviderRecord[] {
@@ -943,8 +1010,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const signal = call.signal;
     const stats = statsFor(id);
     const startedAt = performance.now();
-    const execution = runEventLoopWork(`plugin:${id} ${label}`, () =>
-      run(signal),
+    const execution = pluginCodeContext.run(id, () =>
+      runEventLoopWork(`plugin:${id} ${label}`, () => run(signal)),
     );
     const settled = execution.then(
       () => undefined,
@@ -978,7 +1045,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       const message = error instanceof Error ? error.message : String(error);
       stats.errorCount += 1;
       if (!reportStaleError(error)) {
-        logger.warn(`[plugin:${id}] ${label} failed: ${message}`);
+        pluginLog.warn(id, `${label} failed: ${message}`, error);
         if (
           loaded.get(id) === instance &&
           statuses.get(id)?.status === "running"
@@ -993,8 +1060,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       void execution.catch((error: unknown) => {
         if (released.aborted && !reportStaleError(error)) {
-          logger.warn(
-            `[plugin:${id}] ${label} failed after its caller was released: ${error instanceof Error ? error.message : String(error)}`,
+          pluginLog.warn(
+            id,
+            `${label} failed after its caller was released: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       });
@@ -1023,8 +1091,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       serviceStopTimeoutMs,
     );
     if (!drained) {
-      logger.warn(
-        `plugin ${instance.pluginId}: ${instance.invocations.size} in-flight invocation(s) did not settle before dispose; releasing their callers`,
+      pluginLog.warn(
+        instance.pluginId,
+        `${instance.invocations.size} in-flight invocation(s) did not settle before dispose; releasing their callers`,
       );
     }
   }
@@ -1046,7 +1115,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
    * payload is assembled and handlers run on the next macrotask, after the
    * transition (and any surrounding transaction) has settled. Handlers are
    * looked up live at dispatch time, so a plugin disposed in between
-   * receives nothing.
+   * receives nothing. A plugin's events for a thread its own in-flight
+   * `threads.spawn` or `threads.fork` may have created wait in its
+   * `threadEventGate` until that call has returned to it, so the plugin has
+   * recorded the thread before it hears how the thread's turn went.
    *
    * A builder may return null for "on second look there is nothing to
    * announce" — a `turn.failed` on a thread that never dispatched a turn, say.
@@ -1070,12 +1142,27 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       if (payload === null) return;
       const delivered = payload;
+      const thread = threadOfEvent(event, delivered);
+      const subject =
+        thread === null
+          ? null
+          : {
+              threadId: thread.threadId,
+              createdAt: () =>
+                thread.createdAt ??
+                getThread(deps.db, thread.threadId)?.createdAt ??
+                null,
+            };
       for (const plugin of loaded.values()) {
-        for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
-          void invokeWrapped(plugin, `${event} handler`, () =>
-            handler(delivered),
-          );
-        }
+        if (plugin.handle.threadEventHandlers[event].length === 0) continue;
+        plugin.handle.threadEventGate.deliver(subject, () => {
+          if (loaded.get(plugin.pluginId) !== plugin) return;
+          for (const handler of [...plugin.handle.threadEventHandlers[event]]) {
+            void invokeWrapped(plugin, `${event} handler`, () =>
+              handler(delivered),
+            );
+          }
+        });
       }
     });
   }
@@ -1308,8 +1395,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }),
       );
       logPluginBuildWarnings({
-        dataDir: deps.dataDir,
-        logger,
+        pluginLog,
         pluginId: row.id,
         warnings: built.warnings,
       });
@@ -1343,8 +1429,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       );
     } catch {}
     if (!isPrebuiltServerSdkCompatible(meta)) {
-      logger.warn(
-        `plugin ${row.id}: ignoring prebuilt dist/server.js (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}) — loading from source`,
+      pluginLog.warn(
+        row.id,
+        `ignoring prebuilt dist/server.js (built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}) — loading from source`,
       );
       return buildSource();
     }
@@ -1386,7 +1473,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         const reason = sdkChanged
           ? `built with SDK ${meta?.sdkVersion ?? "unknown"}, running SDK is ${PLUGIN_SDK_VERSION}`
           : "plugin source is newer than dist/app.js";
-        logger.info(`plugin ${row.id}: rebuilding frontend bundle (${reason})`);
+        pluginLog.info(row.id, `rebuilding frontend bundle (${reason})`);
         try {
           const app = await buildPluginApp(
             row.rootDir,
@@ -1395,8 +1482,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
             { minify: true, hostProvidedZod: true },
           );
           logPluginBuildWarnings({
-            dataDir: deps.dataDir,
-            logger,
+            pluginLog,
             pluginId: row.id,
             warnings: app.migrationWarnings,
           });
@@ -1404,9 +1490,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         } catch (error) {
           const message =
             error instanceof Error ? error.message : String(error);
-          logger.warn(
-            `plugin ${row.id}: frontend bundle rebuild failed: ${message}`,
-          );
+          pluginLog.warn(row.id, `frontend bundle rebuild failed: ${message}`);
           return {
             snapshot: { state: { hasApp: true, bundle: null }, assets: null },
             problem: `frontend bundle rebuild failed: ${message}`,
@@ -1510,15 +1594,87 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     };
   }
 
-  async function populateIdentity(row: InstalledPluginRow): Promise<void> {
+  function abandonLoadWork(pluginId: string, work: Promise<unknown>): void {
+    let pending = abandonedLoadWork.get(pluginId);
+    if (pending === undefined) {
+      pending = new Set();
+      abandonedLoadWork.set(pluginId, pending);
+    }
+    const tracked = pending;
+    tracked.add(work);
+    const settle = () => {
+      tracked.delete(work);
+      if (tracked.size === 0 && abandonedLoadWork.get(pluginId) === tracked) {
+        abandonedLoadWork.delete(pluginId);
+      }
+    };
+    work.then(settle, settle);
+  }
+
+  function startLoadAttempt(pluginId: string): PluginLoadAttempt {
+    const controller = new AbortController();
+    loadAttempts.set(pluginId, controller);
+    if ((abandonedLoadWork.get(pluginId)?.size ?? 0) > 0) {
+      controller.abort(new Error(EARLIER_LOAD_STILL_WAITING));
+    }
+    const deadline = setTimeout(() => {
+      controller.abort(
+        new Error(
+          `load timed out after ${preparationTimeoutMs}ms reading or building the plugin's files`,
+        ),
+      );
+    }, preparationTimeoutMs);
+    deadline.unref();
+    return {
+      signal: controller.signal,
+      async prepare(work) {
+        controller.signal.throwIfAborted();
+        const pending = work();
+        return await new Promise((resolvePrepared, rejectPrepared) => {
+          const onAbort = () => {
+            abandonLoadWork(pluginId, pending);
+            rejectPrepared(controller.signal.reason);
+          };
+          controller.signal.addEventListener("abort", onAbort, { once: true });
+          pending.then(
+            (value) => {
+              controller.signal.removeEventListener("abort", onAbort);
+              resolvePrepared(value);
+            },
+            (error: unknown) => {
+              controller.signal.removeEventListener("abort", onAbort);
+              rejectPrepared(error);
+            },
+          );
+        });
+      },
+      endPreparation() {
+        clearTimeout(deadline);
+        if (loadAttempts.get(pluginId) === controller) {
+          loadAttempts.delete(pluginId);
+        }
+      },
+    };
+  }
+
+  function abortLoad(pluginId: string, reason: string): void {
+    loadAttempts.get(pluginId)?.abort(new Error(reason));
+  }
+
+  async function populateIdentity(
+    row: InstalledPluginRow,
+    attempt: PluginLoadAttempt,
+  ): Promise<void> {
     try {
-      const manifest = await readPluginManifest(row.rootDir);
-      identities.set(row.id, {
-        manifest,
-        brandingAssets: await loadPluginBrandingAssets(row.id, manifest),
-      });
+      const manifest = await attempt.prepare(() =>
+        readPluginManifest(row.rootDir),
+      );
+      const assets = await attempt.prepare(() =>
+        loadPluginBrandingAssets(row.id, manifest),
+      );
+      identities.set(row.id, { manifest, brandingAssets: assets });
     } catch {
-      identities.delete(row.id);
+      if (!attempt.signal.aborted) identities.delete(row.id);
     }
   }
 
@@ -1574,24 +1730,67 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     } else {
       icon = readPluginProviderIcon(args.row.rootDir, args.declaration.icon);
     }
-    return deps.providerRegistry.register({
-      ...buildPluginProviderRegistration({
-        available: args.available,
-        pluginId: args.row.id,
-        declaration: args.declaration,
-        iconHash: icon?.hash ?? null,
-        readSettings: () =>
-          readPluginSettingsValuesSync({
-            db: deps.db,
-            pluginId: args.row.id,
-            descriptors: args.settingsDescriptors,
-          }),
-      }),
+    const pluginId = args.row.id;
+    const providerId = args.declaration.id;
+    const registration = buildPluginProviderRegistration({
+      available: args.available,
+      pluginId,
+      declaration: args.declaration,
+      iconHash: icon?.hash ?? null,
+      readSettings: () =>
+        readPluginSettingsValuesSync({
+          db: deps.db,
+          pluginId,
+          descriptors: args.settingsDescriptors,
+        }),
+    });
+    let registered = true;
+    const registry = deps.providerRegistry.register({
+      ...registration,
+      reportBridgeFailure: (failure) => {
+        if (!registered) return;
+        pluginLog.warn(
+          pluginId,
+          `provider "${providerId}" ${failure.operation} failed on host ${failure.hostId}: ${failure.message}`,
+        );
+        if (statuses.get(pluginId)?.status === "running") {
+          setStatus(
+            pluginId,
+            "running",
+            `provider "${providerId}" ${failure.operation} failed: ${firstLine(failure.message)}`,
+          );
+        }
+      },
+      deriveProviderOptions: (context) => {
+        try {
+          return registration.deriveProviderOptions(context);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          pluginLog.warn(
+            pluginId,
+            `provider "${providerId}" deriveProviderOptions failed for thread ${context.threadId}: ${message}`,
+            error,
+          );
+          throw new ApiError(
+            502,
+            "provider_options_failed",
+            `The "${pluginId}" plugin's deriveProviderOptions for provider "${providerId}" failed: ${message}`,
+            { details: { pluginId, providerId } },
+          );
+        }
+      },
       ...(icon === null ? {} : { icon }),
       pluginId: args.row.id,
       iconNames: new Set(args.brandingAssets.icons.keys()),
       installRank: providerInstallRank(args.row),
     });
+    return {
+      dispose() {
+        registered = false;
+        registry.dispose();
+      },
+    };
   }
 
   function replaceUnavailableProviderRegistrations(
@@ -1627,6 +1826,19 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return `service ${[...hung].join(", ")} did not stop`;
   }
 
+  async function runDisposeHooks(plugin: LoadedPlugin): Promise<void> {
+    for (const hook of [...plugin.handle.disposeHooks].reverse()) {
+      try {
+        await hook();
+      } catch (error) {
+        pluginLog.warn(
+          plugin.pluginId,
+          `dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+  }
+
   async function discardCandidate(candidate: LoadedPlugin): Promise<void> {
     candidate.stopping.abort();
     try {
@@ -1636,6 +1848,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         `plugin ${candidate.pluginId} interaction cleanup failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+    await runDisposeHooks(candidate);
     const detached = candidate.handle.databaseHandles
       .splice(0)
       .map((database) => {
@@ -1702,66 +1915,93 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     return `plugin safe mode is on; turn it off with \`bb plugin safe-mode off\` before you ${args.action} "${args.pluginId}"`;
   }
 
+  function failBeforeFactory(
+    row: InstalledPluginRow,
+    status: PluginRuntimeStatus,
+    detail: string,
+  ): string {
+    if (loaded.has(row.id)) {
+      setStatus(row.id, "running", `reload failed: ${detail}`);
+      pluginLog.warn(
+        row.id,
+        `reload failed (kept previous instance): ${detail}`,
+      );
+      return `${detail} (${PREVIOUS_INSTANCE_KEPT})`;
+    }
+    setStatus(row.id, status, detail);
+    pluginLog.warn(row.id, `not loaded (${status}): ${detail}`);
+    return detail;
+  }
+
   async function loadOne(row: InstalledPluginRow): Promise<string | null> {
+    const attempt = startLoadAttempt(row.id);
+    try {
+      return await loadOneAttempt(row, attempt);
+    } catch (error) {
+      if (!attempt.signal.aborted || error !== attempt.signal.reason) {
+        throw error;
+      }
+      return failBeforeFactory(row, "error", abortMessage(attempt.signal));
+    } finally {
+      attempt.endPreparation();
+    }
+  }
+
+  async function loadOneAttempt(
+    row: InstalledPluginRow,
+    attempt: PluginLoadAttempt,
+  ): Promise<string | null> {
     const held = await heldDetail(row);
     if (held !== null) {
       await disposeOne(row.id);
-      await populateIdentity(row);
+      await populateIdentity(row, attempt);
       setStatus(row.id, "disabled", held);
-      logger.warn(`plugin ${row.id} not loaded (held): ${held}`);
+      pluginLog.warn(row.id, `not loaded (held): ${held}`);
       return null;
     }
     if (isSuppressedBySafeMode(row)) {
       await disposeOne(row.id);
-      await populateIdentity(row);
+      await populateIdentity(row, attempt);
       if ((hungServices.get(row.id)?.size ?? 0) === 0) {
         setStatus(row.id, "disabled", PLUGIN_SAFE_MODE_DETAIL);
       }
       return null;
     }
     if (row.enabled && !loaded.has(row.id)) setStatus(row.id, "starting");
-    await populateIdentity(row);
+    await populateIdentity(row, attempt);
     if (!row.enabled) {
       setStatus(row.id, "disabled");
       return null;
     }
     const previous = loaded.get(row.id);
-    const isReload = previous !== undefined;
-    function failBeforeFactory(
+    function failPreparation(
       status: PluginRuntimeStatus,
       detail: string,
     ): string {
-      if (isReload) {
-        setStatus(row.id, "running", `reload failed: ${detail}`);
-        logger.warn(
-          `plugin ${row.id} reload failed (kept previous instance): ${detail}`,
-        );
-        return `${detail} (${PREVIOUS_INSTANCE_KEPT})`;
-      }
-      setStatus(row.id, status, detail);
-      logger.warn(`plugin ${row.id} not loaded (${status}): ${detail}`);
-      return detail;
+      return attempt.signal.aborted
+        ? failBeforeFactory(row, "error", abortMessage(attempt.signal))
+        : failBeforeFactory(row, status, detail);
     }
     const hung = hungServices.get(row.id);
     if (hung !== undefined && hung.size > 0) {
       const detail = hungServicesDetail(hung);
       setStatus(row.id, "degraded", detail);
-      logger.warn(`plugin ${row.id} not loaded (degraded): ${detail}`);
+      pluginLog.warn(row.id, `not loaded (degraded): ${detail}`);
       return detail;
     }
     try {
-      await stat(row.rootDir);
+      await attempt.prepare(() => stat(row.rootDir));
     } catch {
-      return failBeforeFactory(
+      return failPreparation(
         "missing",
         `plugin directory not found: ${row.rootDir} (reinstall)`,
       );
     }
     let manifest: PluginManifest;
     try {
-      manifest = await readPluginManifest(row.rootDir);
+      manifest = await attempt.prepare(() => readPluginManifest(row.rootDir));
     } catch (error) {
-      return failBeforeFactory(
+      return failPreparation(
         "error",
         error instanceof Error ? error.message : String(error),
       );
@@ -1769,27 +2009,32 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const engineProblem =
       checkEngineRange(manifest) ?? checkPluginSdkRange(manifest);
     if (engineProblem) {
-      return failBeforeFactory("incompatible", engineProblem);
+      return failPreparation("incompatible", engineProblem);
     }
-    const artifactProblem = await packagedBuiltinArtifactProblem(row, manifest);
+    const artifactProblem = await attempt.prepare(() =>
+      packagedBuiltinArtifactProblem(row, manifest),
+    );
     if (artifactProblem !== null) {
-      return failBeforeFactory("incompatible", artifactProblem);
+      return failPreparation("incompatible", artifactProblem);
     }
-    const appBundleCandidate = await loadAppBundleCandidate(row, manifest);
+    const appBundleCandidate = await attempt.prepare(() =>
+      loadAppBundleCandidate(row, manifest),
+    );
     let hostArtifactCandidate: PluginHostArtifactSnapshot | null = null;
     let hostArtifactProblem: string | null = null;
     try {
-      hostArtifactCandidate = await loadHostArtifactCandidate(row, manifest);
+      hostArtifactCandidate = await attempt.prepare(() =>
+        loadHostArtifactCandidate(row, manifest),
+      );
     } catch (error) {
       hostArtifactProblem =
         error instanceof Error ? error.message : String(error);
-      if (previous !== undefined) {
-        return failBeforeFactory("error", hostArtifactProblem);
+      if (previous !== undefined || attempt.signal.aborted) {
+        return failPreparation("error", hostArtifactProblem);
       }
     }
-    const brandingAssetCandidate = await loadPluginBrandingAssets(
-      row.id,
-      manifest,
+    const brandingAssetCandidate = await attempt.prepare(() =>
+      loadPluginBrandingAssets(row.id, manifest),
     );
     const settingsDescriptorsRef: { current: PluginSettingDescriptors } = {
       current: {},
@@ -1798,7 +2043,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     const handle = createPluginApi({
       recordPluginUse: () => capturePluginUse(deps, row.id),
       pluginId: row.id,
-      logger: deps.logger,
+      pluginLog,
       db: deps.db,
       dataDir: deps.dataDir,
       walCheckpointer: deps.walCheckpointer ?? null,
@@ -1834,8 +2079,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
               })
               .catch((error: unknown) => {
                 if (!controller.signal.aborted)
-                  deps.logger.warn(
-                    `Plugin ${row.id} watched RPC failed: ${String(error)}`,
+                  pluginLog.warn(
+                    row.id,
+                    `watched RPC failed: ${String(error)}`,
                   );
               });
           }
@@ -1877,8 +2123,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         }
         return undefined;
       },
-      reportAgentToolProblem: (message) => {
-        reportAgentToolProblem(row.id, message);
+      reportRegistrationProblem: (message) => {
+        reportRegistrationProblem(row.id, message);
       },
       requestQueueDrain: () => {
         // Unwired in isolated plugin-runtime tests, which have no thread
@@ -1920,20 +2166,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ports,
         });
       },
-      setNextTunnels: (config) => {
-        if (!deps.sharedPorts) {
-          throw new Error("host shared-port control plane is unavailable");
-        }
-        deps.sharedPorts.setNextTunnelConfig(row.id, config);
-      },
-      nextTunnelStatuses: () =>
-        (deps.sharedPorts?.listNextTunnelStatuses() ?? []).map((entry) => ({
-          hostId: entry.hostId,
-          hostName: entry.hostName,
-          ...entry.status,
-        })),
-      onNextTunnelStatusChange: (listener) =>
-        deps.sharedPorts?.onNextTunnelStatusChange(listener) ?? (() => {}),
       replaceDeclaredSharedPorts: (declarations) => {
         if (declarations.length > 0 && !deps.sharedPorts) {
           throw new Error("host shared-port control plane is unavailable");
@@ -1954,12 +2186,6 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
           ...args,
           artifact: hostArtifactCandidate,
         });
-      },
-      openTunnelIngress: (audience) => {
-        if (!deps.openTunnelIngress) {
-          throw new Error("tunnel ingress is unavailable in this plugin host");
-        }
-        return deps.openTunnelIngress(audience);
       },
       registerAiService: (declaration) =>
         deps.aiServices.register({
@@ -2007,7 +2233,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       invocations: new Set(),
     };
     try {
-      const serverEntry = await resolveServerEntry(row, manifest);
+      const serverEntry = await attempt.prepare(() =>
+        resolveServerEntry(row, manifest),
+      );
       if (row.sourceKind === "path" || row.sourceKind === "builtin") {
         const mutation = setMutableRootVersion(
           row.rootDir,
@@ -2026,7 +2254,9 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         const filename = runtimeRequire.resolve(serverEntry.path);
         pluginCodeLocations.set(filename, row.id);
         try {
-          const exported: unknown = runtimeRequire(filename);
+          const exported: unknown = pluginCodeContext.run(row.id, () =>
+            runtimeRequire(filename),
+          );
           mod =
             typeof exported === "function"
               ? { default: exported }
@@ -2044,20 +2274,28 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         rollbackGenerations.push(mutation.rollback);
         candidateModuleRootUrls.add(mutation.rootUrl);
         pluginCodeLocations.set(mutation.rootUrl, row.id);
-        mod = (await import(pathToFileURL(serverEntry.path).href)) as {
+        mod = (await attempt.prepare(() =>
+          pluginCodeContext.run(
+            row.id,
+            () => import(pathToFileURL(serverEntry.path).href),
+          ),
+        )) as {
           default?: unknown;
         };
       }
+      attempt.endPreparation();
       const factory = mod.default;
       if (typeof factory !== "function") {
         throw new Error(
           `server entry must default-export a factory (bb) => void, got ${typeof factory}`,
         );
       }
-      await runEventLoopWork(`plugin:${row.id} load`, () =>
-        runFactoryTimeBoxed(
-          factory as (api: BbPluginApi) => unknown,
-          handle.api,
+      await pluginCodeContext.run(row.id, () =>
+        runEventLoopWork(`plugin:${row.id} load`, () =>
+          runFactoryTimeBoxed(
+            factory as (api: BbPluginApi) => unknown,
+            handle.api,
+          ),
         ),
       );
     } catch (error) {
@@ -2072,8 +2310,10 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       } else {
         setStatus(row.id, "error", message);
       }
-      logger.warn(
-        `plugin ${row.id} failed to load: ${statuses.get(row.id)?.detail}`,
+      pluginLog.warn(
+        row.id,
+        `failed to load: ${statuses.get(row.id)?.detail}`,
+        error,
       );
       return previous !== undefined
         ? `${message} (${PREVIOUS_INSTANCE_KEPT})`
@@ -2095,7 +2335,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       await discardCandidate(plugin);
       setStatus(row.id, "error", hostArtifactProblem);
-      logger.warn(`plugin ${row.id} failed to load: ${hostArtifactProblem}`);
+      pluginLog.warn(row.id, `failed to load: ${hostArtifactProblem}`);
       return hostArtifactProblem;
     }
     plugin.services = handle.backgroundServices.map((record) => ({
@@ -2132,7 +2372,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     else hostArtifacts.set(row.id, hostArtifactCandidate);
     brandingAssets.set(row.id, brandingAssetCandidate);
     needsConfiguration.delete(row.id);
-    agentToolProblems.delete(row.id);
+    registrationProblems.delete(row.id);
     handle.activate();
     const now = Date.now();
     prunePluginSchedules(
@@ -2153,7 +2393,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     }
     if (!needsConfiguration.has(row.id)) {
       const details = [
-        agentToolProblems.get(row.id),
+        registrationProblems.get(row.id),
         appBundleCandidate.problem,
       ].filter((detail): detail is string => typeof detail === "string");
       setStatus(
@@ -2162,7 +2402,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         details.length > 0 ? details.join("; ") : null,
       );
     }
-    logger.info(`plugin ${row.id}@${manifest.version} loaded`);
+    pluginLog.info(row.id, `loaded version ${manifest.version}`);
     return null;
   }
 
@@ -2193,22 +2433,15 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
       }
       await stopServices(id, plugin);
       await waitForWebSocketsClosed(plugin);
-      for (const hook of [...plugin.handle.disposeHooks].reverse()) {
-        try {
-          await hook();
-        } catch (error) {
-          logger.warn(
-            `plugin ${id} dispose hook failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-      }
+      await runDisposeHooks(plugin);
       await drainInvocations(plugin);
       for (const database of plugin.handle.databaseHandles.splice(0)) {
         try {
           database.close();
         } catch (error) {
-          logger.warn(
-            `plugin ${id} database close failed: ${error instanceof Error ? error.message : String(error)}`,
+          pluginLog.warn(
+            id,
+            `database close failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
         await deps.walCheckpointer?.detach(database);
@@ -2283,7 +2516,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
 
   return {
     REGISTRATION_MUTATION_KEY,
-    agentToolProblems,
+    pluginLog,
+    registrationProblems,
     appBundles,
     hostArtifacts,
     bindSdk,
@@ -2315,6 +2549,7 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
     getPluginMachineProvider,
     identities,
     isPackagedBuiltinEntry,
+    abortLoad,
     loadAll,
     loaded,
     loadOne,

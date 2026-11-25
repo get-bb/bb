@@ -9,6 +9,10 @@ import {
   type InsertEventInput,
 } from "../../src/data/events.js";
 import { upsertHost } from "../../src/data/hosts.js";
+import {
+  getThreadConversationOutlineRecord,
+  upsertThreadConversationOutlineRecord,
+} from "../../src/data/thread-conversation-outlines.js";
 import { createProject } from "../../src/data/projects.js";
 import { migrateNextCompletedEventItemOutput } from "../../src/data/sweeps.js";
 import {
@@ -63,13 +67,22 @@ function pruneThreadEvents(
 }
 
 function expectGenerationBump(
+  db: DbConnection,
   threadId: string,
   bumped: boolean,
   mutate: () => void,
 ): void {
+  upsertThreadConversationOutlineRecord(db, {
+    itemsJson: "[]",
+    projectionKey: "stored",
+    threadId,
+  });
   const before = getThreadEventRewriteGeneration(threadId);
   mutate();
   expect(getThreadEventRewriteGeneration(threadId) !== before).toBe(bumped);
+  expect(getThreadConversationOutlineRecord(db, threadId) === null).toBe(
+    bumped,
+  );
 }
 
 function row(
@@ -259,12 +272,12 @@ describe("thread event rewrite generation", () => {
       message(otherThreadId, 1),
     ]);
 
-    expectGenerationBump(threadId, false, () => {
+    expectGenerationBump(db, threadId, false, () => {
       expect(testCase.noop(db, threadId)).toBe(0);
     });
     insertEvents(db, noopNotifier, testCase.between?.(threadId) ?? []);
     const otherBefore = getThreadEventRewriteGeneration(otherThreadId);
-    expectGenerationBump(threadId, true, () => {
+    expectGenerationBump(db, threadId, true, () => {
       expect(testCase.rewrite(db, threadId)).toBeGreaterThan(0);
     });
     expect(getThreadEventRewriteGeneration(otherThreadId)).toBe(otherBefore);
@@ -286,7 +299,7 @@ describe("thread event rewrite generation", () => {
     ({ name, rows }) => {
       const { db, threadId } = setup();
       insertEvents(db, noopNotifier, [...rows(threadId), message(threadId, 5)]);
-      expectGenerationBump(threadId, false, () => {
+      expectGenerationBump(db, threadId, false, () => {
         expect(pruneThreadEvents(db, name)).toBeGreaterThan(0);
       });
     },
@@ -294,14 +307,14 @@ describe("thread event rewrite generation", () => {
 
   it("changes when a completed output is migrated and not when the scanned output fits", () => {
     const fits = setup();
-    expectGenerationBump(fits.threadId, false, () => {
+    expectGenerationBump(fits.db, fits.threadId, false, () => {
       expect(insertCommandOutput(fits.db, fits.threadId, "small")).toBe(
         "scanned",
       );
     });
 
     const oversized = setup();
-    expectGenerationBump(oversized.threadId, true, () => {
+    expectGenerationBump(oversized.db, oversized.threadId, true, () => {
       expect(
         insertCommandOutput(
           oversized.db,
@@ -314,7 +327,7 @@ describe("thread event rewrite generation", () => {
 
   it("does not change for daemon appends, increasing inserts or ignored duplicates", () => {
     const { db, threadId } = setup();
-    expectGenerationBump(threadId, false, () => {
+    expectGenerationBump(db, threadId, false, () => {
       insertEvents(db, noopNotifier, [
         message(threadId, 1),
         message(threadId, 2),
@@ -350,8 +363,14 @@ describe("thread event rewrite generation", () => {
       message(threadId, 4),
     ]);
     const otherBefore = getThreadEventRewriteGeneration(otherThreadId);
+    const otherOutline = {
+      itemsJson: "[]",
+      projectionKey: "other",
+      threadId: otherThreadId,
+    };
+    upsertThreadConversationOutlineRecord(db, otherOutline);
 
-    expectGenerationBump(threadId, true, () => {
+    expectGenerationBump(db, threadId, true, () => {
       expect(
         insertEvents(db, noopNotifier, [
           message(otherThreadId, 1),
@@ -360,5 +379,9 @@ describe("thread event rewrite generation", () => {
       ).toBe(2);
     });
     expect(getThreadEventRewriteGeneration(otherThreadId)).toBe(otherBefore);
+    expect(getThreadConversationOutlineRecord(db, otherThreadId)).toEqual({
+      itemsJson: otherOutline.itemsJson,
+      projectionKey: otherOutline.projectionKey,
+    });
   });
 });

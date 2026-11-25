@@ -45,7 +45,7 @@ does not prove reachability.
   bb machine reconcile <id-or-name>       Reconcile compute with core’s recorded state
   bb machine suspend <id-or-name>         Suspend a provider-managed machine
   bb machine resume <id-or-name>          Resume a machine (already active is a no-op)
-  bb machine retry-cleanup <id-or-name>   Retry failed teardown now
+  bb machine retry-cleanup <id-or-name>   Retry failed teardown now with a fresh retry budget
   bb machine remove <id-or-name> [--yes]  Revoke and remove a machine
     --force                               Finish removing a disconnected machine whose
                                           environment cleanup failed; the provider's
@@ -91,8 +91,22 @@ environment setup. `bb machine reconcile` / `hosts.experimental_reconcile` is an
 explicit request, not a timer: for a machine core records as suspended, it runs
 the provider's save-and-stop operation, and the CLI polls until completion.
 Active machines and lifecycle operations already in progress are left alone.
-Retry cleanup is accepted only for a retiring machine whose provider teardown
-failed. `bb machine remove --force` / `hosts.delete({ hostId, force: true })`
+Failed provider teardown retries after 1, 2, 4, and 8 minutes. After five
+failed attempts the machine needs recovery: its lifecycle message starts with
+"Needs recovery", `lifecycle.teardown.needsRecovery` is true, `bb machine list`
+prints a retry-cleanup hint, and teardown keeps retrying once an hour so an
+orphaned cloud machine is still deleted. A machine waiting on an environment
+whose cleanup needs recovery also needs recovery: it shows that environment's
+message, `lifecycle.teardown.blockedByEnvironmentId` names the environment, and
+`bb machine list` tells you to run `bb environment cleanup <id> --recover`. Retry cleanup is
+accepted only for a retiring machine whose provider teardown failed; it resets
+the five-attempt budget and retries now. `bb machine remove` and
+`bb machine retry-cleanup` (`hosts.delete`, `hosts.experimental_retryCleanup`)
+answer `progress: "complete"` once the machine is gone and `"in-progress"` while
+teardown is still running; both exit 0. When the provider teardown or
+environment cleanup fails they fail with `machine_teardown_failed` (HTTP 502)
+and exit non-zero; the machine stays removing and bb keeps retrying the
+teardown on that schedule. `bb machine remove --force` / `hosts.delete({ hostId, force: true })`
 finishes removing a persistent machine that is disconnected and whose
 environment cleanup failed, for example because the computer no longer exists:
 it marks the machine's environments destroyed without running their teardown on
@@ -114,6 +128,22 @@ under the selected data directory. Startup errors, crashes, and other output
 that bypasses the logger are appended to `logs/server-stdio.log` and
 `logs/host-daemon-stdio.log`; a file over 10 MB is renamed to `-stdio.1.log`
 when its service starts. Follow them with `tail -F`.
+
+Server sweeps
+
+The server retries background sweep items that fail (for example an
+environment cleanup step or a retention pass) after 1, 2, 4, 8, 16, 32, and 60
+minutes. After eight failed attempts an item needs recovery: it keeps retrying
+once an hour, and the first success clears it. `bb server sweeps retry` gives it
+a fresh budget and runs it on the next sweep. Other items keep running.
+
+  bb server sweeps                        List failing sweep items and their state
+    --json                                Print machine-readable JSON output
+  bb server sweeps retry                  Run every item that needs recovery again
+    --json                                Print machine-readable JSON output
+
+SDK: `experimental_server.sweepFailures()` and
+`experimental_server.retrySweepFailures()`.
 
 Updates commands
 
@@ -145,9 +175,13 @@ CLI counterpart of Settings → Updates.
                                           for 15 minutes
   bb updates app dismiss                  Mark the last update result as seen
 
-`--when-idle`, `cancel`, and `auto on|off` need the `updateWhenIdle` experiment (on for early
-adopters; `bb settings experiment updateWhenIdle true`); while it is off they
-fail with a message naming it. `bb updates app apply --when-idle` updates at
+The sidebar update button counts provider CLI updates alongside bb and plugin
+updates. To leave them out, for example when an organization manages agent
+CLIs, turn off "Show provider CLI updates in the sidebar" on Settings → Updates
+or run `bb settings ui set sidebar.updates.providerCli false`. Settings →
+Updates and `bb updates` still list them.
+
+`bb updates app apply --when-idle` updates at
 once when no thread is running.
 Otherwise the server schedules the update and the command returns, so an agent
 can run it from its own thread; the server starts the update after every thread
@@ -164,10 +198,10 @@ until a newer one appears; you can still update to it by hand. Without
 `--when-idle` or `--yes`,
 apply asks before interrupting running threads and fails without a terminal.
 Updating restarts bb, which interrupts running threads; with the
-`resumeThreadsAfterRestart` experiment on they resume after the update, and
+`resumeThreadsAfterRestart` general setting on they resume after the update, and
 the prompt and the `threads_running` error say so.
 
-With `updateWhenIdle` on, once bb decides to restart into an update, new sends
+Once bb decides to restart into an update, new sends
 wait in the thread's queue (`sending after bb restarts to update` in
 `bb thread queue`) and go out after the restart, behind any resume; if the
 update is deferred, cancelled, or fails they go out at once.
@@ -176,7 +210,10 @@ update is deferred, cancelled, or fails they go out at once.
 that hosting app through its native updater. It never updates the desktop you
 are viewing from unless that desktop hosts this server.
 
-`bb updates apply` covers provider CLIs only. `bb updates app apply` updates
+`bb updates apply` covers provider CLIs only. It exits non-zero, with or
+without `--json`, when an install fails or a connected machine's provider
+status cannot be read; `bb machine provider-cli install` exits non-zero when
+its install fails. `bb updates app apply` updates
 bb itself when it was started from `npx bb-app` (or a global `bb-app`) without
 `--no-in-app-updates`: it installs the new version next to the running one and
 restarts into it. It does not roll back if the new version fails to start.
@@ -238,17 +275,64 @@ instead of `--path` to clone the project's Git remote there; `--remote-url` and
 
 ## Server access
 
-Set Machines → Server URL reachable by machines, or run `bb settings general
-machineServerUrl https://bb.example.com`. An unset value uses BB_EXTERNAL_URL.
-Set Default machine access with
-`bb settings general defaultMachineAccess direct` or `connect`; `null` uses
-the first registered access provider, or direct when none is registered. An
-unpaired provider reports setup required. `bb settings show --json` includes
-fresh provider availability and the effective selection; failed or timed-out
-checks report unavailable. Machines use this access for ongoing runtime
-requests, including account-pool endpoints. A machine on bb connect access holds
+Machines and apps reach this server over routes: every access provider that is
+set up, in order. Routes are advertised to machines only with the
+`serverRoutes` experiment (on for early adopters); while it is off,
+`routes` is empty, `local-network` is unavailable and each machine uses only
+the URL it was installed with. Settings → Machines → How devices reach this server
+lists each route with its status and address, and offers the others from
+**Add a route**; the CLI is
+`bb server access list|add <id> [url]|remove <id>|order <id...>` (`--json` for
+`{serverId, routes, serverAccess}`). Routes:
+
+- `local-network` (Local network, not added by default): bb also listens on
+  this computer's private LAN addresses (`http://192.168.x.y:<port>`); no
+  restart. Anyone on that network can use bb, so add it only for a trusted
+  network; remove it from its ⋯ menu or with
+  `bb server access remove local-network`. Starting bb with
+  `--server-bind-host 0.0.0.0` already listens everywhere.
+- Plugin providers, such as `connect` (bb connect, `<handle>.getbb.app`) and
+  `tailscale` (the Tailscale plugin's Serve address,
+  `https://<machine>.<tailnet>.ts.net`; machines must be on the same tailnet).
+  Each is a route while its plugin reports it available; set it up or turn it
+  off in the plugin's settings (Manage).
+- `direct` (Manual): your own URL, from **Add a route** or
+  `bb server access add direct https://bb.example.com`; an unset value uses
+  BB_EXTERNAL_URL. Remove it from its ⋯ menu or with
+  `bb server access remove direct`.
+
+`bb server access order` puts the listed ids first. A route that needs setup
+or is unavailable is skipped. While `serverRoutes` is off, the rest follow
+plugin install order with Manual last. With it on, the default order is local
+network, private overlay (for example Tailscale), relay (bb connect), then
+custom. A new machine is installed with the first working route in that order,
+and with Local network only when nothing else works; each
+connected machine then receives every route with its own credentials when its
+session opens, and is shown "via <route>" in Settings → Machines and the Route
+column of `bb machine list`. Each time a machine connects it probes every route
+(`/health` with a matching `serverId`, 2 s timeout) and uses the first that
+answers, giving each better-ranked route a 500 ms head start. It stays on that
+route until the connection drops and then picks again, so when its route stops
+answering a machine moves to the next route that answers, keeping its session
+if it reconnects within 30 seconds. Machines remember learned routes in
+`server-routes.json` in their data directory, so a restart starts on the best
+one. Attachments and daemon updates always use an encrypted route (HTTPS, such
+as bb connect) unless the server offers only
+its local network. The server has a
+stable id (`serverId` in `bb status --json`, `bb server access list --json`
+and `/health`) that moves with `bb server move`. An available route's hostname is
+accepted by the server's host and origin checks without BB_APP_URL (a plugin
+route's, such as Tailscale's, even with the experiment off). The server
+remembers the admitted addresses across restarts, keeps one through a failed or
+timed-out availability check, and drops it when the provider answers that it is
+unavailable or needs setup, the route is removed, or its plugin is disabled or
+removed.
+`bb settings show --json` includes fresh provider availability; failed or
+timed-out checks report unavailable. Machines use these routes for ongoing
+runtime requests, including account-pool endpoints. A machine on bb connect access holds
 a getbb.app machine credential that `bb machine remove` revokes; if that
-revocation fails, revoke the machine in the getbb.app dashboard.
+revocation fails, the machine is still removed and the response carries a
+warning (printed to stderr) to revoke the machine in the getbb.app dashboard.
 
 Remote access through getbb.app comes from the bundled bb account and Connect
 plugins: `bb account login|status|logout` signs this server in (bb-account
@@ -431,3 +515,5 @@ Git config. `bb settings general machineGitCredentialsEnabled false` (the
 automatic GH_TOKEN switch in Settings → Environment variables) stops forwarding
 the server's gh credentials; `true` enables it again. This does not log the
 server out or suppress an explicit custom GH_TOKEN.
+
+Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.

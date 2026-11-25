@@ -999,7 +999,74 @@ describe("workspace open targets", () => {
     }
   });
 
-  it("uses bundled macOS editor CLIs when shell commands are unavailable", async () => {
+  it.each([
+    {
+      appName: "Code",
+      flags: ["-g"],
+      relativeExecutablePath: ["Contents", "Resources", "app", "bin", "code"],
+      targetId: "vscode",
+    },
+    {
+      appName: "Code - Insiders",
+      flags: ["-g"],
+      relativeExecutablePath: ["Contents", "Resources", "app", "bin", "code"],
+      targetId: "vscode-insiders",
+    },
+    {
+      appName: "VSCodium",
+      flags: ["-g"],
+      relativeExecutablePath: ["Contents", "Resources", "app", "bin", "codium"],
+      targetId: "vscodium",
+    },
+    {
+      appName: "Windsurf",
+      flags: ["-g"],
+      relativeExecutablePath: [
+        "Contents",
+        "Resources",
+        "app",
+        "bin",
+        "windsurf",
+      ],
+      targetId: "devin-desktop",
+    },
+    {
+      appName: "Devin",
+      flags: ["-g"],
+      relativeExecutablePath: [
+        "Contents",
+        "Resources",
+        "app",
+        "bin",
+        "devin-desktop",
+      ],
+      targetId: "devin-desktop",
+    },
+    {
+      appName: "Antigravity",
+      flags: ["-g"],
+      relativeExecutablePath: [
+        "Contents",
+        "Resources",
+        "app",
+        "bin",
+        "antigravity",
+      ],
+      targetId: "antigravity",
+    },
+    {
+      appName: "Zed Nightly",
+      flags: [],
+      relativeExecutablePath: ["Contents", "MacOS", "zed"],
+      targetId: "zed",
+    },
+    {
+      appName: "Sublime Text",
+      flags: [],
+      relativeExecutablePath: ["Contents", "SharedSupport", "bin", "subl"],
+      targetId: "sublime-text",
+    },
+  ])("opens files with the bundled $appName CLI", async (testCase) => {
     const root = await mkdtemp(
       path.join(tmpdir(), "bb-workspace-open-targets-"),
     );
@@ -1008,100 +1075,35 @@ describe("workspace open targets", () => {
     const filePath = path.join(workspacePath, "src", "file.ts");
     const calls: ExecFileCall[] = [];
     const execFile = createAvailableExecFile({ calls });
-    const cases = [
-      {
-        appName: "Code",
-        args: ["-g", `${filePath}:15:6`],
-        relativeExecutablePath: ["Contents", "Resources", "app", "bin", "code"],
-        targetId: "vscode",
-      },
-      {
-        appName: "Code - Insiders",
-        args: ["-g", `${filePath}:15:6`],
-        relativeExecutablePath: ["Contents", "Resources", "app", "bin", "code"],
-        targetId: "vscode-insiders",
-      },
-      {
-        appName: "Windsurf",
-        args: ["-g", `${filePath}:15:6`],
-        relativeExecutablePath: [
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "windsurf",
-        ],
-        targetId: "devin-desktop",
-      },
-      {
-        appName: "Devin",
-        args: ["-g", `${filePath}:15:6`],
-        relativeExecutablePath: [
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "devin-desktop",
-        ],
-        targetId: "devin-desktop",
-      },
-      {
-        appName: "Antigravity",
-        args: ["-g", `${filePath}:15:6`],
-        relativeExecutablePath: [
-          "Contents",
-          "Resources",
-          "app",
-          "bin",
-          "antigravity",
-        ],
-        targetId: "antigravity",
-      },
-      {
-        appName: "Zed Nightly",
-        args: [`${filePath}:15:6`],
-        relativeExecutablePath: ["Contents", "MacOS", "zed"],
-        targetId: "zed",
-      },
-      {
-        appName: "Sublime Text",
-        args: [`${filePath}:15:6`],
-        relativeExecutablePath: ["Contents", "SharedSupport", "bin", "subl"],
-        targetId: "sublime-text",
-      },
-    ];
-
     try {
       await mkdir(path.dirname(filePath), { recursive: true });
       await writeFile(filePath, "export const value = 1;\n");
-      for (const testCase of cases) {
-        const executablePath = path.join(
-          applicationsDirectory,
-          `${testCase.appName}.app`,
-          ...testCase.relativeExecutablePath,
-        );
-        await mkdir(path.dirname(executablePath), { recursive: true });
-        await writeFile(executablePath, "");
+      const executablePath = path.join(
+        applicationsDirectory,
+        `${testCase.appName}.app`,
+        ...testCase.relativeExecutablePath,
+      );
+      await mkdir(path.dirname(executablePath), { recursive: true });
+      await writeFile(executablePath, "");
 
-        await openPathInTargetWithRuntime(
-          {
-            context: { kind: "local" },
-            columnNumber: 6,
-            lineNumber: 15,
-            path: filePath,
-            targetId: testCase.targetId,
-          },
-          createRuntime({
-            applicationDirectories: [applicationsDirectory],
-            execFile,
-          }),
-        );
+      await openPathInTargetWithRuntime(
+        {
+          context: { kind: "local" },
+          columnNumber: 6,
+          lineNumber: 15,
+          path: filePath,
+          targetId: testCase.targetId,
+        },
+        createRuntime({
+          applicationDirectories: [applicationsDirectory],
+          execFile,
+        }),
+      );
 
-        expect(calls.find((call) => call.file === executablePath)).toEqual({
-          file: executablePath,
-          args: testCase.args,
-        });
-      }
+      expect(calls.find((call) => call.file === executablePath)).toEqual({
+        file: executablePath,
+        args: [...testCase.flags, `${filePath}:15:6`],
+      });
     } finally {
       await rm(root, { force: true, recursive: true });
     }

@@ -1,10 +1,10 @@
 import type { ReactNode } from "react";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import { pluginCliCall } from "@bb/domain/plugin-cli";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Button } from "@bb/shared-ui/button";
-import type { PluginCapability, SkillListResponse } from "@bb/server-contract";
+import type { PluginCapability } from "@bb/server-contract";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   ResourceActionButton,
@@ -35,15 +35,15 @@ import {
   type PluginSlotSnapshot,
 } from "@/lib/plugin-slots";
 import {
-  getPluginConfigurationRoutePath,
   getPluginPanelRoutePath,
   getRootComposeRoutePath,
-  getSettingsRoutePath,
   getSkillDetailRoutePath,
   getSkillsRoutePath,
 } from "@/lib/route-paths";
 import { getPluginHomepageSectionAnchor } from "@/lib/plugin-homepage-section";
 import { projectSkillsQueryKey } from "@/hooks/queries/query-keys";
+import { sdk } from "@/lib/sdk";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 function pluginActivityIcon(state: "running" | "ok" | "error" | null): {
   name: IconName;
@@ -197,7 +197,7 @@ function pluginAppSurfaceItems(
             "settings",
             "Settings",
             "Opens this plugin's configuration.",
-            configurationPath ?? getPluginConfigurationRoutePath({ pluginId }),
+            configurationPath ?? getSettingsTargetPath({ pluginId: pluginId }),
           ),
         ]
       : []),
@@ -246,14 +246,14 @@ function pluginAppSurfaceItems(
       slots.threadLists,
       "thread-list",
       "Can replace the sidebar thread list; configured in Appearance.",
-      () => getSettingsRoutePath("appearance"),
+      () => getSettingsTargetPath({ section: "appearance" }),
     ),
     ...namedSlotItems(
       pluginId,
       slots.experimentalSidebarNavigations,
       "sidebar-navigation",
       "Can draw the sidebar navigation; configured in Appearance.",
-      () => getSettingsRoutePath("appearance"),
+      () => getSettingsTargetPath({ section: "appearance" }),
     ),
     ...namedSlotItems(
       pluginId,
@@ -272,7 +272,7 @@ function pluginAppSurfaceItems(
       slots.composers,
       "composer",
       "Can replace the thread composer; configured in Appearance.",
-      () => getSettingsRoutePath("appearance"),
+      () => getSettingsTargetPath({ section: "appearance" }),
     ),
     ...namedSlotItems(
       pluginId,
@@ -354,6 +354,18 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
+      slots.threadRails,
+      "thread-rail",
+      "Adds an item to the rail beside the conversation.",
+    ),
+    ...namedSlotItems(
+      pluginId,
+      slots.threadRailOutlines,
+      "thread-rail-outline",
+      "Replaces the thread outline beside the conversation.",
+    ),
+    ...namedSlotItems(
+      pluginId,
       slots.threadContextCardRows,
       "thread-context-card-row",
       "Adds a row to the thread context card.",
@@ -428,7 +440,7 @@ function pluginAppSurfaceItems(
           slot.id,
           slot.title,
           "Opens supported files in a plugin-provided viewer.",
-          getSettingsRoutePath("files"),
+          getSettingsTargetPath({ section: "files" }),
         ),
         detail:
           slot.extensions.length === 0 ? (
@@ -471,10 +483,16 @@ export function PluginIncludes({
   configurationPath?: string;
 }) {
   const slots = usePluginSlots();
-  const queryClient = useQueryClient();
-  const cachedSkills = queryClient.getQueryData<SkillListResponse>(
-    projectSkillsQueryKey(PERSONAL_PROJECT_ID),
-  );
+  const cachedSkills = useQuery({
+    queryKey: projectSkillsQueryKey(PERSONAL_PROJECT_ID),
+    queryFn: ({ signal }) =>
+      sdk.skills.list({
+        projectId: PERSONAL_PROJECT_ID,
+        environmentId: null,
+        signal,
+      }),
+    enabled: false,
+  }).data;
   const appItems = pluginAppSurfaceItems(plugin, slots, configurationPath);
 
   const skillDestination = (capabilityId: string): string => {
@@ -498,7 +516,7 @@ export function PluginIncludes({
         mono: kind === "skill" || kind === "agent-tool",
         destinationPath:
           kind === "theme"
-            ? getSettingsRoutePath("appearance")
+            ? getSettingsTargetPath({ section: "appearance" })
             : kind === "skill"
               ? skillDestination(capability.id)
               : undefined,
@@ -656,7 +674,7 @@ function PluginRuntimeStatusAlert({
                 <Link
                   to={
                     configurationPath ??
-                    getPluginConfigurationRoutePath({ pluginId: plugin.id })
+                    getSettingsTargetPath({ pluginId: plugin.id })
                   }
                 >
                   Open settings

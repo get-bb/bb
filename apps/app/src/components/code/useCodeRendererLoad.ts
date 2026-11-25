@@ -8,7 +8,7 @@ import {
 } from "./codeRendererProvider";
 
 export function useDiffRendererLoad(): void {
-  const builtin = useDiffRendererReplacement().kind === "owner";
+  const builtin = useDiffRendererReplacement().kind === "builtin";
   useRequirePierreWorkerPool(builtin);
   useEffect(() => {
     if (builtin) void BbDiffSplit.preload();
@@ -16,7 +16,7 @@ export function useDiffRendererLoad(): void {
 }
 
 export function useSourceCodeRendererLoad(): void {
-  const builtin = useSourceCodeRendererReplacement().kind === "owner";
+  const builtin = useSourceCodeRendererReplacement().kind === "builtin";
   useRequirePierreWorkerPool(builtin);
   useEffect(() => {
     if (builtin) void BbSourceCodeSplit.preload();

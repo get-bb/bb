@@ -23,14 +23,10 @@ import {
   sidebarNavigationQueryKey,
   uiPreferencesQueryKey,
 } from "@/hooks/queries/query-keys";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
+import { Sidebar, SidebarProvider } from "@/components/ui/sidebar";
 import { isPluginAppDefinition } from "@/lib/plugin-app-definition";
 import { installPluginRuntime } from "@/lib/plugin-frontend";
-import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
+import type { ExclusiveResolution } from "@/lib/plugin-replacement-preference";
 import {
   setPluginSlotRegistrations,
   type PluginThreadListSlot,
@@ -92,7 +88,7 @@ export async function loadPluginThreadListReplacement({
   withNotifications,
 }: {
   withNotifications: boolean;
-}): Promise<ResolvedReplacement<PluginThreadListSlot>> {
+}): Promise<ExclusiveResolution<PluginThreadListSlot>> {
   if (withNotifications) {
     await loadPluginAppThreadActions("push-notifications");
   }
@@ -104,6 +100,7 @@ export async function loadPluginThreadListReplacement({
   return {
     kind: "plugin",
     registration: { ...registration, pluginId: "thread-list", generation: 1 },
+    fallback: null,
   };
 }
 
@@ -206,9 +203,7 @@ export function SidebarThreadListHarness({
         <QueryClientProvider client={queryClient}>
           <MemoryRouter>
             <SidebarProvider>
-              <Sidebar>
-                <SidebarContent>{children}</SidebarContent>
-              </Sidebar>
+              <Sidebar>{children}</Sidebar>
             </SidebarProvider>
           </MemoryRouter>
         </QueryClientProvider>

@@ -1,4 +1,7 @@
-import type { AvailableModel } from "@get-bb/plugin-sdk/provider-bridge";
+import {
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
+  type AvailableModel,
+} from "@get-bb/plugin-sdk/provider-bridge";
 import { resolve } from "node:path";
 import {
   createPiModelContextWindowResolverFrom,
@@ -8,7 +11,6 @@ import { buildPiAvailableModels, type PiCatalogModel } from "../model-list.js";
 import {
   PiRpcChild,
   PiRpcChildExitedError,
-  buildPiChildEnv,
   type PiRpcChildExitInfo,
 } from "./rpc-child.js";
 
@@ -85,11 +87,32 @@ export interface PiCatalog {
   close(): Promise<void>;
 }
 
-const catalogsByCwd = new Map<string, Promise<PiCatalog>>();
+const catalogsByKey = new Map<string, Promise<PiCatalog>>();
+
+function catalogKey(
+  cwd: string,
+  envVars: Readonly<Record<string, string>>,
+): string {
+  return JSON.stringify([
+    resolve(cwd),
+    Object.entries(envVars).sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  ]);
+}
+
+function catalogCliEnv(
+  envVars: Readonly<Record<string, string>>,
+): NodeJS.ProcessEnv {
+  const env = buildProviderCliEnv(envVars);
+  delete env.PI_BB_TOOLS_FILE;
+  return env;
+}
 
 async function spawnCatalog(
   cwd: string,
   extensionPath: string,
+  envVars: Readonly<Record<string, string>>,
   touch: () => void,
 ): Promise<PiCatalog> {
   interface CatalogChildGeneration {
@@ -131,7 +154,7 @@ async function spawnCatalog(
     };
     const child = new PiRpcChild({
       cwd,
-      env: buildPiChildEnv({}),
+      env: catalogCliEnv(envVars),
       args: ["--mode", "rpc", "--no-session", "--extension", extensionPath],
       onEvent: () => {},
       onChannelMessage: (message) => {
@@ -348,34 +371,31 @@ function touchCatalog(key: string): void {
   }
   const timer = setTimeout(() => {
     catalogIdleTimers.delete(key);
-    const catalog = catalogsByCwd.get(key);
-    catalogsByCwd.delete(key);
+    const catalog = catalogsByKey.get(key);
+    catalogsByKey.delete(key);
     void catalog?.then((entry) => entry.close()).catch(() => undefined);
   }, catalogIdleMs());
   timer.unref?.();
   catalogIdleTimers.set(key, timer);
 }
 
-export function peekPiCatalog(cwd: string): Promise<PiCatalog> | null {
-  return catalogsByCwd.get(resolve(cwd)) ?? null;
-}
-
 export function getPiCatalog(
   cwd: string,
   extensionPath: string,
+  envVars: Readonly<Record<string, string>>,
 ): Promise<PiCatalog> {
-  const key = resolve(cwd);
-  const existing = catalogsByCwd.get(key);
+  const key = catalogKey(cwd, envVars);
+  const existing = catalogsByKey.get(key);
   if (existing) {
     return existing;
   }
-  const created = spawnCatalog(key, extensionPath, () =>
+  const created = spawnCatalog(resolve(cwd), extensionPath, envVars, () =>
     touchCatalog(key),
   ).catch((error: unknown) => {
-    catalogsByCwd.delete(key);
+    catalogsByKey.delete(key);
     throw error;
   });
-  catalogsByCwd.set(key, created);
+  catalogsByKey.set(key, created);
   return created;
 }
 
@@ -384,8 +404,8 @@ export async function closeAllPiCatalogs(): Promise<void> {
     clearTimeout(timer);
   }
   catalogIdleTimers.clear();
-  const catalogs = [...catalogsByCwd.values()];
-  catalogsByCwd.clear();
+  const catalogs = [...catalogsByKey.values()];
+  catalogsByKey.clear();
   await Promise.all(
     catalogs.map((catalog) =>
       catalog.then((entry) => entry.close()).catch(() => undefined),

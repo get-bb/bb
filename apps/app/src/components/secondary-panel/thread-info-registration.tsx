@@ -1,8 +1,6 @@
 import { createContext, useContext, type ReactNode } from "react";
-import {
-  collectPluginAppRegistrations,
-  definePluginApp,
-} from "@/lib/plugin-app-definition";
+import { definePluginApp } from "@/lib/plugin-app-definition";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
 
 export const ThreadInfoContentContext = createContext<ReactNode>(null);
 
@@ -10,7 +8,7 @@ export function ThreadInfoFixedTabContent() {
   return useContext(ThreadInfoContentContext);
 }
 
-export const coreTabs = collectPluginAppRegistrations(
+export const coreTabs = collectCoreContributionSlots(
   definePluginApp((app) => {
     app.slots.experimental_tab({
       context: { kind: "thread" },
@@ -23,4 +21,5 @@ export const coreTabs = collectPluginAppRegistrations(
       component: ThreadInfoFixedTabContent,
     });
   }),
-).tabs.map((slot) => ({ ...slot, pluginId: "core", generation: 0 }));
+  "tabs",
+);

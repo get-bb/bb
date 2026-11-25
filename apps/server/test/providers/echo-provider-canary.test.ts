@@ -317,6 +317,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
       envPassthrough: command.bridgeLaunch.envPassthrough,
     };
     await runtimeInstance.startThread({
+      additionalWorkspaceWriteRoots: [],
       bridgeLaunch,
       environmentId: environment.id,
       threadId: thread.id,
@@ -471,6 +472,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
 
     const before = rows.length;
     await runtimeInstance.runTurn({
+      additionalWorkspaceWriteRoots: [],
       threadId: thread.id,
       clientRequestId: encodeClientTurnRequestIdNumber({ value: 2 }),
       input: textInput("malformed-receipt now"),
@@ -660,6 +662,7 @@ describe("echo-provider canary: plugin install → server command → runtime �
     });
     runtime = runtimeInstance;
     await runtimeInstance.startThread({
+      additionalWorkspaceWriteRoots: [],
       bridgeLaunch: {
         pluginId: command.bridgeLaunch.pluginId,
         dataDir: bridgeDataDir,

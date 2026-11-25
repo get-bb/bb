@@ -52,6 +52,7 @@ function ChatPanel({ name, enabled }: { name: string; enabled: boolean }) {
   const [activeTabId, setActiveTabId] = useState("a");
   return (
     <SidebarSplitContainer
+      isTabListReady
       activeTabId={activeTabId}
       canNavigateTabs={enabled}
       isFullScreen={false}

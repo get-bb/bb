@@ -20,7 +20,6 @@ import {
 } from "./test/runtime-test-harness.js";
 
 interface CreateContractRuntimeArgs {
-  additionalWorkspaceWriteRoots?: readonly string[];
   env?: Record<string, string>;
   launch?: CreateScriptedEchoLaunchOptions;
   onEvent?: (event: ThreadEvent) => void;
@@ -61,11 +60,6 @@ describe("createAgentRuntime command contracts", () => {
       runtime: {
         workspacePath: tmpDir,
         env: { ...record.env, ...args.env },
-        ...(args.additionalWorkspaceWriteRoots !== undefined
-          ? {
-              additionalWorkspaceWriteRoots: args.additionalWorkspaceWriteRoots,
-            }
-          : {}),
         onEvent: args.onEvent ?? (() => {}),
         ...(args.onStderr !== undefined ? { onStderr: args.onStderr } : {}),
         ...(args.shellEnv !== undefined ? { shellEnv: args.shellEnv } : {}),
@@ -79,32 +73,93 @@ describe("createAgentRuntime command contracts", () => {
     return { record, runtime };
   }
 
-  it("passes runtime workspace-write roots to the provider as provider options", async () => {
-    const additionalWorkspaceWriteRoots = [
-      "/repo/.git/worktrees/bb13",
-      "/repo/.git/objects",
-    ];
-    const { record, runtime } = createContractRuntime({
-      additionalWorkspaceWriteRoots,
-    });
+  it("sends each thread its own workspace-write roots on session start and turns", async () => {
+    const t1Roots = ["/repo/.git/worktrees/bb13", "/data/thread-storage/t1"];
+    const t2Roots = ["/repo/.git/worktrees/bb13", "/data/thread-storage/t2"];
+    const { record, runtime } = createContractRuntime();
 
     try {
-      await runtime.listModels({ providerId: "fake" });
+      await runtime.listModels({ providerId: "fake", contributedEnv: [] });
       await runtime.startThread({
         environmentId: "env-1",
         threadId: "t1",
         projectId: "p1",
         providerId: "fake",
         options: fullRuntimeOptions,
+        additionalWorkspaceWriteRoots: t1Roots,
       });
-      expect(record.last("model/list")?.params).toEqual({
-        providerOptions: { additionalWorkspaceWriteRoots },
-        envVars: {},
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t2",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+        additionalWorkspaceWriteRoots: t2Roots,
       });
-      expect(record.last("thread/start")?.params).toMatchObject({
+      await runtime.runTurn({
+        additionalWorkspaceWriteRoots: t1Roots,
+        clientRequestId: "creq_222222225t",
         threadId: "t1",
-        cwd: tmpDir,
-        options: { providerOptions: { additionalWorkspaceWriteRoots } },
+        input: [promptTextInput({ text: "hello" })],
+        options: fullRuntimeOptions,
+      });
+
+      expect(record.last("model/list")?.params).toEqual({ envVars: {} });
+      const starts = record
+        .read()
+        .filter((request) => request.method === "thread/start");
+      expect(starts.map((request) => request.params)).toMatchObject([
+        {
+          threadId: "t1",
+          options: {
+            providerOptions: { additionalWorkspaceWriteRoots: t1Roots },
+          },
+        },
+        {
+          threadId: "t2",
+          options: {
+            providerOptions: { additionalWorkspaceWriteRoots: t2Roots },
+          },
+        },
+      ]);
+      expect(record.last("turn/start")?.params).toMatchObject({
+        threadId: "t1",
+        options: {
+          providerOptions: { additionalWorkspaceWriteRoots: t1Roots },
+        },
+      });
+    } finally {
+      await runtime.shutdown();
+    }
+  });
+
+  it("sends a turn the write roots it was submitted with, so a removed folder loses access", async () => {
+    const withFolder = ["/work/api", "/data/thread-storage/t1"];
+    const withoutFolder = ["/data/thread-storage/t1"];
+    const { record, runtime } = createContractRuntime();
+
+    try {
+      await runtime.startThread({
+        environmentId: "env-1",
+        threadId: "t1",
+        projectId: "p1",
+        providerId: "fake",
+        options: fullRuntimeOptions,
+        additionalWorkspaceWriteRoots: withFolder,
+      });
+      await runtime.runTurn({
+        additionalWorkspaceWriteRoots: withoutFolder,
+        clientRequestId: "creq_222222226t",
+        threadId: "t1",
+        input: [promptTextInput({ text: "hello" })],
+        options: fullRuntimeOptions,
+      });
+
+      expect(record.last("turn/start")?.params).toMatchObject({
+        threadId: "t1",
+        options: {
+          providerOptions: { additionalWorkspaceWriteRoots: withoutFolder },
+        },
       });
     } finally {
       await runtime.shutdown();
@@ -153,7 +208,11 @@ describe("createAgentRuntime command contracts", () => {
     });
 
     try {
-      await runtime.listModels({ providerId: "acp-custom", bridgeLaunch });
+      await runtime.listModels({
+        providerId: "acp-custom",
+        bridgeLaunch,
+        contributedEnv: [],
+      });
       await runtime.startThread({
         bridgeLaunch,
         environmentId: "env-1",
@@ -397,6 +456,7 @@ describe("createAgentRuntime command contracts", () => {
       method: "turn/start",
       send: (runtime: LaunchBoundAgentRuntime) =>
         runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224t",
           threadId: "t1",
           input: [promptTextInput({ text: "hello" })],
@@ -637,6 +697,7 @@ describe("createAgentRuntime command contracts", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224v",
       threadId: "t1",
       input: [promptTextInput({ text: "delay:500" })],

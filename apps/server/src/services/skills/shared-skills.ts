@@ -1,28 +1,28 @@
 import {
-  EMPTY_PROVIDER_NATIVE_ROOTS,
-  EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
   normalizeProviderNativeRoots,
   providerNativeRootsAreEmpty,
   type ProviderNativeRoots,
 } from "@bb/domain";
 import type { DiscoveredSkill } from "@bb/host-daemon-contract";
-import type { SkillSummary } from "@bb/server-contract";
-import { COMMAND_TIMEOUT_MS } from "../../constants.js";
 import type { LoggedWorkSessionDeps } from "../../types.js";
-import { callHostRetryableOnlineRpc } from "../hosts/online-rpc.js";
 import { hostPathDirname } from "../lib/host-path.js";
+import { listNativeRootSkills } from "../providers/native-roots.js";
 import type { SharedInjectedSkillSource } from "./injected-skills.js";
+import type { SkillRegistration } from "./skill-listing.js";
 
 export interface ResolvedSharedSkills {
   runtimeSources: SharedInjectedSkillSource[];
-  summaries: SkillSummary[];
+  summaries: SkillRegistration[];
   identities: ReadonlyMap<string, { contentSha256: string; realPath: string }>;
 }
 
 function toSharedSkill(
   deps: Pick<LoggedWorkSessionDeps, "logger">,
   skill: DiscoveredSkill,
-): { runtimeSource: SharedInjectedSkillSource; summary: SkillSummary } | null {
+): {
+  runtimeSource: SharedInjectedSkillSource;
+  summary: SkillRegistration;
+} | null {
   const sourceType = skill.rootKind;
   if (sourceType !== "shared-user" && sourceType !== "shared-project") {
     return null;
@@ -75,21 +75,13 @@ export async function resolveSharedSkills(
   if (providerNativeRootsAreEmpty(roots)) {
     return { runtimeSources: [], summaries: [], identities: new Map() };
   }
-  const result = await callHostRetryableOnlineRpc(deps, {
+  const result = await listNativeRootSkills(deps, {
+    registrations: [],
+    sharedRoots: roots,
     hostId: args.hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: {
-      type: "host.list_skills",
-      providerId: "bb-shared",
-      cwd: args.cwd,
-      nativeRoots: {
-        skills: roots,
-        commands: EMPTY_PROVIDER_NATIVE_ROOTS,
-        resolved: EMPTY_PROVIDER_RESOLVED_NATIVE_ROOTS,
-      },
-    },
+    cwd: args.cwd,
   });
-  return toResolvedSharedSkills(deps, result.skills);
+  return toResolvedSharedSkills(deps, result.sharedSkills);
 }
 
 export function toResolvedSharedSkills(
@@ -97,7 +89,7 @@ export function toResolvedSharedSkills(
   skills: readonly DiscoveredSkill[],
 ): ResolvedSharedSkills {
   const resolved: Array<NonNullable<ReturnType<typeof toSharedSkill>>> = [];
-  const summaries: SkillSummary[] = [];
+  const summaries: SkillRegistration[] = [];
   const names = new Set<string>();
   for (const skill of skills) {
     const entry = toSharedSkill(deps, skill);

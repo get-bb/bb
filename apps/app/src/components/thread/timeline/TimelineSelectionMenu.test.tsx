@@ -194,6 +194,44 @@ describe("TimelineSelectionMenu", () => {
     },
   );
 
+  it("moves to the new end when a selection handle extends the selection", async () => {
+    const menuTop = () => {
+      const wrapper = document.querySelector<HTMLElement>(
+        "[data-radix-popper-content-wrapper]",
+      );
+      const match = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/u.exec(
+        wrapper?.style.transform ?? "",
+      );
+      return match === null ? null : Number(match[2]);
+    };
+    const { rerender } = render(
+      <TimelineSelectionMenu
+        selection={makeSelection({
+          anchorPoint: { x: 60, y: 100 },
+          anchorSide: "bottom",
+        })}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(menuTop()).not.toBeNull());
+    const firstTop = menuTop() ?? 0;
+
+    rerender(
+      <TimelineSelectionMenu
+        selection={makeSelection({
+          rect: new DOMRect(10, 10, 100, 80),
+          anchorPoint: { x: 60, y: 160 },
+          anchorSide: "bottom",
+        })}
+        onAddToChat={vi.fn()}
+        onDismiss={vi.fn()}
+      />,
+    );
+
+    await waitFor(() => expect(menuTop()).toBe(firstTop + 60));
+  });
+
   it("uses the selected anchor side when positioning from a pointer release", () => {
     render(
       <TimelineSelectionMenu

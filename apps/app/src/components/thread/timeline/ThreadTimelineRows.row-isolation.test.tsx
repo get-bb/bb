@@ -8,13 +8,15 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
-import { formatShortMessageTime } from "./message-time";
+import { formatShortMessageTime } from "@bb/shared-ui/message-time";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { settleLazyModules } from "@/test/lazy-modules";
+import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import { UNAVAILABLE_APP_PANEL_CONTROLLER } from "@/lib/app-fixed-tab-navigation";
 
 const renderRecorder = await vi.hoisted(async () => {
   const { installRenderRecorder } = await import("@/test/render-recorder");
@@ -266,6 +268,35 @@ describe("ThreadTimelineRows row isolation", () => {
     ).toBeDefined();
     expect(renderedRowIds("TimelineRowItem")).toEqual(["assistant_message_11"]);
     expect(renderedRowIds("ConversationRow")).toEqual(["assistant_message_11"]);
+  });
+
+  it("does not re-render rows when the thread view's navigation host changes", async () => {
+    const queryClient = new QueryClient();
+    const rows = Array.from({ length: 12 }, (_, index) => assistantRow(index));
+    const renderTimeline = (openTerminal: () => boolean) => (
+      <MemoryRouter>
+        <QueryClientProvider client={queryClient}>
+          <AppNavigationHostProvider
+            capabilities={{
+              panel: UNAVAILABLE_APP_PANEL_CONTROLLER,
+              openTerminal,
+            }}
+          >
+            <ThreadTimelineRows
+              threadId="thr_main"
+              timelineRows={rows}
+              threadRuntimeDisplayStatus="idle"
+            />
+          </AppNavigationHostProvider>
+        </QueryClientProvider>
+      </MemoryRouter>
+    );
+    const view = render(renderTimeline(() => false));
+    await settleLazyModules();
+    renderRecorder.reset();
+
+    view.rerender(renderTimeline(() => true));
+    expect(renderedRowIds("ConversationRowContent")).toEqual([]);
   });
 
   it("re-renders only the appended row and the rows whose state it moves", async () => {

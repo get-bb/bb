@@ -140,6 +140,18 @@ export function dropThreadRunStateTables(db: DbConnection): void {
   );
 }
 
+export function dropServerAccessRouteTables(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS host_server_access_grants");
+  const sessionColumns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(host_daemon_sessions)")
+    .all();
+  for (const column of ["route_provider_id", "route_kind"]) {
+    if (sessionColumns.some((existing) => existing.name === column)) {
+      db.$client.exec(`ALTER TABLE host_daemon_sessions DROP COLUMN ${column}`);
+    }
+  }
+}
+
 export function dropPluginFailureLabelColumns(db: DbConnection): void {
   for (const [table, column] of [
     ["plugins", "last_failure_label"],
@@ -151,6 +163,106 @@ export function dropPluginFailureLabelColumns(db: DbConnection): void {
     if (columns.some((existing) => existing.name === column)) {
       db.$client.exec(`ALTER TABLE ${table} DROP COLUMN ${column}`);
     }
+  }
+}
+
+export function rewindMachineTeardownRecoveryColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(hosts)")
+    .all();
+  const names = new Set(columns.map((existing) => existing.name));
+  if (names.has("teardown_blocked_by_environment_id")) {
+    db.$client.exec(
+      "ALTER TABLE hosts DROP COLUMN teardown_blocked_by_environment_id",
+    );
+  }
+  if (names.has("remove_retry_at") && !names.has("suspend_retry_at")) {
+    db.$client.exec("ALTER TABLE hosts ADD COLUMN suspend_retry_at integer");
+  }
+}
+
+export function dropPluginMarketplaceEnabledColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(plugin_marketplaces)")
+    .all();
+  if (columns.some((column) => column.name === "enabled")) {
+    db.$client.exec("ALTER TABLE plugin_marketplaces DROP COLUMN enabled");
+  }
+}
+
+const QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP = 1795210022396;
+
+export function rewindQueuedMessageRecheckAtMigration(db: DbConnection): void {
+  db.$client
+    .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")
+    .run(QUEUED_MESSAGE_RECHECK_AT_MIGRATION_TIMESTAMP);
+  rewindThreadPurgeStartedColumn(db);
+  dropQueuedMessageSourcesAndCompactFirstColumns(db);
+  dropThreadSearchOrderIndex(db);
+  dropForkHistoryCopyIndex(db);
+  dropQueuedMessageRecheckAtColumn(db);
+  dropProjectFolderSchema(db);
+  dropServerAccessRouteTables(db);
+}
+
+export function dropQueuedMessageRecheckAtColumn(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS queued_thread_messages_recheck_idx");
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  if (columns.some((column) => column.name === "recheck_at")) {
+    db.$client.exec(
+      "ALTER TABLE queued_thread_messages DROP COLUMN recheck_at",
+    );
+  }
+}
+
+export function dropProjectFolderSchema(db: DbConnection): void {
+  db.$client.exec("DROP TABLE IF EXISTS project_source_folders");
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(environments)")
+    .all();
+  for (const column of ["additional_paths", "setup_folder_paths"]) {
+    if (columns.some((entry) => entry.name === column)) {
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${column}`);
+    }
+  }
+}
+
+export function dropForkHistoryCopyIndex(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS threads_fork_history_copy_idx");
+}
+
+export function dropEnvironmentHoldColumns(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(environments)")
+    .all();
+  for (const name of ["held_by", "create_pending"])
+    if (columns.some((existing) => existing.name === name))
+      db.$client.exec(`ALTER TABLE environments DROP COLUMN ${name}`);
+}
+
+export function dropThreadSearchOrderIndex(db: DbConnection): void {
+  db.$client.exec("DROP INDEX IF EXISTS `threads_search_order_idx`");
+}
+
+export function dropQueuedMessageSourcesAndCompactFirstColumns(
+  db: DbConnection,
+): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(queued_thread_messages)")
+    .all();
+  for (const name of ["execution_input_sources", "compact_first"])
+    if (columns.some((existing) => existing.name === name))
+      db.$client.exec(`ALTER TABLE queued_thread_messages DROP COLUMN ${name}`);
+}
+
+export function rewindThreadPurgeStartedColumn(db: DbConnection): void {
+  const columns = db.$client
+    .prepare<[], { name: string }>("PRAGMA table_info(thread_purges)")
+    .all();
+  if (columns.some((existing) => existing.name === "started_at")) {
+    db.$client.exec("ALTER TABLE thread_purges DROP COLUMN started_at");
   }
 }
 

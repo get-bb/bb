@@ -1,4 +1,8 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type PluginThreadSettledEvent,
+} from "@get-bb/plugin-sdk";
 import {
   invalidateComments,
   invalidateThreads,
@@ -28,6 +32,49 @@ function liveStatusFromThread(thread: SdkThread): TaskThreadLiveStatus {
   }
 }
 
+async function liveStatusFromSettled(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  event: PluginThreadSettledEvent,
+): Promise<TaskThreadLiveStatus | null> {
+  switch (event.outcome) {
+    case "completed":
+      return "idle";
+    case "failed":
+      return "failed";
+    case "cancelled":
+      return liveStatusAfterCancelledMessage(bb, store, event.thread);
+    case "archived":
+      return "idle";
+    case "deleted":
+      return "completed";
+  }
+}
+
+async function liveStatusAfterCancelledMessage(
+  bb: BbPluginApi,
+  store: TasksApiStore,
+  thread: SdkThread,
+): Promise<TaskThreadLiveStatus | null> {
+  if (thread.status !== "pending") return liveStatusFromThread(thread);
+  if (store.tasks.listTaskThreadsByThreadId(thread.id).length === 0) {
+    return null;
+  }
+  try {
+    const queued = await bb.sdk.threads.queuedMessages.list({
+      threadId: thread.id,
+    });
+    return queued.length === 0 ? "idle" : null;
+  } catch (error) {
+    bb.log.warn(
+      `Could not list queued messages of task thread ${thread.id}: ${errorMessage(
+        error,
+      )}`,
+    );
+    return null;
+  }
+}
+
 function trackedThreads(store: TasksApiStore): TaskThread[] {
   const tracked: TaskThread[] = [];
   for (const task of store.tasks.listTasks()) {
@@ -45,13 +92,6 @@ function statusCommentBody(
   const outcome =
     liveStatus === "completed" ? "completed — final message posted" : "failed";
   return `Thread "${thread.title}" ${outcome} · ${thread.threadId}`;
-}
-
-function sdkErrorCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null || !("code" in error)) {
-    return undefined;
-  }
-  return typeof error.code === "string" ? error.code : undefined;
 }
 
 function transitionThread(
@@ -105,7 +145,10 @@ async function reconcileTrackedThread(
     });
     transitionThread(bb, store, trackedThread, liveStatusFromThread(thread));
   } catch (error) {
-    if (sdkErrorCode(error) === "thread_not_found") {
+    if (
+      error instanceof experimental_BbHttpError &&
+      error.code === "thread_not_found"
+    ) {
       transitionThread(bb, store, trackedThread, "completed");
       return;
     }
@@ -140,14 +183,10 @@ export async function registerLifecycle(
   bb.events.on("thread.active", ({ thread }) => {
     transitionTrackedThread(bb, store, thread.id, "working");
   });
-  bb.events.on("thread.idle", ({ thread }) => {
-    transitionTrackedThread(bb, store, thread.id, "idle");
-  });
-  bb.events.on("thread.failed", ({ thread }) => {
-    transitionTrackedThread(bb, store, thread.id, "failed");
-  });
-  bb.events.on("thread.deleted", ({ thread }) => {
-    transitionTrackedThread(bb, store, thread.id, "completed");
+  bb.events.on("experimental_thread.settled", async (event) => {
+    const liveStatus = await liveStatusFromSettled(bb, store, event);
+    if (liveStatus === null) return;
+    transitionTrackedThread(bb, store, event.thread.id, liveStatus);
   });
 
   await reconcileTrackedThreads(bb, store);

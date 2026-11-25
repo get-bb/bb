@@ -3,6 +3,13 @@ import type {
   ComposerPlusMenuItem,
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
+import {
+  AUTOMATIC_REPLACEMENT_PROVIDER,
+  NO_AUTOMATIC_RULE,
+  REPLACEMENT_RULE,
+  resolveExclusive,
+  type ExclusiveBootState,
+} from "./plugin-replacement-preference";
 import type {
   PluginCodeFenceRendererSlot,
   PluginComposerCustomizationSlot,
@@ -235,77 +242,98 @@ export function resolveTimelineRenderer(
 
 export type ResolvedMessageDirective =
   | { status: "ok"; slot: PluginMessageDirectiveSlot }
+  | { status: "loading" }
+  | { status: "literal" }
   | { status: "collision"; pluginIds: readonly string[] };
 
-function resolveMessageDirectiveClaimants(
-  claimants: readonly PluginMessageDirectiveSlot[],
-): ResolvedMessageDirective | null {
-  if (claimants.length === 0) return null;
-  const only = claimants[0];
-  if (claimants.length === 1 && only !== undefined) {
-    return { status: "ok", slot: only };
+function groupClaimants<Slot>(
+  registrations: readonly Slot[],
+  keysOf: (registration: Slot) => readonly string[],
+): Map<string, Slot[]> {
+  const claimantsByKey = new Map<string, Slot[]>();
+  for (const registration of registrations) {
+    for (const key of keysOf(registration)) {
+      const claimants = claimantsByKey.get(key);
+      if (claimants === undefined) {
+        claimantsByKey.set(key, [registration]);
+      } else {
+        claimants.push(registration);
+      }
+    }
   }
-  return {
-    status: "collision",
-    pluginIds: [
-      ...new Set(claimants.map((claimant) => claimant.pluginId)),
-    ].sort(),
-  };
+  return claimantsByKey;
+}
+
+function distinctPluginIds(
+  claimants: readonly { pluginId: string }[],
+): readonly string[] {
+  return [...new Set(claimants.map((claimant) => claimant.pluginId))].sort();
 }
 
 export function resolveMessageDirectiveRegistry(
   registrations: readonly PluginMessageDirectiveSlot[],
+  picks: Readonly<Record<string, string>>,
+  boot: ExclusiveBootState,
 ): ReadonlyMap<string, ResolvedMessageDirective> {
-  const claimantsById = new Map<string, PluginMessageDirectiveSlot[]>();
-  for (const registration of registrations) {
-    const claimants = claimantsById.get(registration.id);
-    if (claimants === undefined) {
-      claimantsById.set(registration.id, [registration]);
-    } else {
-      claimants.push(registration);
-    }
-  }
-
   const resolved = new Map<string, ResolvedMessageDirective>();
-  for (const [id, claimants] of claimantsById) {
-    const directive = resolveMessageDirectiveClaimants(claimants);
-    if (directive !== null) resolved.set(id, directive);
+  for (const [name, claimants] of groupClaimants(
+    registrations,
+    (registration) => [registration.id],
+  )) {
+    const directive = resolveExclusive({
+      claimants,
+      pick: picks[name] ?? AUTOMATIC_REPLACEMENT_PROVIDER,
+      rememberedAutomatic: null,
+      rule: NO_AUTOMATIC_RULE,
+      ...boot,
+    });
+    switch (directive.kind) {
+      case "plugin":
+        resolved.set(name, { status: "ok", slot: directive.registration });
+        break;
+      case "loading":
+        resolved.set(name, { status: "loading" });
+        break;
+      case "builtin":
+        resolved.set(name, { status: "literal" });
+        break;
+      case "contested":
+        resolved.set(name, {
+          status: "collision",
+          pluginIds: distinctPluginIds(claimants),
+        });
+        break;
+    }
   }
   return resolved;
 }
 
 export type ResolvedCodeFenceRenderer =
   | { status: "ok"; slot: PluginCodeFenceRendererSlot }
-  | { status: "collision"; pluginIds: readonly string[] };
+  | { status: "builtin" };
 
 export function resolveCodeFenceRendererRegistry(
   registrations: readonly PluginCodeFenceRendererSlot[],
+  picks: Readonly<Record<string, string>>,
+  boot: ExclusiveBootState,
 ): ReadonlyMap<string, ResolvedCodeFenceRenderer> {
-  const claimantsByLanguage = new Map<string, PluginCodeFenceRendererSlot[]>();
-  for (const registration of registrations) {
-    for (const language of registration.languages) {
-      const claimants = claimantsByLanguage.get(language);
-      if (claimants === undefined) {
-        claimantsByLanguage.set(language, [registration]);
-      } else {
-        claimants.push(registration);
-      }
-    }
-  }
   const resolved = new Map<string, ResolvedCodeFenceRenderer>();
-  for (const [language, claimants] of claimantsByLanguage) {
-    const [first] = claimants;
-    if (first === undefined) continue;
+  for (const [language, claimants] of groupClaimants(
+    registrations,
+    (registration) => registration.languages,
+  )) {
+    const renderer = resolveExclusive({
+      claimants,
+      pick: picks[language] ?? AUTOMATIC_REPLACEMENT_PROVIDER,
+      rememberedAutomatic: null,
+      rule: REPLACEMENT_RULE,
+      ...boot,
+    });
     resolved.set(
       language,
-      claimants.length === 1
-        ? { status: "ok", slot: first }
-        : {
-            status: "collision",
-            pluginIds: [
-              ...new Set(claimants.map((claimant) => claimant.pluginId)),
-            ].sort(),
-          },
+      renderer.kind === "plugin"
+        ? { status: "ok", slot: renderer.registration }
+        : { status: "builtin" },
     );
   }
   return resolved;
@@ -334,9 +362,7 @@ export type FileOpenerOverride =
   | "builtin"
   | { pluginId: string; openerId: string };
 
-export type FileOpenerPreferenceMap = Record<string, string>;
-
-export const BUILT_IN_FILE_OPENER_PREFERENCE = "__builtin__";
+export type FileOpenerPreferenceMap = Readonly<Record<string, string>>;
 
 export function getFileExtension(path: string): string | null {
   const name = path.split("/").at(-1) ?? path;
@@ -345,18 +371,12 @@ export function getFileExtension(path: string): string | null {
   return name.slice(dotIndex + 1).toLowerCase();
 }
 
-export function buildFileOpenerRef(opener: {
-  pluginId: string;
-  id: string;
-}): string {
-  return `${opener.pluginId}:${opener.id}`;
-}
-
 export function resolveFileOpenerReplacement(args: {
   registrations: readonly PluginFileOpenerSlot[];
-  preference?: FileOpenerPreferenceMap;
+  picks: FileOpenerPreferenceMap;
   path: string;
   override?: FileOpenerOverride;
+  boot: ExclusiveBootState;
 }): ResolvedReplacement<PluginFileOpenerSlot> {
   const override = args.override;
   if (override === "builtin") return OWNER_REPLACEMENT;
@@ -371,17 +391,18 @@ export function resolveFileOpenerReplacement(args: {
 
   const extension = getFileExtension(args.path);
   if (extension === null) return OWNER_REPLACEMENT;
-  const preference = args.preference?.[extension];
-  if (preference === BUILT_IN_FILE_OPENER_PREFERENCE) {
-    return OWNER_REPLACEMENT;
-  }
-  return resolveReplacement(
-    args.registrations,
-    (candidate) =>
-      candidate.extensions.includes(extension) &&
-      (preference === undefined ||
-        buildFileOpenerRef(candidate) === preference),
-  );
+  const resolved = resolveExclusive({
+    claimants: args.registrations.filter((candidate) =>
+      candidate.extensions.includes(extension),
+    ),
+    pick: args.picks[extension] ?? AUTOMATIC_REPLACEMENT_PROVIDER,
+    rememberedAutomatic: null,
+    rule: REPLACEMENT_RULE,
+    ...args.boot,
+  });
+  return resolved.kind === "plugin"
+    ? { kind: "plugin", registration: resolved.registration }
+    : OWNER_REPLACEMENT;
 }
 
 export function resolveComposerPopups(

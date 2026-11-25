@@ -178,13 +178,13 @@ function fixture(harness: TestAppHarness) {
       hostId: target.hostId,
       sessionId,
       socket,
-      raw: JSON.stringify({
+      message: {
         type: "desktop-browser.changed",
         instanceId: target.instanceId,
         generation: target.generation,
         threadId: target.threadId,
         tabs: nativeTabs,
-      }),
+      },
     });
     return socket;
   }

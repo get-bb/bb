@@ -56,11 +56,13 @@ function installHooks(
 ): void {
   const registry: HookRegistry = {
     "message.dispatch": handlers["message.dispatch"] ?? [],
+    "thread.delete_finalize": [],
   };
   setPluginHookProvider({
     listHooks: (hook) => registry[hook],
     invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
     decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
   });
 }
 

@@ -161,6 +161,13 @@ deltas and owns every timeline invariant:
   `interaction/request` carries an approval, a user question, or a
   plugin-defined request (`"<pluginId>/<name>"`); the resolution pairs with
   the payload kind ([provider-plugin-api.md](provider-plugin-api.md) §4).
+- **Withdrawn requests.** A bridge that stops waiting on an
+  `interaction/request` or `item/tool/call` it sent (the provider answered
+  or cancelled it, it timed out, or the session ended) sends
+  `notifications/cancelled { requestId }` with that request's JSON-RPC id.
+  The runtime then never answers it: a withdrawn tool call is aborted, and a
+  withdrawn interaction is closed on the server as interrupted, so its card
+  no longer holds back the thread's next message.
 - **Turn lifecycle.** Only `turn.open`, a claiming `turn.boundary`
   (`claimIfIdle`), and accepted-input lifecycle settlement ever open a
   turn; item/stream deltas never do. Accepted input queues until a turn
@@ -338,6 +345,20 @@ and runs without injected skills, so a bridge that answers unknown methods
 with `METHOD_NOT_FOUND` still starts threads. The runtime never probes.
 Conformance rule `skills/configure-declared` pins both directions: declared →
 the request must succeed; undeclared → the request must be refused.
+
+When the injected skill catalog changes, the host daemon first offers the new
+roots to the environment's running bridges. A bridge whose handshake also
+declares `skills: { reconfigure: true }` receives another `skills/configure`
+and must apply the new roots to every open session from its next turn,
+without restarting the session or the processes it started (Codex sets the
+app-server's extra skill roots). It answers with an error when it could not.
+When every running bridge applies the change, the environment keeps its
+runtime. Otherwise the daemon falls back to the previous behavior: an
+environment with no tracked work (no live turn, open background task or
+in-flight command) is replaced, so its sessions restart with the new catalog
+on their next turn, and a busy one keeps its sessions on the old catalog while
+new sessions use the new one. Leave `reconfigure` undeclared when your bridge
+applies roots only to sessions it starts later.
 
 ### Command catalog
 
@@ -615,8 +636,19 @@ bridge-internal and invisible to the runtime. Bridges that spawn children
 finalize on `close`, not `exit`, with a bounded grace, verify currency in
 stream callbacks, and never let a descendant holding an inherited pipe inject
 into a fresh session. The bridge's own environment is constructed by the
-runtime from an allowlist; bridges construct their children's environments
-the same way and must not leak their own inherited env downward.
+runtime from an allowlist. Every provider CLI a bridge starts (session
+children, model listing, health and installation probes) gets
+`buildProviderCliEnv(envVars)` from the bridge kit: the bridge's environment
+without bridge-only runtime variables (`ELECTRON_RUN_AS_NODE`,
+`BB_PROVIDER_BRIDGE_RECORD_DIR`), plus the request's `envVars`. Launch
+settings such as an executable override are read from that same env, so a
+plugin-contributed value changes the CLI that runs, not just the variable its
+shell sees. The sessionless `model/list`, `commands/list`, `provider/health`,
+and `provider/installation/*` requests carry a required `envVars`: the provider
+env plugins contribute for that host, resolved with no thread or project.
+`provider/usage` carries none and probes with the bridge's own environment, so
+it reports the machine's own sign-in rather than a routed account's. The contract test `contract-tests/provider-cli-env.test.ts` runs this
+rule against every first-party bridge.
 
 ## Record mode
 

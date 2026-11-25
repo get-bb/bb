@@ -342,6 +342,7 @@
   ],
   "notificationMethods": [
     "error",
+    "notifications/cancelled",
     "provider/raw",
     "provider/recovery",
     "session/replaced",

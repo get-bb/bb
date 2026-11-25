@@ -334,6 +334,7 @@ describe("createAgentRuntime lifecycle", () => {
       expect(JSON.stringify(events)).toContain("/plugins/env-test/auth");
 
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222224c",
         threadId: "t1",
         input: [promptTextInput({ text: "follow up" })],
@@ -375,6 +376,7 @@ describe("createAgentRuntime lifecycle", () => {
           options: fullRuntimeOptions,
         });
         await runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224c",
           threadId: "git-thread",
           input: [promptTextInput({ text: "rotated-git-token" })],
@@ -461,6 +463,7 @@ describe("createAgentRuntime lifecycle", () => {
           options: { envVars: { PROJECT_SECRET: "project-private" } },
         });
         await runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId: "project-thread",
           clientRequestId: "creq_222222224d",
           input: [promptTextInput({ text: "removed" })],
@@ -644,6 +647,7 @@ describe("createAgentRuntime lifecycle", () => {
       const methodsBeforeTurn = recordedMethods(record).length;
 
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222224h",
         threadId: "t1",
         input: [promptTextInput({ text: "follow up" })],
@@ -778,6 +782,7 @@ describe("createAgentRuntime lifecycle", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223m",
         threadId: "t1",
         input: [promptTextInput({ text: "hello" })],
@@ -859,6 +864,7 @@ describe("createAgentRuntime lifecycle", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223q",
         threadId: "t1",
         input: [promptTextInput({ text: "delay:500" })],
@@ -878,6 +884,7 @@ describe("createAgentRuntime lifecycle", () => {
 
       await expect(
         runtime.steerTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222223r",
           threadId: "t1",
           expectedTurnId: turnId,
@@ -914,6 +921,7 @@ describe("createAgentRuntime lifecycle", () => {
       expect(runtime.getActiveTurnId("t1")).toBeNull();
 
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223t",
         threadId: "t1",
         input: [promptTextInput({ text: "delay:500" })],
@@ -934,6 +942,7 @@ describe("createAgentRuntime lifecycle", () => {
       expect(runtime.getLiveThreadIds()).toEqual(["t1"]);
       await expect(
         runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224a",
           threadId: "t1",
           input: [promptTextInput({ text: "competing active turn" })],
@@ -992,6 +1001,7 @@ describe("createAgentRuntime lifecycle", () => {
           options: fullRuntimeOptions,
         });
         const run = runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224e",
           threadId: "t1",
           input: [promptTextInput({ text: "delay:500" })],
@@ -1061,6 +1071,7 @@ describe("createAgentRuntime lifecycle", () => {
           options: fullRuntimeOptions,
         });
         await runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224c",
           threadId: "t1",
           input: [promptTextInput({ text: "wait for first event" })],
@@ -1097,6 +1108,7 @@ describe("createAgentRuntime lifecycle", () => {
           options: fullRuntimeOptions,
         });
         await runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222223u",
           threadId: "t1",
           input: [promptTextInput({ text: "wait for first event" })],
@@ -1107,6 +1119,7 @@ describe("createAgentRuntime lifecycle", () => {
         expect(runtime.getLiveThreadIds()).toEqual(["t1"]);
         await expect(
           runtime.runTurn({
+            additionalWorkspaceWriteRoots: [],
             clientRequestId: "creq_222222224b",
             threadId: "t1",
             input: [promptTextInput({ text: "competing pending turn" })],
@@ -1140,6 +1153,7 @@ describe("createAgentRuntime lifecycle", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222224d",
         threadId: "t1",
         input: [promptTextInput({ text: "never starts" })],
@@ -1175,6 +1189,7 @@ describe("createAgentRuntime lifecycle", () => {
         instructions: "Initial instructions",
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223w",
         threadId: "t1",
         input: [promptTextInput({ text: "delay:500" })],
@@ -1190,6 +1205,7 @@ describe("createAgentRuntime lifecycle", () => {
       const methodsBeforeSteer = recordedMethods(record).length;
 
       await runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223x",
         threadId: "t1",
         expectedTurnId: turnId,
@@ -1224,7 +1240,10 @@ describe("createAgentRuntime lifecycle", () => {
         },
       });
 
-      const { models } = await runtime.listModels({ providerId: "fake" });
+      const { models } = await runtime.listModels({
+        providerId: "fake",
+        contributedEnv: [],
+      });
       expect(models).toHaveLength(1);
       expect(models[0]?.id).toBe("fake-model");
       expect(models[0]?.isDefault).toBe(true);
@@ -1243,6 +1262,7 @@ describe("createAgentRuntime lifecycle", () => {
 
       await expect(
         runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222223y",
           threadId: "nonexistent",
           input: [promptTextInput({ text: "hi" })],

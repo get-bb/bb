@@ -2,6 +2,7 @@ import type { ProviderHealth } from "@bb/host-daemon-contract";
 import { updateHost } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import { listSystemProviderInfos } from "../../src/services/system/execution-options.js";
+import { getProviderInstallations } from "../../src/services/system/provider-installations.js";
 import { getProviderStates } from "../../src/services/system/provider-states.js";
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
@@ -140,6 +141,108 @@ describe("getProviderStates", () => {
           planLabel: "Proxied",
           accountEmail: null,
           loginCommand: null,
+        });
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+
+  it("probes health and installation with the host's contributed provider env", async () => {
+    await withTestHarness(async (harness) => {
+      const contexts: unknown[] = [];
+      setPluginAgentContributions({
+        listSkillRootContributions: () => [],
+        listAgentTools: () => [],
+        listInstructionContributions: () => [],
+        findAgentTool: () => undefined,
+        invokeAgentTool: async () => ({
+          success: false,
+          contentItems: [{ type: "inputText", text: "unused" }],
+        }),
+        resolveMention: async () => ({ ok: false, error: "unused" }),
+        resolveProviderEnv: async ({ providerId, context }) => {
+          contexts.push(context);
+          return {
+            entries:
+              providerId === "claude-code"
+                ? [
+                    {
+                      name: "BB_CLAUDE_CODE_EXECUTABLE",
+                      value: "/opt/plugin/claude",
+                      source: { plugin: "claude-bundle" },
+                      reason: "plugin ships Claude Code",
+                    },
+                  ]
+                : [],
+          };
+        },
+      });
+      try {
+        const { host, session } = seedHostSession(harness.deps);
+        const probes: Array<{ type: string; env: string[] }> = [];
+        registerHostRpcResponder(harness, {
+          hostId: host.id,
+          sessionId: session.id,
+          handle: (request) => {
+            const { command } = request;
+            if (
+              command.type !== "provider.health" &&
+              command.type !== "provider.installation.status"
+            ) {
+              throw new Error(`Unexpected command ${command.type}`);
+            }
+            if (command.providerId === "claude-code") {
+              probes.push({
+                type: command.type,
+                env: command.contributedEnv.map((entry) => entry.name),
+              });
+            }
+            return command.type === "provider.health"
+              ? {
+                  ok: true,
+                  result: {
+                    supported: true,
+                    health: readyHealth(command.providerId),
+                  },
+                }
+              : {
+                  ok: true,
+                  result: {
+                    executableName: command.providerId,
+                    executablePath: null,
+                    installed: true,
+                    installSource: "external",
+                    currentVersion: "1.0.0",
+                    latestVersion: null,
+                    minimumSupportedVersion: null,
+                    npmPackageName: null,
+                    npmGlobalPackageVersion: null,
+                    installAction: null,
+                    needsUpdate: false,
+                    versionUnsupported: false,
+                  },
+                };
+          },
+        });
+
+        await getProviderStates(harness.deps, { hostId: host.id });
+        await getProviderInstallations(harness.deps, {
+          hostId: host.id,
+          mode: "refresh",
+        });
+
+        expect(probes).toEqual([
+          { type: "provider.health", env: ["BB_CLAUDE_CODE_EXECUTABLE"] },
+          {
+            type: "provider.installation.status",
+            env: ["BB_CLAUDE_CODE_EXECUTABLE"],
+          },
+        ]);
+        expect(contexts).toContainEqual({
+          threadId: null,
+          projectId: null,
+          hostId: host.id,
         });
       } finally {
         setPluginAgentContributions(undefined);

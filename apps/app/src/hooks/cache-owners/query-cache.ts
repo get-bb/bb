@@ -399,6 +399,7 @@ export function optimisticallyInsertThread(
   const queuedWork = thread.queuedMessageCount > 0 ? "waiting" : "none";
   const insertedThread: ThreadListEntry = {
     ...thread,
+    statusChangedAt: thread.createdAt,
     activity: {
       activeWorkflowCount: 0,
       activeBackgroundAgentCount: 0,
@@ -409,6 +410,8 @@ export function optimisticallyInsertThread(
     environmentHostId,
     environmentName: null,
     environmentPath: null,
+    environmentStatus: null,
+    environmentHostLifecycle: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
     environmentWorkspaceDisplayKind: "other",

@@ -758,6 +758,65 @@ describe("plugin wire surfaces (http/rpc dispatcher + realtime)", () => {
     });
   });
 
+  it.each([
+    {
+      name: "unknown plugin",
+      request: () => ({ pluginId: "ghost", headers: {} }),
+      status: 404,
+      code: "plugin_not_found",
+      message: 'unknown plugin "ghost"',
+    },
+    {
+      name: "plugin not running",
+      before: (harness: TestAppHarness) =>
+        harness.pluginService.setEnabled("wire", false),
+      request: () => ({ pluginId: "wire", headers: {} }),
+      status: 503,
+      code: "plugin_not_running",
+      message: 'plugin "wire" is not running (status: disabled)',
+    },
+    {
+      name: "bad caller token",
+      request: () => ({
+        pluginId: "wire",
+        headers: { "x-bb-plugin-caller": "not-a-caller-token" },
+      }),
+      status: 403,
+      code: "invalid_caller",
+      message:
+        "the x-bb-plugin-caller token isn't a running plugin's caller token",
+    },
+    {
+      name: "non-JSON body",
+      request: () => ({
+        pluginId: "wire",
+        headers: { "content-type": "text/plain" },
+      }),
+      status: 415,
+      code: "unsupported_media_type",
+      message: "content-type must be application/json",
+    },
+  ])(
+    "rpc: $name fails with a structured { code, message } error",
+    async ({ before, request, status, code, message }) => {
+      await before?.(harness);
+      const { pluginId, headers } = request();
+      const response = await harness.app.request(
+        `${BASE}/api/v1/plugins/${pluginId}/rpc/echo`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json", ...headers },
+          body: "{}",
+        },
+      );
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({
+        ok: false,
+        error: { code, message },
+      });
+    },
+  );
+
   it("bb.realtime.publish broadcasts a plugin-signal WS frame to connected clients", async () => {
     const systemSocket = createMockHubSocket();
     const threadSocket = createMockHubSocket();

@@ -1,8 +1,7 @@
-import { and, eq, inArray, ne } from "drizzle-orm";
 import {
+  environmentHasOtherStartingOrActiveThread,
   getEnvironment,
-  liveThread,
-  threads,
+  setEnvironmentColumns,
   type DbQueryConnection,
   type DbTransaction,
 } from "@bb/db";
@@ -28,20 +27,7 @@ function hasOtherLiveThreadDependingOnEnvironmentProvision(
   deps: EnvironmentProvisionCancellationReadDeps,
   args: CancelEnvironmentProvisioningForThreadStopArgs,
 ): boolean {
-  const row = deps.db
-    .select({ id: threads.id })
-    .from(threads)
-    .where(
-      and(
-        eq(threads.environmentId, args.environmentId),
-        ne(threads.id, args.threadId),
-        inArray(threads.status, ["starting", "active"]),
-        liveThread,
-      ),
-    )
-    .limit(1)
-    .get();
-  return row !== undefined;
+  return environmentHasOtherStartingOrActiveThread(deps.db, args);
 }
 
 export function cancelEnvironmentProvisioningForThreadStopInTransaction(
@@ -62,4 +48,25 @@ export function cancelEnvironmentProvisioningForThreadStopInTransaction(
   }
 
   return "ready_to_finalize";
+}
+
+export function discardPendingCreateForThreadStopInTransaction(
+  deps: EnvironmentProvisionCancellationTransactionDeps,
+  args: CancelEnvironmentProvisioningForThreadStopArgs,
+): boolean {
+  const environment = getEnvironment(deps.db, args.environmentId);
+  if (
+    environment === null ||
+    !environment.createPending ||
+    environment.heldBy === "user" ||
+    environment.teardownStatus !== null ||
+    hasOtherLiveThreadDependingOnEnvironmentProvision(deps, args)
+  )
+    return false;
+  setEnvironmentColumns(deps.db, environment.id, {
+    heldBy: null,
+    teardownStatus: "running",
+    retireAt: Date.now(),
+  });
+  return true;
 }

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { installedPluginCatalogEntry } from "./installed-plugin-catalog";
+import {
+  installedPluginCatalogEntry,
+  resolvePluginDetailKey,
+} from "./installed-plugin-catalog";
 
 const community = {
   pluginId: "notes",
@@ -7,6 +10,7 @@ const community = {
   marketplace: "community",
   source: "git:https://github.com/alice/notes.git@v2",
   installed: false,
+  listings: [],
 };
 const official = {
   ...community,
@@ -28,6 +32,38 @@ describe("installed plugin catalog identity", () => {
         { allowSourceFallback: false },
       ),
     ).toBe(community);
+  });
+  it("finds a merged listing from the marketplace a plugin was installed from", () => {
+    const listing = {
+      marketplaceDisplayName: "",
+      publisherLabel: "",
+      official: false,
+      source: community.source,
+    };
+    const merged = {
+      ...community,
+      installed: true,
+      listings: [
+        { ...listing, marketplace: "community", entryId: "notes" },
+        { ...listing, marketplace: "acme", entryId: "notes" },
+      ],
+    };
+    const installedFrom = (marketplace: string) =>
+      installedPluginCatalogEntry(
+        {
+          id: "notes",
+          catalogEntryId: "notes",
+          catalogMarketplaceName: marketplace,
+          source: "git:https://github.com/alice/notes.git@v1",
+        },
+        [official, merged],
+        { allowSourceFallback: false },
+      );
+    expect(installedFrom("acme")).toBe(merged);
+    expect(installedFrom("elsewhere")).toBeUndefined();
+    expect(
+      resolvePluginDetailKey("acme/notes", [], [official, merged]).entry,
+    ).toBe(merged);
   });
   it("does not give a direct or local plugin another author's catalog identity", () => {
     for (const source of [

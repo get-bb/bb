@@ -1,5 +1,4 @@
-import { and, desc, eq, sql } from "drizzle-orm";
-import { events as storedEvents, getThread } from "@bb/db";
+import { getLatestStoredTurnSystemOperationData, getThread } from "@bb/db";
 import { renderTemplate } from "@bb/templates";
 import { z } from "zod";
 import type {
@@ -29,26 +28,16 @@ export function findEnvironmentDirectoryContinuation(
   deps: Pick<AppDeps, "db">,
   args: { threadId: string; turnId: string },
 ): EnvironmentDirectoryContinuation | null {
-  const row = deps.db
-    .select({ data: storedEvents.data })
-    .from(storedEvents)
-    .where(
-      and(
-        eq(storedEvents.threadId, args.threadId),
-        eq(storedEvents.turnId, args.turnId),
-        eq(storedEvents.scopeKind, "turn"),
-        eq(storedEvents.type, "system/operation"),
-        sql`json_extract(${storedEvents.data}, '$.operation') = ${ENVIRONMENT_DIRECTORY_UPDATE_OPERATION}`,
-      ),
-    )
-    .orderBy(desc(storedEvents.sequence))
-    .limit(1)
-    .get();
-  if (!row) {
+  const data = getLatestStoredTurnSystemOperationData(deps.db, {
+    operation: ENVIRONMENT_DIRECTORY_UPDATE_OPERATION,
+    threadId: args.threadId,
+    turnId: args.turnId,
+  });
+  if (data === null) {
     return null;
   }
   const parsed = environmentDirectoryUpdateDataSchema.safeParse(
-    JSON.parse(row.data),
+    JSON.parse(data),
   );
   if (!parsed.success) {
     return null;

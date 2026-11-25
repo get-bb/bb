@@ -2,6 +2,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
+import { PluginActionContextProvider } from "./lib/plugin-action-context-provider";
 import { App } from "./App";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
 import { ApplicationUrlDialog } from "./components/ApplicationUrlDialog";
@@ -17,10 +18,12 @@ import { applyAppFrameGeometry, getBbDesktopInfo } from "./lib/bb-desktop";
 import { applyCachedAppThemeCss } from "./lib/themes";
 import { installStaleChunkRecovery } from "./lib/stale-chunk-recovery";
 import { moveStylesheetPropertiesToRegistry } from "./lib/stylesheet-property-registry";
+import { installTouchSelectionPassthrough } from "./lib/touch-selection-passthrough";
 import "./app.css";
 
 installStaleChunkRecovery();
 installForeignDomMutationGuard();
+installTouchSelectionPassthrough(document);
 
 Error.stackTraceLimit = 50;
 
@@ -49,7 +52,9 @@ createRoot(document.getElementById("root")!, {
     <AppErrorBoundary>
       <QueryClientProvider client={appQueryClient}>
         <BrowserRouter>
-          <App />
+          <PluginActionContextProvider>
+            <App />
+          </PluginActionContextProvider>
           <AppToaster />
           <ApplicationUrlDialog />
         </BrowserRouter>

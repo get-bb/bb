@@ -1,4 +1,3 @@
-import { Buffer } from "node:buffer";
 import {
   HOST_FILE_CHUNK_MAX_BYTES,
   type HostDaemonOnlineRpcResultByType,
@@ -12,8 +11,14 @@ import {
   createFileStreamResponse,
   type FileResponseSource,
 } from "../files/file-stream-response.js";
+import { parseSingleByteRange } from "../files/file-byte-range.js";
 
 type FileChunk = HostDaemonOnlineRpcResultByType["host.read_file_chunk"];
+
+const DAEMON_FILE_CHUNKS_IN_FLIGHT = 16;
+const DAEMON_FILE_ENTITY_TAG_PATTERN = /^(?:W\/)?"file-([a-f0-9]{64})"$/u;
+const KNOWN_REVISIONS_MAX = 16;
+
 type ReadChunk = (
   offset: number,
   length: number,
@@ -21,13 +26,47 @@ type ReadChunk = (
   signal: AbortSignal,
 ) => Promise<FileChunk>;
 
+function knownRevisions(request: Request): string[] {
+  const revisions = (request.headers.get("if-none-match") ?? "")
+    .split(",")
+    .map((tag) => DAEMON_FILE_ENTITY_TAG_PATTERN.exec(tag.trim())?.[1])
+    .filter((revision) => revision !== undefined);
+  return [...new Set(revisions)].slice(0, KNOWN_REVISIONS_MAX);
+}
+
+function firstReadLength(request: Request): number {
+  if (
+    request.method === "HEAD" ||
+    request.headers.get("if-none-match")?.trim() === "*"
+  ) {
+    return 0;
+  }
+  const range = request.headers.get("range");
+  if (range === null || request.headers.has("if-range")) {
+    return HOST_FILE_CHUNK_MAX_BYTES;
+  }
+  const parsed = parseSingleByteRange(range, Number.MAX_SAFE_INTEGER);
+  return parsed === undefined ||
+    (parsed !== "unsatisfiable" && parsed.start === 0)
+    ? HOST_FILE_CHUNK_MAX_BYTES
+    : 0;
+}
+
 export async function serveDaemonFileStream(
   deps: LoggedWorkSessionDeps,
   target: { hostId: string; path: string; rootPath: string },
   request: Request,
   prepareHeaders: (metadata: FileChunk) => Headers,
 ): Promise<Response> {
-  const read: ReadChunk = (offset, length, revision, signal) =>
+  const readChunk = (
+    chunk: {
+      offset: number;
+      length: number;
+      revision: string | null;
+      knownRevisions: string[];
+    },
+    signal: AbortSignal,
+  ) =>
     callHostRetryableOnlineRpc(deps, {
       hostId: target.hostId,
       signal,
@@ -36,18 +75,26 @@ export async function serveDaemonFileStream(
         type: "host.read_file_chunk",
         path: target.path,
         rootPath: target.rootPath,
-        offset,
-        length,
-        revision,
+        ...chunk,
       },
     });
+  const read: ReadChunk = (offset, length, revision, signal) =>
+    readChunk({ offset, length, revision, knownRevisions: [] }, signal);
   try {
-    const metadata = await read(0, 0, null, request.signal);
+    const first = await readChunk(
+      {
+        offset: 0,
+        length: firstReadLength(request),
+        revision: null,
+        knownRevisions: knownRevisions(request),
+      },
+      request.signal,
+    );
     return await createDaemonFileStreamResponse(
-      metadata,
+      first,
       read,
       request,
-      prepareHeaders(metadata),
+      prepareHeaders(first),
     );
   } catch (error) {
     if (error instanceof ApiError && error.body.code === "file_changed") {
@@ -91,11 +138,21 @@ export function createDaemonFileSource(
     entityTag: `W/"file-${metadata.revision}"`,
     lastModified: new Date(metadata.modifiedAtMs).toUTCString(),
     async open(signal) {
+      let firstChunk: Uint8Array | null = metadata.content;
       return {
         maxChunkBytes: HOST_FILE_CHUNK_MAX_BYTES,
+        maxChunksInFlight: DAEMON_FILE_CHUNKS_IN_FLIGHT,
         async read(offset, length) {
+          const prefetched = firstChunk;
+          firstChunk = null;
+          if (
+            prefetched !== null &&
+            metadata.offset === offset &&
+            length <= prefetched.byteLength
+          ) {
+            return prefetched.subarray(0, length);
+          }
           const chunk = await read(offset, length, metadata.revision, signal);
-          const bytes = Buffer.from(chunk.content, "base64");
           if (
             chunk.revision !== metadata.revision ||
             chunk.sizeBytes !== metadata.sizeBytes ||
@@ -108,7 +165,7 @@ export function createDaemonFileSource(
               true,
             );
           }
-          return bytes;
+          return chunk.content;
         },
         async close() {},
       };

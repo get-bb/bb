@@ -32,9 +32,21 @@ interface RenderedMarkdownDocument {
   mounts: readonly string[];
 }
 
-const registry = buildMessageDirectiveRegistry([
-  { id: "inline-vis", pluginId: "demo", generation: 1, component: () => null },
-]);
+const registry = buildMessageDirectiveRegistry(
+  [
+    {
+      id: "inline-vis",
+      pluginId: "demo",
+      generation: 1,
+      component: () => null,
+    },
+  ],
+  {
+    unclaimed: "literal",
+    picks: {},
+    boot: { bbPluginIds: new Set(), settledOnce: true },
+  },
+);
 
 export const config: MarkdownPieceRenderConfig = {
   codeFenceRendererRegistry: null,
@@ -61,7 +73,8 @@ export function describeMarkdownChildren(
       isValidElement(child) ? `key:${String(child.key)}` : "text",
     ),
     mounts: mounts.map(
-      (mount) => `${mount.index}:${mount.slot.id}:${mount.source}`,
+      (mount) =>
+        `${mount.index}:${mount.kind === "plugin" ? mount.slot.id : mount.name}:${mount.source}`,
     ),
   };
 }

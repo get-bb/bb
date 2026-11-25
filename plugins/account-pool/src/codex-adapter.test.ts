@@ -191,6 +191,46 @@ describe("Codex credit observations", () => {
 });
 
 describe("codexQuotaFromUsage", () => {
+  it("keeps a workspace hard stop over a simultaneous spending cap", () => {
+    const includedPlan = {
+      allowed: true,
+      primary_window: {
+        used_percent: 0,
+        limit_window_seconds: 604_800,
+        reset_at: 4_102_444_800,
+      },
+    };
+    const hardStop = {
+      reason: "workspace_owner_credits_depleted",
+      resetAt: null,
+    };
+    const together = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      {
+        rate_limit: includedPlan,
+        rate_limit_reached_type: { type: "workspace_owner_credits_depleted" },
+        spend_control: { reached: true },
+      },
+      emptyQuota(),
+      1_000,
+    );
+    const afterward = codexQuotaFromUsage(
+      ACCOUNT_ID,
+      {
+        rate_limit: includedPlan,
+        credits: { has_credits: false, unlimited: false },
+        spend_control: { reached: true },
+      },
+      { ...emptyQuota(), usageRestriction: hardStop },
+      1_000,
+    );
+    for (const quota of [together, afterward]) {
+      if (quota === null) throw new Error("Usage payload was rejected.");
+      expect(quota.usageRestriction).toEqual(hardStop);
+      expect(isQuotaExhausted(quota, null, 1_000)).toBe(true);
+    }
+  });
+
   it("keeps a Pro account's single weekly window out of the Claude slots", () => {
     const quota = codexQuotaFromUsage(
       ACCOUNT_ID,

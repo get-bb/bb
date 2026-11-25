@@ -1,11 +1,11 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import {
-  BbHttpError,
   createRequestTimeoutFetch,
   DEFAULT_BB_REQUEST_TIMEOUT_MS,
   readJsonResponse,
-  readVoidResponse,
+  resolveResponse,
 } from "../src/response.js";
+import { BbHttpError } from "../src/http-error.js";
 import { createNodeTransport } from "../src/node.js";
 
 const REQUEST_TIMEOUT_ERROR_NAME = "BbRequestTimeoutError";
@@ -168,33 +168,6 @@ describe("readJsonResponse()", () => {
     const response = new Response("", { status: 200 });
 
     await expect(readJson<{ id: string }>(response)).rejects.toThrow();
-  });
-
-  it("readVoidResponse succeeds for empty response body", async () => {
-    const response = new Response("", { status: 200 });
-
-    await expect(
-      readVoidResponse(Promise.resolve(response)),
-    ).resolves.toBeUndefined();
-  });
-
-  it("readVoidResponse succeeds for null body (204 No Content)", async () => {
-    const response = new Response(null, { status: 204 });
-
-    await expect(
-      readVoidResponse(Promise.resolve(response)),
-    ).resolves.toBeUndefined();
-  });
-
-  it("readVoidResponse throws for non-ok response", async () => {
-    const response = new Response("", {
-      status: 500,
-      statusText: "Internal Server Error",
-    });
-
-    await expect(readVoidResponse(Promise.resolve(response))).rejects.toThrow(
-      "HTTP 500: Internal Server Error",
-    );
   });
 
   it("throws BbHttpError carrying status and server code for non-ok response", async () => {
@@ -418,9 +391,9 @@ describe("createRequestTimeoutFetch()", () => {
     const response = await timeoutFetch("http://server/api/v1/threads/wait");
 
     expect(response.body).toBeNull();
-    await expect(
-      readVoidResponse(Promise.resolve(response)),
-    ).resolves.toBeUndefined();
+    await expect(resolveResponse(Promise.resolve(response))).resolves.toBe(
+      response,
+    );
   });
 
   it("times out stalled response body reads", async () => {

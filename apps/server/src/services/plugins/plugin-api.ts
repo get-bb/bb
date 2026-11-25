@@ -3,6 +3,10 @@ import {
   type ContractTagDeclarations,
 } from "@get-bb/plugin-sdk/internal/rpc-tags";
 import {
+  createThreadEventGate,
+  type ThreadEventGate,
+} from "@get-bb/plugin-sdk/internal/thread-event-gate";
+import {
   environmentCompositionSchema,
   validateServerAccessProviderDeclaration,
   type NormalizedPluginEnvironmentComposition,
@@ -13,8 +17,9 @@ import type { MachineEnrollments } from "../machines/enrollments.js";
 import { listServerAccessProviders } from "./plugin-server-access-registry.js";
 import { detachActivePluginToolCallForUserInput } from "./plugin-tool-calls.js";
 import { fillPluginPresentation } from "./plugin-presentation.js";
+import { pluginDirectory } from "./plugin-directory.js";
 import { mkdirSync } from "node:fs";
-import { join } from "node:path";
+import { dirname } from "node:path";
 import Database from "better-sqlite3";
 import { CronExpressionParser } from "cron-parser";
 import {
@@ -102,6 +107,7 @@ import {
   storePluginHook,
   validateBackgroundServiceRegistration,
   validatePluginEnvironmentProviderDeclaration,
+  type AnyPluginEnvironmentProviderDeclaration,
   validatePluginMachineProviderDeclaration,
   providerAlreadyRegisteredMessage,
   providerDeclarationIconRefusal,
@@ -134,10 +140,8 @@ import {
   createPluginRpcCallerSdk,
   type PluginRpcCallerCredential,
 } from "./plugin-rpc-caller.js";
-import type { ServerLogger } from "../../types.js";
 import type { PluginInteractionResult } from "../interactions/pending-interactions.js";
-import { appendPluginLogLine } from "./plugin-log.js";
-import type { TunnelIngressLease } from "../connect-next/tunnel-ingress.js";
+import type { PluginEventLog } from "./plugin-log.js";
 import {
   readPluginSettingsValues,
   writePluginSettingsUpdate,
@@ -225,7 +229,7 @@ export interface PluginAgentToolRecord {
   ): PluginAgentToolResult | Promise<PluginAgentToolResult>;
 }
 
-interface PluginMentionProviderRecord {
+export interface PluginMentionProviderRecord {
   id: string;
   label: string;
   triggers: readonly PluginMentionTrigger[];
@@ -273,6 +277,11 @@ export interface PluginApiHandle {
   };
   databaseHandles: Database.Database[];
   threadEventHandlers: PluginThreadEventHandlers;
+  /**
+   * Holds this plugin's events for a thread its own `threads.spawn` or
+   * `threads.fork` call may have created until that call has returned to it.
+   */
+  threadEventGate: ThreadEventGate;
   /** Hook handlers recorded by `bb.experimental_hooks.on`. */
   hooks: PluginHookRecords;
   environmentCompositions: Map<string, NormalizedPluginEnvironmentComposition>;
@@ -353,12 +362,21 @@ function withPluginThreadAttribution<
   return { ...args, ...attribution };
 }
 
-function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
+function wrapSdkForPlugin(
+  sdk: BbSdk,
+  pluginId: string,
+  threadEventGate: ThreadEventGate,
+): PluginBbSdk {
   return {
     ...sdk,
     environments: {
       ...sdk.environments,
       ...createRetiredEnvironmentMembers(sdk.plugins.callRpc),
+      experimental_create(args) {
+        return sdk.environments.experimental_create(
+          args.hold === "user" ? args : { ...args, pluginId },
+        );
+      },
     },
     threads: {
       ...sdk.threads,
@@ -393,10 +411,14 @@ function wrapSdkForPlugin(sdk: BbSdk, pluginId: string): PluginBbSdk {
         });
       },
       fork(args: ThreadForkArgs) {
-        return sdk.threads.fork(withPluginThreadAttribution(args, pluginId));
+        return threadEventGate.track(() =>
+          sdk.threads.fork(withPluginThreadAttribution(args, pluginId)),
+        );
       },
       spawn(args: ThreadSpawnArgs) {
-        return sdk.threads.spawn(withPluginThreadAttribution(args, pluginId));
+        return threadEventGate.track(() =>
+          sdk.threads.spawn(withPluginThreadAttribution(args, pluginId)),
+        );
       },
       send(args) {
         return sdk.threads.send({ ...args, originPluginId: pluginId });
@@ -487,7 +509,7 @@ const PLUGIN_HOST_CALL_MAX_TIMEOUT_MS = 30 * 60_000;
 export function createPluginApi(options: {
   recordPluginUse: () => void;
   pluginId: string;
-  logger: ServerLogger;
+  pluginLog: PluginEventLog;
   db: DbConnection;
   dataDir: string;
   walCheckpointer: Pick<WalCheckpointer, "attach" | "detach"> | null;
@@ -495,7 +517,6 @@ export function createPluginApi(options: {
   getMachineEnrollments: () => MachineEnrollments;
   getAppUrl: () => string | null;
   getLoopbackBaseUrl: () => string | undefined;
-  openTunnelIngress: (audience: string) => Promise<TunnelIngressLease>;
   /**
    * This load's rpc caller token, attached to the plugin's
    * `bb.sdk.plugins.callRpc` requests so handlers see it as the caller.
@@ -513,7 +534,7 @@ export function createPluginApi(options: {
   isAgentToolNameTaken: (name: string) => string | undefined;
   isEnvironmentProviderIdTaken: (id: string) => string | undefined;
   isMachineProviderIdTaken: (id: string) => string | undefined;
-  reportAgentToolProblem: (message: string) => void;
+  reportRegistrationProblem: (message: string) => void;
   /**
    * Schedules a re-attempt of every plugin-queued row
    * (`bb.experimental_hooks.recheck`). Coalescing, pacing and the walk
@@ -540,9 +561,6 @@ export function createPluginApi(options: {
     ports: readonly number[],
   ) => readonly number[];
   declareSharedPorts: PluginHosts["declareSharedPorts"];
-  setNextTunnels: PluginHosts["internal_DO_NOT_USE_setNextTunnels"];
-  nextTunnelStatuses: PluginHosts["internal_DO_NOT_USE_nextTunnelStatuses"];
-  onNextTunnelStatusChange: PluginHosts["internal_DO_NOT_USE_onNextTunnelStatusChange"];
   replaceDeclaredSharedPorts: (
     declarations: readonly {
       hostId: string;
@@ -568,21 +586,20 @@ export function createPluginApi(options: {
 }): PluginApiHandle {
   const {
     pluginId,
-    logger,
+    pluginLog,
     db,
     dataDir,
     walCheckpointer,
     getSdk,
     getAppUrl,
     getLoopbackBaseUrl,
-    openTunnelIngress,
     rpcCaller,
     publishSignal,
     invalidateRpc: optionsInvalidate,
     settingsChanged,
     reportNeedsConfiguration,
     isAgentToolNameTaken,
-    reportAgentToolProblem,
+    reportRegistrationProblem,
     requestQueueDrain,
     declaredIconNames,
     brandingIcon,
@@ -590,9 +607,6 @@ export function createPluginApi(options: {
     ensureSharedPortTunnel,
     validateSharedPortDeclaration,
     declareSharedPorts,
-    setNextTunnels,
-    nextTunnelStatuses,
-    onNextTunnelStatusChange,
     replaceDeclaredSharedPorts,
     callPluginHost,
     registerProvider,
@@ -604,16 +618,16 @@ export function createPluginApi(options: {
   let activated = false;
   let wrappedSdk: PluginBbSdk | undefined;
   let pendingNeedsConfiguration: string | null = null;
-  const pendingAgentToolProblems: string[] = [];
+  const pendingRegistrationProblems: string[] = [];
   const pendingSharedPorts = new Map<string, readonly number[]>();
   const disposeHooks: Array<() => void | Promise<void>> = [];
-  const openTunnelIngresses = new Set<() => Promise<void>>();
   const installHandlers: Array<() => void | Promise<void>> = [];
   const settingsRecord: PluginApiHandle["settings"] = {
     descriptors: {},
     listeners: [],
   };
   const databaseHandles: Database.Database[] = [];
+  const threadEventGate = createThreadEventGate();
   const threadEventHandlers: PluginThreadEventHandlers = {
     "experimental_thread.events": [],
     "experimental_thread.parentChanged": [],
@@ -632,10 +646,12 @@ export function createPluginApi(options: {
     "message.dispatched": [],
     "turn.failed": [],
     "message.cancelled": [],
+    "experimental_thread.settled": [],
     "thread.unarchived": [],
   };
   const hooks: PluginHookRecords = {
     "message.dispatch": null,
+    "thread.delete_finalize": null,
   };
   const environmentCompositions = new Map<
     string,
@@ -668,13 +684,11 @@ export function createPluginApi(options: {
     if (invalidated) throw stale();
   }
 
-  const prefix = `[plugin:${pluginId}]`;
   function emitLog(
     level: "debug" | "info" | "warn" | "error",
     message: string,
   ): void {
-    logger[level](`${prefix} ${message}`);
-    appendPluginLogLine(dataDir, pluginId, level, message);
+    pluginLog[level](pluginId, message);
   }
   const log: PluginLogger = {
     debug: (message) => emitLog("debug", message),
@@ -758,9 +772,9 @@ export function createPluginApi(options: {
         if (index !== -1) databaseHandles.splice(index, 1);
         void walCheckpointer?.detach(databaseHandle);
       }
-      const dir = join(dataDir, "plugins", pluginId);
-      mkdirSync(dir, { recursive: true });
-      const database = new Database(join(dir, "data.db"));
+      const databasePath = pluginDirectory(dataDir, pluginId, "data.db");
+      mkdirSync(dirname(databasePath), { recursive: true });
+      const database = new Database(databasePath);
       database.pragma("auto_vacuum = INCREMENTAL");
       database.pragma("journal_mode = WAL");
       database.pragma("busy_timeout = 5000");
@@ -772,6 +786,12 @@ export function createPluginApi(options: {
     migrate(database, statements) {
       assertLive();
       runPluginStorageMigrations(database, statements);
+    },
+    experimental_directory() {
+      assertLive();
+      const directory = pluginDirectory(dataDir, pluginId, "files");
+      mkdirSync(directory, { recursive: true, mode: 0o700 });
+      return directory;
     },
   };
 
@@ -1012,8 +1032,8 @@ export function createPluginApi(options: {
       const owner = isAgentToolNameTaken(record.name);
       if (owner !== undefined) {
         const problem = `tool "${record.name}" is already registered by plugin "${owner}" — not registered`;
-        if (activated) reportAgentToolProblem(problem);
-        else pendingAgentToolProblems.push(problem);
+        if (activated) reportRegistrationProblem(problem);
+        else pendingRegistrationProblems.push(problem);
         return;
       }
       if (agentTools.some((existing) => existing.name === record.name)) {
@@ -1076,32 +1096,6 @@ export function createPluginApi(options: {
     get experimental_dataDir(): string {
       assertLive();
       return dataDir;
-    },
-    async internal_DO_NOT_USE_openTunnelIngress(ingressOptions) {
-      assertLive();
-      const audience: unknown = ingressOptions?.audience;
-      if (typeof audience !== "string" || audience.length === 0) {
-        throw new Error(
-          "bb.server.internal_DO_NOT_USE_openTunnelIngress needs a non-empty audience",
-        );
-      }
-      const lease = await openTunnelIngress(audience);
-      let closed = false;
-      const close = async (): Promise<void> => {
-        if (closed) return;
-        closed = true;
-        openTunnelIngresses.delete(close);
-        const index = disposeHooks.indexOf(close);
-        if (index !== -1) disposeHooks.splice(index, 1);
-        await lease.close();
-      };
-      if (invalidated) {
-        await lease.close();
-        throw stale();
-      }
-      openTunnelIngresses.add(close);
-      disposeHooks.push(close);
-      return { baseUrl: lease.baseUrl, close };
     },
   };
 
@@ -1204,23 +1198,6 @@ export function createPluginApi(options: {
         );
       }
     },
-    internal_DO_NOT_USE_setNextTunnels(config) {
-      assertLive();
-      setNextTunnels(config);
-    },
-    internal_DO_NOT_USE_nextTunnelStatuses() {
-      assertLive();
-      return nextTunnelStatuses();
-    },
-    internal_DO_NOT_USE_onNextTunnelStatusChange(listener) {
-      assertLive();
-      if (typeof listener !== "function") {
-        throw new Error("next tunnel status subscription requires a listener");
-      }
-      const unsubscribe = onNextTunnelStatusChange(listener);
-      disposeHooks.push(unsubscribe);
-      return unsubscribe;
-    },
   };
   const events: PluginEvents = {
     on(event, handler) {
@@ -1250,13 +1227,12 @@ export function createPluginApi(options: {
     },
     async recheck(hook) {
       assertLive();
-      // One hook key exists; the parameter selects which question to re-pose
-      // and widens additively when a second key ever ships.
-      void hook;
-      // Resolves on SCHEDULING. The walk runs on a later macrotask, and the
-      // caller is not the one it reports to — a failed re-attempt lands on the
-      // row it failed, like every other background drain.
-      requestQueueDrain();
+      // `thread.delete_finalize` is asked again on every purge pass, so only
+      // `message.dispatch` has a re-attempt to schedule. Resolves on
+      // SCHEDULING. The walk runs on a later macrotask, and the caller is not
+      // the one it reports to — a failed re-attempt lands on the row it
+      // failed, like every other background drain.
+      if (hook === "message.dispatch") requestQueueDrain();
     },
   };
 
@@ -1287,7 +1263,7 @@ export function createPluginApi(options: {
   const experimental_environments: PluginEnvironments = {
     register(
       declaration:
-        | import("@get-bb/plugin-sdk").PluginEnvironmentProviderDeclaration
+        | AnyPluginEnvironmentProviderDeclaration
         | NormalizedPluginEnvironmentComposition,
     ) {
       assertLive();
@@ -1321,6 +1297,11 @@ export function createPluginApi(options: {
         );
       const provider =
         validatePluginEnvironmentProviderDeclaration(declaration);
+      if (provider.apiVersion === 1) {
+        const problem = `environment provider "${provider.id}" uses the version-1 provider API, which bb still runs but will remove. Declare apiVersion: 2 and use locate(), branchName() and setup()`;
+        if (activated) reportRegistrationProblem(problem);
+        else pendingRegistrationProblems.push(problem);
+      }
       const problem =
         provider.icon === null
           ? null
@@ -1345,7 +1326,7 @@ export function createPluginApi(options: {
     {
       register(declaration) {
         assertLive();
-        validateServerAccessProviderDeclaration(declaration);
+        const provider = validateServerAccessProviderDeclaration(declaration);
         if (
           serverAccessProviders.has(declaration.id) ||
           listServerAccessProviders().some(
@@ -1358,7 +1339,7 @@ export function createPluginApi(options: {
             `Server access provider "${declaration.id}" is already registered`,
           );
         }
-        serverAccessProviders.set(declaration.id, declaration);
+        serverAccessProviders.set(provider.id, provider);
       },
       recheck() {
         assertLive();
@@ -1461,6 +1442,7 @@ export function createPluginApi(options: {
           token: rpcCaller.token,
         }),
         pluginId,
+        threadEventGate,
       );
       return wrappedSdk;
     },
@@ -1484,6 +1466,7 @@ export function createPluginApi(options: {
     settings: settingsRecord,
     databaseHandles,
     threadEventHandlers,
+    threadEventGate,
     hooks,
     environmentCompositions,
     environmentProviders,
@@ -1522,10 +1505,10 @@ export function createPluginApi(options: {
         : null;
       if (cliWarning) emitLog("warn", cliWarning);
       pendingSharedPorts.clear();
-      for (const problem of pendingAgentToolProblems) {
-        reportAgentToolProblem(problem);
+      for (const problem of pendingRegistrationProblems) {
+        reportRegistrationProblem(problem);
       }
-      pendingAgentToolProblems.length = 0;
+      pendingRegistrationProblems.length = 0;
       if (pendingNeedsConfiguration !== null) {
         reportNeedsConfiguration(pendingNeedsConfiguration);
         pendingNeedsConfiguration = null;
@@ -1549,7 +1532,6 @@ export function createPluginApi(options: {
     invalidate() {
       invalidated = true;
       rpcCaller.revoke();
-      for (const close of [...openTunnelIngresses]) void close();
     },
   };
 }

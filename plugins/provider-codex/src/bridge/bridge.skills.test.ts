@@ -122,3 +122,69 @@ it("resolves selected skills for both turn start and steering through the app-se
     rmSync(cwd, { recursive: true, force: true });
   }
 });
+
+it("applies a repeated skills/configure to an open session's app-server without relaunching it", async () => {
+  const cwd = mkdtempSync(join(tmpdir(), "bb-codex-skill-reconfigure-"));
+  const requestLogPath = join(cwd, "requests.jsonl");
+  const launchLogPath = join(cwd, "launches.jsonl");
+  const script = join(cwd, "script.json");
+  writeFileSync(script, JSON.stringify({ requestLogPath, launchLogPath }));
+  stubFakeCodexAppServer(script);
+  const harness = createBridgeJsonRpcTestHarness(handleLine);
+  const threadId = "thr_skill_reconfigure_1";
+  const firstRoot = join(cwd, "catalog-1", "skills");
+  const secondRoot = join(cwd, "catalog-2", "skills");
+  const roots = (rootPath: string) => [
+    { id: "global-skills", path: rootPath, skills: [] },
+  ];
+  try {
+    harness.sendRequest(1, "initialize", {
+      protocolVersion: 1,
+      client: { name: "test", version: "0" },
+    });
+    expect((await harness.waitForResponse(1)).result).toMatchObject({
+      capabilities: { skills: { configure: true, reconfigure: true } },
+    });
+    harness.sendRequest(2, "skills/configure", { roots: roots(firstRoot) });
+    expect((await harness.waitForResponse(2)).error).toBeUndefined();
+    harness.sendRequest(3, "thread/start", {
+      threadId,
+      cwd,
+      instructionMode: "append",
+      options: FULL_ACCESS_SESSION_OPTIONS,
+    });
+    expect((await harness.waitForResponse(3)).error).toBeUndefined();
+
+    harness.sendRequest(4, "skills/configure", { roots: roots(secondRoot) });
+    expect((await harness.waitForResponse(4)).error).toBeUndefined();
+
+    const requests = readFileSync(requestLogPath, "utf8")
+      .trim()
+      .split("\n")
+      .map((line) =>
+        z
+          .object({ method: z.string(), params: z.unknown() })
+          .parse(JSON.parse(line)),
+      );
+    expect(
+      requests
+        .filter((request) => request.method === "skills/extraRoots/set")
+        .map((request) => request.params),
+    ).toEqual([{ extraRoots: [firstRoot] }, { extraRoots: [secondRoot] }]);
+    expect(readFileSync(launchLogPath, "utf8").trim().split("\n")).toHaveLength(
+      1,
+    );
+  } finally {
+    harness.sendRequest(5, "thread/stop", {
+      threadId,
+      providerThreadId: "skills-cleanup",
+      intent: "release",
+      activeTurnId: null,
+    });
+    await harness.waitForResponse(5).catch(() => undefined);
+    experimental_killAllChildrenForTests();
+    harness.restore();
+    vi.unstubAllEnvs();
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});

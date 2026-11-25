@@ -2,12 +2,12 @@
 import { renameSync } from "node:fs";
 import { createFileStreamResponse } from "../files/file-stream-response.js";
 import { createLocalFileSource } from "../files/local-file-source.js";
-import { and, eq, isNull } from "drizzle-orm";
 import {
+  claimUnreadyProjectAttachmentDeletion,
   getProjectAttachment,
+  getProjectAttachmentBackfill,
+  markProjectAttachmentReady,
   recordProjectAttachment,
-  projectAttachments,
-  projectAttachmentBackfills,
   attachmentUnavailable,
   type DbConnection,
   type ProjectAttachmentRow,
@@ -134,11 +134,7 @@ export async function ensureAttachmentReferenceExists(
   )
     throw attachmentUnavailable(storedPath);
   if (!existing) {
-    const backfill = db
-      .select()
-      .from(projectAttachmentBackfills)
-      .where(eq(projectAttachmentBackfills.projectId, projectId))
-      .get();
+    const backfill = getProjectAttachmentBackfill(db, projectId);
     if (backfill?.phase === "done")
       throw missingAttachmentReferenceError(storedPath);
   }
@@ -436,6 +432,28 @@ export function pendingAttachmentPath(
   return join(projectAttachmentDir(dataDir, projectId), ".pending", id);
 }
 
+export async function restoreProjectAttachment(
+  db: DbConnection,
+  dataDir: string,
+  projectId: string,
+  attachment: {
+    content: Buffer;
+    mimeType: string | null;
+    originalName: string;
+    storedPath: string;
+  },
+): Promise<void> {
+  await writeInventoriedAttachment(
+    db,
+    dataDir,
+    projectId,
+    attachment.storedPath,
+    attachment.content,
+    attachment.originalName,
+    attachment.mimeType,
+  );
+}
+
 async function writeInventoriedAttachment(
   db: DbConnection,
   dataDir: string,
@@ -450,6 +468,10 @@ async function writeInventoriedAttachment(
     await ensureAttachmentReferenceExists(db, dataDir, projectId, storedPath);
     return;
   }
+  const outputPath = resolveAttachmentPath(
+    projectAttachmentDir(dataDir, projectId),
+    storedPath,
+  );
   const now = Date.now();
   const row = recordProjectAttachment(db, {
     projectId,
@@ -461,10 +483,6 @@ async function writeInventoriedAttachment(
     readyAt: null,
   });
   const pendingPath = pendingAttachmentPath(dataDir, projectId, row.id);
-  const outputPath = resolveAttachmentPath(
-    projectAttachmentDir(dataDir, projectId),
-    storedPath,
-  );
   try {
     await mkdir(dirname(pendingPath), { recursive: true });
     await mkdir(dirname(outputPath), { recursive: true });
@@ -480,24 +498,19 @@ async function writeInventoriedAttachment(
         )
           throw attachmentUnavailable(storedPath);
         renameSync(pendingPath, outputPath);
-        tx.update(projectAttachments)
-          .set({ readyAt: Date.now() })
-          .where(eq(projectAttachments.id, row.id))
-          .run();
+        markProjectAttachmentReady(tx, {
+          attachmentId: row.id,
+          readyAt: Date.now(),
+        });
       },
       { behavior: "immediate" },
     );
   } catch (error) {
     await rm(pendingPath, { force: true });
-    db.update(projectAttachments)
-      .set({ deletionClaimedAt: Date.now() })
-      .where(
-        and(
-          eq(projectAttachments.id, row.id),
-          isNull(projectAttachments.readyAt),
-        ),
-      )
-      .run();
+    claimUnreadyProjectAttachmentDeletion(db, {
+      attachmentId: row.id,
+      claimedAt: Date.now(),
+    });
     throw error;
   }
 }

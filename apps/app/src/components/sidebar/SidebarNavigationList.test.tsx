@@ -27,7 +27,10 @@ import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { getPluginPanelRoutePath, getThreadRoutePath } from "@/lib/route-paths";
+import {
+  getPluginPanelRoutePath,
+  getThreadLocationPath,
+} from "@/lib/route-paths";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import {
   bundledNavigationSlot,
@@ -51,13 +54,13 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandRunner: () => ({
     dispatch: mocks.dispatch,
-    isCommandAvailable: () => true,
   }),
   useAppCommandShortcut: () => null,
+  useIsAppCommandAvailable: () => true,
   useIsAppCommandModifierHeld: () => false,
 }));
 
-const THREAD_PATH = getThreadRoutePath({
+const THREAD_PATH = getThreadLocationPath({
   projectId: "proj_one",
   threadId: "thr_one",
 });

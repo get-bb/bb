@@ -18,7 +18,6 @@ import {
   threadStorageOrphanSweep,
   THREAD_STORAGE_ORPHAN_SWEEP_CADENCE_MS,
 } from "../threads/thread-storage-orphans.js";
-import { and, eq, isNull, isNotNull, inArray, notExists } from "drizzle-orm";
 import {
   machineLifecycleSweep,
   machineRemovalRequestSweep,
@@ -45,14 +44,14 @@ import {
   listDeferredLegacyTables,
   migrateNextCompletedEventItemOutput,
   migrateNextLegacyImageGenerationOutput,
-  environments,
+  listDeletedThreadsAwaitingPurge,
+  listProvisioningEnvironmentIds,
+  listStartingThreadIds,
   pruneClosedSessions,
   pruneExitedTerminalSessions,
   RETAINED_EVENT_OUTPUT_TARGETS,
   runIncrementalVacuum,
   shouldRunIncrementalVacuum,
-  threadPurges,
-  threads,
   DEFAULT_COMPLETED_EVENT_OUTPUT_MIGRATION_SCAN_LIMIT,
   DEFAULT_LEGACY_IMAGE_GENERATION_MIGRATION_SCAN_LIMIT,
 } from "@bb/db";
@@ -386,12 +385,7 @@ function environmentProvisioningSweep(
   return defineItemSweep({
     name: "environment-provisioning-orphan-cleanup",
     concurrency: 1,
-    list: () =>
-      deps.db
-        .select({ id: environments.id })
-        .from(environments)
-        .where(inArray(environments.status, ["creating", "provisioning"]))
-        .all(),
+    list: () => listProvisioningEnvironmentIds(deps.db).map((id) => ({ id })),
     key: (environment) => environment.id,
     process: async (environment) => {
       await advanceEnvironmentProvisioning(deps, {
@@ -413,12 +407,7 @@ function threadProvisioningSweep(
   return defineItemSweep({
     name: "thread-provisioning",
     concurrency: 1,
-    list: () =>
-      deps.db
-        .select({ id: threads.id })
-        .from(threads)
-        .where(and(eq(threads.status, "starting"), isNull(threads.deletedAt)))
-        .all(),
+    list: () => listStartingThreadIds(deps.db).map((id) => ({ id })),
     key: (thread) => thread.id,
     process: async (thread) => {
       if (hasThreadStartTurnRequest(deps.db, thread.id)) return;
@@ -454,26 +443,7 @@ function deletedThreadFinalizationSweep(
   return defineItemSweep({
     name: "deleted-thread-finalization",
     concurrency: 1,
-    list: () =>
-      deps.db
-        .select({
-          environmentId: threads.environmentId,
-          id: threads.id,
-          storageDeletedAt: threads.storageDeletedAt,
-        })
-        .from(threads)
-        .where(
-          and(
-            isNotNull(threads.deletedAt),
-            notExists(
-              deps.db
-                .select({ threadId: threadPurges.threadId })
-                .from(threadPurges)
-                .where(eq(threadPurges.threadId, threads.id)),
-            ),
-          ),
-        )
-        .all(),
+    list: () => listDeletedThreadsAwaitingPurge(deps.db),
     key: (thread) => thread.id,
     process: (thread) => {
       deps.terminalSessions.closeDeletedThreadTerminals({

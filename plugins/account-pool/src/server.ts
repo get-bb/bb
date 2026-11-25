@@ -42,6 +42,7 @@ import {
 import {
   AccountStore,
   HubTokenStore,
+  moveAccountSecretFiles,
   PoolAffinityStore,
   QUOTA_MIGRATIONS,
   QuotaStore,
@@ -121,11 +122,18 @@ export function createAccountPoolPlugin(
       },
     };
     const secretDir = path.join(
-      bb.server.experimental_dataDir,
-      "plugins",
-      bb.pluginId,
-      "secrets",
+      bb.storage.experimental_directory(),
       "accounts",
+    );
+    await moveAccountSecretFiles(
+      path.join(
+        bb.server.experimental_dataDir,
+        "plugins",
+        bb.pluginId,
+        "secrets",
+        "accounts",
+      ),
+      secretDir,
     );
     const accounts = new AccountStore(bb.storage.kv, secretDir);
     await accounts.initialize();

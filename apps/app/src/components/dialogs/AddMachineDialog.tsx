@@ -32,11 +32,11 @@ import { useHosts } from "@/hooks/queries/host-queries";
 import { sdk } from "@/lib/sdk";
 import { useClipboardCopy } from "@/lib/clipboard";
 import { Link } from "react-router-dom";
-import { getSettingsMachineRoutePath } from "@/lib/route-paths";
 import {
   getMutationErrorMessage,
   isAbortLikeError,
 } from "@/lib/mutation-errors";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 
 const MANUAL_MACHINE_PROVIDER_ID = "manual";
 
@@ -164,8 +164,8 @@ export function MachineAccessGate({
       <DialogHeader>
         <DialogTitle>Set up machine access</DialogTitle>
         <DialogDescription>
-          A new machine has to reach this server over the network. Choose the
-          address it should use.
+          A new machine has to reach this server over the network. Set up at
+          least one route for it to get here.
         </DialogDescription>
       </DialogHeader>
       {children}
@@ -603,7 +603,7 @@ export function ManualMachineSetupView({
                 className="h-7 shrink-0 px-2 text-xs"
               >
                 <Link
-                  to={getSettingsMachineRoutePath(connectedHost.id)}
+                  to={getSettingsTargetPath({ machineId: connectedHost.id })}
                   onClick={onOpenMachine}
                 >
                   Open machine

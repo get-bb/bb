@@ -7,6 +7,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import type { SystemAppUpdateResult } from "@bb/server-contract";
+import { terminalOutputToPlainText } from "@bb/text-utils";
 import { Button } from "@bb/shared-ui/button";
 import {
   Dialog,
@@ -215,7 +216,7 @@ export function AppUpdateResultDialog({
   const current = result ?? lastShownResult;
   const presentation =
     current === null ? null : describeAppUpdateResult(current);
-  const log = current?.logTail.join("\n") ?? "";
+  const log = terminalOutputToPlainText(current?.logTail.join("\n") ?? "");
   const logRef = useRef<HTMLPreElement>(null);
   useLayoutEffect(() => {
     const element = logRef.current;

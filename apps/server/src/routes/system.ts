@@ -1,3 +1,4 @@
+import { operationComplete } from "../services/lib/operation-response.js";
 import { withReportedProviderId } from "../services/system/provider-telemetry.js";
 import { rememberPluginRecommendation } from "../services/plugins/plugin-use-telemetry.js";
 import { createMobileAppReleaseService } from "../services/install/mobile-app-releases.js";
@@ -10,7 +11,7 @@ import {
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
 import { getGateAuthKind } from "../request-context.js";
-import { serverAccessStatus } from "../services/machines/server-access.js";
+import { serverAccessOverview } from "../services/machines/server-access.js";
 import {
   getAppSettings,
   getAppKeybindingOverrides,
@@ -210,9 +211,12 @@ export function registerSystemRoutes(
         ...deps.hub.listDaemonLocalApiPorts(),
       ]),
     ];
+    const access = await serverAccessOverview(deps);
     return {
+      serverId: access.serverId,
+      routes: access.routes,
       generalSettings: compatibleGeneralSettings(),
-      serverAccess: await serverAccessStatus(deps),
+      serverAccess: access.status,
       keybindings: applyAppKeybindingOverrides(
         DEFAULT_APP_KEYBINDINGS,
         keybindingOverrides,
@@ -361,7 +365,7 @@ export function registerSystemRoutes(
       );
     }
     deps.telemetry.capture(withReportedProviderId(payload));
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   put(routes.keyboardSettings, (context, payload) => {
@@ -430,7 +434,7 @@ export function registerSystemRoutes(
       const message = error instanceof Error ? error.message : String(error);
       throw new ApiError(422, "invalid_config", message);
     }
-    return context.json({ ok: true });
+    return context.json(operationComplete());
   });
 
   get(routes.cliSkillsStatus, async (context, query) =>
@@ -738,19 +742,16 @@ export function registerSystemRoutes(
 
   post(routes.scheduleAppUpdate, async (context) => {
     assertAppUpdateAllowed(context);
-    assertUpdateWhenIdleEnabled(deps.db);
     return context.json(await deps.appUpdate.schedule());
   });
 
   post(routes.cancelScheduledAppUpdate, async (context) => {
     assertAppUpdateAllowed(context);
-    assertUpdateWhenIdleEnabled(deps.db);
     return context.json(await deps.appUpdate.cancelScheduled());
   });
 
   post(routes.setAppUpdateAuto, async (context, body) => {
     assertAppUpdateAllowed(context);
-    assertUpdateWhenIdleEnabled(deps.db);
     return context.json(await deps.appUpdate.setAutoUpdate(body.enabled));
   });
 
@@ -784,19 +785,6 @@ function assertCliCommandChangeAllowed(
       403,
       "forbidden",
       "Machine credentials cannot change the bb command on the bb server's computer",
-    );
-  }
-}
-
-const UPDATE_WHEN_IDLE_EXPERIMENT_DISABLED_MESSAGE =
-  'Updating when idle is off. Turn on the "Update when idle" experiment in Settings → Experiments, or run bb settings experiment updateWhenIdle true, then try again.';
-
-function assertUpdateWhenIdleEnabled(db: ServerAppDeps["db"]): void {
-  if (!getExperiments(db).updateWhenIdle) {
-    throw new ApiError(
-      403,
-      "update_when_idle_experiment_disabled",
-      UPDATE_WHEN_IDLE_EXPERIMENT_DISABLED_MESSAGE,
     );
   }
 }

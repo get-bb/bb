@@ -21,10 +21,9 @@ import {
 import {
   appendDaemonEventsInTransaction,
   findLastCompletedRootStoredTurn,
-  getFirstParentedTimelineBoundarySequence,
   getLatestStoredThreadEventOfTypes,
   getLatestModelFallbackRowSinceTurnRequest,
-  getTimelineGroupingContextChangesInRange,
+  hasTimelineGroupingContextChangesInRange,
   getUnfinishedCommandItemData,
   hasStoredSpawnAgentToolCall,
   listStoredEventRowsInSequenceRange,
@@ -71,13 +70,17 @@ import {
   listRetryableFailedQueuedThreadMessages,
   listQueuedThreadMessagesByWaitHolder,
 } from "../src/data/queued-thread-messages.js";
-import { listEnvironments } from "../src/data/environments.js";
+import {
+  createEnvironment,
+  listEnvironments,
+} from "../src/data/environments.js";
 import { upsertHost } from "../src/data/hosts.js";
 import { createProject } from "../src/data/projects.js";
 import {
   createThread,
   listRunningThreads,
   listArchivedThreadsPendingTeardown,
+  listRuntimeHostThreadIds,
   listThreadsWithPendingInteractionState,
 } from "../src/data/threads.js";
 import {
@@ -689,62 +692,25 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("resolves root turn starts for the parented boundary through the turn index", () => {
+  it("probes appended grouping-context rows through the type index", () => {
     const { db, thread } = setup();
 
-    const captured = captureStatements(db, () => {
-      expect(
-        getFirstParentedTimelineBoundarySequence(db, {
-          maxSeq: 10,
-          sequenceStart: 0,
-          threadId: thread.id,
-        }),
-      ).toBeNull();
-    });
-    const query = captured.find((entry) => entry.sql.includes("root_start"));
-    if (!query) {
-      throw new Error("Expected the parented timeline boundary SQL");
-    }
-    const details = queryPlanDetails({
-      db,
-      params: query.params,
-      sql: query.sql,
-    });
-    expect(details).toMatch(
-      /SEARCH events USING INDEX events_thread_type_sequence_idx \(thread_id=\? AND type=\? AND sequence>\? AND sequence<\?\)/u,
+    const [query] = captureStatements(db, () =>
+      hasTimelineGroupingContextChangesInRange(db, {
+        afterSequence: 10,
+        threadId: thread.id,
+        throughSequence: 30,
+      }),
     );
-    expect(details).not.toContain("SCAN spans");
-    expect(details).toMatch(
-      /SEARCH root_start (?:EXISTS )?USING (?:COVERING )?INDEX events_thread_turn_type_item_sequence_idx \(thread_id=\? AND turn_id=\? AND type=\?\)/u,
-    );
-    expect(details).toMatch(
-      /SEARCH events USING COVERING INDEX events_parent_tool_call_thread_parent_sequence_idx \(thread_id=\? AND parent_tool_call_id>\?\)/u,
-    );
-    expect(details.indexOf("SCAN nested_history")).toBeGreaterThanOrEqual(0);
-    expect(details.indexOf("SCAN nested_history")).toBeLessThan(
-      details.indexOf("INDEX events_delegating_item_lookup_idx"),
-    );
-    expect(details).toMatch(
-      /SEARCH events USING (?:COVERING )?INDEX events_delegating_item_lookup_idx/u,
-    );
+    if (!query) throw new Error("Expected the grouping-context probe SQL");
+    expect(queryPlanDetails({ db, ...query }).split("\n")).toEqual([
+      "SEARCH events USING COVERING INDEX events_thread_type_sequence_idx (thread_id=? AND type=? AND sequence>? AND sequence<?)",
+    ]);
 
     db.$client.close();
   });
 
   it.each([
-    {
-      name: "probes appended grouping-context rows",
-      run: (db: DbConnection, threadId: string) =>
-        getTimelineGroupingContextChangesInRange(db, {
-          afterSequence: 10,
-          threadId,
-          throughSequence: 30,
-        }),
-      probes: [
-        "CORRELATED SCALAR SUBQUERY 1",
-        "SEARCH completed USING COVERING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
-      ],
-    },
     {
       name: "lists rows in a sequence range",
       run: (db: DbConnection, threadId: string) =>
@@ -938,8 +904,44 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
+  it("seeks a host's live and running threads by status instead of walking its environments", () => {
+    const { db, host } = setup();
+
+    const captured = captureStatements(db, () => {
+      listRuntimeHostThreadIds(db, { hostId: host.id });
+    });
+    expect(captured).toHaveLength(2);
+    const details = captured.map((query) => queryPlanDetails({ db, ...query }));
+    expect(details[0]).toMatch(
+      /SEARCH threads USING INDEX threads_archived_status_idx \(archived_at=\?/u,
+    );
+    expect(details[1]).toMatch(
+      /SEARCH threads USING INDEX threads_active_maintenance_idx \(status=\?\)/u,
+    );
+    for (const plan of details) {
+      expect(plan).not.toMatch(
+        /SEARCH environments USING INDEX environments_/u,
+      );
+    }
+
+    db.$client.close();
+  });
+
   it("probes settled background tasks by item when listing open tasks", () => {
-    const { db, host, thread } = setup();
+    const { db, host, project } = setup();
+    const environment = createEnvironment(db, noopNotifier, {
+      providerOwnsPath: false,
+      projectId: project.id,
+      hostId: host.id,
+      path: "/tmp/query-plan-background-tasks",
+      status: "ready",
+    });
+    const thread = createThread(db, noopNotifier, {
+      status: "idle",
+      projectId: project.id,
+      environmentId: environment.id,
+      providerId: "codex",
+    });
     const lifecycle = [
       ["bg-open", "item/started"],
       ["bg-done", "item/started"],
@@ -967,10 +969,17 @@ describe("slow query index plans", () => {
           threadId: thread.id,
         }).map((row) => row.itemId),
       ).toEqual(["bg-open"]);
-      listOpenBackgroundTaskItemRowsForHost(db, { hostId: host.id });
+      expect(
+        listOpenBackgroundTaskItemRowsForHost(db, { hostId: host.id }).map(
+          (row) => row.itemId,
+        ),
+      ).toEqual(["bg-open"]);
     });
-    expect(captured).toHaveLength(2);
-    for (const query of captured) {
+    const eventQueries = captured.filter((query) =>
+      /from "?events"?/iu.test(query.sql),
+    );
+    expect(eventQueries).toHaveLength(2);
+    for (const query of eventQueries) {
       const details = queryPlanDetails({ db, ...query });
       expect(details).toMatch(
         /SEARCH \w+ USING COVERING INDEX events_background_task_thread_type_item_sequence_idx \(thread_id=\? AND type=\? AND item_id=\?\)/u,
@@ -981,7 +990,7 @@ describe("slow query index plans", () => {
     db.$client.close();
   });
 
-  it("finds a turn's running provider compaction through the turn index", () => {
+  it("finds a turn's running provider compaction through the compaction item index", () => {
     const { db, thread } = setup();
     const compactionEvent = (args: {
       sequence: number;
@@ -1059,11 +1068,13 @@ describe("slow query index plans", () => {
     expect(isRunning("turn-accepted")).toBe(false);
     expect(isRunning("turn-without-compaction")).toBe(false);
 
-    expect(captured).toHaveLength(2);
-    const [compactionQuery] = captured;
-    expect(queryPlanDetails({ db, ...compactionQuery! })).toContain(
-      "events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
-    );
+    expect(captured).toHaveLength(3);
+    const [startedQuery, completedQuery] = captured;
+    for (const query of [startedQuery!, completedQuery!]) {
+      expect(queryPlanDetails({ db, ...query })).toContain(
+        "events_thread_type_item_kind_sequence_idx (thread_id=? AND type=? AND item_kind=?)",
+      );
+    }
     for (const query of captured) {
       expectNoThreadOnlyEventSeek(queryPlanDetails({ db, ...query }));
     }
@@ -1374,7 +1385,11 @@ describe("slow query index plans", () => {
       run: (db: DbConnection, threadId: string) =>
         isStoredTurnContextCompactionOnly(db, { threadId, turnId: "turn-1" }),
       plan: [
-        "SEARCH events USING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
+        "SCAN CONSTANT ROW",
+        "SCALAR SUBQUERY 1",
+        "SEARCH compaction USING INDEX events_thread_type_item_kind_sequence_idx (thread_id=? AND type=? AND item_kind=?)",
+        "SCALAR SUBQUERY 2",
+        "SEARCH other USING INDEX events_thread_turn_type_item_sequence_idx (thread_id=? AND turn_id=? AND type=?)",
       ],
     },
   ])(

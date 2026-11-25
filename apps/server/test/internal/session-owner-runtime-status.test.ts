@@ -1,5 +1,10 @@
 import { changedMessageSchema, type ThreadChangedMessage } from "@bb/domain";
-import { getThread, markThreadDeleted } from "@bb/db";
+import {
+  archiveThread,
+  getSessionById,
+  getThread,
+  markThreadDeleted,
+} from "@bb/db";
 import { HOST_RECONNECT_GRACE_MS } from "../../src/constants.js";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -156,9 +161,8 @@ describe("host thread runtime status notifications", () => {
           runtime: { displayStatus: "active" },
         });
         expect(
-          lastStatusChange(socket.messages, fixture.idleThreadId).metadata
-            ?.statusChange,
-        ).toBeUndefined();
+          statusChangedMessagesFor(socket.messages, fixture.idleThreadId),
+        ).toEqual([]);
         const hostChangesBeforeGraceEnd = hostDisconnectedMessagesFor(
           socket.messages,
           fixture.hostId,
@@ -225,6 +229,44 @@ describe("host thread runtime status notifications", () => {
     });
   });
 
+  it("sends only status snapshots, and only to active threads, across a disconnect, grace expiry and reconnect", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedHostThreadsFixture(harness, 7);
+      const stoppingThreadId = seedThread(harness.deps, {
+        projectId: fixture.projectId,
+        environmentId: fixture.environmentId,
+        status: "stopping",
+      }).id;
+      const socket = createMockHubSocket();
+      harness.hub.subscribe(socket, { kind: "thread-list" });
+
+      vi.useFakeTimers();
+      try {
+        handleDaemonSocketClosed(harness.deps, {
+          sessionId: fixture.sessionId,
+        });
+        vi.advanceTimersByTime(HOST_RECONNECT_GRACE_MS);
+      } finally {
+        vi.useRealTimers();
+      }
+      const reconnected = seedSession(harness.deps, fixture.hostId);
+      onDaemonSocketOpen(harness.deps, {
+        hostId: fixture.hostId,
+        sessionId: reconnected.id,
+        socket: createMockHubSocket(),
+      });
+
+      for (const threadId of [fixture.idleThreadId, stoppingThreadId]) {
+        expect(statusChangedMessagesFor(socket.messages, threadId)).toEqual([]);
+      }
+      expect(
+        statusChangedMessagesFor(socket.messages, fixture.activeThreadId).map(
+          (message) => message.metadata?.statusChange?.runtime.displayStatus,
+        ),
+      ).toEqual(["active", "waiting-for-host", "active"]);
+    });
+  });
+
   it("never shows a disconnect for a daemon that reconnects within the reconnect grace", async () => {
     await withTestHarness(async (harness) => {
       const fixture = seedHostThreadsFixture(harness, 5);
@@ -256,7 +298,7 @@ describe("host thread runtime status notifications", () => {
     });
   });
 
-  it("publishes the disconnect fan-out in a statement count that does not grow with the host's thread count", async () => {
+  it("publishes the disconnect fan-out only to active threads, in a statement count that does not grow with the host's thread count", async () => {
     await withTestHarness(async (harness) => {
       const small = seedHostThreadsFixture(harness, 2);
       const large = seedHostThreadsFixture(harness, 3);
@@ -273,6 +315,11 @@ describe("host thread runtime status notifications", () => {
         fixture: large,
         status: "idle",
       });
+      const stoppingThreadId = seedThread(harness.deps, {
+        projectId: large.projectId,
+        environmentId: large.environmentId,
+        status: "stopping",
+      }).id;
       const deletedActiveThread = seedThread(harness.deps, {
         projectId: large.projectId,
         environmentId: large.environmentId,
@@ -281,8 +328,25 @@ describe("host thread runtime status notifications", () => {
       markThreadDeleted(harness.db, harness.hub, {
         threadId: deletedActiveThread.id,
       });
+      const archivedIdleThreadIds = seedHostThreads(harness, {
+        count: 300,
+        fixture: large,
+        status: "idle",
+      });
+      const archivedActiveThreadId = seedThread(harness.deps, {
+        projectId: large.projectId,
+        environmentId: large.environmentId,
+        status: "active",
+      }).id;
+      for (const threadId of [
+        ...archivedIdleThreadIds,
+        archivedActiveThreadId,
+      ]) {
+        archiveThread(harness.db, harness.hub, threadId);
+      }
       const socket = createMockHubSocket();
       harness.hub.subscribe(socket, { kind: "thread-list" });
+      getSessionById(harness.db, { sessionId: large.sessionId });
 
       const largeStatements = countPreparedStatements(harness, () =>
         handleDaemonSocketClosed(harness.deps, { sessionId: large.sessionId }),
@@ -298,7 +362,10 @@ describe("host thread runtime status notifications", () => {
 
       expect(largeStatements).toBe(smallStatements);
 
-      for (const threadId of largeActiveThreadIds) {
+      for (const threadId of [
+        ...largeActiveThreadIds,
+        archivedActiveThreadId,
+      ]) {
         expect(
           lastStatusChange(largeMessages, threadId).metadata?.statusChange,
         ).toMatchObject({
@@ -306,14 +373,15 @@ describe("host thread runtime status notifications", () => {
           runtime: { displayStatus: "active" },
         });
       }
-      for (const threadId of [...largeIdleThreadIds, deletedActiveThread.id]) {
-        expect(
-          lastStatusChange(largeMessages, threadId).metadata?.statusChange,
-        ).toBeUndefined();
+      for (const threadId of [
+        ...largeIdleThreadIds,
+        stoppingThreadId,
+        ...archivedIdleThreadIds,
+        deletedActiveThread.id,
+        small.activeThreadId,
+      ]) {
+        expect(statusChangedMessagesFor(largeMessages, threadId)).toEqual([]);
       }
-      expect(
-        statusChangedMessagesFor(largeMessages, small.activeThreadId),
-      ).toEqual([]);
     });
   });
 
@@ -343,9 +411,8 @@ describe("host thread runtime status notifications", () => {
         runtime: { displayStatus: "idle" },
       });
       expect(
-        lastStatusChange(socket.messages, fixture.idleThreadId).metadata
-          ?.statusChange,
-      ).toBeUndefined();
+        statusChangedMessagesFor(socket.messages, fixture.idleThreadId),
+      ).toEqual([]);
     });
   });
 });

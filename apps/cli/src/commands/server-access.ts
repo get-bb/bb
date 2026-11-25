@@ -1,0 +1,180 @@
+import type { Command } from "commander";
+import {
+  LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID,
+  MANUAL_SERVER_ACCESS_PROVIDER_ID,
+} from "@bb/domain";
+import type { ServerAccessStatus } from "@bb/server-contract";
+import { action, CliExitError } from "../action.js";
+import { createCliBbSdk } from "../client.js";
+import { outputJson } from "../command-result.js";
+import { columnWidths, printBorderlessTable } from "../table.js";
+
+interface JsonCommandOptions {
+  json?: boolean;
+}
+
+type ServerAccessProvider = ServerAccessStatus["providers"][number];
+
+function providerStatus(provider: ServerAccessProvider): string {
+  return provider.availability.status === "available"
+    ? "ready"
+    : provider.availability.message;
+}
+
+function printServerAccess(access: ServerAccessStatus): void {
+  const rows = access.providers.map((provider, index) => [
+    String(index + 1),
+    provider.id,
+    provider.displayName,
+    provider.routeKind,
+    providerStatus(provider),
+    provider.urls.join(", "),
+  ]);
+  printBorderlessTable(
+    {
+      head: ["#", "ID", "Route", "Kind", "Status", "Address"],
+      colWidths: columnWidths(rows, [1, 2, 5, 4, 6, 7]),
+      trimTrailingWhitespace: true,
+    },
+    rows,
+  );
+}
+
+function requireKnownProviders(
+  access: ServerAccessStatus,
+  providerIds: readonly string[],
+): void {
+  const known = new Set(access.providers.map((provider) => provider.id));
+  const unknown = providerIds.filter((providerId) => !known.has(providerId));
+  if (unknown.length > 0) {
+    throw new CliExitError(
+      `Unknown route ${unknown.join(", ")}. Run "bb server access list" for the available IDs.`,
+      1,
+    );
+  }
+}
+
+function requireCoreRoute(
+  access: ServerAccessStatus,
+  providerId: string,
+): ServerAccessProvider {
+  requireKnownProviders(access, [providerId]);
+  const provider = access.providers.find((entry) => entry.id === providerId);
+  if (provider === undefined || provider.pluginId !== null) {
+    throw new CliExitError(
+      `${provider?.displayName ?? providerId} comes from a plugin. Set it up or turn it off in that plugin's settings.`,
+      1,
+    );
+  }
+  return provider;
+}
+
+export function registerServerAccessCommands(
+  server: Command,
+  getUrl: () => string,
+): void {
+  const access = server
+    .command("access")
+    .description(
+      "List, add or remove, and order the routes devices use to reach this server",
+    );
+
+  access
+    .command("list")
+    .description("List routes in order with their status and address")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: JsonCommandOptions) => {
+        const config = await createCliBbSdk(getUrl()).system.config();
+        if (
+          outputJson(opts, {
+            serverId: config.serverId,
+            routes: config.routes,
+            serverAccess: config.serverAccess,
+          })
+        )
+          return;
+        console.log(`Server ID: ${config.serverId}`);
+        printServerAccess(config.serverAccess);
+      }),
+    );
+
+  access
+    .command("add <route-id> [url]")
+    .description(
+      "Add local-network (listens on this computer's LAN addresses) or direct with your own URL",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          providerId: string,
+          url: string | undefined,
+          opts: JsonCommandOptions,
+        ) => {
+          const sdk = createCliBbSdk(getUrl());
+          const config = await sdk.system.config();
+          const provider = requireCoreRoute(config.serverAccess, providerId);
+          if (provider.id === MANUAL_SERVER_ACCESS_PROVIDER_ID && !url) {
+            throw new CliExitError(
+              "Give the URL machines should use, for example: bb server access add direct https://bb.example.com",
+              1,
+            );
+          }
+          await sdk.system.updateGeneralSettings({
+            ...config.generalSettings,
+            ...(provider.id === LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID
+              ? { localNetworkEnabled: true }
+              : { machineServerUrl: url ?? null }),
+          });
+          const updated = await sdk.system.config();
+          if (outputJson(opts, updated.serverAccess)) return;
+          printServerAccess(updated.serverAccess);
+        },
+      ),
+    );
+
+  access
+    .command("remove <route-id>")
+    .description(
+      "Remove local-network (stops listening on LAN addresses) or direct (clears its URL)",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (providerId: string, opts: JsonCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const config = await sdk.system.config();
+        const provider = requireCoreRoute(config.serverAccess, providerId);
+        await sdk.system.updateGeneralSettings({
+          ...config.generalSettings,
+          ...(provider.id === LOCAL_NETWORK_SERVER_ACCESS_PROVIDER_ID
+            ? { localNetworkEnabled: false }
+            : { machineServerUrl: null }),
+        });
+        const updated = await sdk.system.config();
+        if (outputJson(opts, updated.serverAccess)) return;
+        printServerAccess(updated.serverAccess);
+      }),
+    );
+
+  access
+    .command("order <route-ids...>")
+    .description(
+      "Put routes first in this order; unlisted routes keep their default rank after them",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (providerIds: string[], opts: JsonCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const config = await sdk.system.config();
+        requireKnownProviders(config.serverAccess, providerIds);
+        await sdk.system.updateGeneralSettings({
+          ...config.generalSettings,
+          serverAccessOrder: [...new Set(providerIds)],
+        });
+        const updated = await sdk.system.config();
+        if (outputJson(opts, updated.serverAccess)) return;
+        printServerAccess(updated.serverAccess);
+      }),
+    );
+}

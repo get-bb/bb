@@ -11,7 +11,10 @@ import {
 } from "@bb/process-utils";
 import type { BridgeProtocolAdapter } from "./bridge-protocol-adapter.js";
 import type { CreateBridgeAdapterOptions } from "./provider-adapter.js";
-import { bridgeLaunchProcessKey } from "./bridge-launch-process-key.js";
+import {
+  bridgeLaunchProcessKey,
+  providerProcessKey,
+} from "./bridge-launch-process-key.js";
 import { createProviderForId } from "./provider-registry.js";
 import {
   ignoredJsonRpcResultSchema,
@@ -27,6 +30,7 @@ import type {
   AgentRuntimeProcessExitThreadState,
   AgentRuntimeSkillRoot,
 } from "./types.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface RuntimeProviderProcess extends ManagedProcess {
   adapter: BridgeProtocolAdapter;
@@ -54,7 +58,6 @@ interface RuntimeProviderDeferredEventsArgs {
 }
 
 interface RuntimeProviderProcessManagerArgs {
-  additionalWorkspaceWriteRoots: readonly string[];
   createAdapter?: (
     providerId: string,
     options: CreateBridgeAdapterOptions,
@@ -97,6 +100,16 @@ interface ShutdownRuntimeProviderArgs {
   timeoutMs?: number;
 }
 
+export interface RekeyedProviderProcess {
+  fromProcessKey: string;
+  toProcessKey: string;
+}
+
+export interface ReconfigureProviderSkillRootsResult {
+  rekeyedProcesses: RekeyedProviderProcess[];
+  unappliedProcessCount: number;
+}
+
 interface CleanupFailedStartupArgs {
   processKey: string;
   providerId: string;
@@ -125,12 +138,15 @@ interface ProviderProcessExitedErrorArgs {
   providerId: string;
   status: ProviderProcessExitStatus;
   stderrTail: Buffer;
+  expected: boolean;
 }
 
 const PROVIDER_STDERR_TAIL_MAX_BYTES = 4_000;
 const PROVIDER_PROCESS_CLOSE_GRACE_MS = 1_000;
 
 class ProviderProcessExitedError extends Error {
+  readonly code: "provider_process_exited" | undefined;
+
   constructor(args: ProviderProcessExitedErrorArgs) {
     const stderr = formatProviderStderr(args.stderrTail);
     super(
@@ -138,6 +154,7 @@ class ProviderProcessExitedError extends Error {
         (stderr ? `\nstderr: ${stderr}` : ""),
     );
     this.name = "ProviderProcessExitedError";
+    this.code = args.expected ? undefined : "provider_process_exited";
   }
 }
 
@@ -147,10 +164,98 @@ export class RuntimeProviderProcessManager {
   private readonly providerStarting = new Map<string, Promise<void>>();
   private readonly providerRetiring = new Map<string, Promise<void>>();
   private readonly currentProcessKeyByProviderId = new Map<string, string>();
+  private skillRoots: readonly AgentRuntimeSkillRoot[];
   private shuttingDown = false;
 
   constructor(args: RuntimeProviderProcessManagerArgs) {
     this.args = args;
+    this.skillRoots = args.skillRoots;
+  }
+
+  async reconfigureSkillRoots(
+    skillRoots: readonly AgentRuntimeSkillRoot[],
+  ): Promise<ReconfigureProviderSkillRootsResult> {
+    this.skillRoots = skillRoots;
+    const rekeyedProcesses: RekeyedProviderProcess[] = [];
+    let unappliedProcessCount = 0;
+    for (const [processKey, providerProcess] of [...this.processes]) {
+      const nextProcessKey = providerProcessKey({
+        bridgeLaunchKey: providerProcess.bridgeLaunchKey,
+        providerId: providerProcess.providerId,
+        skillRoots,
+      });
+      if (nextProcessKey === processKey) {
+        continue;
+      }
+      const applied = await this.reconfigureProcessSkillRoots({
+        providerProcess,
+        skillRoots,
+      });
+      if (!applied) {
+        unappliedProcessCount += 1;
+        continue;
+      }
+      if (
+        this.processes.has(nextProcessKey) ||
+        this.providerStarting.has(nextProcessKey)
+      ) {
+        continue;
+      }
+      this.processes.delete(processKey);
+      providerProcess.processKey = nextProcessKey;
+      this.processes.set(nextProcessKey, providerProcess);
+      if (
+        this.currentProcessKeyByProviderId.get(providerProcess.providerId) ===
+        processKey
+      ) {
+        this.currentProcessKeyByProviderId.set(
+          providerProcess.providerId,
+          nextProcessKey,
+        );
+      }
+      rekeyedProcesses.push({
+        fromProcessKey: processKey,
+        toProcessKey: nextProcessKey,
+      });
+    }
+    return { rekeyedProcesses, unappliedProcessCount };
+  }
+
+  private async reconfigureProcessSkillRoots(args: {
+    providerProcess: RuntimeProviderProcess;
+    skillRoots: readonly AgentRuntimeSkillRoot[];
+  }): Promise<boolean> {
+    const { providerProcess } = args;
+    const processKey = providerProcess.processKey;
+    if (
+      hasChildProcessExited(providerProcess.child) ||
+      this.providerStarting.has(processKey) ||
+      this.providerRetiring.has(processKey)
+    ) {
+      return false;
+    }
+    const plan = providerProcess.adapter.buildCommandPlan({
+      type: "skills/reconfigure",
+      skillRoots: args.skillRoots,
+    });
+    if (plan.kind !== "request") {
+      return false;
+    }
+    try {
+      await sendJsonRpcRequest({
+        child: providerProcess.child,
+        message: plan,
+        pending: providerProcess.pending,
+        getNextId: this.args.getNextRequestId,
+        resultSchema: ignoredJsonRpcResultSchema,
+      });
+    } catch (error) {
+      this.args.onStderr?.(
+        `Provider "${providerProcess.providerId}" did not apply the changed skill catalog: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
+    return this.processes.get(processKey) === providerProcess;
   }
 
   async ensureProvider(args: EnsureRuntimeProviderArgs): Promise<void> {
@@ -192,9 +297,13 @@ export class RuntimeProviderProcessManager {
 
       try {
         if (hasChildProcessExited(providerProcess.child)) {
-          const stderr = formatProviderStderr(
+          const formattedStderr = formatProviderStderr(
             providerProcess.stderrTail,
-          )?.slice(0, 500);
+          );
+          const stderr =
+            formattedStderr === null
+              ? null
+              : sliceUtf16Head(formattedStderr, 500);
           throw new Error(
             `Provider "${args.providerId}" exited during startup with ${formatChildProcessExitStatus(providerProcess.child)}` +
               (stderr ? `\nstderr: ${stderr}` : ""),
@@ -217,7 +326,7 @@ export class RuntimeProviderProcessManager {
           }
         }
 
-        const skillRoots = args.skillRoots ?? this.args.skillRoots;
+        const skillRoots = args.skillRoots ?? this.skillRoots;
         if (skillRoots.length > 0) {
           const skillRootsCmd = adapter.buildCommandPlan({
             type: "skills/configure",
@@ -360,7 +469,6 @@ export class RuntimeProviderProcessManager {
     bridgeLaunch: AgentRuntimeBridgeLaunch,
   ): BridgeProtocolAdapter {
     const adapterOptions = {
-      additionalWorkspaceWriteRoots: this.args.additionalWorkspaceWriteRoots,
       bridgeLaunch,
       bridgeBundleDir: this.args.bridgeBundleDir,
       ...(this.args.bridgeNodeEnv !== undefined
@@ -620,6 +728,7 @@ export class RuntimeProviderProcessManager {
           providerId: args.providerId,
           status: { code: args.code, signal: args.signal },
           stderrTail: args.providerProcess.stderrTail,
+          expected,
         }),
       );
     }

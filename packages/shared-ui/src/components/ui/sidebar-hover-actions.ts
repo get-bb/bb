@@ -7,6 +7,9 @@ export const SIDEBAR_HOVER_ACTIONS_GAP_CLASS = "gap-0.5";
 export const SIDEBAR_HOVER_ACTIONS_INSET_CLASS =
   "bb-sidebar-hover-actions-inset";
 
+export const SIDEBAR_HOVER_ACTIONS_COLLAPSE_CLASS =
+  "bb-sidebar-hover-actions-collapse";
+
 export const SIDEBAR_HOVER_ACTIONS_FADE_CLASS = "bb-sidebar-hover-actions-fade";
 
 export const SIDEBAR_HOVER_ACTIONS_MASK_CLASS = "bb-sidebar-hover-actions-mask";

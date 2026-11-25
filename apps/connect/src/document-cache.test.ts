@@ -7,6 +7,10 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { decodeFrame, encodeFrame, type Frame } from "@bb/tunnel-contract";
 
 const SHELL_CACHE_CONTROL = "no-cache";
+const SHELL_FRAME_HEADERS: [string, string][] = [
+  ["content-security-policy", "frame-ancestors 'none'"],
+  ["x-frame-options", "DENY"],
+];
 
 const BUILD_A = {
   etag: 'W/"build-a"',
@@ -65,6 +69,7 @@ function serveShellOverTunnel(ws: ClientWebSocket): void {
         headers: [
           ["etag", currentBuild.etag],
           ["cache-control", SHELL_CACHE_CONTROL],
+          ...SHELL_FRAME_HEADERS,
         ],
       });
       send({ type: "body-end", streamId: frame.streamId });
@@ -81,6 +86,7 @@ function serveShellOverTunnel(ws: ClientWebSocket): void {
         ["content-encoding", "gzip"],
         ["content-length", String(gzip.byteLength)],
         ["cache-control", SHELL_CACHE_CONTROL],
+        ...SHELL_FRAME_HEADERS,
         ...(legacy ? [] : [["etag", currentBuild.etag] as [string, string]]),
       ],
     });
@@ -104,6 +110,7 @@ async function get(
   cacheMarker: string | null;
   cacheControl: string | null;
   etag: string | null;
+  framing: [string | null, string | null];
   body: string;
 }> {
   const res = await mf.dispatchFetch(`https://relay.test${path}`, {
@@ -118,6 +125,10 @@ async function get(
     cacheMarker: res.headers.get("x-bb-cache"),
     cacheControl: res.headers.get("cache-control"),
     etag: res.headers.get("etag"),
+    framing: [
+      res.headers.get("content-security-policy"),
+      res.headers.get("x-frame-options"),
+    ],
     body: Buffer.from(await res.arrayBuffer()).toString("utf8"),
   };
 }
@@ -215,6 +226,9 @@ describe.each(TRANSPORTS)("revalidated shell cache (%s response)", (name) => {
     expect(settled.body).toBe(BUILD_B.html);
     expect(settled.cacheMarker).toBe("revalidated");
     expect(settled.cacheControl).toBe("no-cache");
+    for (const shell of [cold, repeat, upgraded, settled]) {
+      expect(shell.framing).toEqual(["frame-ancestors 'none'", "DENY"]);
+    }
     expect(originLog.at(-1)).toEqual({
       ifNoneMatch: BUILD_B.etag,
       sentBody: false,

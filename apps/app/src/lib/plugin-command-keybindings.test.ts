@@ -70,12 +70,68 @@ describe("plugin command keybindings", () => {
     }
   });
 
+  it("keeps page-scoped defaults from different plugins, which never fire together", () => {
+    const pageScoped = (command: KeyboardCommandId): AppDefaultKeybinding => ({
+      ...binding(command),
+      when: {
+        all: ["mainSurface", "pluginPage"],
+        none: ["modalOpen", "editableFocus"],
+      },
+    });
+    const result = resolvePluginCommandDefaults(
+      [
+        pageScoped("plugin:tasks/new-task"),
+        pageScoped("plugin:board/add-card"),
+        pageScoped("plugin:board/archive"),
+        binding("plugin:launcher/open"),
+      ],
+      [],
+      false,
+      "Linux",
+      NO_BUNDLED,
+    );
+    expect(result.defaults.map((entry) => entry.shortcut !== null)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(result.conflicts.get("plugin:tasks/new-task")).toEqual([
+      "plugin:launcher/open",
+    ]);
+    expect(result.conflicts.get("plugin:board/add-card")).toEqual([
+      "plugin:board/archive",
+      "plugin:launcher/open",
+    ]);
+
+    const withoutAppWide = resolvePluginCommandDefaults(
+      [
+        pageScoped("plugin:tasks/new-task"),
+        pageScoped("plugin:board/add-card"),
+      ],
+      [],
+      false,
+      "Linux",
+      NO_BUNDLED,
+    );
+    expect(withoutAppWide.conflicts.size).toBe(0);
+    expect(
+      withoutAppWide.defaults.every((entry) => entry.shortcut !== null),
+    ).toBe(true);
+  });
+
   it("protects core bindings, comparing Mod to platform modifiers", () => {
     const defaults = [
       binding("thread.new", { ...shortcut, mod: false, meta: true }),
       binding("plugin:first/open"),
     ];
-    const mac = resolvePluginCommandDefaults(defaults, [], false, "MacIntel", NO_BUNDLED);
+    const mac = resolvePluginCommandDefaults(
+      defaults,
+      [],
+      false,
+      "MacIntel",
+      NO_BUNDLED,
+    );
     expect(mac.defaults[1]?.shortcut).toBeNull();
     expect(mac.defaults[0]?.shortcut).not.toBeNull();
     expect(

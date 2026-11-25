@@ -1,4 +1,8 @@
-import type { BbPluginApi, PluginRpcHandlers } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type PluginRpcHandlers,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import type {
   Attachment,
@@ -20,7 +24,6 @@ import {
   presetReasoningLevelSchema,
   presetServiceTierSchema,
 } from "../shared/contract";
-import { errorMessage } from "../shared/errors";
 import { truncateToWidth } from "../shared/text-measure";
 import { delegationRpcContract } from "./contract";
 
@@ -214,18 +217,6 @@ async function presetSpawnEnvironment(
   };
 }
 
-function isBbHttpError(
-  error: unknown,
-): error is Error & { code: string | null; status: number } {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (typeof error.code === "string" || error.code === null) &&
-    "status" in error &&
-    typeof error.status === "number"
-  );
-}
-
 const SPAWN_TARGET_ERROR_CODES = new Set([
   "host_not_found",
   "host_unavailable",
@@ -238,7 +229,7 @@ const SPAWN_TARGET_ERROR_CODES = new Set([
 function mapSpawnTargetError(error: unknown, preset: Preset): never {
   if (
     preset.environmentKind === "new-worktree" &&
-    isBbHttpError(error) &&
+    error instanceof experimental_BbHttpError &&
     error.code !== null &&
     SPAWN_TARGET_ERROR_CODES.has(error.code)
   ) {
@@ -337,8 +328,8 @@ export function handlers(
         })
         .catch((error: unknown) => mapSpawnTargetError(error, preset));
 
-      const taskThread = store.transaction(() => {
-        const attached = store.tasks.upsertTaskThread({
+      store.transaction(() => {
+        store.tasks.upsertTaskThread({
           taskId: task.id,
           threadId: thread.id,
           presetName: preset.name,
@@ -362,22 +353,7 @@ export function handlers(
           threadId: thread.id,
           body: `Dispatched to ${preset.name}`,
         });
-        return attached;
       });
-
-      try {
-        const currentThread = await bb.sdk.threads.get({ threadId: thread.id });
-        const currentLiveStatus = taskThreadLiveStatus(currentThread);
-        if (currentLiveStatus !== taskThread.liveStatus) {
-          store.tasks.updateTaskThreadStatus(taskThread.id, currentLiveStatus);
-        }
-      } catch (error) {
-        bb.log.warn(
-          `Could not read delegated thread ${thread.id} after attach: ${errorMessage(
-            error,
-          )}`,
-        );
-      }
 
       invalidateThreads(bb, task.id);
       invalidateTaskChanged(bb, task);

@@ -48,7 +48,10 @@ function registerProvider(
         : {
             restore: async (context) => {
               restoreCalls.push(context.previous.environment.branchName);
-              return created;
+              return {
+                ...created,
+                additionalPaths: [{ path: "/tmp/restored-sibling" }],
+              };
             },
           }),
       remove: async () => ({ status: "removed" }),
@@ -178,6 +181,13 @@ describe("POST /threads/:id/restore-environment (#1710)", () => {
         statusMessage: "Restoring Worktree…",
       });
       expect(countTurnRequests()).toBe(turnRequestsBefore);
+      await expect
+        .poll(
+          () =>
+            getEnvironment(harness.db, restored?.environmentId ?? "")
+              ?.additionalPaths,
+        )
+        .toEqual([{ path: "/tmp/restored-sibling", replaces: null }]);
 
       clearAllThreadProvisionSchedules();
       harness.db

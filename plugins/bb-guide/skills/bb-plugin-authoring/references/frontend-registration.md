@@ -73,8 +73,8 @@ export default definePluginApp((app) => {
     id: "issue",
     title: "Open issue",
     component: IssuePanel,
-    run: async ({ threadId, experimental_panel }) => {
-      experimental_panel.openTab({
+    run: async ({ threadId, panel }) => {
+      panel.openTab({
         tab: { id: "issue", context: { kind: "thread" }, availability: "action" },
         title: `Issue for ${threadId}`,
       });
@@ -149,9 +149,9 @@ export default definePluginApp((app) => {
 ### A button in the thread header
 
 A thread action with `placement: "header"` is a button in the open thread's
-header instead of a menu entry. It shows after the workspace's Open button
-with its `label` (several share one split button). On phones and in narrow
-split panes it folds into the header's thread menu, as a row at the top. It
+header after the workspace's Open button: `icon` and `label`, `detail` as its
+tooltip, red for `variant: "destructive"`; several share a split button. On
+phones and narrow split panes it folds into the thread menu, at the top. It
 never appears in other menus, the quick-action picker, or
 `experimental_useThreadActions`. Its `useData` receives only the threads
 whose header is on screen. Return null from `item` whenever the button does
@@ -182,7 +182,7 @@ function Automations({ threadId }: ExperimentalThreadInfoProps) {
   return (
     <InfoSection label="Automations" count={items.length}>
       <InfoList items={items} getKey={(item) => item.id} limit={3}
-        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={...} />} />
+        renderItem={(item) => <InfoListRow leading={<Glyph />} name={item.name} onSelect={() => openAutomation(item.id)} />} />
     </InfoSection>
   );
 }
@@ -208,13 +208,12 @@ groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, and any other string
 sorts in place (GitHub PR Status uses `"2_pullRequest"`). Each component mounts
 in its own crash boundary: `summary` in the row, `action` at its end, `details`
 below it. Props carry `threadId`, `projectId`, `environment` (null without a
-usable environment), the visible `segments`
-as `{ key, pluginId }` in row order (`key` is `<pluginId>/<id>`; bb's own use
-`bb--core`), and `isExpanded`/`onToggle` (one segment is expanded at a time).
-`useVisible(input)` false leaves it out. A segment whose content is also a
-thread context card row or section hides itself while
-`experimental_useThreadContextKind()` is `card`; see
-frontend-thread-context-card.md.
+usable environment), the visible `segments` as `{ key, pluginId }` in row
+order (`key` is `<pluginId>/<id>`; bb's own use `bb--core`), `isExpanded`/
+`onToggle` (one segment is expanded at a time) and `toggleRef`/`collapseRef`
+(bb moves focus between them). `useVisible(input)` false leaves it out. Focus
+handoff, related-thread data, and hiding while the pane shows the context card
+(`experimental_useThreadContextKind()`): frontend-thread-context-card.md.
 
 ### An action in every thread menu
 
@@ -225,12 +224,16 @@ sidebar row's quick-action buttons. bb's own actions are registrations of the
 same shape.
 
 `useData` is a hook the host runs once for the whole app, never per row: read
-your preferences or a realtime channel there. It receives `{ threadIds }`, the
-sorted ids of every thread on screen or in an open menu; for per-thread state,
-keep an id-keyed cache and fetch only the ids not in it, in one batch (for
-example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
-`item` is pure: it gets `{ thread, data, sdk, navigate }` (your bound
-`useSdk()` and `useBbNavigate()`) and returns the action for that thread, or
+your preferences or a realtime channel there. It receives `{ threadIds,
+experimental_threads }`: the sorted ids of every thread on screen or in an
+open menu, and the targets `item` gets for them. Read thread fields such as
+`environment` (its `id`, checkout `path`, setup `status`, and machine
+`hostLifecycle`) from `experimental_threads`; never fetch each thread. For other
+per-thread state, keep an id-keyed cache and fetch only the ids not in it, in
+one batch (for example
+`useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
+`item` is pure: it gets `{ thread, data }` plus the [callback context](frontend-hooks-and-ui.md#callback-context)
+`{ sdk, navigate, panel }`, and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
 their static `group`, a separator between groups, then by `order`. Join one
 of bb's groups through `experimental_THREAD_ACTION_GROUPS` (`open`, `state`,
@@ -275,7 +278,10 @@ app.slots.experimental_threadAction({
 A replacement thread list renders bb's menus with
 `experimental_ThreadActionsMenu` and `experimental_ThreadActionsContextMenu`,
 passing its own rename editor as `requestRename` and list-only entries as
-`inline` (`{ key, group, action }`). `trigger` is a function: spread the props
+`inline` (`{ key, group, action }`). Pass the thread you hold (a
+`PluginSidebarThread`) as `thread`: bb reads only its `id` and builds the
+target its actions see itself, the same as in its own menus, so never map
+threads to targets yourself. `trigger` is a function: spread the props
 and ref it receives onto your button, or the menu never opens. `experimental_useThreadActions(thread, { keys })` returns bound
 actions for quick-action buttons, and
 `experimental_useThreadActionRegistrations()` lists every action's static
@@ -284,8 +290,11 @@ title and icon for a picker. Keys are `bb--core/<id>` and `<pluginId>/<id>`.
 ### A control in the Browser toolbar
 
 `app.slots.experimental_browserToolbarAction` renders a component beside the
-address bar of every built-in Browser tab. The component receives the owning
-`threadId`, current `tabId`, top-level `url`, and `isCompactViewport` state.
+address bar of every built-in Browser tab. The component receives the tab's
+owner as `threadId`, current `tabId`, top-level `url`, and `isCompactViewport`
+state. `threadId` is a thread id only in a thread's side panel; on the New
+thread screen and plugin pages it is an opaque panel key. Pass it with `tabId`
+to `sdk.experimental_desktopBrowsers` calls; do not treat it as a thread.
 Use these host-provided values to scope actions to the visible tab; do not infer
 the active Browser from global state.
 
@@ -332,167 +341,9 @@ frontend-sidebar-navigation.md.
 
 ### Replacing the sidebar thread list
 
-`app.slots.experimental_threadList` is the one **exclusive** slot: only one
-list fills the sidebar's scroll area. Registering activates the replacement
-while the plugin is enabled. If multiple plugins register one, the first in
-deterministic slot order is active by default; removing it reveals the next.
-The user can pin a specific provider under **Settings → Appearance →
-Sidebar**. The choice is per client. bb ships its own list as the bundled
-`thread-list` plugin; there is no separate built-in list.
-
-Your component gets the scrolling list and nothing else. The New-thread button,
-the navigation, and the footer stay host-rendered —
-other plugins live in two of those, so a replaced list must not remove them.
-Put your own controls at the top of your scroll area instead.
-
-If no thread list plugin is enabled, bb shows a placeholder that links to
-Plugins. If the active component throws, bb shows a "stopped working"
-placeholder with a Reload button plus one toast; nothing else in the sidebar
-is affected.
-
-The component receives:
-
-```ts
-interface PluginThreadListProps {
-  activeThreadId: string | null;
-  activeProjectId: string | null;
-  isCompactViewport: boolean;
-  /** Closes the mobile drawer. Always call it after opening a thread. */
-  onNavigate: () => void;
-  /** Deprecated compatibility value for the removed sidebar search field.
-      The host always supplies "". */
-  searchQuery: string;
-}
-```
-
-**Reading and acting on threads.** One hook reads the list; writes go through
-the plugin SDK and navigation:
-
-```tsx
-const { status, threads, projects, sections } =
-  experimental_useSidebarThreads();
-const navigate = useBbNavigate();
-navigate.toThread(thread.id, { split: true });
-navigate.toCompose({ projectId, placement: { sectionId, pinned: false } });
-const archiveEnvironmentThreads = experimental_useArchiveEnvironmentThreads();
-
-// sections: PluginSidebarSection[] — { id, name, createdAt, updatedAt } in
-// server order. A thread's `sectionId` names one of these or is null for the
-// loose "Threads" bucket. Create, rename, and delete sections and move
-// threads between them through the public API client; the sidebar refreshes
-// over realtime:
-const sdk = useSdk();
-await sdk.threadSections.create({ name: "Later" });
-await sdk.threads.update({ id: thread.id, sectionId });
-
-// threads: PluginSidebarThread[] — id, projectId, href (put it on the row's
-// anchor; the host routes clicks in place), title, titleFallback,
-// displayTitle, parentThreadId, parentNotifications ("auto" | "stuck" | "off"),
-// lifecycleOwnerThreadId, sourceThreadId, sectionId,
-// originKind, originPluginId, providerId, status (execution status; busy
-// threads sort first in bb's list), runtimeStatus (status refined by host
-// readiness), queuedWork ("none" | "waiting" | "failed"), hasPendingInteraction,
-// activity, isUnread/isPinned/pinnedAt/isArchived/archivedAt, pinSortKey
-// (manual pin order),
-// isHidden (bb's list filters these out; the array keeps them),
-// environment { id, name, branchName, path, isWorktree, providerId,
-// workspaceDisplayKind }, where workspaceDisplayKind is deprecated
-// compatibility data; host { id, name }, createdAt, updatedAt, lastReadAt,
-// latestAttentionAt, and `indicator` (bb's resolved status kind) +
-// `indicatorLabel` (its a11y string). Draw your own glyph for `indicator`;
-// the SDK ships no status component. Treat an unknown indicator, status, or
-// runtimeStatus value as its documented fallback — bb adds kinds over time.
-
-// Three more per-row facts are client-local, so they are hooks rather than
-// fields on the thread: an unsent composer draft (bb paints a pencil, or a
-// "working-draft" glyph when the thread is busy), a row status another
-// plugin's app-wide script set (bb draws it in place of the draft glyph), and
-// the jump shortcut bb assigns while the app command modifier is held (bb
-// shows a key pill). Compose them with `indicator` yourself:
-const { hasUnsubmittedDraft } = useSidebarThreadDraft(thread.id);
-const rowStatus = useSidebarThreadRowStatus(thread.id); // { icon, label, tone? } | null
-const shortcut = useSidebarThreadShortcut(thread.id); // { label, ariaKeyshortcuts } | null
-const draftIds = useSidebarThreadDraftIds(); // ReadonlySet<string>, for group rollups
-const rowStatuses = useSidebarThreadRowStatuses(); // ReadonlyMap, for group rollups
-const splitLayout = useSidebarSplitLayout(); // { panes: [{ paneId, rect, threadId, isFocused }] } | null
-// projects: PluginSidebarProject[] — { id, name, isPersonal, href, settingsHref }
-
-// Titles can contain @project:, @section:, and @thread: mentions. `displayTitle`
-// is the resolved plain text (sort on it, use it for aria-label); <ThreadTitle>
-// renders the same text with bb's mention chips:
-<span className="truncate">
-  <ThreadTitle threadId={thread.id} />
-</span>;
-
-// `environment.providerId` names an entry in bb's environment provider
-// catalog; resolve it for a display name, and draw it with
-// <experimental_ProviderIcon providerKind="environment" provider={entry} />:
-const { providers: environmentProviders } = useEnvironmentProviders();
-
-// Pull requests: read the GitHub PR Status plugin by thread.environment?.id
-// (references/frontend-pull-requests.md).
-
-const navigate = useBbNavigate();
-const sdk = useSdk();
-navigate.toThread(id, { split: true }); // bb's split placement rules
-navigate.toCompose({ projectId, focusPrompt: true });
-navigate.toCompose({ projectId, placement: { sectionId, pinned: false } }); // file it under a section
-navigate.toCompose({ projectId, environmentId }); // reuse an environment
-await sdk.threads.pin({ threadId: id }); // optimistic in bb's surfaces
-await sdk.threads.markUnread({ threadId: id });
-await sdk.threads.update({ threadId: id, title: "New title" }); // silent; for inline editing
-```
-
-Archive and delete go through bb's thread menu (below), which owns the
-confirmations: archiving a thread with children asks first and counts them,
-and deletion always asks.
-
-Unit-test a list with `renderSlot(...)` from `@get-bb/plugin-sdk/testing/app`:
-seed rows with the `sidebarThreads` option (plus `sidebarDraftThreadIds`,
-`sidebarRowStatuses`, and `sidebarShortcuts` for the per-row hooks) and assert against
-`inspection.navigateCalls` and `inspection.sdkCalls`.
-
-**Pull requests on a row.** Read them from the bundled GitHub PR Status
-plugin; see references/frontend-pull-requests.md.
-
-**Splits.** Rows can drag out to the split area:
-
-```tsx
-const { splitProps, isAvailable, layout } =
-  experimental_useSidebarThreadSplit(thread.id);
-
-<a {...splitProps} onClick={...}>
-  {title}
-  {/* layout is data: draw a mini-map, a tint, or nothing */}
-</a>;
-```
-
-The host owns the gesture rules, including the one that matters if your list
-has its own drag-to-reorder: a split drag engages only once the pointer leaves
-the sidebar.
-
-**bb's menu on your row.** Render `experimental_ThreadActionsMenu` and
-`experimental_ThreadActionsContextMenu` around your row for bb's own thread
-menu (archive and delete confirmation included) plus every plugin's thread
-actions; see "An action in every thread menu".
-For multi-row selections (`experimental_bulkItem`), see frontend-sidebar-navigation.md.
-`experimental_useArchiveEnvironmentThreads()` archives a whole environment
-group with bb's pane cleanup and Undo toast.
-
-**bb's status glyph on your row.** Pass the row's thread, its hidden children,
-its draft, and `useSidebarThreadRowStatus(threadId)` to
-`experimental_resolveThreadStatus` (bb's lists use the same function), then
-render `experimental_ThreadStatusGlyph` with the result's `indicator` and
-`rowStatus`; `label` and `isWorking` cover anything else you draw.
-
-**Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
-query selector, not by React state. Put both attributes on each row's anchor or
-the surface-specific numbered shortcuts, `thread.next`, and `thread.previous`
-silently stop working:
-
-```tsx
-<a data-sidebar-thread-shortcut-target="" data-sidebar-thread-id={thread.id}>
-```
+Replacing the sidebar thread list (`experimental_threadList`), reading live
+threads, and windowing rows against the sidebar scroller are covered in
+frontend-thread-list.md.
 
 ## Tab API migration
 

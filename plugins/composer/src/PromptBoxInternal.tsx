@@ -2,6 +2,7 @@ import {
   experimental_ComposerRoot as ComposerRoot,
   experimental_FailedVoiceRecordings as FailedVoiceRecordings,
   experimental_Icon as SdkIcon,
+  experimental_matchesShortcutKey as matchesShortcutKey,
   experimental_ShortcutHint as AppCommandShortcutHint,
   experimental_useComposerCommandSearch as useComposerCommandSearch,
   experimental_useComposerContributions as useComposerContributions,
@@ -133,9 +134,9 @@ import {
   ComposerEditorSlot,
 } from "./ComposerEditorSlot";
 import { isModifierSubmitKeyEvent } from "./modifier-submit-key";
-import { composerSubmittingBlockedReason } from "./composer-submit-gate";
 
 import { ComposerSendMenu } from "./ComposerSendMenu";
+import { isImeComposing, isNonImeKey } from "@/lib/ime-keyboard";
 
 const PROMPTBOX_MIN_HEIGHT = 68;
 const DEFAULT_MENTION_TRIGGER = "@";
@@ -1001,7 +1002,7 @@ function usePostCompositionKeyDownEvents(): WeakSet<KeyboardEvent> {
 
 function isIPadHardwareEnterCandidate(event: KeyboardEvent): boolean {
   return (
-    event.key === "Enter" &&
+    isNonImeKey(event, "Enter") &&
     (event.code === "Enter" || event.code === "NumpadEnter")
   );
 }
@@ -1793,14 +1794,13 @@ export function PromptBoxInternal({
             pasteWithoutFormattingRef.current =
               (event.metaKey || event.ctrlKey) &&
               event.shiftKey &&
-              event.key.toLowerCase() === "v";
+              matchesShortcutKey(event, "v");
             if (
               !_view.editable ||
               !isIPadOSWebKitDevice ||
               !isIPadHardwareEnterCandidate(event) ||
               _view.composing ||
-              event.isComposing ||
-              event.keyCode === 229
+              isImeComposing(event)
             ) {
               return false;
             }
@@ -2598,7 +2598,7 @@ export function PromptBoxInternal({
   const handleComposerMenuKeyDown = useCallback(
     (event: KeyboardEvent): boolean => {
       if (!composerMenuOpen || event.defaultPrevented) return false;
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         event.stopPropagation();
         dismissComposerMenu(true);
@@ -2606,7 +2606,7 @@ export function PromptBoxInternal({
       }
       if (
         popupOpen &&
-        event.key === "Enter" &&
+        isNonImeKey(event, "Enter") &&
         event.target instanceof HTMLInputElement
       ) {
         event.preventDefault();
@@ -2831,33 +2831,9 @@ export function PromptBoxInternal({
   const canPrimarySubmit = canSubmitAction(primarySubmitAction);
   const canSubmit = hasSubmittableInput && canPrimarySubmit;
   const canModifierSubmit = canSubmitAction(modifierSubmitAction);
-  const submittingBlockedReason = composerSubmittingBlockedReason({
-    canSubmit: canPrimarySubmit,
-    hasSubmittableInput,
-    isAttaching,
-    isSubmitting,
-    voiceActive: showVoiceActionGroup,
-    submitDisabledReason,
-  });
   const composerEditorState = useMemo<ExperimentalComposerEditorState>(
-    () => ({
-      layout: composerLayout,
-      isRunning,
-      isSubmitting,
-      isSubmittingBlocked: !canPrimarySubmit,
-      submittingBlockedReason,
-      isAttaching,
-      attachmentError,
-    }),
-    [
-      attachmentError,
-      canPrimarySubmit,
-      composerLayout,
-      isAttaching,
-      isRunning,
-      isSubmitting,
-      submittingBlockedReason,
-    ],
+    () => ({ layout: composerLayout }),
+    [composerLayout],
   );
   const insertAtCursorForPlugin = useCallback(
     (draft: ComposerDraft, block: boolean) => {
@@ -3107,11 +3083,7 @@ export function PromptBoxInternal({
 
   const handleEditorKeyDown = useCallback(
     (event: KeyboardEvent, isOriginalIPadHardwareEnter = false): boolean => {
-      if (
-        event.isComposing ||
-        event.keyCode === 229 ||
-        postCompositionKeyDownEvents.has(event)
-      ) {
+      if (isImeComposing(event) || postCompositionKeyDownEvents.has(event)) {
         return false;
       }
       if (dispatchAppCommandKey(event) || handleComposerMenuKeyDown(event)) {
@@ -3178,14 +3150,14 @@ export function PromptBoxInternal({
           return true;
         }
         if (
-          (event.key === "Enter" || event.key === "Tab") &&
+          (isNonImeKey(event, "Enter") || event.key === "Tab") &&
           activeSuggestions.length > 0
         ) {
           event.preventDefault();
           const selected =
             activeSuggestions[selectedIndex] ?? activeSuggestions[0];
           if (selected) {
-            if (event.key === "Enter") {
+            if (isNonImeKey(event, "Enter")) {
               chooseSuggestion(selected);
             } else {
               applyTrigger(selected);
@@ -3195,7 +3167,7 @@ export function PromptBoxInternal({
         }
       }
 
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         if (onEscape) {
           onEscape();
           return true;
@@ -3256,7 +3228,7 @@ export function PromptBoxInternal({
       }
 
       const isBlockquoteExitKey =
-        event.key === "Enter" &&
+        isNonImeKey(event, "Enter") &&
         event.shiftKey &&
         !event.metaKey &&
         !event.altKey &&
@@ -3272,7 +3244,7 @@ export function PromptBoxInternal({
       }
 
       const isPromptNewlineKey =
-        event.key === "Enter" &&
+        isNonImeKey(event, "Enter") &&
         !event.metaKey &&
         !event.altKey &&
         !event.ctrlKey &&
@@ -3287,7 +3259,7 @@ export function PromptBoxInternal({
       }
 
       if (!canSubmitWithEnterKey) return false;
-      const isSubmitKey = event.key === "Enter" && !event.shiftKey;
+      const isSubmitKey = isNonImeKey(event, "Enter") && !event.shiftKey;
 
       if (!isSubmitKey) return false;
       event.preventDefault();
@@ -3323,7 +3295,7 @@ export function PromptBoxInternal({
   useEffect(() => {
     if (!showVoiceActionGroup || !voice) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!isNonImeKey(event, "Escape")) return;
       event.preventDefault();
       event.stopPropagation();
       cancelVoiceInput();

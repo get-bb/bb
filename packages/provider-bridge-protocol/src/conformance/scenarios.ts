@@ -429,7 +429,7 @@ export async function runHandshakeScenario(
       ...(await runDeclaredRequestScenario(client, {
         id: "commands/list-declared",
         method: BRIDGE_REQUEST_METHODS.commandList,
-        params: { cwd: fixture.cwd },
+        params: { envVars: {}, cwd: fixture.cwd },
         capability: "commands.list",
         declared: parsed.data.capabilities.commands.list,
       })),

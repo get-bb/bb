@@ -1,0 +1,1 @@
+ALTER TABLE `thread_purges` ADD `started_at` integer;

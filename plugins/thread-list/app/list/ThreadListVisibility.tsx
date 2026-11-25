@@ -16,7 +16,7 @@ import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { ContextMenuItem } from "@/components/ui/context-menu";
 import { useIsCompactViewport } from "@/components/ui/hooks/use-compact-viewport";
 import { ActionMenuSeparator } from "@/components/ui/action-menu-items";
-import { SidebarContentElementContext } from "../ui/sidebar.js";
+import { SidebarOverflowScrollArea } from "../ui/sidebar.js";
 import { reorderStoredOrder } from "../model/stored-order.js";
 import { sidebarHiddenGroupsAtom } from "../preferences/atoms.js";
 import { experimental_ThreadStatusGlyph as ThreadStatusGlyph } from "@get-bb/plugin-sdk/app";
@@ -46,7 +46,7 @@ export interface ThreadListVisibilityGroup extends SidebarVisibilityItem {
   id: SidebarSectionId;
   threads: readonly SidebarThread[];
   renderContent: (close: () => void) => ReactNode;
-  onNewThread?: () => void;
+  onNewThread?: (split: boolean) => void;
 }
 
 interface ThreadListVisibilityState {
@@ -333,7 +333,7 @@ export function ThreadListMore() {
         testIdPrefix="sidebar-thread-list"
       >
         {(close) => (
-          <SidebarContentElementContext.Provider value={null}>
+          <SidebarOverflowScrollArea>
             <div
               data-sidebar-overflow="true"
               className="flex min-h-0 flex-1 flex-col"
@@ -348,7 +348,7 @@ export function ThreadListMore() {
                 />
               ))}
             </div>
-          </SidebarContentElementContext.Provider>
+          </SidebarOverflowScrollArea>
         )}
       </SidebarMore>
     </div>

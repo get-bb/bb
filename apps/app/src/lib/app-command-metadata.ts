@@ -101,6 +101,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "Reload window",
         "Reload the current bb desktop window.",
       ),
+      paletteHiddenCommand(
+        "window.forceReload",
+        "Force reload window",
+        "Reload the current bb desktop window, bypassing the cache.",
+      ),
       command("history.back", "Go back", "Go back in this window's history."),
       command(
         "history.forward",
@@ -117,6 +122,11 @@ export const APP_COMMAND_GROUPS: readonly AppCommandGroup[] = [
         "settings.openServers",
         "Open server settings",
         "Open settings to add or manage bb servers.",
+      ),
+      paletteHiddenCommand(
+        "settings.search",
+        "Search settings",
+        "Focus the search field on the Settings page.",
       ),
       command(
         "sidebar.toggle",

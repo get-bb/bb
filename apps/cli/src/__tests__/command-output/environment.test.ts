@@ -228,7 +228,10 @@ describe("bb environment command output", () => {
   );
 
   it("bb environment delete reports requested cleanup and its lifecycle", async () => {
-    const remove = vi.fn(async () => ({ ok: true as const }));
+    const remove = vi.fn(async () => ({
+      ok: true as const,
+      progress: "in-progress" as const,
+    }));
     const get = vi.fn(async () =>
       fixtures.makeEnvironment({
         id: "env-delete",
@@ -237,7 +240,7 @@ describe("bb environment command output", () => {
         lifecycle: {
           phase: "teardown",
           retireAt: null,
-          teardown: { status: "running", attempt: 1 },
+          teardown: { status: "running", attempt: 1, needsRecovery: false },
         },
       }),
     );

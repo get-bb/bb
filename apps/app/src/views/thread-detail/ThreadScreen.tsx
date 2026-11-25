@@ -3,14 +3,19 @@ import {
   useEffect,
   useId,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
+import type { ExperimentalMessageActionSurface } from "@get-bb/plugin-sdk";
+import { MessageActionSurfaceProvider } from "@/lib/message-action-surface";
 import { nanoid } from "nanoid";
 import { defaultAppSettings, type Environment } from "@bb/domain";
 import type { ThreadResponse, TimelineRow } from "@bb/server-contract";
 import {
   appendQuoteAndAttachmentsToDraft,
+  arePromptDraftStatesEqual,
+  isPromptDraftEmpty,
   promptInputToDraft,
   type PromptDraftAttachment,
   type PromptDraftState,
@@ -34,10 +39,15 @@ import {
 } from "@/components/thread/timeline";
 import type { HostConnectionNotice } from "@/components/thread/timeline/ThreadTimelineSurface";
 import { ThreadTimelinePanelLoadingSkeleton } from "@/components/thread/timeline/ThreadChatLoading";
-import { ThreadTableOfContents } from "@/components/thread/toc/ThreadTableOfContents";
+import { PluginThreadRail } from "@/components/plugin/PluginThreadRail";
+import { collectConversationRows } from "@/lib/conversation-outline";
+import {
+  TimelineViewportProvider,
+  TimelineViewportScrollSource,
+} from "@/lib/timeline-viewport";
 import {
   ThreadContextCard,
-  useThreadContextCardContentInset,
+  useThreadContextCardTranscriptCenteredMinWidth,
   WithoutThreadContextCard,
 } from "@/components/plugin/PluginThreadContextCard";
 import { BottomAnchoredScrollBody } from "@/components/ui/bottom-anchored-scroll-body";
@@ -57,8 +67,7 @@ import {
   subscribeComposerFocusRequests,
 } from "@/lib/composer-focus-requests";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
-import { useParentThreadSection } from "./useParentThreadSection";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
@@ -96,12 +105,12 @@ export type ThreadScreenPresentation =
   | { kind: "transcript"; layout: "contained" | "document" };
 
 export interface ThreadScreenTimelineHost {
-  consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
   environmentHostName: string | null;
-  includePluginMessageActions: boolean;
-  leadingContent?: ReactNode;
-  onForkMessage?: ThreadTimelineForkMessageHandler;
-  onTitleAction?: TimelineTitleActionResolver;
+  leadingContent: ReactNode;
+  messageActionSurface: ExperimentalMessageActionSurface;
+  onForkMessage: ThreadTimelineForkMessageHandler | null;
+  onTitleAction: TimelineTitleActionResolver | null;
   unreadDividerAutoScroll: boolean;
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
 }
@@ -110,9 +119,9 @@ export interface ThreadScreenComposerHost {
   environmentCheckout: WorkspaceCheckoutDisplay | undefined;
   environmentChrome: EnvironmentSummaryChrome | undefined;
   contextEnvironmentId: string | null;
-  focusRequest?: number;
-  onCreateNewThreadInEnvironment?: () => void;
-  onOpenThreadInfo?: () => void;
+  focusRequest: number | null;
+  onCreateNewThreadInEnvironment: (() => void) | null;
+  onOpenThreadInfo: (() => void) | null;
   permissionPolicy: ThreadComposerPermissionPolicy;
 }
 
@@ -225,7 +234,7 @@ function useChildThreadsSection(
       .map((entry) => ({
         id: entry.id,
         title: getThreadDisplayTitle(entry),
-        href: getThreadRoutePath({
+        href: getThreadLocationPath({
           projectId: entry.projectId,
           threadId: entry.id,
         }),
@@ -258,13 +267,35 @@ function useChildThreadsSection(
 
 interface UseSentMessageEditingArgs {
   canStartEdit: boolean;
+  projectId: string;
   threadId: string;
   timelineLoading: boolean;
   timelineRows: readonly TimelineRow[];
 }
 
+interface DiscardedSentMessageEdit {
+  operationId: string;
+  unsavedDraft: PromptDraftState | null;
+}
+
+function unsavedSentMessageEditDraft(
+  session: SentMessageEditSession,
+): PromptDraftState | null {
+  if (
+    isPromptDraftEmpty(session.draft) ||
+    arePromptDraftStatesEqual(
+      session.draft,
+      promptInputToDraft(session.target.input),
+    )
+  ) {
+    return null;
+  }
+  return session.draft;
+}
+
 function useSentMessageEditing({
   canStartEdit,
+  projectId,
   threadId,
   timelineLoading,
   timelineRows,
@@ -310,20 +341,39 @@ function useSentMessageEditing({
     sentMessageEditSession?.submitting === false &&
     !timelineLoading &&
     !sentMessageEditTargetStillPresent;
-  const [discardedSentMessageEditId, setDiscardedSentMessageEditId] = useState<
-    string | null
-  >(null);
+  const [discardedSentMessageEdit, setDiscardedSentMessageEdit] =
+    useState<DiscardedSentMessageEdit | null>(null);
+  const handledDiscardOperationIdRef = useRef<string | null>(null);
   if (shouldDiscardMissingSentMessageEdit && sentMessageEditSession !== null) {
     setSentMessageEditHostElement(null);
     setSentMessageEditSession(null);
-    setDiscardedSentMessageEditId(sentMessageEditSession.operationId);
+    setDiscardedSentMessageEdit({
+      operationId: sentMessageEditSession.operationId,
+      unsavedDraft: unsavedSentMessageEditDraft(sentMessageEditSession),
+    });
   }
   useEffect(() => {
-    if (discardedSentMessageEditId === null) {
+    if (
+      discardedSentMessageEdit === null ||
+      handledDiscardOperationIdRef.current ===
+        discardedSentMessageEdit.operationId
+    ) {
       return;
     }
-    appToast.warning("The message being edited is no longer available.");
-  }, [discardedSentMessageEditId]);
+    handledDiscardOperationIdRef.current = discardedSentMessageEdit.operationId;
+    if (discardedSentMessageEdit.unsavedDraft === null) {
+      appToast.warning("The message being edited is no longer available.");
+      return;
+    }
+    getPromptDraftAccessor({
+      kind: "thread",
+      projectId,
+      threadId,
+    }).restoreUnsent(discardedSentMessageEdit.unsavedDraft);
+    appToast.warning("Your message edit is in the composer", {
+      description: "The message being edited is no longer available.",
+    });
+  }, [discardedSentMessageEdit, projectId, threadId]);
   const activeSentMessageEditOperationId =
     activeSentMessageEditSession?.operationId ?? null;
   const updateSentMessageEditDraft = useCallback(
@@ -479,7 +529,8 @@ export function ThreadScreen({
     threadId: thread.id,
   });
   const systemConfigQuery = useSystemConfig();
-  const contextCardInset = useThreadContextCardContentInset();
+  const transcriptCenteredMinWidth =
+    useThreadContextCardTranscriptCenteredMinWidth();
   const pendingInteractionsQuery = useThreadPendingInteractions(thread.id);
   const pendingInteractions = pendingInteractionsQuery.data ?? [];
   const hasPendingInteraction = pendingInteractions.length > 0;
@@ -491,7 +542,6 @@ export function ThreadScreen({
     }),
     [sendMessageMutation.isPending, sendMessageMutation.mutateAsync],
   );
-  const parentThreadSection = useParentThreadSection(thread, composer !== null);
   const childThreadsSection = useChildThreadsSection(
     thread.id,
     composer !== null,
@@ -509,11 +559,13 @@ export function ThreadScreen({
   );
   const composerFocusRequestKey = useComposerFocusRequestKey(
     draftStorageKey,
-    composer?.focusRequest,
+    composer?.focusRequest ?? undefined,
   );
-  const [timelineNavigationTargetRowId, setTimelineNavigationTargetRowId] =
-    useState<string | null>(null);
   const { timelineLoading, timelineRows } = timeline;
+  const messageRowIds = useMemo(
+    () => new Set(collectConversationRows(timelineRows).map((row) => row.id)),
+    [timelineRows],
+  );
   const isThreadTimelinePending = timelineLoading && timelineRows.length === 0;
 
   const { handleEditSentMessage, inlineMessageEditor, sentMessageEdit } =
@@ -524,6 +576,7 @@ export function ThreadScreen({
         !hasPendingInteraction &&
         !sendMessage.isPending &&
         !isThreadTimelinePending,
+      projectId: thread.projectId,
       threadId: thread.id,
       timelineLoading,
       timelineRows,
@@ -536,54 +589,54 @@ export function ThreadScreen({
   const selectionAddToChat = composer ? handleAddToChat : undefined;
   const surface = (
     <SelectionAddToChatContext.Provider value={selectionAddToChat}>
-      <ThreadTimelineSurface
-        activeThinking={timeline.activeThinking}
-        canSpawnChild={thread.canSpawnChild}
-        contextBoundarySeq={timeline.contextBoundarySeq}
-        hasOlderTimelineRows={timeline.hasOlderTimelineRows}
-        hostConnectionNotice={buildHostConnectionNotice(
-          thread,
-          timelineHost.environmentHostName,
-        )}
-        isCatchingUpTimeline={timeline.isCatchingUpTimeline}
-        isLoadingOlderTimelineRows={timeline.isLoadingOlderTimelineRows}
-        isThreadTimelinePending={isThreadTimelinePending}
-        timelineError={Boolean(timeline.timelineError)}
-        loadingContent={
-          isPanelPresentation ? (
-            <ThreadTimelinePanelLoadingSkeleton />
-          ) : undefined
-        }
-        timelineErrorClassName={
-          isPanelPresentation ? "mx-2 mt-4 text-destructive" : undefined
-        }
-        leadingContent={timelineHost.leadingContent}
-        consumerMessageActions={timelineHost.consumerMessageActions}
-        includePluginMessageActions={timelineHost.includePluginMessageActions}
-        onForkMessage={timelineHost.onForkMessage}
-        onEditMessage={handleEditSentMessage}
-        inlineMessageEditor={inlineMessageEditor}
-        onMessageAddToChat={selectionAddToChat}
-        onSelectionAddToChat={selectionAddToChat}
-        onLoadOlderRows={timeline.loadOlderTimelineRows}
-        onTitleAction={timelineHost.onTitleAction}
-        projectId={projectId}
-        resolveMentionLink={resolveMentionLink}
-        showOngoingIndicator={
-          thread.status !== "stopping" &&
-          !hasPendingInteraction &&
-          isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus) &&
-          !isThreadTimelinePending
-        }
-        timelineRows={timelineRows}
-        timelineNavigationTargetRowId={timelineNavigationTargetRowId}
-        isStopping={thread.status === "stopping"}
-        stoppingAnchorAt={thread.updatedAt}
-        threadId={thread.id}
-        threadRuntimeDisplayStatus={thread.runtime.displayStatus}
-        unreadDividerAutoScroll={timelineHost.unreadDividerAutoScroll}
-        unreadDividerPlacement={timelineHost.unreadDividerPlacement}
-      />
+      <MessageActionSurfaceProvider value={timelineHost.messageActionSurface}>
+        <ThreadTimelineSurface
+          activeThinking={timeline.activeThinking}
+          canSpawnChild={thread.canSpawnChild}
+          contextBoundarySeq={timeline.contextBoundarySeq}
+          hasOlderTimelineRows={timeline.hasOlderTimelineRows}
+          hostConnectionNotice={buildHostConnectionNotice(
+            thread,
+            timelineHost.environmentHostName,
+          )}
+          isCatchingUpTimeline={timeline.isCatchingUpTimeline}
+          isLoadingOlderTimelineRows={timeline.isLoadingOlderTimelineRows}
+          isThreadTimelinePending={isThreadTimelinePending}
+          timelineError={Boolean(timeline.timelineError)}
+          loadingContent={
+            isPanelPresentation ? (
+              <ThreadTimelinePanelLoadingSkeleton />
+            ) : undefined
+          }
+          timelineErrorClassName={
+            isPanelPresentation ? "mx-2 mt-4 text-destructive" : undefined
+          }
+          leadingContent={timelineHost.leadingContent}
+          consumerMessageActions={timelineHost.consumerMessageActions}
+          onForkMessage={timelineHost.onForkMessage ?? undefined}
+          onEditMessage={handleEditSentMessage}
+          inlineMessageEditor={inlineMessageEditor}
+          onMessageAddToChat={selectionAddToChat}
+          onSelectionAddToChat={selectionAddToChat}
+          onLoadOlderRows={timeline.loadOlderTimelineRows}
+          onTitleAction={timelineHost.onTitleAction ?? undefined}
+          projectId={projectId}
+          resolveMentionLink={resolveMentionLink}
+          showOngoingIndicator={
+            thread.status !== "stopping" &&
+            !hasPendingInteraction &&
+            isRunningThreadRuntimeDisplayStatus(thread.runtime.displayStatus) &&
+            !isThreadTimelinePending
+          }
+          timelineRows={timelineRows}
+          isStopping={thread.status === "stopping"}
+          stoppingAnchorAt={thread.updatedAt}
+          threadId={thread.id}
+          threadRuntimeDisplayStatus={thread.runtime.displayStatus}
+          unreadDividerAutoScroll={timelineHost.unreadDividerAutoScroll}
+          unreadDividerPlacement={timelineHost.unreadDividerPlacement}
+        />
+      </MessageActionSurfaceProvider>
     </SelectionAddToChatContext.Provider>
   );
 
@@ -608,8 +661,10 @@ export function ThreadScreen({
       canRestoreEnvironment={thread.canRestoreEnvironment}
       environmentGoneStatus={resolveEnvironmentGoneStatus(environment)}
       environmentHostId={environment?.hostId}
-      onCreateNewThreadInEnvironment={composer.onCreateNewThreadInEnvironment}
-      onOpenThreadInfo={composer.onOpenThreadInfo}
+      onCreateNewThreadInEnvironment={
+        composer.onCreateNewThreadInEnvironment ?? undefined
+      }
+      onOpenThreadInfo={composer.onOpenThreadInfo ?? undefined}
       projectId={projectId}
       resolveMentionLink={resolveMentionLink}
       composerFocusRequestKey={composerFocusRequestKey}
@@ -625,7 +680,6 @@ export function ThreadScreen({
       modelFallback={timeline.modelFallback}
       activeWorkflows={timeline.activeWorkflows}
       activeBackgroundCommands={timeline.activeBackgroundCommands}
-      parentThreadSection={parentThreadSection}
       childThreadsSection={childThreadsSection}
       contextEnvironmentId={composer.contextEnvironmentId}
       thread={thread}
@@ -639,34 +693,35 @@ export function ThreadScreen({
           data-thread-window=""
           className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
         >
-          <PageShell
+          <TimelineViewportProvider
             key={thread.id}
-            scrollBehavior="bottom-anchor"
-            scrollAnchorThreadId={thread.id}
-            scrollContentInsetEndPx={contextCardInset}
-            shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
-            scrollAreaClassName="scroll-pt-4"
-            contentClassName="gap-2 pt-4"
-            footerClassName="chat-prompt-box"
-            footer={promptArea}
-            scrollOverlay={
-              <>
-                <ThreadContextCard />
-                <div className="pointer-events-auto my-auto">
-                  <ThreadTableOfContents
-                    contextBoundarySeq={timeline.contextBoundarySeq}
-                    threadId={thread.id}
-                    timelineRows={timelineRows}
-                    hasOlderTimelineRows={timeline.hasOlderTimelineRows}
-                    loadOlderTimelineRows={timeline.loadOlderTimelineRows}
-                    onNavigateToRow={setTimelineNavigationTargetRowId}
-                  />
-                </div>
-              </>
-            }
+            messageIds={messageRowIds}
+            threadId={thread.id}
           >
-            {surface}
-          </PageShell>
+            <PageShell
+              scrollBehavior="bottom-anchor"
+              scrollAnchorThreadId={thread.id}
+              scrollContentCenteredMinWidthPx={transcriptCenteredMinWidth}
+              shellClassName="!mx-0 !mt-0 md:!mx-0 md:!mt-0"
+              scrollAreaClassName="scroll-pt-4"
+              contentClassName="gap-2 pt-4"
+              footerClassName="chat-prompt-box"
+              footer={promptArea}
+              scrollOverlay={
+                <>
+                  <ThreadContextCard />
+                  <TimelineViewportScrollSource />
+                  <PluginThreadRail
+                    threadId={thread.id}
+                    projectId={projectId}
+                    environmentId={thread.environmentId}
+                  />
+                </>
+              }
+            >
+              {surface}
+            </PageShell>
+          </TimelineViewportProvider>
         </div>
       );
     case "panel":

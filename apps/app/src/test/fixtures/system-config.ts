@@ -10,11 +10,17 @@ export function makeSystemConfig(
   overrides: Partial<SystemConfigResponse> = {},
 ): SystemConfigResponse {
   return {
+    serverId: "server_test",
+    routes: [],
     serverAccess: {
       providers: [],
-      defaultProviderId: "direct",
       effectiveUrl: null,
       urlSource: null,
+      localNetwork: {
+        bindHost: "127.0.0.1",
+        addresses: [],
+        listenerError: null,
+      },
     },
     generalSettings: defaultAppSettings,
     keybindings: [],

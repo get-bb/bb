@@ -13,6 +13,7 @@ import type {
 import { coerceStoredPluginSettingValue } from "@get-bb/plugin-sdk/internal/host-policy";
 import type { PluginSettingDescriptor as PublicPluginSettingDescriptor } from "@bb/server-contract";
 import { deleteSecretFile, writeSecretFile } from "@bb/secret-storage";
+import { pluginDirectory } from "./plugin-directory.js";
 
 export class PluginSettingsValidationError extends Error {
   constructor(message: string) {
@@ -21,16 +22,12 @@ export class PluginSettingsValidationError extends Error {
   }
 }
 
-export function pluginSecretsDir(dataDir: string, pluginId: string): string {
-  return join(dataDir, "plugins", pluginId, "secrets");
-}
-
 function secretFilePath(
   dataDir: string,
   pluginId: string,
   key: string,
 ): string {
-  return join(pluginSecretsDir(dataDir, pluginId), key);
+  return join(pluginDirectory(dataDir, pluginId, "secrets"), key);
 }
 
 function isSecret(descriptor: PluginSettingDescriptor): boolean {

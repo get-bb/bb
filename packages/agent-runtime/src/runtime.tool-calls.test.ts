@@ -7,7 +7,7 @@ import type { ThreadEvent, ToolCallResponse } from "@bb/domain";
 import { createProviderForId } from "./provider-registry.js";
 import {
   handleRuntimeProviderRequest,
-  RuntimeToolCalls,
+  RuntimeProviderRequests,
 } from "./runtime-provider-requests.js";
 import {
   parseJsonRpcLine,
@@ -39,7 +39,6 @@ function readChildStdoutLine(child: ChildProcess): Promise<string> {
 
 function createBridgeAdapter() {
   return createProviderForId("fake", {
-    additionalWorkspaceWriteRoots: [],
     bridgeLaunch: createScriptedEchoLaunch(),
   });
 }
@@ -80,6 +79,7 @@ describe("createAgentRuntime tool calls", () => {
         options: fullRuntimeOptions,
       });
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223z",
         threadId: "t1",
         input: [promptTextInput({ text: "call_tool:question" })],
@@ -134,6 +134,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222223z",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool:my_test_tool" })],
@@ -195,6 +196,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222223y",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool_unresolved:my_test_tool" })],
@@ -246,7 +248,8 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
-        toolCalls: new RuntimeToolCalls(),
+        interactiveRequests: new RuntimeProviderRequests(),
+        toolCalls: new RuntimeProviderRequests(),
         getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({
@@ -310,7 +313,8 @@ describe("createAgentRuntime tool calls", () => {
 
     try {
       handleRuntimeProviderRequest({
-        toolCalls: new RuntimeToolCalls(),
+        interactiveRequests: new RuntimeProviderRequests(),
+        toolCalls: new RuntimeProviderRequests(),
         getActiveTurnId: () => "turn-1",
         getThreadExecutionOptions: () => undefined,
         onInteractiveRequest: async () => ({
@@ -371,6 +375,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_2222222242",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool:my_test_tool" })],
@@ -414,6 +419,7 @@ describe("createAgentRuntime tool calls", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_2222222243",
       threadId: "t1",
       input: [promptTextInput({ text: "call_tool:failing_tool" })],

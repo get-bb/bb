@@ -21,8 +21,7 @@ import {
 import { DiscordLink, DownloadLink, GitHubLink, XLink } from "./cta";
 import { useDesktopPlatform } from "./desktop-platform";
 import { DOWNLOAD_PAGE_PATH, GITHUB_STARS, formatStarCount } from "./site";
-
-const NAV_DOWNLOAD_CLASS = "btn btn-primary btn-sm nav-download";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 type SiteNavPage = "blog" | "changelog" | "plugins" | "plugin-guide" | "guides";
 
@@ -46,7 +45,7 @@ function NavMenu({
       }
     };
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && menu.current?.open) {
+      if (isNonImeKey(event, "Escape") && menu.current?.open) {
         menu.current.removeAttribute("open");
         menu.current.querySelector("summary")?.focus();
       }
@@ -234,7 +233,10 @@ export function SiteNav({
       </div>
       <div className="nav-actions">
         <GitHubStarsLink stars={GITHUB_STARS} />
-        <a className={NAV_DOWNLOAD_CLASS} href={DOWNLOAD_PAGE_PATH}>
+        <a
+          className="btn btn-primary btn-sm nav-download"
+          href={DOWNLOAD_PAGE_PATH}
+        >
           Download
         </a>
       </div>

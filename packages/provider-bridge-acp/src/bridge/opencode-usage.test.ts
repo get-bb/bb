@@ -773,6 +773,7 @@ describe("OpenCode Go usage", () => {
           id: "go-usage-test",
           method: "provider/usage",
           params: {
+            envVars: {},
             providerId: "test-opencode",
             providerOptions: {
               acpDialect: "opencode",

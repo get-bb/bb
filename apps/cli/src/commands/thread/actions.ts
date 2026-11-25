@@ -12,6 +12,7 @@ import {
 import { threadEnvironmentUnavailableApiErrorSchema } from "@bb/server-contract";
 import { action, CliExitError } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
+import { outputJson, reportOperation } from "../../command-result.js";
 import { requireTextInput, TEXT_FILE_HELP_SUFFIX } from "../../text-input.js";
 import {
   BbHttpError,
@@ -22,7 +23,6 @@ import type { QueuedMessageWaitingOn } from "@bb/domain";
 import {
   collectOption,
   confirmDestructiveAction,
-  outputJson,
   parseReasoningLevel,
   prependErrorContext,
   requireThreadIdOrSelf,
@@ -615,7 +615,9 @@ export function registerActionsCommands(
           });
           if (outputJson(opts, { threadId: id, ...response })) return;
           console.log(
-            opts.compactFirst === true
+            opts.compactFirst === true &&
+              response.delivery === "queued" &&
+              response.queuedMessage.waitingOn?.kind === "thread-busy"
               ? `Thread ${id} compacting; the message sends when compaction finishes`
               : describeThreadTellOutcome(id, response),
           );
@@ -654,6 +656,28 @@ export function registerActionsCommands(
           console.log(describeThreadRetryOutcome(threadId, response));
         },
       ),
+    );
+
+  parent
+    .command("stop [id]")
+    .description("Stop work and release the loaded agent runtime")
+    .option("--self", "Target the current thread (from BB_THREAD_ID)")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string | undefined, opts: ThreadActionOptions) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        const result = await createCliBbSdk(getUrl()).threads.stop({
+          threadId,
+        });
+        reportOperation(
+          opts,
+          { ...result, threadId },
+          {
+            complete: `Thread ${threadId} stopped`,
+            inProgress: `Thread ${threadId} is still stopping; check it with bb thread show ${threadId}`,
+          },
+        );
+      }),
     );
 
   const voice = parent
@@ -804,16 +828,10 @@ export function registerActionsCommands(
 
   for (const { name, description, method, done } of [
     {
-      name: "stop",
-      description: "Stop work and release the loaded agent runtime",
-      method: "stop",
-      done: "stopped",
-    },
-    {
       name: "compact",
       description: "Request compaction of an idle or errored thread's context",
       method: "compact",
-      done: "context compaction requested",
+      done: "compacted its context",
     },
     {
       name: "clear",
@@ -843,9 +861,18 @@ export function registerActionsCommands(
         action(async (id: string | undefined, opts: ThreadActionOptions) => {
           const threadId = requireThreadIdOrSelf(id, opts);
           const sdk = createCliBbSdk(getUrl());
-          await sdk.threads[method]({ threadId });
-          if (outputJson(opts, { ok: true, threadId })) return;
-          console.log(`Thread ${threadId} ${done}`);
+          const result = await sdk.threads[method]({ threadId });
+          reportOperation(
+            opts,
+            { ...result, threadId },
+            {
+              complete: `Thread ${threadId} ${done}`,
+              inProgress:
+                method === "compact"
+                  ? `Thread ${threadId} context compaction requested`
+                  : `Thread ${threadId} ${done}; the provider is still finishing`,
+            },
+          );
         }),
       );
   }

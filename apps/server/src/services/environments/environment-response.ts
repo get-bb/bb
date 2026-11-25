@@ -12,6 +12,7 @@ import {
   type WorkspaceProvisionType,
 } from "@bb/domain";
 import { DEFAULT_ENVIRONMENT_PROVIDER_ID } from "./environment-provider-ids.js";
+import { teardownNeedsRecovery } from "../lib/persisted-retry.js";
 
 const DEPRECATED_WORKSPACE_PROVISION_TYPE_BY_PROVIDER_ID = new Map<
   string,
@@ -92,6 +93,7 @@ function toEnvironmentResponseWithHostLifecycle(
     projectId: row.projectId,
     hostId: row.hostId,
     path: row.path,
+    additionalPaths: row.additionalPaths,
     isGitRepo: row.isGitRepo,
     isWorktree: row.isWorktree,
     branchName: row.branchName,
@@ -99,6 +101,10 @@ function toEnvironmentResponseWithHostLifecycle(
     defaultBranch: row.defaultBranch,
     mergeBaseBranch: row.mergeBaseBranch,
     status: row.status,
+    statusMessage:
+      row.status === "ready" || row.status === "destroyed"
+        ? null
+        : row.statusMessage,
     environmentProviderId: row.environmentProviderId,
     lifecycle: {
       phase:
@@ -116,6 +122,7 @@ function toEnvironmentResponseWithHostLifecycle(
           : {
               status: row.teardownStatus,
               attempt: row.teardownAttempt,
+              needsRecovery: teardownNeedsRecovery(row),
               ...(row.teardownMessage === null
                 ? {}
                 : { message: row.teardownMessage }),
@@ -125,6 +132,7 @@ function toEnvironmentResponseWithHostLifecycle(
     environmentProviderSelection: row.environmentProviderSelection,
     environmentProviderInstanceKey: row.environmentProviderInstanceKey,
     managed: row.providerOwnsPath,
+    heldBy: row.heldBy,
     workspaceProvisionType: resolveDeprecatedWorkspaceProvisionType(
       row.environmentProviderId,
     ),

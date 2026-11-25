@@ -3,8 +3,12 @@ import type { PluginThreadListSlot } from "@/lib/plugin-slots";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
   BUILT_IN_REPLACEMENT_PROVIDER,
+  NO_AUTOMATIC_RULE,
+  PLUGIN_ONLY_RULE,
+  REPLACEMENT_RULE,
   replacementProviderKey,
-  resolvePreferredReplacement,
+  resolveExclusive,
+  type ExclusiveResolveInput,
 } from "./plugin-replacement-preference";
 
 function slot(pluginId: string, id: string): PluginThreadListSlot {
@@ -17,72 +21,92 @@ function slot(pluginId: string, id: string): PluginThreadListSlot {
   };
 }
 
+const BUNDLED = slot("thread-list", "thread-list");
+const COMMUNITY = slot("zen", "list");
+
 function resolve(
-  slots: readonly PluginThreadListSlot[],
-  preference: string = AUTOMATIC_REPLACEMENT_PROVIDER,
-  builtinPluginIds: ReadonlySet<string> = new Set(),
-): PluginThreadListSlot | null {
-  const resolved = resolvePreferredReplacement(
-    slots,
-    preference,
-    builtinPluginIds,
-  );
-  return resolved.kind === "plugin" ? resolved.registration : null;
+  overrides: Partial<ExclusiveResolveInput<PluginThreadListSlot>>,
+) {
+  return resolveExclusive({
+    claimants: [BUNDLED, COMMUNITY],
+    pick: AUTOMATIC_REPLACEMENT_PROVIDER,
+    bbPluginIds: new Set(["thread-list"]),
+    settledOnce: true,
+    rememberedAutomatic: null,
+    rule: REPLACEMENT_RULE,
+    ...overrides,
+  });
 }
 
-describe("resolvePreferredReplacement", () => {
-  it("uses the owner when no replacement is registered", () => {
-    expect(resolve([])).toBeNull();
+describe("resolveExclusive", () => {
+  it("prefers an installed claimant over a bundled one regardless of plugin order, and offers the bundled one for crashes", () => {
+    expect(resolve({})).toEqual({
+      kind: "plugin",
+      registration: COMMUNITY,
+      fallback: BUNDLED,
+    });
+    expect(resolve({ claimants: [BUNDLED] })).toEqual({
+      kind: "plugin",
+      registration: BUNDLED,
+      fallback: null,
+    });
+    expect(resolve({ claimants: [] })).toEqual({ kind: "builtin" });
   });
 
-  it("activates the first registered replacement", () => {
-    const first = slot("alpha", "inbox");
-    expect(
-      resolve([first, slot("beta", "inbox")], AUTOMATIC_REPLACEMENT_PROVIDER),
-    ).toBe(first);
+  it("uses a present pick, including a bundled claimant, through the same path", () => {
+    expect(resolve({ pick: replacementProviderKey(BUNDLED) })).toMatchObject({
+      registration: BUNDLED,
+    });
   });
 
-  it("lets the user keep BB's implementation", () => {
+  it("uses core's own for __builtin__ only where core has its own", () => {
+    expect(resolve({ pick: BUILT_IN_REPLACEMENT_PROVIDER })).toEqual({
+      kind: "builtin",
+    });
     expect(
-      resolve([slot("alpha", "inbox")], BUILT_IN_REPLACEMENT_PROVIDER),
-    ).toBeNull();
+      resolve({ pick: BUILT_IN_REPLACEMENT_PROVIDER, rule: PLUGIN_ONLY_RULE }),
+    ).toMatchObject({ kind: "plugin", registration: COMMUNITY });
   });
 
-  it("lets the user pin a specific provider", () => {
-    const first = slot("alpha", "inbox");
-    const second = slot("beta", "inbox");
-    expect(resolve([first, second], replacementProviderKey(second))).toBe(
-      second,
-    );
+  it("waits for an absent pick until plugins first settle, then falls back to Automatic", () => {
+    expect(resolve({ pick: "gone/list", settledOnce: false })).toEqual({
+      kind: "loading",
+    });
+    expect(resolve({ pick: "gone/list" })).toMatchObject({
+      registration: COMMUNITY,
+    });
   });
 
-  it("uses the owner while an explicitly selected provider is unavailable", () => {
-    expect(resolve([], "alpha/inbox")).toBeNull();
+  it("waits for the remembered Automatic winner only during boot, not when a later plugin reload runs after the winner changed", () => {
+    const rememberedAutomatic = replacementProviderKey(COMMUNITY);
+    expect(
+      resolve({
+        claimants: [BUNDLED],
+        settledOnce: false,
+        rememberedAutomatic,
+      }),
+    ).toEqual({ kind: "loading" });
+    expect(resolve({ settledOnce: false, rememberedAutomatic })).toMatchObject({
+      registration: COMMUNITY,
+    });
+    expect(
+      resolve({ claimants: [BUNDLED], rememberedAutomatic }),
+    ).toMatchObject({ kind: "plugin", registration: BUNDLED });
   });
 
-  it("prefers an installed replacement over a built-in plugin's regardless of plugin order", () => {
-    const bundled = slot("thread-list", "thread-list");
-    const community = slot("zen", "list");
+  it("names no Automatic winner when several claim a no-automatic key", () => {
+    expect(resolve({ rule: NO_AUTOMATIC_RULE })).toEqual({
+      kind: "contested",
+      claimants: [BUNDLED, COMMUNITY],
+    });
     expect(
-      resolve(
-        [bundled, community],
-        AUTOMATIC_REPLACEMENT_PROVIDER,
-        new Set(["thread-list"]),
-      ),
-    ).toBe(community);
+      resolve({ rule: NO_AUTOMATIC_RULE, claimants: [COMMUNITY] }),
+    ).toMatchObject({ registration: COMMUNITY });
     expect(
-      resolve(
-        [bundled],
-        AUTOMATIC_REPLACEMENT_PROVIDER,
-        new Set(["thread-list"]),
-      ),
-    ).toBe(bundled);
-    expect(
-      resolve(
-        [bundled, community],
-        "thread-list/thread-list",
-        new Set(["thread-list"]),
-      ),
-    ).toBe(bundled);
+      resolve({
+        rule: NO_AUTOMATIC_RULE,
+        pick: replacementProviderKey(BUNDLED),
+      }),
+    ).toMatchObject({ registration: BUNDLED });
   });
 });

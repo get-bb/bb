@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { threadCreateOriginSchema } from "./thread-create-origin.js";
-import { environmentWorkspaceDisplayKindSchema } from "./environment.js";
+import {
+  environmentHostLifecycleSchema,
+  environmentStatusSchema,
+  environmentWorkspaceDisplayKindSchema,
+} from "./environment.js";
 import {
   queuedMessageFailureReasonSchema,
   queuedMessagePayloadSchema,
@@ -155,6 +159,7 @@ export const threadQueuedWorkSchema = z.enum(threadQueuedWorkValues);
 export type ThreadQueuedWork = z.infer<typeof threadQueuedWorkSchema>;
 
 export const threadListEntrySchema = threadWithRuntimeSchema.extend({
+  statusChangedAt: z.number(),
   activity: threadActivityStateSchema,
   queuedWork: threadQueuedWorkSchema,
   pinSortKey: z.string().nullable(),
@@ -163,6 +168,8 @@ export const threadListEntrySchema = threadWithRuntimeSchema.extend({
   environmentName: z.string().nullable(),
   environmentBranchName: z.string().nullable(),
   environmentPath: z.string().nullable(),
+  environmentStatus: environmentStatusSchema.nullable(),
+  environmentHostLifecycle: environmentHostLifecycleSchema.nullable(),
   environmentProviderId: z.string().nullable(),
   environmentIsWorktree: z.boolean().nullable(),
   environmentWorkspaceDisplayKind: environmentWorkspaceDisplayKindSchema,

@@ -340,6 +340,25 @@
     );
   }
 
+  .bb-sidebar-hover-actions-collapse {
+    position: relative;
+  }
+
+  @media (hover: hover) {
+    .bb-sidebar-hover-actions-collapse {
+      position: absolute;
+    }
+  }
+
+  .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
+    .bb-sidebar-hover-actions-collapse,
+  .bb-sidebar-hover-actions-row:has(
+      .bb-sidebar-hover-actions[data-sidebar-hover-actions-open="true"]
+    )
+    .bb-sidebar-hover-actions-collapse {
+    position: relative;
+  }
+
   @media (hover: hover) {
     .bb-sidebar-hover-actions-row:is(:hover, :has(:focus-visible))
       .bb-sidebar-hover-actions-mask,

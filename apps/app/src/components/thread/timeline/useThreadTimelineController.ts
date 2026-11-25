@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import {
   useQueryClient,
   type QueryClient,
@@ -14,7 +14,10 @@ import {
   resolveLoadedTimelineSurfaceKey,
   type LoadedTimelineState,
 } from "@bb/client-core";
-import { hasThreadTimelineUnseenEvents } from "@/hooks/cache-owners/thread-timeline-unseen-events";
+import {
+  hasThreadTimelineUnseenEvents,
+  subscribeThreadTimelineUnseenEvents,
+} from "@/hooks/cache-owners/thread-timeline-unseen-events";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { threadTimelineQueryKey } from "@/hooks/queries/query-keys";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
@@ -323,10 +326,13 @@ export function useThreadTimelineController({
     threadId,
     updateLoadedTimeline,
   ]);
-  const timelineRows =
+  const loadedRows =
     loadedTimeline.surfaceKey === surfaceKey && loadedTimeline.rows.length > 0
       ? loadedTimeline.rows
       : (latestTimeline?.rows ?? []);
+  const pendingSteers = latestTimeline?.pendingSteers ?? [];
+  const timelineRows =
+    pendingSteers.length === 0 ? loadedRows : [...loadedRows, ...pendingSteers];
   const hasResolvedTimeline =
     latestTimelineQuery.data !== undefined || timelineRows.length > 0;
   const timelineQueryState = useConnectionAwareQueryState({
@@ -340,10 +346,16 @@ export function useThreadTimelineController({
     (!hasResolvedTimeline &&
       (timelineQueryState.status === "loading" ||
         latestTimelineQuery.isFetching));
+  const hasUnseenTimelineEvents = useSyncExternalStore(
+    useCallback(
+      (listener: () => void) =>
+        subscribeThreadTimelineUnseenEvents(queryClient, threadId, listener),
+      [queryClient, threadId],
+    ),
+    () => hasThreadTimelineUnseenEvents(queryClient, threadId),
+  );
   const isCatchingUpTimeline =
-    enabled &&
-    hasThreadTimelineUnseenEvents(queryClient, threadId) &&
-    timelineRows.length > 0;
+    enabled && hasUnseenTimelineEvents && timelineRows.length > 0;
   const timelineError =
     timelineLoading || timelineQueryState.status !== "unavailable"
       ? null

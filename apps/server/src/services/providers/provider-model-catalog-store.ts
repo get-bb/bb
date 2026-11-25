@@ -30,11 +30,12 @@ import {
   expectedFallbackErrorLogFields,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-import { resolvePluginProviderEnv } from "../plugins/plugin-agent-contributions.js";
+import { resolveHostProviderEnv } from "../plugins/plugin-agent-contributions.js";
 import {
   requireBridgeLaunchForProviderId,
   resolveBridgeLaunchForProviderId,
 } from "../system/provider-bridge-launch.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export const PROVIDER_MODEL_CATALOG_PUSH_COALESCE_MS = 250;
 export const PROVIDER_MODEL_CATALOG_MEMORY_ENTRY_LIMIT = 256;
@@ -104,6 +105,7 @@ export interface ProviderModelCatalogStore {
   ): Promise<void>;
   clearFailure(hostId: string, providerId: string): void;
   markAllStale(): void;
+  markHostStale(hostId: string): void;
   forgetHost(deps: WorkSessionDeps, hostId: string): void;
 }
 
@@ -180,7 +182,7 @@ export function toProviderModelCatalogFailureDetail(
     return null;
   }
   return collapsed.length > FAILURE_DETAIL_MAX_LENGTH
-    ? `${collapsed.slice(0, FAILURE_DETAIL_MAX_LENGTH - 1).trimEnd()}\u2026`
+    ? `${sliceUtf16Head(collapsed, FAILURE_DETAIL_MAX_LENGTH - 1).trimEnd()}\u2026`
     : collapsed;
 }
 
@@ -196,10 +198,10 @@ async function resolveCatalogLaunch(args: {
   bridgeLaunch: HostDaemonBridgeLaunch;
 }): Promise<CatalogLaunch> {
   const { bridgeLaunch } = args;
-  const contributedEnv = await resolvePluginProviderEnv({
-    providerId: args.providerId,
-    context: { threadId: null, projectId: null, hostId: args.hostId },
-  });
+  const contributedEnv = await resolveHostProviderEnv(
+    args.hostId,
+    args.providerId,
+  );
   const fingerprint = createHash("sha256")
     .update(
       JSON.stringify([
@@ -363,6 +365,18 @@ function evaluate(
     };
   }
   return { kind: "wait" };
+}
+
+function markEntryStale(entry: CatalogEntry): void {
+  entry.failure = null;
+  entry.unavailableDetail = null;
+  entry.selectedModels.clear();
+  if (entry.good !== null) {
+    entry.good.fetchedAt = 0;
+  }
+  if (entry.refresh !== null) {
+    entry.refresh.markedStale = true;
+  }
 }
 
 export function createProviderModelCatalogStore(options: {
@@ -872,16 +886,12 @@ export function createProviderModelCatalogStore(options: {
     },
 
     markAllStale() {
+      for (const entry of entries.values()) markEntryStale(entry);
+    },
+
+    markHostStale(hostId) {
       for (const entry of entries.values()) {
-        entry.failure = null;
-        entry.unavailableDetail = null;
-        entry.selectedModels.clear();
-        if (entry.good !== null) {
-          entry.good.fetchedAt = 0;
-        }
-        if (entry.refresh !== null) {
-          entry.refresh.markedStale = true;
-        }
+        if (entry.key.hostId === hostId) markEntryStale(entry);
       }
     },
 

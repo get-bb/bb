@@ -1,4 +1,3 @@
-import * as questionFormHost from "@bb/shared-ui/question-form-host";
 import * as voiceInputTextarea from "@bb/shared-ui/voice-input-textarea";
 import * as react from "react";
 import * as reactDom from "react-dom";
@@ -26,7 +25,8 @@ import { BbHttpError } from "@bb/sdk/browser";
 import { isCancelledError, type QueryClient } from "@tanstack/react-query";
 import { markEnabledPluginListStale } from "@/hooks/cache-owners/plugin-cache-owner";
 import { pluginListQueryOptions } from "@/hooks/queries/plugin-settings-queries";
-import { createPluginToast } from "@/lib/notifications/plugin-toast";
+import { toast as pluginToast } from "@/lib/plugin-sonner";
+import { isOfficialPlugin } from "@/lib/official-plugins";
 import { appQueryClient } from "./app-query-client";
 import {
   setServerPluginsStarting,
@@ -65,7 +65,10 @@ import {
   flushPluginSlotChanges,
   removePluginSlotRegistrations,
   setBuiltinPluginIds,
+  setOfficialMarketplacePluginIds,
+  setLoadingPluginFrontends,
   setPluginSlotRegistrations,
+  settleLoadingPluginFrontend,
   type PluginRegistrationSet,
 } from "./plugin-slots";
 import {
@@ -88,6 +91,11 @@ interface PluginFrontendBundle {
 export interface PluginFrontendCandidate {
   pluginId: string;
   bundle: PluginFrontendBundle;
+}
+
+export interface PluginFrontendCandidates {
+  candidates: PluginFrontendCandidate[];
+  startingPluginIds: string[];
 }
 
 type PluginFrontendRecord =
@@ -215,7 +223,6 @@ export interface BbPluginRuntime {
   tailwindMerge: unknown;
   classVarianceAuthority: unknown;
   sharedUiIcon: unknown;
-  questionFormHost: typeof questionFormHost;
   voiceInputTextarea: typeof voiceInputTextarea;
 }
 
@@ -243,13 +250,12 @@ export function installPluginRuntime(): BbPluginRuntime {
     radixPopover,
     radixSelect,
     radixTooltip,
-    sonner: { ...sonner, toast: createPluginToast(sonner.toast) },
+    sonner: { ...sonner, toast: pluginToast },
     vaul,
     clsx,
     tailwindMerge,
     classVarianceAuthority,
     sharedUiIcon,
-    questionFormHost,
     voiceInputTextarea,
   };
   return host.__bbPluginRuntime;
@@ -276,7 +282,7 @@ async function fetchEnabledPluginList(
 export async function fetchFrontendCandidates(
   queryClient: QueryClient,
   freshness: PluginListFreshness,
-): Promise<PluginFrontendCandidate[]> {
+): Promise<PluginFrontendCandidates> {
   let plugins;
   try {
     plugins = await fetchEnabledPluginList(queryClient, freshness);
@@ -288,13 +294,14 @@ export async function fetchFrontendCandidates(
     ) {
       setPluginLogoUrls(new Map());
       setPluginAssetIcons(new Map());
-      return [];
+      return { candidates: [], startingPluginIds: [] };
     }
     throw error;
   }
-  setServerPluginsStarting(
-    plugins.some((plugin) => plugin.enabled && plugin.status === "starting"),
+  const startingPluginIds = plugins.flatMap((plugin) =>
+    plugin.enabled && plugin.status === "starting" ? [plugin.id] : [],
   );
+  setServerPluginsStarting(startingPluginIds.length > 0);
   const candidates: PluginFrontendCandidate[] = [];
   const logoUrls = new Map<string, PluginLogoUrls>();
   const assetIcons = new Map<string, string>();
@@ -328,7 +335,10 @@ export async function fetchFrontendCandidates(
       plugin.provenance === "builtin" ? [plugin.id] : [],
     ),
   );
-  return candidates;
+  setOfficialMarketplacePluginIds(
+    plugins.flatMap((plugin) => (isOfficialPlugin(plugin) ? [plugin.id] : [])),
+  );
+  return { candidates, startingPluginIds };
 }
 
 export { applyPluginCss } from "./plugin-css";
@@ -401,7 +411,7 @@ export function createPluginFrontendReconcileState(): PluginFrontendReconcileSta
 }
 
 export interface PluginFrontendReconcileDeps {
-  fetchCandidates: () => Promise<PluginFrontendCandidate[]>;
+  fetchCandidates: () => Promise<PluginFrontendCandidates>;
   importModule: (url: string) => Promise<unknown>;
   importRetryDelaysMs: readonly number[];
   applyCss: (pluginId: string, url: string | null) => void | Promise<void>;
@@ -414,6 +424,8 @@ export interface PluginFrontendReconcileDeps {
     registrations: PluginRegistrationSet,
   ) => void;
   removeRegistrations: (pluginId: string) => void;
+  setLoadingPlugins: (pluginIds: readonly string[]) => void;
+  settlePluginLoad: (pluginId: string) => void;
   beginSlotBatch: () => () => void;
   flushSlotBatch: () => void;
   warn: (message: string) => void;
@@ -715,7 +727,7 @@ export async function reconcilePluginFrontends(
   onChanges?: () => void,
 ): Promise<void> {
   if (state.discarded) return;
-  const candidates = await deps.fetchCandidates();
+  const { candidates, startingPluginIds } = await deps.fetchCandidates();
   if (state.discarded) return;
   const candidateIds = new Set(candidates.map((c) => c.pluginId));
   if (
@@ -724,6 +736,12 @@ export async function reconcilePluginFrontends(
   ) {
     onChanges?.();
   }
+  deps.setLoadingPlugins([
+    ...startingPluginIds,
+    ...candidates
+      .filter((candidate) => !isCandidateApplied(candidate, state))
+      .map((candidate) => candidate.pluginId),
+  ]);
   for (const pluginId of [...state.records.keys()]) {
     if (candidateIds.has(pluginId)) continue;
     state.pendingControllers.get(pluginId)?.abort();
@@ -788,6 +806,7 @@ async function reconcileCandidates(
       try {
         await reconcileCandidate(candidate, state, deps);
       } finally {
+        deps.settlePluginLoad(candidate.pluginId);
         if (priorityPluginIds.includes(candidate.pluginId)) {
           pendingPriority -= 1;
           if (pendingPriority === 0) priorityLoaded();
@@ -1072,6 +1091,8 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,
   removeRegistrations: removePluginSlotRegistrations,
+  setLoadingPlugins: setLoadingPluginFrontends,
+  settlePluginLoad: settleLoadingPluginFrontend,
   beginSlotBatch: () =>
     beginPluginSlotBatch({ maxHoldMs: PLUGIN_SLOT_BATCH_MAX_HOLD_MS }),
   flushSlotBatch: flushPluginSlotChanges,

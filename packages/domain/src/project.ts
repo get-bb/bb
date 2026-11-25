@@ -40,6 +40,14 @@ export type LocalPathProjectSource = z.infer<
 export const projectSourceSchema = localPathProjectSourceSchema;
 export type ProjectSource = z.infer<typeof projectSourceSchema>;
 
+export const projectSourceFolderSchema = z.object({
+  id: z.string(),
+  projectSourceId: z.string(),
+  path: z.string(),
+  createdAt: z.number(),
+});
+export type ProjectSourceFolder = z.infer<typeof projectSourceFolderSchema>;
+
 export function isLocalPathProjectSource(
   source: ProjectSource,
 ): source is LocalPathProjectSource {

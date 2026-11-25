@@ -13,6 +13,8 @@ import type { Host, HostType } from "@bb/domain";
 import type { DbConnection } from "@bb/db";
 import type { NotificationHub } from "../../ws/hub.js";
 import { ApiError } from "../../errors.js";
+import { teardownNeedsRecovery } from "./persisted-retry.js";
+import { serverAccessProviderDisplayName } from "../machines/server-access.js";
 import {
   destroyedHostUnavailableDetails,
   destroyedThreadEnvironmentDetails,
@@ -63,18 +65,35 @@ function getOpenDaemonSessionForHost(
 }
 
 export function toHostWithStatus(deps: HostLookupDeps, row: HostRow): Host {
+  const session = getOpenDaemonSessionForHost(deps, row.id);
+  if (session === null) return toHostRecord(row, "disconnected");
+  const providerId = session.routeProviderId;
+  const kind = session.routeKind;
   return toHostRecord(
     row,
-    getOpenDaemonSessionForHost(deps, row.id) ? "connected" : "disconnected",
+    "connected",
+    providerId === null || kind === null
+      ? null
+      : {
+          providerId,
+          kind,
+          displayName:
+            serverAccessProviderDisplayName(providerId) ?? providerId,
+        },
   );
 }
 
-export function toHostRecord(row: HostRow, status: Host["status"]): Host {
+export function toHostRecord(
+  row: HostRow,
+  status: Host["status"],
+  route: Host["route"] = null,
+): Host {
   return {
     id: row.id,
     name: row.name,
     type: row.type,
     status,
+    route,
     machineProviderId: row.machineProviderId,
     lifecycle: {
       phase: row.phase,
@@ -87,6 +106,11 @@ export function toHostRecord(row: HostRow, status: Host["status"]): Host {
           : {
               status: row.teardownStatus,
               attempt: row.teardownAttempt,
+              needsRecovery:
+                teardownNeedsRecovery(row) ||
+                (row.teardownStatus === "failed" &&
+                  row.teardownBlockedByEnvironmentId !== null),
+              blockedByEnvironmentId: row.teardownBlockedByEnvironmentId,
             },
     },
     maxPermissionMode: row.maxPermissionMode,

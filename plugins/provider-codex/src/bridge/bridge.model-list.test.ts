@@ -43,13 +43,13 @@ it("refreshes the catalog when new models become available", async () => {
     JSON.stringify({ modelList: { data: firstCatalog }, turns: [] }),
   );
   stubFakeCodexAppServer(scriptPath);
-  harness.sendRequest(1, "model/list", {});
+  harness.sendRequest(1, "model/list", { envVars: {} });
   const first = await harness.waitForResponse(1);
   await writeFile(
     scriptPath,
     JSON.stringify({ modelList: { data: nextCatalog }, turns: [] }),
   );
-  harness.sendRequest(2, "model/list", {});
+  harness.sendRequest(2, "model/list", { envVars: {} });
   const second = await harness.waitForResponse(2);
 
   expect(first.error).toBeUndefined();
@@ -137,8 +137,11 @@ it("launches the catalog app-server on the requested pool route", async () => {
   expect(launches).toHaveLength(3);
   expect(launches[0]?.args).toContain('model_provider="bb-account-pool"');
   expect(launches[0]?.args).toContain(
-    'openai_base_url="http://127.0.0.1:1/pool/v1"',
+    'model_providers.bb-account-pool.base_url="http://127.0.0.1:1/pool/v1"',
   );
+  expect(
+    launches[0]?.args.some((arg) => arg.startsWith("openai_base_url=")),
+  ).toBe(false);
   expect(launches[0]?.poolToken).toBe("machine-token");
   expect(launches[1]?.args).toContain('model_provider="bb-account-pool"');
   expect(launches[1]?.poolToken).toBe("machine-token");
@@ -196,7 +199,7 @@ it.each([
   );
   stubFakeCodexAppServer(scriptPath);
 
-  harness.sendRequest(1, "model/list", {});
+  harness.sendRequest(1, "model/list", { envVars: {} });
   const response = await harness.waitForResponse(1);
 
   expect(response.error).toBeUndefined();
@@ -254,9 +257,9 @@ it("recovers with a fresh app-server after a model catalog failure", async () =>
   );
   stubFakeCodexAppServer(scriptPath);
 
-  harness.sendRequest(1, "model/list", {});
+  harness.sendRequest(1, "model/list", { envVars: {} });
   const failed = await harness.waitForResponse(1);
-  harness.sendRequest(2, "model/list", {});
+  harness.sendRequest(2, "model/list", { envVars: {} });
   const recovered = await harness.waitForResponse(2);
 
   expect(failed.error?.message).toContain(
@@ -279,7 +282,7 @@ it("rejects a model catalog request with the missing-executable code when codex 
   );
   vi.stubEnv("BB_CODEX_BRIDGE_APP_SERVER_ARGS", "[]");
 
-  harness.sendRequest(1, "model/list", {});
+  harness.sendRequest(1, "model/list", { envVars: {} });
   const response = await harness.waitForResponse(1);
 
   expect(response.error?.code).toBe(BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE);

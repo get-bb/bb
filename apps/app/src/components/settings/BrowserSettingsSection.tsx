@@ -14,7 +14,7 @@ import {
   SettingsRow,
   SettingsRowList,
   SettingsSection,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { getDesktopBrowserApi } from "@/lib/bb-desktop";
 import { formatRelativeTime } from "@/lib/relative-time";
 import { BrowserImportDialog } from "./BrowserImportDialog";

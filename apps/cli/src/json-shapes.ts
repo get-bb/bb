@@ -4,7 +4,7 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "thread list":
     "[{id, projectId, environmentId, providerId, title, status, parentThreadId, sectionId, visibility, archivedAt, pinnedAt, createdAt, updatedAt, activity}]    (bare array; title can be null)",
   "thread show":
-    "{thread: {id, status, archivedAt, title, projectId, environmentId, parentThreadId, ...}, environment: {id, hostId, path, branchName, ...} | null, pendingTodos}    (thread fields are under .thread; status is the run state, archivedAt is null unless the thread is archived)",
+    "{thread: {id, status, archivedAt, title, projectId, environmentId, parentThreadId, ...}, executionOptions: {model, reasoningLevel, serviceTier, permissionMode, ...} | null, environment: {id, hostId, path, branchName, ...} | null, pendingTodos}    (thread fields are under .thread; status is the run state, archivedAt is null unless the thread is archived; executionOptions is what the next turn uses)",
   "thread log":
     "[{id, seq, type, createdAt, threadId, scope, data}]    (bare array of raw events, oldest first; page with --after-seq <seq>); with --message: {message, before, after} of conversation rows",
   "thread output": "{output}",
@@ -13,7 +13,8 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "thread spawn":
     "the created thread: {id, status, title, projectId, environmentId, ...}",
   "thread wait": "{threadId, matched: true, target}",
-  "thread search": "{active: {total, results}, archived: {total, results}}",
+  "thread search":
+    "{active: {total, totalCapped, results}, archived: {total, totalCapped, results}}    (total counts matching threads up to 100; totalCapped is true when more match)",
   "prompt-history list":
     "{entries: [{id, createdAt, input, projectId, threadId, scope}], nextCursor: string | null}",
   "project list":
@@ -39,7 +40,7 @@ export const JSON_SHAPE_BY_COMMAND_PATH: Readonly<Record<string, string>> = {
   "plugin list":
     "{plugins: [{id, version, enabled, status, source, rootDir}]}    (wrapped in .plugins)",
   "skill list":
-    "{skills: [{id, name, description, scope, provider, filePath}]}    (wrapped in .skills)",
+    "{skills: [{id, name, description, scope, providers, filePath}]}    (wrapped in .skills; providers lists every provider that reads the skill file, [] for bb skills)",
 };
 
 export function jsonShapeHelp(commandPath: string): string | null {

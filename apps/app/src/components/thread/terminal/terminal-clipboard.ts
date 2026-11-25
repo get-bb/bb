@@ -1,3 +1,5 @@
+import { matchesAppShortcutKey } from "@bb/domain";
+import { isImeComposing } from "@bb/shared-ui/lib/ime-keyboard";
 import type { Terminal } from "@xterm/xterm";
 
 export function createTerminalClipboardKeyHandler({
@@ -11,7 +13,7 @@ export function createTerminalClipboardKeyHandler({
 }): (event: KeyboardEvent) => boolean {
   return (event) => {
     if (
-      event.isComposing ||
+      isImeComposing(event) ||
       event.altKey ||
       (event.ctrlKey && event.metaKey) ||
       (!event.ctrlKey && !event.metaKey)
@@ -19,14 +21,12 @@ export function createTerminalClipboardKeyHandler({
       return true;
     }
 
-    const key = /^[a-z]$/iu.test(event.key)
-      ? event.key.toLowerCase()
-      : event.code === "KeyC"
-        ? "c"
-        : event.code === "KeyV"
-          ? "v"
-          : event.key;
-    if (key !== "c" && key !== "v") {
+    const key = matchesAppShortcutKey(event, "c")
+      ? "c"
+      : matchesAppShortcutKey(event, "v")
+        ? "v"
+        : null;
+    if (key === null) {
       return true;
     }
 

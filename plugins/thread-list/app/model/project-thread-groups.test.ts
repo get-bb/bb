@@ -118,6 +118,153 @@ function findNode(
 }
 
 describe("buildProjectThreadGroups", () => {
+  it("orders completed children and grandchildren by status activity without moving roots", () => {
+    const threads = [
+      createThread({ id: "parent", createdAt: 1, latestAttentionAt: 10 }),
+      createThread({ id: "other-root", createdAt: 2, latestAttentionAt: 20 }),
+      createThread({
+        id: "older-child",
+        parentThreadId: "parent",
+        createdAt: 3,
+        latestAttentionAt: 3,
+        experimental_statusChangedAt: 50,
+      }),
+      createThread({
+        id: "newer-child",
+        parentThreadId: "parent",
+        createdAt: 4,
+        latestAttentionAt: 4,
+        experimental_statusChangedAt: 40,
+        updatedAt: 100,
+        lastReadAt: 100,
+      }),
+      createThread({
+        id: "older-grandchild",
+        parentThreadId: "older-child",
+        createdAt: 5,
+        latestAttentionAt: 5,
+        experimental_statusChangedAt: 70,
+      }),
+      createThread({
+        id: "newer-grandchild",
+        parentThreadId: "older-child",
+        createdAt: 6,
+        latestAttentionAt: 6,
+        experimental_statusChangedAt: 60,
+      }),
+    ];
+
+    expect(summarizeItems(buildProjectThreadGroups(threads))).toEqual([
+      "other-root",
+      {
+        id: "parent",
+        children: [
+          {
+            id: "older-child",
+            children: ["older-grandchild", "newer-grandchild"],
+          },
+          "newer-child",
+        ],
+      },
+    ]);
+    expect(
+      summarizeItems(
+        buildProjectThreadGroups(threads, compareByCreatedAtDescending),
+      ),
+    ).toEqual([
+      "other-root",
+      {
+        id: "parent",
+        children: [
+          "newer-child",
+          {
+            id: "older-child",
+            children: ["newer-grandchild", "older-grandchild"],
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("preserves active-first ordering, attention, and deterministic activity ties", () => {
+    const children = [
+      createThread({
+        id: "active-older",
+        status: "active",
+        createdAt: 1,
+        experimental_statusChangedAt: 90,
+      }),
+      createThread({
+        id: "active-newer",
+        status: "active",
+        createdAt: 2,
+        experimental_statusChangedAt: 80,
+      }),
+      createThread({
+        id: "attention",
+        status: "error",
+        latestAttentionAt: 100,
+        experimental_statusChangedAt: 30,
+      }),
+      createThread({
+        id: "idle-a",
+        createdAt: 4,
+        experimental_statusChangedAt: 70,
+      }),
+      createThread({
+        id: "idle-b",
+        createdAt: 4,
+        experimental_statusChangedAt: 70,
+      }),
+      createThread({
+        id: "idle-older",
+        createdAt: 3,
+        experimental_statusChangedAt: 70,
+      }),
+      createThread({
+        id: "legacy",
+        latestAttentionAt: 60,
+        experimental_statusChangedAt: 0,
+      }),
+    ].map((thread) => ({ ...thread, parentThreadId: "parent" }));
+
+    expect(
+      summarizeItems(
+        buildProjectThreadGroups([
+          createThread({ id: "parent" }),
+          ...children.reverse(),
+        ]),
+      ),
+    ).toEqual([
+      {
+        id: "parent",
+        children: [
+          "active-newer",
+          "active-older",
+          "attention",
+          "idle-a",
+          "idle-b",
+          "idle-older",
+          "legacy",
+        ],
+      },
+    ]);
+    expect(
+      compareStandardThreads(
+        createThread({
+          id: "root-older",
+          latestAttentionAt: 10,
+          experimental_statusChangedAt: 100,
+        }),
+        createThread({
+          id: "root-newer",
+          latestAttentionAt: 20,
+          experimental_statusChangedAt: 50,
+        }),
+      ),
+    ).toBeGreaterThan(0);
+  });
+
   it("nests threads recursively from parentThreadId regardless of thread type", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
@@ -189,13 +336,14 @@ describe("buildProjectThreadGroups", () => {
     expect(findNode(rootItems, "thr_sidechat")).toBeNull();
   });
 
-  it("keeps orphaned children as project roots", () => {
+  it("orders orphaned children as project roots by attention", () => {
     const rootItems = buildProjectThreadGroups([
       createThread({
         id: "orphan-child",
         parentThreadId: "missing-parent",
         createdAt: 20,
-        latestAttentionAt: 20,
+        latestAttentionAt: 5,
+        experimental_statusChangedAt: 40,
       }),
       createThread({
         id: "root-thread",
@@ -204,7 +352,7 @@ describe("buildProjectThreadGroups", () => {
       }),
     ]);
 
-    expect(summarizeItems(rootItems)).toEqual(["orphan-child", "root-thread"]);
+    expect(summarizeItems(rootItems)).toEqual(["root-thread", "orphan-child"]);
   });
 
   it("cuts cycles without duplicating or dropping every cycle member", () => {

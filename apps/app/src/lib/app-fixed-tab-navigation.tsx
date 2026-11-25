@@ -1,7 +1,6 @@
 import {
   createContext,
   useContext,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -198,12 +197,9 @@ export function createAppPanelController(
   };
 }
 
-const focusedControllers = new Map<symbol, AppPanelController>();
-
-export function useAppPanelController({
-  isFocused,
-  ...surface
-}: AppPanelSurface & { isFocused: boolean }): AppPanelController {
+export function useAppPanelController(
+  surface: AppPanelSurface,
+): AppPanelController {
   const surfaceRef = useRef(surface);
   useLayoutEffect(() => {
     surfaceRef.current = surface;
@@ -214,25 +210,7 @@ export function useAppPanelController({
     close: () => closeSurface(surfaceRef.current),
     ...createAppPanelTabsStore(),
   }));
-  useEffect(() => {
-    if (!isFocused) return;
-    const token = Symbol("app-panel-controller");
-    focusedControllers.set(token, controller);
-    return () => {
-      focusedControllers.delete(token);
-    };
-  }, [controller, isFocused]);
   return controller;
-}
-
-export function getFocusedAppPanelController(): AppPanelController | null {
-  let focused: AppPanelController | null = null;
-  for (const controller of focusedControllers.values()) focused = controller;
-  return focused;
-}
-
-export function resetFocusedAppPanelControllersForTest(): void {
-  focusedControllers.clear();
 }
 
 interface AppFixedTabTargetSnapshot {

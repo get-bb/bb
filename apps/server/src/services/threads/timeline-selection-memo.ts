@@ -10,7 +10,6 @@ import {
   getThreadEventRewriteGeneration,
   listLatestBackgroundTaskStateRowsByItemIds,
   listStoredDelegatingItemRowsByItemIds,
-  listStoredStandaloneThreadTimelineRows,
   listStoredThreadInteractionLifecycleRows,
   listStoredThreadNoticeAndInteractionRows,
   listStoredEventRowsByParentToolCallIds,
@@ -82,9 +81,6 @@ export interface TimelineSelectionRowSource {
   }): StoredEventRow[];
   listParentRows(
     args: Parameters<typeof listStoredDelegatingItemRowsByItemIds>[1],
-  ): StoredEventRow[];
-  listStandaloneThreadRows(
-    args: Parameters<typeof listStoredTimelineWindowEventRows>[1],
   ): StoredEventRow[];
   listThreadNoticeAndInteractionRows(
     args: Parameters<typeof listStoredThreadNoticeAndInteractionRows>[1],
@@ -931,9 +927,6 @@ function createTrimmedSelectionRowSource(
         }
       }
       return [...turnIds];
-    },
-    listStandaloneThreadRows(query) {
-      return listStoredStandaloneThreadTimelineRows(db, query);
     },
     listThreadNoticeAndInteractionRows(query) {
       return listStoredThreadNoticeAndInteractionRows(db, query);

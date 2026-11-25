@@ -6,6 +6,7 @@ import {
   resolveThreadEnvironmentPlacement,
   prepareProviderEnvironment,
 } from "../../../src/services/threads/thread-environment-placement.js";
+import { createGitCheckoutInspector } from "../../../src/services/environments/provider-availability.js";
 import { withEnvironmentCleanupSlot } from "../../../src/services/environments/cleanup-concurrency.js";
 import { reportEnvironmentHookProgress } from "../../../src/services/environments/environment-hooks.js";
 import { registerHostRpcResponder } from "../../helpers/host-rpc.js";
@@ -49,14 +50,16 @@ import {
 } from "@bb/db";
 import type { JsonValue } from "@bb/domain";
 import { makeHost } from "@bb/test-helpers/domain-fixtures";
-import type { PluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk";
-import { validatePluginEnvironmentProviderDeclaration } from "@get-bb/plugin-sdk/internal/host-policy";
+import {
+  validatePluginEnvironmentProviderDeclaration,
+  type PluginEnvironmentProviderV1Declaration,
+} from "@get-bb/plugin-sdk/internal/host-policy";
 import {
   markProviderEnvironmentAttached,
   cancelProviderEnvironmentCreation,
   sweepProviderEnvironment,
   sweepProviderLifecycles,
-  type ProviderOperationContext,
+  type ThreadProviderOperationContext,
 } from "../../../src/services/environments/environment-engine.js";
 import { toEnvironmentResponse } from "../../../src/services/environments/environment-response.js";
 import { setPluginEnvironmentProviderBridge } from "../../../src/services/plugins/plugin-environment-provider-registry.js";
@@ -85,7 +88,7 @@ import { listEvents } from "@bb/db/testing";
 
 function setup(
   harness: TestAppHarness,
-  overrides: Partial<PluginEnvironmentProviderDeclaration> = {},
+  overrides: Partial<PluginEnvironmentProviderV1Declaration> = {},
 ) {
   const { host, session } = seedHostSession(harness.deps, { id: "host_test" });
   const { project, source } = seedProjectWithSource(harness.deps, {
@@ -122,7 +125,7 @@ function setup(
     }),
     decisionTimeoutMs: 10_000,
   });
-  const context: ProviderOperationContext = {
+  const context: ThreadProviderOperationContext = {
     thread: toThreadResponseFromThread(harness.deps, { thread }),
     project,
     host: makeHost({ id: host.id, name: host.name }),
@@ -130,8 +133,8 @@ function setup(
     projectCheckout: null,
     gitRemote: null,
     inputs: null,
-    suggestedBranchName: "bb/test",
-    environment: null,
+    branchName: async () => "bb/test",
+    previous: null,
   };
   let lastEnvironmentId: string | null = null;
   const row = () => {
@@ -340,12 +343,14 @@ describe("core environment orchestration", () => {
         await fixture.settled();
         const environmentId =
           kind === "attached environment" ? fixture.attach() : null;
-        const create = vi.fn(fixture.record.provider.create);
+        const provider = fixture.record.provider;
+        if (provider.apiVersion !== 1) throw new Error("Expected version 1");
+        const create = vi.fn(provider.create);
         const remove = vi.fn(async () => ({ status: "removed" as const }));
         const replacement = {
           ...fixture.record,
           pluginId: "replacement",
-          provider: { ...fixture.record.provider, create, remove },
+          provider: { ...provider, create, remove },
         };
         setPluginEnvironmentProviderBridge({
           listEnvironmentProviders: () => [replacement],
@@ -658,13 +663,23 @@ describe("core environment orchestration", () => {
           reportEnvironmentHookProgress(harness.deps, "host_foreign", {
             type: "environment.hook.progress",
             operationId: command.operationId,
-            entry: { type: "output", text: "foreign output", status: null },
+            entry: {
+              type: "output",
+              key: "fixture",
+              text: "foreign output",
+              status: null,
+              startedAt: null,
+              metadata: null,
+            },
           });
           reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
             type: "environment.hook.progress",
             operationId: command.operationId,
             entry: {
               type: "step",
+              key: "fixture",
+              startedAt: null,
+              metadata: null,
               text: "Running teardown",
               status: "started",
             },
@@ -672,7 +687,14 @@ describe("core environment orchestration", () => {
           reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
             type: "environment.hook.progress",
             operationId: command.operationId,
-            entry: { type: "output", text: "hook output", status: null },
+            entry: {
+              type: "output",
+              key: "fixture",
+              text: "hook output",
+              status: null,
+              startedAt: null,
+              metadata: null,
+            },
           });
         },
       });
@@ -687,7 +709,14 @@ describe("core environment orchestration", () => {
         reportEnvironmentHookProgress(harness.deps, fixture.host.id, {
           type: "environment.hook.progress",
           operationId,
-          entry: { type: "output", text: "late output", status: null },
+          entry: {
+            type: "output",
+            key: "fixture",
+            text: "late output",
+            status: null,
+            startedAt: null,
+            metadata: null,
+          },
         });
       }
       expect(
@@ -835,6 +864,7 @@ describe("core environment orchestration", () => {
       });
       const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
+        environmentProviderInstanceKey: (id) => id,
         ownerThreadId: competitor.id,
         status: "creating" as const,
         path: null,
@@ -877,6 +907,7 @@ describe("core environment orchestration", () => {
       });
       const second = reserveEnvironment(harness.db, {
         ...fixture.row(),
+        environmentProviderInstanceKey: (id) => id,
         ownerThreadId: competitor.id,
         status: "creating" as const,
         path: null,
@@ -965,15 +996,12 @@ describe("core environment orchestration", () => {
       await module.default(fake.bb);
       const provider =
         fake.harness.registrations.environmentProviders.get("project-checkout");
-      if (provider?.validate === null || provider === undefined)
+      if (provider?.apiVersion !== 2 || provider.validate === null)
         throw new Error("Missing checkout provider");
       expect(
         await provider.validate({
           ...fixture.context,
-          projectCheckout: {
-            experimental_ownsPath: false,
-            path: "/tmp/project",
-          },
+          projectCheckout: { ownsPath: false, path: "/tmp/project" },
           inputs: { branch: { kind: "existing", name: "release" } },
         }),
       ).toEqual({
@@ -981,99 +1009,6 @@ describe("core environment orchestration", () => {
         message:
           "Cannot checkout branch while another thread is using this workspace",
       });
-    }));
-
-  it("reserves a checkout before concurrent branch mutations until attachment", async () =>
-    withTestHarness(async (harness) => {
-      const fixture = setup(harness);
-      let release: () => void = () => {};
-      const gate = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      const switched: string[] = [];
-      const fake = createFakePluginHost({
-        pluginId: "environment-project-checkout",
-        sdk: { environments: { list: () => [] }, threads: { list: () => [] } },
-        experimental_callHostRpc: async ({ input }) => {
-          const parsed = z
-            .object({
-              path: z.string(),
-              branch: z.object({ name: z.string() }),
-            })
-            .parse(input);
-          switched.push(parsed.branch.name);
-          await gate;
-          return {
-            status: "attached",
-            path: parsed.path,
-            branchName: parsed.branch.name,
-            mergeBaseBranch: null,
-          };
-        },
-      });
-      const module = z
-        .object({
-          default: z.custom<(bb: BbPluginApi) => Promise<void>>(
-            (value) => typeof value === "function",
-          ),
-        })
-        .parse(
-          await import(
-            new URL(
-              "../../../../../plugins/environment-project-checkout/server.ts",
-              import.meta.url,
-            ).href
-          ),
-        );
-      await module.default(fake.bb);
-      const provider =
-        fake.harness.registrations.environmentProviders.get("project-checkout");
-      if (provider === undefined) throw new Error("Missing checkout provider");
-      const record = { pluginId: "environment-project-checkout", provider };
-      setPluginEnvironmentProviderBridge({
-        listEnvironmentProviders: () => [record],
-        getEnvironmentProvider: () => record,
-        invokeProvider: async (_id, _label, run) => ({
-          ok: true,
-          value: await run(),
-        }),
-        decisionTimeoutMs: 10_000,
-      });
-      const second = seedThread(harness.deps, {
-        projectId: fixture.context.project.id,
-        status: "starting",
-      });
-      const context = {
-        ...fixture.context,
-        projectCheckout: { experimental_ownsPath: false, path: "/tmp/project" },
-        inputs: { branch: { kind: "existing", name: "release" } },
-      };
-      try {
-        prepareProviderEnvironment(harness.deps, record, context);
-        prepareProviderEnvironment(harness.deps, record, {
-          ...context,
-          thread: toThreadResponseFromThread(harness.deps, {
-            thread: second,
-          }),
-          inputs: { branch: { kind: "existing", name: "feature" } },
-        });
-        await expect
-          .poll(() => getPreparingEnvironment(harness.db, second.id)?.status)
-          .toBe("error");
-        expect(
-          getPreparingEnvironment(harness.db, second.id)?.statusMessage,
-        ).toContain("Workspace is being prepared by another thread");
-        expect(switched).toEqual(["release"]);
-        expect(fixture.row()).toMatchObject({
-          hostId: fixture.host.id,
-          claimPath: "/tmp/project",
-          status: "creating",
-        });
-      } finally {
-        release();
-        await fixture.settled();
-      }
-      expect(fixture.row().status).toBe("provisioning");
     }));
 
   it("reuses a same-project worktree before checkout validation", async () =>
@@ -1151,7 +1086,7 @@ describe("core environment orchestration", () => {
         reserveEnvironment(harness.db, {
           ...fixture.row(),
           ownerThreadId: second.id,
-          environmentProviderInstanceKey: second.id,
+          environmentProviderInstanceKey: () => second.id,
           path: "/tmp/second",
         });
         if (kind === "removal") {
@@ -1207,6 +1142,76 @@ describe("core environment orchestration", () => {
       });
     }));
 
+  it("records the environment's own folders from the create result", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => ({
+          status: "created",
+          path: `/tmp/${context.pathKey}`,
+          ownsPath: true,
+          additionalPaths: [
+            { path: "/tmp/siblings/api/", replaces: "/work/api/" },
+            { path: "/tmp/siblings/docs" },
+          ],
+        }),
+      });
+      fixture.ask();
+      await fixture.settled();
+      fixture.attach();
+      expect(fixture.row()).toMatchObject({
+        status: "ready",
+        additionalPaths: [
+          { path: "/tmp/siblings/api", replaces: "/work/api" },
+          { path: "/tmp/siblings/docs", replaces: null },
+        ],
+      });
+    }));
+
+  it("fails a create that replaces a relative project folder", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => ({
+          status: "created",
+          path: `/tmp/${context.pathKey}`,
+          ownsPath: true,
+          additionalPaths: [
+            { path: "/tmp/siblings/api", replaces: "work/api" },
+          ],
+        }),
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.ask()).toMatchObject({
+        action: "reject",
+        message: expect.stringContaining("must be an absolute path"),
+      });
+      expect(fixture.row()).toMatchObject({
+        status: "error",
+      });
+    }));
+
+  it("fails a create whose folders overlap its workspace", async () =>
+    withTestHarness(async (harness) => {
+      const fixture = setup(harness, {
+        create: async (context) => ({
+          status: "created",
+          path: `/tmp/${context.pathKey}`,
+          ownsPath: true,
+          additionalPaths: [{ path: `/tmp/${context.pathKey}/nested` }],
+        }),
+      });
+      fixture.ask();
+      await fixture.settled();
+      expect(fixture.ask()).toMatchObject({
+        action: "reject",
+        message: expect.stringContaining("is inside the main folder"),
+      });
+      expect(fixture.row()).toMatchObject({
+        status: "error",
+        additionalPaths: [],
+      });
+    }));
+
   it("re-runs a persisted creating attempt with the same path key", async () =>
     withTestHarness(async (harness) => {
       const calls: Array<{ attempt: number; pathKey: string }> = [];
@@ -1227,7 +1232,7 @@ describe("core environment orchestration", () => {
         environmentProviderPluginId: fixture.record.pluginId,
         attempt: 7,
         status: "creating",
-        environmentProviderInstanceKey: "durable-path-key",
+        environmentProviderInstanceKey: () => "durable-path-key",
         hostId: fixture.host.id,
         path: null,
         claimPath: null,
@@ -1563,7 +1568,7 @@ describe("core environment orchestration", () => {
           });
           await expect(
             sdk.environments.experimental_cleanup({ environmentId }),
-          ).resolves.toEqual({ ok: true });
+          ).resolves.toEqual({ ok: true, progress: "in-progress" });
           await expect
             .poll(
               () => getEnvironment(harness.db, environmentId)?.teardownStatus,
@@ -2061,6 +2066,51 @@ it.each([false, true])(
   },
 );
 
+it("fails explicit cleanup recovery whose provider removal fails again", async () => {
+  await withTestHarness(async (harness) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const fixture = setup(harness, {
+      create: async () => ({
+        status: "created",
+        path: "/tmp/recover-fails",
+        ownsPath: false,
+        resource: { allocation: "retained" },
+      }),
+      remove: async () => ({
+        status: "failed",
+        message: "provider still unavailable",
+      }),
+    });
+    fixture.ask();
+    await fixture.settled();
+    await expect(
+      cancelProviderEnvironmentCreation(harness.deps, fixture.thread.id),
+    ).rejects.toThrow("provider still unavailable");
+    for (let attempt = 2; attempt <= 5; attempt++) {
+      vi.setSystemTime(fixture.row().retireAt!);
+      await sweepProviderLifecycles(harness.deps);
+    }
+    expect(fixture.row().retireAt).toBeNull();
+    harness.db
+      .update(threads)
+      .set({ status: "idle", archivedAt: Date.now() })
+      .where(eq(threads.id, fixture.thread.id))
+      .run();
+
+    const response = await harness.app.request(
+      `/api/v1/environments/${fixture.row().id}/cleanup?recover=true`,
+      { method: "POST" },
+    );
+
+    expect(response.status).toBe(502);
+    expect(await response.json()).toMatchObject({
+      code: "environment_teardown_failed",
+      message: expect.stringContaining("provider still unavailable"),
+    });
+    expect(fixture.row()).toMatchObject({ teardownStatus: "failed" });
+  });
+});
+
 it("skips environments blocked on a foreign plugin owner until that plugin provides them again", async () => {
   await withTestHarness(async (harness) => {
     const remove = vi.fn(async () => ({ status: "removed" as const }));
@@ -2203,6 +2253,7 @@ it("keeps a shared workspace ready when its preparing owner cancels before attac
   await withTestHarness(async (harness) => {
     const remove = vi.fn(async () => ({ status: "removed" as const }));
     const fixture = setup(harness, {
+      locate: () => ({ path: "/tmp/shared-ready", reuse: false }),
       create: async () => ({
         status: "created",
         path: "/tmp/shared-ready",
@@ -2258,111 +2309,18 @@ it("keeps a shared workspace ready when its preparing owner cancels before attac
   });
 });
 
-it("serializes concurrent branchless checkout attaches until the first thread is bound", async () =>
-  withTestHarness(async (harness) => {
-    const fake = createFakePluginHost({
-      pluginId: "environment-project-checkout",
-      experimental_callHostRpc: (call) => {
-        if (call.method !== "attach") throw new Error("Unexpected host call");
-        return {
-          status: "attached",
-          path: "/tmp/project",
-          branchName: "main",
-          mergeBaseBranch: null,
-        };
-      },
-    });
-    try {
-      const module = z
-        .object({
-          default: z.custom<(bb: BbPluginApi) => Promise<void>>(
-            (value) => typeof value === "function",
-          ),
-        })
-        .parse(
-          await import(
-            new URL(
-              "../../../../../plugins/environment-project-checkout/server.ts",
-              import.meta.url,
-            ).href
-          ),
-        );
-      await module.default(fake.bb);
-      const provider =
-        fake.harness.registrations.environmentProviders.get("project-checkout");
-      if (!provider) throw new Error("Missing checkout provider");
-      let claimAttempts = 0;
-      let competingClaim = () => {};
-      const competing = new Promise<void>((resolve) => {
-        competingClaim = resolve;
-      });
-      const fixture = setup(harness, {
-        id: provider.id,
-        create: (context) =>
-          provider.create({
-            ...context,
-            experimental_claimPath: async (path) => {
-              const claimed = await context.experimental_claimPath(path);
-              if (++claimAttempts === 2) competingClaim();
-              return claimed;
-            },
-          }),
-        remove: provider.remove,
-        requires: { projectCheckout: true },
-      });
-      fixture.context.projectCheckout = {
-        path: "/tmp/project",
-        experimental_ownsPath: false,
-      };
-      fixture.context.inputs = {};
-      const existing = createEnvironment(harness.db, harness.hub, {
-        projectId: fixture.context.project.id,
-        hostId: fixture.host.id,
-        path: "/tmp/project",
-        status: "ready",
-        providerOwnsPath: false,
-      });
-      fixture.ask();
-      await fixture.settled();
-      expect(fixture.row().id).toBe(existing.id);
-      expect(fixture.row().claimPath).toBe("/tmp/project");
-      const competitor = seedThread(harness.deps, {
-        projectId: fixture.context.project.id,
-        status: "starting",
-      });
-      prepareProviderEnvironment(harness.deps, fixture.record, {
-        ...fixture.context,
-        thread: toThreadResponseFromThread(harness.deps, {
-          thread: competitor,
-        }),
-      });
-      await competing;
-      fixture.attach();
-      await expect
-        .poll(() => {
-          const row = getPreparingEnvironment(harness.db, competitor.id);
-          return { status: row?.status, message: row?.statusMessage };
-        })
-        .toMatchObject({ status: "ready" });
-      const second = getPreparingEnvironment(harness.db, competitor.id);
-      expect(second?.id).toBe(existing.id);
-      markProviderEnvironmentAttached(harness.db, competitor.id, existing.id);
-    } finally {
-      await fake.harness.lifecycle.dispose();
-    }
-  }));
-
 describe("existing-path provider selection", () => {
   it.each([true, false])(
     "reuses a recorded path without create and preserves ownership %s",
     async (ownsPath) =>
       withTestHarness(async (harness) => {
-        const create = vi.fn<PluginEnvironmentProviderDeclaration["create"]>();
-        const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        const create =
+          vi.fn<PluginEnvironmentProviderV1Declaration["create"]>();
+        const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
           async () => ({ status: "removed" }),
         );
         const fixture = setup(harness, {
-          experimental_existingPath: () => "/tmp/existing/",
+          locate: () => ({ path: "/tmp/existing/", reuse: true }),
           create,
           remove,
           policy: { retireGraceMs: 0 },
@@ -2386,6 +2344,7 @@ describe("existing-path provider selection", () => {
         const placement = await resolveThreadEnvironmentPlacement(
           harness.deps,
           {
+            inspectGitCheckout: createGitCheckoutInspector(harness.deps),
             projectId: fixture.context.project.id,
             requestedEnvironment: {
               type: "provider",
@@ -2418,9 +2377,10 @@ describe("existing-path provider selection", () => {
   it("leaves an unrecorded path to provider creation", async () =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness, {
-        experimental_existingPath: () => "/tmp/unrecorded",
+        locate: () => ({ path: "/tmp/unrecorded", reuse: true }),
       });
       const placement = await resolveThreadEnvironmentPlacement(harness.deps, {
+        inspectGitCheckout: createGitCheckoutInspector(harness.deps),
         projectId: fixture.context.project.id,
         requestedEnvironment: {
           type: "provider",
@@ -2443,7 +2403,7 @@ describe("existing-path provider selection", () => {
   ] as const)("refuses an existing path in %s state", async (state, refusal) =>
     withTestHarness(async (harness) => {
       const fixture = setup(harness, {
-        experimental_existingPath: () => "/tmp/existing",
+        locate: () => ({ path: "/tmp/existing", reuse: true }),
       });
       const other =
         state === "foreign"
@@ -2467,6 +2427,7 @@ describe("existing-path provider selection", () => {
           .run();
       await expect(
         resolveThreadEnvironmentPlacement(harness.deps, {
+          inspectGitCheckout: createGitCheckoutInspector(harness.deps),
           projectId: fixture.context.project.id,
           requestedEnvironment: {
             type: "provider",
@@ -2481,10 +2442,11 @@ describe("existing-path provider selection", () => {
 
   it("does not cancel an adopted checkout with a previous selection", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       const fixture = setup(harness, {
+        locate: () => ({ path: "/tmp/adoption-regression", reuse: false }),
         create: async () => ({
           status: "created",
           path: "/tmp/adoption-regression",
@@ -2527,10 +2489,11 @@ describe("existing-path provider selection", () => {
     "hands a taken-over environment to retirement policy %s when its thread cancels",
     async (retireGraceMs) =>
       withTestHarness(async (harness) => {
-        const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+        const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
           async () => ({ status: "removed" }),
         );
         const fixture = setup(harness, {
+          locate: () => ({ path: "/tmp/taken-over", reuse: false }),
           create: async () => ({
             status: "created",
             path: "/tmp/taken-over",
@@ -2572,14 +2535,14 @@ describe("existing-path provider selection", () => {
 
   it("keeps a taken-over environment when creation finishes during cancellation", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       let finishCreate: () => void = () => undefined;
       const created = new Promise<void>((resolve) => {
         finishCreate = resolve;
       });
-      const create = vi.fn<PluginEnvironmentProviderDeclaration["create"]>(
+      const create = vi.fn<PluginEnvironmentProviderV1Declaration["create"]>(
         async () => {
           await created;
           return {
@@ -2622,7 +2585,7 @@ describe("existing-path provider selection", () => {
 
   it("retires a cancelled thread's own ready environment after the grace period", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       const fixture = setup(harness, {
@@ -2658,10 +2621,11 @@ describe("existing-path provider selection", () => {
 
   it("keeps the existing cleanup metadata when creation races with another attachment", async () =>
     withTestHarness(async (harness) => {
-      const remove = vi.fn<PluginEnvironmentProviderDeclaration["remove"]>(
+      const remove = vi.fn<PluginEnvironmentProviderV1Declaration["remove"]>(
         async () => ({ status: "removed" }),
       );
       const fixture = setup(harness, {
+        locate: () => ({ path: "/tmp/existing", reuse: false }),
         create: async () => ({
           status: "created",
           path: "/tmp/existing",
@@ -2773,6 +2737,7 @@ describe("worktree adoption cleanup", () => {
         const placement = await resolveThreadEnvironmentPlacement(
           harness.deps,
           {
+            inspectGitCheckout: createGitCheckoutInspector(harness.deps),
             projectId: fixture.context.project.id,
             requestedEnvironment: {
               type: "provider",

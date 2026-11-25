@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { PendingInteractionUserQuestionQuestion } from "@bb/domain";
 import { QuestionForm } from "@bb/shared-ui/question-form";
 import { useResolveThreadPendingInteraction } from "@/hooks/mutations/thread-interaction-mutations";
-import { useStopThread } from "@/hooks/mutations/thread-runtime-mutations";
+import { usePendingInteractionCancel } from "@/components/thread/pending-interactions/usePendingInteractionCancel";
 import { getMutationErrorMessage } from "@/lib/mutation-errors";
 
 interface UserQuestionAnswerFormProps {
@@ -29,7 +29,11 @@ export function UserQuestionAnswerForm({
   );
   const resolvePendingInteraction =
     useResolveThreadPendingInteraction(threadId);
-  const stopThread = useStopThread();
+  const { cancel, isStopping } = usePendingInteractionCancel({
+    interactionId,
+    threadId,
+    origin: "provider",
+  });
   const disabled = resolvePendingInteraction.isPending || isResolving;
   const error = resolvePendingInteraction.error
     ? getMutationErrorMessage({
@@ -45,7 +49,7 @@ export function UserQuestionAnswerForm({
         draftKey={`${threadId}:${interactionId}`}
         questions={normalizedQuestions}
         disabled={disabled}
-        cancelDisabled={disabled || stopThread.isPending}
+        cancelDisabled={disabled || isStopping}
         onSubmit={(answers) => {
           return resolvePendingInteraction
             .mutateAsync({
@@ -55,7 +59,7 @@ export function UserQuestionAnswerForm({
             })
             .then(() => {});
         }}
-        onCancel={() => stopThread.mutateAsync(threadId).then(() => {})}
+        onCancel={cancel}
       />
       {error ? (
         <div className="mt-2 shrink-0 rounded-md border border-surface-destructive-border bg-surface-destructive px-3 py-2 text-xs text-destructive-text">

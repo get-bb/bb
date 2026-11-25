@@ -18,7 +18,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { writeRegistrySkillProvenance } from "../../src/services/skills/registry-skill-provenance.js";
 import { providerHasNativeRootSurface } from "../../src/services/providers/native-roots.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
-import { declaredNativeRootSet } from "../helpers/provider-registry.js";
+import { declaredNativeRootScan } from "../helpers/provider-registry.js";
+import { healthAnswer } from "../helpers/provider-model-catalogs.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -67,6 +68,7 @@ function registerSkillRpc(
     hostId: string;
     sessionId: string;
     skillsByProvider?: Record<string, DiscoveredSkill[]>;
+    installedProviders?: readonly string[];
     deletedPath?: string;
     listedFiles?: string[];
     fileContents?: Record<string, string>;
@@ -80,19 +82,37 @@ function registerSkillRpc(
     hostId: args.hostId,
     sessionId: args.sessionId,
     handle: (request) => {
+      if (request.command.type === "provider.health") {
+        return healthAnswer(
+          args.installedProviders?.includes(request.command.providerId)
+            ? "ready"
+            : "not_installed",
+        );
+      }
       if (request.command.type === "host.list_skills") {
+        const byProvider = args.skillsByProvider ?? {};
+        const isWorkspaceSkill = (skill: DiscoveredSkill) =>
+          skill.rootKind === "bb-project";
+        const workspaceSkills = new Map(
+          Object.entries(byProvider)
+            .filter(([providerId]) => providerId !== "bb-shared")
+            .flatMap(([, skills]) => skills)
+            .filter(isWorkspaceSkill)
+            .map((skill) => [skill.id, skill]),
+        );
         return {
           ok: true,
           result: {
-            skills: args.skillsByProvider?.[request.command.providerId] ?? [],
+            workspaceSkills: [...workspaceSkills.values()],
+            sharedSkills: byProvider["bb-shared"] ?? [],
+            providers: request.command.providers.map((provider) => ({
+              providerId: provider.providerId,
+              skills: (byProvider[provider.providerId] ?? []).filter(
+                (skill) => !isWorkspaceSkill(skill),
+              ),
+            })),
           },
         };
-      }
-      if (
-        request.command.type === "plugin.host.call" &&
-        request.command.method === "resolveNativeRoots"
-      ) {
-        return { ok: true, result: { output: { skills: [], commands: [] } } };
       }
       if (request.command.type === "host.delete_skill") {
         return {
@@ -403,7 +423,7 @@ describe("public project skills route", () => {
           ),
           name: "portable-review",
           description: "portable-review skill",
-          provider: null,
+          providers: [],
           scope: "shared-project",
           pluginId: null,
           filePath:
@@ -1213,6 +1233,76 @@ describe("public project skills route", () => {
     });
   });
 
+  it("opens a listed skill with one host read, and re-lists only for a skill the last listing did not have", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-skill-open",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/skill-open",
+      });
+      const listed = discovered(
+        "listed",
+        "provider-user",
+        "/home/.claude/skills/listed/SKILL.md",
+      );
+      const added = discovered(
+        "added",
+        "provider-user",
+        "/home/.claude/skills/added/SKILL.md",
+      );
+      const skillsByProvider = { "claude-code": [listed] };
+      const stub = registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        skillsByProvider,
+      });
+      const hostCommands = () =>
+        stub.requests
+          .map((request) => request.command.type)
+          .filter((type) => type !== "provider.health");
+
+      const list = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills?environmentId=`,
+      );
+      expect(list.status).toBe(200);
+      expect(hostCommands()).toEqual(["host.list_skills"]);
+
+      const [content, files] = await Promise.all([
+        harness.app.request(
+          `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=${listed.id}&path=SKILL.md`,
+        ),
+        harness.app.request(
+          `/api/v1/projects/${project.id}/skills/files?environmentId=&skillId=${listed.id}`,
+        ),
+      ]);
+      expect(content.status).toBe(200);
+      expect(files.status).toBe(200);
+      expect(hostCommands().slice(1).sort()).toEqual([
+        "host.list_files",
+        "host.read_file",
+      ]);
+
+      skillsByProvider["claude-code"] = [listed, added];
+      const fresh = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=${added.id}&path=SKILL.md`,
+      );
+      expect(fresh.status).toBe(200);
+      expect(hostCommands().slice(3)).toEqual([
+        "host.list_skills",
+        "host.read_file",
+      ]);
+
+      const missing = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=skill_${"f".repeat(64)}&path=SKILL.md`,
+      );
+      expect(missing.status).toBe(404);
+      expect(hostCommands().slice(5)).toEqual(["host.list_skills"]);
+    });
+  });
+
   it("maps scope, de-dupes shared bb skills, and sorts the listing", async () => {
     await withTestHarness(async (harness) => {
       const { host, session } = seedHostSession(harness.deps, {
@@ -1281,7 +1371,7 @@ describe("public project skills route", () => {
           id: skillId("/data/skills/bb-helper/SKILL.md"),
           name: "bb-helper",
           description: "bb-helper skill",
-          provider: null,
+          providers: [],
           scope: "bb-user",
           pluginId: null,
           filePath: "/data/skills/bb-helper/SKILL.md",
@@ -1292,7 +1382,7 @@ describe("public project skills route", () => {
           id: skillId("/cwd/.cursor/skills/impeccable/SKILL.md"),
           name: "impeccable",
           description: "impeccable skill",
-          provider: "acp-cursor",
+          providers: ["acp-cursor"],
           scope: "provider-project",
           pluginId: null,
           filePath: "/cwd/.cursor/skills/impeccable/SKILL.md",
@@ -1303,7 +1393,7 @@ describe("public project skills route", () => {
           id: skillId("/cwd/.claude/skills/cp/SKILL.md"),
           name: "cp",
           description: "cp skill",
-          provider: "claude-code",
+          providers: ["claude-code"],
           scope: "provider-project",
           pluginId: null,
           filePath: "/cwd/.claude/skills/cp/SKILL.md",
@@ -1314,7 +1404,7 @@ describe("public project skills route", () => {
           id: skillId("/home/.claude/skills/cu/SKILL.md"),
           name: "cu",
           description: "cu skill",
-          provider: "claude-code",
+          providers: ["claude-code"],
           scope: "provider-user",
           pluginId: null,
           filePath: "/home/.claude/skills/cu/SKILL.md",
@@ -1325,7 +1415,7 @@ describe("public project skills route", () => {
           id: skillId("/home/.codex/skills/cx/SKILL.md"),
           name: "cx",
           description: "cx skill",
-          provider: "codex",
+          providers: ["codex"],
           scope: "provider-user",
           pluginId: null,
           filePath: "/home/.codex/skills/cx/SKILL.md",
@@ -1339,25 +1429,163 @@ describe("public project skills route", () => {
       const surfaced = harness.deps.providerRegistry
         .list()
         .filter(providerHasNativeRootSurface)
-        .map((registration) => registration.info.id)
+        .map((registration) => registration.info.id);
+      expect(listed).toHaveLength(1);
+      const [command] = listed;
+      const scanned = (command?.providers ?? [])
+        .map((provider) => provider.providerId)
         .sort();
+      expect(scanned).toEqual(["acp-cursor", "claude-code", "codex", "pi"]);
       expect(surfaced).toEqual(
-        expect.arrayContaining(["acp-cursor", "claude-code", "codex", "pi"]),
+        expect.arrayContaining([...scanned, "acp-grok", "acp-omp"]),
       );
-      expect(listed.map((command) => command.providerId).sort()).toEqual(
-        surfaced,
-      );
-      for (const command of listed) {
-        expect(command).toEqual({
-          type: "host.list_skills",
-          providerId: command.providerId,
-          cwd: "/tmp/skills-env",
-          nativeRoots: declaredNativeRootSet(
-            harness.deps.providerRegistry,
-            command.providerId,
-          ),
-        });
+      expect(command).toEqual({
+        type: "host.list_skills",
+        cwd: "/tmp/skills-env",
+        providers: expect.any(Array),
+        sharedRoots: { user: [], project: [] },
+        resolution: { contributedEnv: [], timeoutMs: expect.any(Number) },
+      });
+      for (const provider of command?.providers ?? []) {
+        expect(provider).toEqual(
+          declaredNativeRootScan(harness.deps, provider.providerId),
+        );
       }
+    });
+  });
+
+  it("lists a skill file that several installed providers read once, with every reader, instead of under the first provider", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-shared-provider-skills",
+      });
+      seedPrimaryHost(harness.deps, host.id);
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/tmp/shared-provider-skills",
+      });
+      const readByProvider = (
+        provider: string,
+        skill: DiscoveredSkill,
+      ): DiscoveredSkill => ({
+        ...skill,
+        id: skillId(`${provider}:${skill.filePath}`),
+      });
+      const agentsSkill = discovered(
+        "bb-cli",
+        "provider-user",
+        "/home/.agents/skills/bb-cli/SKILL.md",
+      );
+      const claudePluginSkill = discovered(
+        "pstack:poteto",
+        "plugin",
+        "/home/.claude/plugins/cache/m/pstack/1.0.0/skills/poteto/SKILL.md",
+      );
+      const cursorOnly = discovered(
+        "cursor-only",
+        "provider-user",
+        "/home/.cursor/skills/cursor-only/SKILL.md",
+      );
+      const claudeCopy = discovered(
+        "review",
+        "provider-user",
+        "/home/.claude/skills/review/SKILL.md",
+      );
+      const codexCopy = {
+        ...discovered(
+          "review",
+          "provider-user",
+          "/home/.codex/skills/review/SKILL.md",
+        ),
+        contentSha256: claudeCopy.contentSha256,
+      };
+      const stub = registerSkillRpc(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        installedProviders: ["acp-grok"],
+        skillsByProvider: {
+          "acp-cursor": [readByProvider("acp-cursor", agentsSkill), cursorOnly],
+          "acp-grok": [readByProvider("acp-grok", claudePluginSkill)],
+          "acp-omp": [
+            readByProvider("acp-omp", agentsSkill),
+            readByProvider("acp-omp", claudePluginSkill),
+          ],
+          "claude-code": [
+            readByProvider("claude-code", claudePluginSkill),
+            claudeCopy,
+          ],
+          codex: [readByProvider("codex", agentsSkill), codexCopy],
+          pi: [readByProvider("codex", agentsSkill)],
+        },
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills?environmentId=`,
+      );
+
+      expect(response.status).toBe(200);
+      const raw = await readJson(response);
+      expect(raw).toMatchObject({
+        skills: [
+          { name: "cursor-only", provider: "acp-cursor" },
+          { name: "bb-cli", provider: null },
+          { name: "review", provider: "claude-code" },
+          { name: "pstack:poteto", provider: null },
+        ],
+      });
+      const body = skillListResponseSchema.parse(raw);
+      expect(
+        body.skills.map((skill) => ({
+          name: skill.name,
+          scope: skill.scope,
+          providers: skill.providers,
+          pluginId: skill.pluginId,
+          manageable: skill.manageable,
+        })),
+      ).toEqual([
+        {
+          name: "cursor-only",
+          scope: "provider-user",
+          providers: ["acp-cursor"],
+          pluginId: null,
+          manageable: true,
+        },
+        {
+          name: "bb-cli",
+          scope: "provider-user",
+          providers: ["acp-cursor", "codex", "pi"],
+          pluginId: null,
+          manageable: true,
+        },
+        {
+          name: "review",
+          scope: "provider-user",
+          providers: ["claude-code"],
+          pluginId: null,
+          manageable: true,
+        },
+        {
+          name: "pstack:poteto",
+          scope: "plugin",
+          providers: ["acp-grok", "claude-code"],
+          pluginId: "pstack",
+          manageable: false,
+        },
+      ]);
+
+      const pluginEntry = body.skills.find(
+        (skill) => skill.name === "pstack:poteto",
+      );
+      const read = await harness.app.request(
+        `/api/v1/projects/${project.id}/skills/content?environmentId=&skillId=${pluginEntry?.id}&path=SKILL.md`,
+      );
+      expect(read.status).toBe(200);
+      expect(stub.requests.map((request) => request.command)).toContainEqual(
+        expect.objectContaining({
+          type: "host.read_file",
+          path: claudePluginSkill.filePath,
+        }),
+      );
     });
   });
 
@@ -1483,7 +1711,7 @@ describe("public project skills route", () => {
         expect(matches[0]).toMatchObject({
           name: "plugin-notes",
           description: "Read notes contributed by the fixture plugin.",
-          provider: null,
+          providers: [],
           scope: "plugin",
           pluginId: installed.id,
           filePath: skillFilePath,

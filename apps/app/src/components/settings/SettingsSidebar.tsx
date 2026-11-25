@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useId,
   useMemo,
   useRef,
@@ -34,10 +33,13 @@ import {
 } from "@/components/sidebar/SectionSidebar";
 import { useSidebarHeaderControlAxisClass } from "@/components/sidebar/SidebarChrome";
 import { useCloseMobileSidebar, useSidebar } from "@/components/ui/sidebar.js";
-import { isEditableKeyboardTarget } from "@/lib/app-keybindings";
+import {
+  useAppCommandContext,
+  useAppCommandHandler,
+  useAppCommandShortcut,
+} from "@/components/commands/AppCommandProvider";
 import { MACOS_APP_REGION_NO_DRAG_CLASS } from "@/lib/bb-desktop";
 import { canOpenNativeScreen, shellOpenNative } from "@/lib/native-shell";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import { useSettingsNavState } from "./settings-nav";
 import type { SettingsNavState } from "./settings-nav";
 import {
@@ -48,9 +50,10 @@ import {
   type SettingsSearchCondition,
   type SettingsSearchItem,
 } from "./settings-search";
-import { getSettingsSectionRoutePath } from "./settings-sections";
+import { getSettingsTargetPath } from "./settings-sections";
 import { usePluginSettingSearch } from "./usePluginSettingSearch";
 import { useSettingsSearchConditions } from "./useSettingsSearchConditions";
+import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 interface SettingsSidebarProps {
   backTo: string | null;
@@ -76,43 +79,21 @@ interface SettingsSidebarContentProps extends SettingsSidebarProps {
   testIdPrefix?: string;
 }
 
-const SETTINGS_SEARCH_SHORTCUT = { label: "/" };
-const SETTINGS_SEARCH_SHORTCUT_BLOCKING_SELECTOR =
-  '[role="dialog"], [role="menu"], [role="listbox"]';
-
 function useFocusSettingsSearchShortcut(
   inputRef: RefObject<HTMLInputElement | null>,
 ): void {
   const { isCompactViewport, open, setOpen } = useSidebar();
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        event.key !== "/" ||
-        isCompactViewport ||
-        event.defaultPrevented ||
-        event.isComposing ||
-        event.metaKey ||
-        event.ctrlKey ||
-        event.altKey ||
-        isEditableKeyboardTarget(event.target) ||
-        (event.target instanceof HTMLElement &&
-          event.target.closest(SETTINGS_SEARCH_SHORTCUT_BLOCKING_SELECTOR) !==
-            null)
-      ) {
-        return;
-      }
-      event.preventDefault();
-      if (open) {
-        inputRef.current?.focus();
-        return;
-      }
-      setOpen(true);
-      window.requestAnimationFrame(() => inputRef.current?.focus());
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [inputRef, isCompactViewport, open, setOpen]);
+  useAppCommandContext("settingsPage", true);
+  useAppCommandHandler("settings.search", () => {
+    if (isCompactViewport) return false;
+    if (open) {
+      inputRef.current?.focus();
+      return true;
+    }
+    setOpen(true);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+    return true;
+  });
 }
 
 interface SettingsSearchFieldProps {
@@ -137,6 +118,7 @@ function SettingsSearchField({
   query,
 }: SettingsSearchFieldProps) {
   const axisClass = useSidebarHeaderControlAxisClass();
+  const searchShortcut = useAppCommandShortcut("settings.search");
 
   return (
     <label
@@ -189,9 +171,9 @@ function SettingsSearchField({
         >
           <Icon name="X" aria-hidden />
         </Button>
-      ) : (
+      ) : searchShortcut === null ? null : (
         <ShortcutPill
-          shortcut={SETTINGS_SEARCH_SHORTCUT}
+          shortcut={searchShortcut}
           className="mr-1 max-md:pointer-coarse:hidden"
         />
       )}
@@ -351,8 +333,8 @@ export function SettingsSidebarContent({
   };
 
   const handleSearchKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing) return;
-    if (event.key === "Escape") {
+    if (isImeComposing(event)) return;
+    if (isNonImeKey(event, "Escape")) {
       if (query.length === 0) return;
       event.preventDefault();
       event.stopPropagation();
@@ -367,7 +349,7 @@ export function SettingsSidebarContent({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       moveActiveResult(-1);
-    } else if (event.key === "Enter") {
+    } else if (isNonImeKey(event, "Enter")) {
       event.preventDefault();
       openResult(activeResult);
     }
@@ -421,7 +403,7 @@ export function SettingsSidebarContent({
                   key={section.id}
                   active={activeSection === section.id}
                   label={section.label}
-                  to={getSettingsSectionRoutePath(section.id)}
+                  to={getSettingsTargetPath({ section: section.id })}
                 >
                   <SectionSidebarIcon name={section.icon} />
                 </SectionSidebarRow>
@@ -438,7 +420,7 @@ export function SettingsSidebarContent({
                     key={entry.id}
                     active={activePluginId === entry.id}
                     label={entry.label}
-                    to={getPluginConfigurationRoutePath({ pluginId: entry.id })}
+                    to={getSettingsTargetPath({ pluginId: entry.id })}
                   >
                     <PluginIcon
                       pluginId={entry.id}
@@ -479,7 +461,7 @@ export function SettingsSidebarContent({
                       key={section.id}
                       active={activeSection === section.id}
                       label={section.label}
-                      to={getSettingsSectionRoutePath(section.id)}
+                      to={getSettingsTargetPath({ section: section.id })}
                     >
                       <SectionSidebarIcon name={section.icon} />
                     </SectionSidebarRow>

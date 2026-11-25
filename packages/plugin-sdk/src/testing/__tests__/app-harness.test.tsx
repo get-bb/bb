@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { makePanelController } from "../fixtures.js";
+import { makeActionContext, makePanelController } from "../fixtures.js";
 import { useEffect, useState } from "react";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1512,12 +1512,13 @@ describe("loadPluginApp", () => {
   });
 
   it("invokes a captured messageAction run with a plugin-authored context", async () => {
-    const experimental_panel = makePanelController({
+    const panel = makePanelController({
       openTab: () => true,
       toggleTab: () => true,
       close: () => true,
     });
     await app.messageActions[0]!.run({
+      ...makeActionContext({ panel }),
       threadId: "thr_main",
       message: {
         id: "msg_1",
@@ -1528,7 +1529,6 @@ describe("loadPluginApp", () => {
         experimental_messageSeq: 12,
       },
       selectedText: "answer",
-      experimental_panel,
       composer: null,
     });
     expect(messageActionRuns).toHaveLength(1);
@@ -1536,6 +1536,38 @@ describe("loadPluginApp", () => {
       threadId: "thr_main",
       selectedText: "answer",
     });
+  });
+
+  it("records the default members of a hand-built action context and names unstubbed sdk calls", async () => {
+    const context = makeActionContext();
+
+    await context.threadRequests.requestArchive(["thr_a", "thr_b"]);
+    await context.threadRequests.requestDelete(["thr_c"]);
+    expect(context.navigate.openUrl("https://example.com")).toBe(false);
+    expect(
+      context.navigate.experimental_threadHref("thr_a", { messageSeq: 4 }),
+    ).toBe("/threads/thr_a#msg=4");
+    expect(
+      context.navigate.experimental_settingsHref({ section: "appearance" }),
+    ).toBe("/settings/appearance");
+    await expect(
+      context.sdk.threads.get({ threadId: "thr_a" }),
+    ).rejects.toThrow("sdk.threads.get is not stubbed");
+
+    expect(context.calls).toEqual([
+      { member: "threadRequests.requestArchive", args: [["thr_a", "thr_b"]] },
+      { member: "threadRequests.requestDelete", args: [["thr_c"]] },
+      { member: "navigate.openUrl", args: ["https://example.com"] },
+      {
+        member: "navigate.experimental_threadHref",
+        args: ["thr_a", { messageSeq: 4 }],
+      },
+      {
+        member: "navigate.experimental_settingsHref",
+        args: [{ section: "appearance" }],
+      },
+      { member: "sdk.threads.get", args: [{ threadId: "thr_a" }] },
+    ]);
   });
 
   it("renders the ThreadChat stub with recorded props inside a slot", () => {
@@ -1732,6 +1764,49 @@ describe("renderSlot", () => {
     expect(slot.inspection.navigateCalls).toEqual([
       { method: "experimental_openFilePreview", options: fileIntent },
       { method: "experimental_openFileExternally", options: fileIntent },
+    ]);
+  });
+
+  it("rejects the message seqs and settings sections bb rejects, and records only valid opens", () => {
+    let navigate: ReturnType<typeof useBbNavigate> | null = null;
+    const slot = renderSlot(
+      {
+        component: () => {
+          navigate = useBbNavigate();
+          return null;
+        },
+      },
+      {},
+    );
+    const nav = (): ReturnType<typeof useBbNavigate> => {
+      if (navigate === null) throw new Error("navigate probe did not render");
+      return navigate;
+    };
+    const section = JSON.parse('"billing"') as "general";
+    expect(() => nav().toThread("thr_1", { messageSeq: -1 })).toThrow(
+      RangeError,
+    );
+    expect(() =>
+      nav().experimental_threadHref("thr_1", { messageSeq: 1.5 }),
+    ).toThrow(RangeError);
+    expect(() => nav().experimental_toSettings({ section })).toThrow(
+      RangeError,
+    );
+    expect(() => nav().experimental_settingsHref({ section })).toThrow(
+      RangeError,
+    );
+    nav().toThread("thr_1", { messageSeq: 3 });
+    nav().experimental_toSettings({ section: "appearance" });
+    expect(nav().experimental_threadHref("thr_1", { messageSeq: 3 })).toBe(
+      "/threads/thr_1#msg=3",
+    );
+    expect(slot.inspection.navigateCalls).toEqual([
+      {
+        method: "toThread",
+        threadId: "thr_1",
+        options: { messageSeq: 3 },
+      },
+      { method: "experimental_toSettings", target: { section: "appearance" } },
     ]);
   });
 
@@ -1936,10 +2011,14 @@ describe("renderSlot", () => {
       kind: "queued-message",
       threadId: "thr_1",
       queuedMessageId: "qmsg_1",
+      projectId: "proj_test",
+      environmentId: null,
     } satisfies PluginComposerScope;
     const nextScope = {
       kind: "thread",
       threadId: "thr_2",
+      projectId: "proj_test",
+      environmentId: null,
     } satisfies PluginComposerScope;
     const slot = renderSlot(
       app.composerCustomizations[0]!.actions![0]!,
@@ -2085,6 +2164,8 @@ describe("renderSlot", () => {
             kind: "queued-message",
             threadId: "thr_1",
             queuedMessageId: "qmsg_1",
+            projectId: "proj_test",
+            environmentId: null,
           },
         },
       },
@@ -2228,6 +2309,7 @@ describe("thread actions menu fake", () => {
     pinnedAt: null,
     sectionId: null,
     isUnread: false,
+    isHidden: false,
     status: "idle" as const,
     environment: null,
   };

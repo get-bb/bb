@@ -2,7 +2,16 @@
 
 import { useEffect } from "react";
 import { ThreadTimelineNavigationProvider } from "@/components/thread/timeline/ThreadTimelineNavigationContext";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
+import { getDefaultStore } from "jotai";
+import { messageDirectivePicksAtom } from "@/lib/plugin-choice-picks";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   afterEach,
@@ -10,8 +19,8 @@ import {
   describe,
   expect,
   it,
+  onTestFinished,
   vi,
-  type Mock,
 } from "vitest";
 import type { PluginMessageDirectiveProps } from "@get-bb/plugin-sdk";
 import { experimental_useAppPanel } from "@/lib/plugin-sdk-hooks";
@@ -36,11 +45,31 @@ import {
   delegationRow,
 } from "@/test/fixtures/thread-timeline-rows";
 import {
+  markPluginFrontendBootStarted,
+  markPluginFrontendsSettled,
+  resetPluginFrontendBootStateForTest,
+} from "@/lib/plugin-frontend-boot-state";
+import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet as emptyRegistrationSet } from "@/test/fixtures/plugins";
+
+const SETTLED_BOOT = {
+  bbPluginIds: new Set<string>(),
+  settledOnce: true,
+};
+const LITERAL_OPTIONS = {
+  unclaimed: "literal",
+  picks: {},
+  boot: SETTLED_BOOT,
+} as const;
+const HOLD_OPTIONS = {
+  unclaimed: "hold",
+  picks: {},
+  boot: SETTLED_BOOT,
+} as const;
 
 function InlineVis(props: PluginMessageDirectiveProps) {
   return (
@@ -130,9 +159,10 @@ beforeEach(() => {
 
 describe("MarkdownPreview message directives", () => {
   it("mounts a recognized leaf directive with attributes, source, and message", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={'Intro\n\n::inline-vis{file="demo.html"}\n\nOutro'}
@@ -158,9 +188,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("keeps directives in fenced code and inline code literal", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={[
@@ -184,9 +215,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("renders unknown and incomplete directives as exact source text", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={[
@@ -208,9 +240,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("mounts a leaf directive glued to trailing prose on the same line", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={'::inline-vis{file="demo.html"}Next I will load the thread.'}
@@ -231,9 +264,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("mounts a glued directive with a space and preserves trailing formatting", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     const { container } = render(
       <MarkdownPreview
         content={'::inline-vis{file="demo.html"} Next **bold** tail'}
@@ -252,9 +286,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("leaves glued unknown and incomplete directives literal", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={[
@@ -286,9 +321,10 @@ describe("MarkdownPreview message directives", () => {
     '`::inline-vis{file="demo.html"}Next`',
     '```text\n::inline-vis{file="demo.html"}Next\n```',
   ])("keeps literal directive syntax inactive: %s", (content) => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={content}
@@ -309,9 +345,10 @@ describe("MarkdownPreview message directives", () => {
     ['file="my&#34;report}.html"', 'my"report}.html'],
     ["file='my report.html'", "my report.html"],
   ])("preserves directive attributes and source: %s", (body, file) => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     const source = `::inline-vis[label]{${body}}`;
     render(
       <MarkdownPreview
@@ -336,9 +373,10 @@ describe("MarkdownPreview message directives", () => {
     '> ::inline-vis{file="demo.html"}Next **bold**\n> Continued',
     '- ::inline-vis{file="demo.html"}Next **bold**\n  Continued',
   ])("preserves surrounding block structure: %s", (content) => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={content}
@@ -357,9 +395,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("renders incidental prose colons literally without dropping text", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     const sentence =
       "Watchdog runs every 30 min UTC, next run 13:30. It checks a:b and :D too.";
     const { container } = render(
@@ -381,9 +420,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("keeps clock times intact and leaves the prose as a single text node", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     const sentence = "Meeting at 9:30 and 10:45 today.";
     const { container } = render(
       <MarkdownPreview
@@ -403,9 +443,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("leaves container directives on the default rendering path", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={
@@ -426,9 +467,10 @@ describe("MarkdownPreview message directives", () => {
   });
 
   it("falls back to original directive text when the plugin component crashes", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: CrashVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: CrashVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MarkdownPreview
         content={'::inline-vis{file="boom.html"}'}
@@ -457,13 +499,16 @@ describe("MarkdownPreview message directives", () => {
       received.push(props.message);
       return null;
     }
-    const registry = buildMessageDirectiveRegistry([
-      slot({
-        id: "inline-vis",
-        pluginId: "demo",
-        component: MessageCaptureVis,
-      }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [
+        slot({
+          id: "inline-vis",
+          pluginId: "demo",
+          component: MessageCaptureVis,
+        }),
+      ],
+      LITERAL_OPTIONS,
+    );
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
@@ -500,9 +545,10 @@ describe("MarkdownPreview message directives", () => {
           `::inline-vis{file="f${i}.html"}${gluedFirst && i === 0 ? "Next" : ""}`,
         );
       }
-      const registry = buildMessageDirectiveRegistry([
-        slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-      ]);
+      const registry = buildMessageDirectiveRegistry(
+        [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+        LITERAL_OPTIONS,
+      );
       render(
         <MarkdownPreview
           content={lines.join("\n")}
@@ -536,9 +582,10 @@ describe("MarkdownPreview message directives", () => {
       return <div data-testid="stateful-vis">{props.attributes.file}</div>;
     }
 
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: StatefulVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: StatefulVis })],
+      LITERAL_OPTIONS,
+    );
     const messageDirectives = {
       registry,
       message: MESSAGE,
@@ -569,9 +616,10 @@ describe("MarkdownPreview message directives", () => {
 
 describe("ConversationMessageContent assistant directives", () => {
   it("activates directives for assistant messages when registry context is set", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
@@ -606,13 +654,16 @@ describe("ConversationMessageContent assistant directives", () => {
 
   it("opens a contained directive file through the timeline sidebar handler", () => {
     const onOpenLocalFileLink = vi.fn(() => true);
-    const registry = buildMessageDirectiveRegistry([
-      slot({
-        id: "inline-vis",
-        pluginId: "demo",
-        component: WorkspaceFileVis,
-      }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [
+        slot({
+          id: "inline-vis",
+          pluginId: "demo",
+          component: WorkspaceFileVis,
+        }),
+      ],
+      LITERAL_OPTIONS,
+    );
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
@@ -657,13 +708,16 @@ describe("ConversationMessageContent assistant directives", () => {
       toggleTab: vi.fn(() => true),
       close: vi.fn(() => true),
     };
-    const registry = buildMessageDirectiveRegistry([
-      slot({
-        id: "inline-vis",
-        pluginId: "demo",
-        component: ThreadPanelVis,
-      }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [
+        slot({
+          id: "inline-vis",
+          pluginId: "demo",
+          component: ThreadPanelVis,
+        }),
+      ],
+      LITERAL_OPTIONS,
+    );
     render(
       <QueryClientProvider client={new QueryClient()}>
         <MemoryRouter>
@@ -699,13 +753,16 @@ describe("ConversationMessageContent assistant directives", () => {
 
   it("rejects directive workspace paths that escape the worktree", () => {
     const onOpenLocalFileLink = vi.fn(() => true);
-    const registry = buildMessageDirectiveRegistry([
-      slot({
-        id: "inline-vis",
-        pluginId: "demo",
-        component: WorkspaceFileVis,
-      }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [
+        slot({
+          id: "inline-vis",
+          pluginId: "demo",
+          component: WorkspaceFileVis,
+        }),
+      ],
+      LITERAL_OPTIONS,
+    );
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
@@ -740,9 +797,10 @@ describe("ConversationMessageContent assistant directives", () => {
   });
 
   it("does not activate directives on user messages even with registry context", () => {
-    const registry = buildMessageDirectiveRegistry([
-      slot({ id: "inline-vis", pluginId: "demo", component: InlineVis }),
-    ]);
+    const registry = buildMessageDirectiveRegistry(
+      [slot({ id: "inline-vis", pluginId: "demo", component: InlineVis })],
+      LITERAL_OPTIONS,
+    );
     render(
       <MemoryRouter>
         <RouteNavigationProvider>
@@ -819,8 +877,73 @@ describe("ThreadTimelineRows message directive subscription", () => {
     expect(mounts[0]?.getAttribute("data-project-id")).toBe("proj_main");
   });
 
+  describe.each([
+    ["its own line", 'Intro\n\n::inline-vis{file="late.html"}\n\nOutro'],
+    ["inside a paragraph", 'Intro\n::inline-vis{file="late.html"}\nOutro'],
+  ])("a directive on %s whose plugin is still loading", (_, text) => {
+    function renderRow() {
+      render(
+        <QueryClientProvider client={new QueryClient()}>
+          <MemoryRouter>
+            <ThreadTimelineRows
+              threadId="thr_main"
+              projectId="proj_main"
+              timelineRows={[
+                conversationRow({
+                  id: "asst_1",
+                  role: "assistant",
+                  text,
+                  threadId: "thr_main",
+                }),
+              ]}
+              threadRuntimeDisplayStatus="idle"
+            />
+          </MemoryRouter>
+        </QueryClientProvider>,
+      );
+    }
+
+    beforeEach(() => {
+      resetPluginFrontendBootStateForTest();
+      markPluginFrontendBootStarted();
+    });
+
+    afterEach(() => resetPluginFrontendBootStateForTest());
+
+    it("is held without its source text, then mounts when the plugin registers", () => {
+      renderRow();
+      expect(screen.getByText(/Intro/)).toBeTruthy();
+      expect(screen.queryByText(/::inline-vis/)).toBeNull();
+
+      act(() => {
+        setPluginSlotRegistrations(
+          "demo",
+          emptyRegistrationSet({
+            messageDirectives: [{ id: "inline-vis", component: InlineVis }],
+          }),
+        );
+      });
+
+      expect(screen.getByTestId("inline-vis").getAttribute("data-file")).toBe(
+        "late.html",
+      );
+      expect(screen.queryByText(/::inline-vis/)).toBeNull();
+    });
+
+    it("shows its source once every plugin settles without claiming it", () => {
+      renderRow();
+      expect(screen.queryByText(/::inline-vis/)).toBeNull();
+
+      act(() => {
+        markPluginFrontendsSettled();
+      });
+
+      expect(screen.getByText(/::inline-vis\{file="late.html"\}/)).toBeTruthy();
+    });
+  });
+
   it.each(["", "Next"])(
-    "renders colliding cross-plugin directives as literal text: %s",
+    "renders a directive several plugins claim as text with a plugin picker, and a pick renders that plugin: %s",
     (tail) => {
       setPluginSlotRegistrations(
         "alpha",
@@ -855,9 +978,35 @@ describe("ThreadTimelineRows message directive subscription", () => {
 
       expect(screen.queryByTestId("inline-vis")).toBeNull();
       expect(
-        screen.getByText(`::inline-vis{file="collide.html"}${tail}`),
+        screen.getByText('::inline-vis{file="collide.html"}'),
       ).toBeTruthy();
-      expect(console.warn as Mock).toHaveBeenCalled();
+      if (tail !== "") expect(screen.getByText(tail)).toBeTruthy();
+      onTestFinished(() => {
+        getDefaultStore().set(messageDirectivePicksAtom, {});
+      });
+      fireEvent.pointerDown(
+        screen.getByRole("button", {
+          name: "Choose a plugin to show ::inline-vis",
+        }),
+        { button: 0 },
+      );
+      const menu = screen.getByRole("menu");
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["alpha", "zeta", "Settings…"]);
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "zeta" }));
+
+      expect(getDefaultStore().get(messageDirectivePicksAtom)).toEqual({
+        "inline-vis": "zeta/inline-vis",
+      });
+      expect(screen.getByTestId("inline-vis")).toBeTruthy();
+      expect(
+        screen.queryByRole("button", {
+          name: "Choose a plugin to show ::inline-vis",
+        }),
+      ).toBeNull();
     },
   );
 });

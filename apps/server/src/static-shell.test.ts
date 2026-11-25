@@ -55,6 +55,26 @@ describe("app shell serving", () => {
     }
   });
 
+  it("forbids other pages from framing the shell on full and revalidated responses", async () => {
+    const etag = (await app.request("/")).headers.get("etag") ?? "";
+    const responses = [
+      await app.request("/"),
+      await app.request("/index.html"),
+      await app.request("/threads/some-thread"),
+      await app.request("/threads/some-thread", {
+        headers: { "if-none-match": etag },
+      }),
+    ];
+
+    expect(responses.map((res) => res.status)).toEqual([200, 200, 200, 304]);
+    for (const res of responses) {
+      expect(res.headers.get("content-security-policy")).toBe(
+        "frame-ancestors 'none'",
+      );
+      expect(res.headers.get("x-frame-options")).toBe("DENY");
+    }
+  });
+
   it("rotates the ETag when a new build lands, so old validators refetch", async () => {
     const first = await app.request("/");
     const oldEtag = first.headers.get("etag") ?? "";

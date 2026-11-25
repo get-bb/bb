@@ -7,14 +7,13 @@ import type {
   HostDaemonOnlineRpcRequestMessage,
 } from "@bb/host-daemon-contract";
 import { commandListResponseSchema } from "@bb/server-contract";
-import type { ExperimentalNativeRootsResolveAnswer } from "@get-bb/plugin-sdk/host";
 import { describe, expect, it, vi } from "vitest";
-import { COMMAND_TIMEOUT_MS } from "../../src/constants.js";
+import { PROVIDER_LISTING_BUDGET_FLOOR_MS } from "../../src/services/providers/native-roots.js";
 import { PROVIDER_LIVE_COMMANDS_FRESH_MS } from "../../src/services/providers/provider-live-commands.js";
 import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import {
   configuredAcpProvider,
-  declaredNativeRootSet,
+  declaredNativeRootScan,
   stubHostArtifact,
 } from "../helpers/provider-registry.js";
 import { readJson } from "../helpers/json.js";
@@ -28,7 +27,7 @@ import {
 import { withTestHarness } from "../helpers/test-app.js";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
 
-const NO_RESOLVED_ROOTS = { skills: [], commands: [] };
+const ANY_RESOLUTION = { contributedEnv: [], timeoutMs: expect.any(Number) };
 
 function root(path: string) {
   return { path, recursive: false, ancestors: false, namePrefix: "" };
@@ -66,7 +65,6 @@ interface CommandRpcStub {
   liveRequests: HostDaemonOnlineRpcRequestMessage[];
   requests: HostDaemonOnlineRpcRequestMessage[];
   skillRequests: HostDaemonOnlineRpcRequestMessage[];
-  resolveRequests: HostDaemonOnlineRpcRequestMessage[];
 }
 
 interface RegisterCommandRpcArgs {
@@ -75,8 +73,6 @@ interface RegisterCommandRpcArgs {
   commands: HostProviderCommand[];
   skills?: DiscoveredSkill[];
   liveCommands?: { name: string; description: string }[];
-  resolved?: ExperimentalNativeRootsResolveAnswer;
-  resolveDelayMs?: number;
 }
 
 function registerCommandRpc(
@@ -89,7 +85,6 @@ function registerCommandRpc(
     liveRequests: [],
     requests: [],
     skillRequests: [],
-    resolveRequests: [],
   };
   registerHostRpcResponder(harness, {
     hostId: args.hostId,
@@ -104,24 +99,9 @@ function registerCommandRpc(
             projectSkills: [],
             projectSkillsTruncated: false,
             sharedSkills: args.skills ?? [],
+            folders: [],
           },
         };
-      }
-      if (request.command.type === "plugin.host.call") {
-        if (request.command.method !== "resolveNativeRoots") {
-          throw new Error(
-            `Unexpected plugin host call ${request.command.method} in command typeahead test`,
-          );
-        }
-        stub.resolveRequests.push(request);
-        const answer = {
-          ok: true as const,
-          result: { output: args.resolved ?? NO_RESOLVED_ROOTS },
-        };
-        if (args.resolveDelayMs === undefined) return answer;
-        return new Promise((settle) =>
-          setTimeout(() => settle(answer), args.resolveDelayMs),
-        );
       }
       if (request.command.type === "host.list_commands") {
         stub.requests.push(request);
@@ -133,7 +113,14 @@ function registerCommandRpc(
       }
       if (request.command.type === "host.list_skills") {
         stub.skillRequests.push(request);
-        return { ok: true, result: { skills: args.skills ?? [] } };
+        return {
+          ok: true,
+          result: {
+            workspaceSkills: [],
+            sharedSkills: args.skills ?? [],
+            providers: [],
+          },
+        };
       }
       throw new Error(
         `Unexpected RPC command ${request.command.type} in command typeahead test`,
@@ -271,28 +258,29 @@ describe("public project command typeahead route", () => {
         expect(response.status).toBe(200);
         expect(stub.requests[0]?.command).toEqual({
           type: "host.list_commands",
-          providerId: "acp-amp",
           cwd: "/tmp/custom-acp-skills",
-          nativeRoots: {
-            skills: {
-              user: [root(".agents/skills")],
-              project: [root(".agents/skills")],
+          provider: {
+            providerId: "acp-amp",
+            declaredRoots: {
+              skills: {
+                user: [root(".agents/skills")],
+                project: [root(".agents/skills")],
+              },
+              commands: { user: [], project: [] },
             },
-            commands: { user: [], project: [] },
-            resolved: NO_RESOLVED_ROOTS,
+            resolver: null,
           },
+          resolution: ANY_RESOLUTION,
         });
       },
     );
   });
 
-  it("asks a resolving plugin for roots on the workspace host and forwards them", async () => {
+  it("hands a resolving plugin's host entry to the scan in one host call, leaving the scan time after the resolver", async () => {
     const provider = resolvingProvider("resolving");
     await withTestHarness({ extraProviders: [provider] }, async (harness) => {
-      harness.deps.pluginHostArtifacts.set(
-        provider.pluginId,
-        stubHostArtifact(provider.pluginId),
-      );
+      const artifact = stubHostArtifact(provider.pluginId);
+      harness.deps.pluginHostArtifacts.set(provider.pluginId, artifact);
       const { host, session } = seedHostSession(harness.deps, {
         id: "host-commands-resolving",
       });
@@ -305,25 +293,8 @@ describe("public project command typeahead route", () => {
         hostId: host.id,
         sessionId: session.id,
         commands: [skill("vendor:review", "user")],
-        resolved: {
-          skills: [
-            { path: "/home/me/.vendor/skills", origin: "user" },
-            {
-              path: "/home/me/.vendor/plugins/tools/skills",
-              origin: "user",
-              namePrefix: "tools:",
-              recursive: true,
-            },
-          ],
-          commands: [
-            {
-              path: "/tmp/resolving-project/.vendor/commands",
-              origin: "project",
-              ancestors: true,
-            },
-          ],
-        },
       });
+      const hubRpc = vi.spyOn(harness.hub, "requestHostOnlineRpc");
 
       const response = await harness.app.request(
         `/api/v1/projects/${project.id}/commands?provider=resolving`,
@@ -335,110 +306,43 @@ describe("public project command typeahead route", () => {
         "clear",
         "vendor:review",
       ]);
-      expect(stub.resolveRequests.map((request) => request.command)).toEqual([
-        expect.objectContaining({
-          type: "plugin.host.call",
-          contributedEnv: [],
-          pluginId: provider.pluginId,
-          method: "resolveNativeRoots",
-          input: { providerId: "resolving", cwd: "/tmp/resolving-project" },
-        }),
-      ]);
-      expect(stub.requests[0]?.command).toEqual({
-        type: "host.list_commands",
-        providerId: "resolving",
-        cwd: "/tmp/resolving-project",
-        nativeRoots: {
-          skills: { user: [], project: [] },
-          commands: { user: [], project: [] },
-          resolved: {
-            skills: [
-              {
-                path: "/home/me/.vendor/skills",
-                origin: "user",
-                recursive: false,
-                ancestors: false,
-                namePrefix: "",
-                shape: "skills",
+      expect(stub.requests.map((request) => request.command)).toEqual([
+        {
+          type: "host.list_commands",
+          cwd: "/tmp/resolving-project",
+          provider: {
+            providerId: "resolving",
+            declaredRoots: {
+              skills: { user: [], project: [] },
+              commands: { user: [], project: [] },
+            },
+            resolver: {
+              pluginId: provider.pluginId,
+              generation: artifact.generation,
+              artifact: {
+                digest: artifact.digest,
+                byteLength: artifact.byteLength,
               },
-              {
-                path: "/home/me/.vendor/plugins/tools/skills",
-                origin: "user",
-                recursive: true,
-                ancestors: false,
-                namePrefix: "tools:",
-                shape: "skills",
-              },
-            ],
-            commands: [
-              {
-                path: "/tmp/resolving-project/.vendor/commands",
-                origin: "project",
-                recursive: false,
-                ancestors: true,
-                namePrefix: "",
-                shape: "commands",
-              },
-            ],
+            },
           },
+          resolution: ANY_RESOLUTION,
         },
-      });
-    });
-  });
-
-  it("shares one command timeout between the resolver call and the daemon scan", async () => {
-    const provider = resolvingProvider("slow-resolver");
-    const resolveDelayMs = 200;
-    await withTestHarness({ extraProviders: [provider] }, async (harness) => {
-      harness.deps.pluginHostArtifacts.set(
-        provider.pluginId,
-        stubHostArtifact(provider.pluginId),
-      );
-      const { host, session } = seedHostSession(harness.deps, {
-        id: "host-commands-slow-resolver",
-      });
-      seedPrimaryHost(harness.deps, host.id);
-      const { project } = seedProjectWithSource(harness.deps, {
-        hostId: host.id,
-        path: "/tmp/slow-resolver-project",
-      });
-      const stub = registerCommandRpc(harness, {
-        hostId: host.id,
-        sessionId: session.id,
-        commands: [skill("after-the-wait", "user")],
-        resolved: {
-          skills: [{ path: "/home/me/.slow/skills", origin: "user" }],
-        },
-        resolveDelayMs,
-      });
-      const hubRpc = vi.spyOn(harness.hub, "requestHostOnlineRpc");
-
-      const response = await harness.app.request(
-        `/api/v1/projects/${project.id}/commands?provider=slow-resolver`,
-      );
-
-      expect(response.status).toBe(200);
-      const body = commandListResponseSchema.parse(await readJson(response));
-      expect(body.commands.map((command) => command.name)).toEqual([
-        "clear",
-        "after-the-wait",
       ]);
-      const resolverCommand = stub.resolveRequests[0]?.command;
-      if (resolverCommand?.type !== "plugin.host.call") {
-        throw new Error("expected the resolver call");
-      }
-      expect(resolverCommand.timeoutMs).toBeLessThanOrEqual(COMMAND_TIMEOUT_MS);
-      expect(resolverCommand.timeoutMs).toBeGreaterThan(
-        COMMAND_TIMEOUT_MS - 1_000,
-      );
       const scan = hubRpc.mock.calls
         .map(([args]) => args)
         .find((args) => args.message.command.type === "host.list_commands");
-      expect(scan).toBeDefined();
-      expect(scan?.timeoutMs).toBeGreaterThan(0);
-      expect(scan?.timeoutMs).toBeLessThanOrEqual(
-        COMMAND_TIMEOUT_MS - resolveDelayMs + 50,
+      const command = scan?.message.command;
+      if (command?.type !== "host.list_commands") {
+        throw new Error("expected the scan");
+      }
+      expect(command.resolution.timeoutMs).toBeLessThan(
+        (scan?.timeoutMs ?? 0) - PROVIDER_LISTING_BUDGET_FLOOR_MS,
       );
+      expect(
+        hubRpc.mock.calls.filter(
+          ([args]) => args.message.command.type === "plugin.host.call",
+        ),
+      ).toEqual([]);
     });
   });
 
@@ -478,7 +382,6 @@ describe("public project command typeahead route", () => {
           "never-asked",
         );
         expect(stub.requests).toEqual([]);
-        expect(stub.resolveRequests).toEqual([]);
       },
     );
   });
@@ -533,12 +436,9 @@ describe("public project command typeahead route", () => {
       });
       expect(stub.requests[0]?.command).toEqual({
         type: "host.list_commands",
-        providerId: "codex",
         cwd: "/tmp/remote-commands-env",
-        nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "codex",
-        ),
+        provider: declaredNativeRootScan(harness.deps, "codex"),
+        resolution: ANY_RESOLUTION,
       });
     });
   });
@@ -628,12 +528,9 @@ describe("public project command typeahead route", () => {
       expect(stub.requests.map((request) => request.command)).toEqual([
         {
           type: "host.list_commands",
-          providerId: "claude-code",
           cwd: "/tmp/claude-commands-env",
-          nativeRoots: declaredNativeRootSet(
-            harness.deps.providerRegistry,
-            "claude-code",
-          ),
+          provider: declaredNativeRootScan(harness.deps, "claude-code"),
+          resolution: ANY_RESOLUTION,
         },
       ]);
     });
@@ -676,12 +573,9 @@ describe("public project command typeahead route", () => {
         ]);
         expect(stub.requests[0]?.command).toEqual({
           type: "host.list_commands",
-          providerId: "codex",
           cwd: "/tmp/inherited-skills-project",
-          nativeRoots: declaredNativeRootSet(
-            harness.deps.providerRegistry,
-            "codex",
-          ),
+          provider: declaredNativeRootScan(harness.deps, "codex"),
+          resolution: ANY_RESOLUTION,
         });
       },
     );
@@ -751,12 +645,9 @@ describe("public project command typeahead route", () => {
       ]);
       expect(stub.requests[0]?.command).toEqual({
         type: "host.list_commands",
-        providerId: "claude-code",
         cwd: "/tmp/provisioning-project",
-        nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "claude-code",
-        ),
+        provider: declaredNativeRootScan(harness.deps, "claude-code"),
+        resolution: ANY_RESOLUTION,
       });
     });
   });
@@ -791,12 +682,9 @@ describe("public project command typeahead route", () => {
       ]);
       expect(stub.requests[0]?.command).toEqual({
         type: "host.list_commands",
-        providerId: "claude-code",
         cwd: null,
-        nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "claude-code",
-        ),
+        provider: declaredNativeRootScan(harness.deps, "claude-code"),
+        resolution: ANY_RESOLUTION,
       });
     });
   });
@@ -830,12 +718,9 @@ describe("public project command typeahead route", () => {
       ]);
       expect(stub.requests[0]?.command).toEqual({
         type: "host.list_commands",
-        providerId: "claude-code",
         cwd: null,
-        nativeRoots: declaredNativeRootSet(
-          harness.deps.providerRegistry,
-          "claude-code",
-        ),
+        provider: declaredNativeRootScan(harness.deps, "claude-code"),
+        resolution: ANY_RESOLUTION,
       });
     });
   });

@@ -110,8 +110,7 @@ describe("managed worktree paths", () => {
   it("accepts only safe discovered child segments", () => {
     expect(
       resolveWorktreeChildPath({
-        dataDir: "/tmp/data",
-        pathKey: "thr_123",
+        environmentRoot: join("/tmp/data", "worktrees", "thr_123"),
         childName: "repo-0123456789abcdef",
       }),
     ).toBe(join("/tmp/data", "worktrees", "thr_123", "repo-0123456789abcdef"));
@@ -124,8 +123,7 @@ describe("managed worktree paths", () => {
     ]) {
       expect(() =>
         resolveWorktreeChildPath({
-          dataDir: "/tmp/data",
-          pathKey: "thr_123",
+          environmentRoot: join("/tmp/data", "worktrees", "thr_123"),
           childName,
         }),
       ).toThrowError(WorkspaceError);

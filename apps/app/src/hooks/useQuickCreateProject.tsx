@@ -6,7 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { deriveProjectNameFromPath, type Host } from "@bb/domain";
 import type { HostPlatform } from "@bb/host-daemon-contract";
 import { useCreateProject } from "@/hooks/mutations/project-mutations";
@@ -15,11 +15,8 @@ import {
   useLocalPathPicker,
   type LocalPathSubmitParams,
 } from "@/hooks/useLocalPathPicker";
-import {
-  APP_ROOT_ROUTE_PATH,
-  getRootComposeRoutePath,
-} from "@/lib/route-paths";
-import { useSetRootComposeProjectId } from "@/lib/root-compose-selection";
+import { APP_ROOT_ROUTE_PATH } from "@/lib/route-paths";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import type {
   ProjectPathDialogSubmitHandler,
   ProjectPathDialogTarget,
@@ -62,9 +59,8 @@ export function useQuickCreateProject(): QuickCreateProjectController {
     () => selectHosts(hostsQuery.data, "all"),
     [hostsQuery.data],
   );
-  const navigate = useNavigate();
   const location = useLocation();
-  const setRootComposeProjectId = useSetRootComposeProjectId();
+  const openNewThread = useOpenNewThread();
   const shouldReplaceRoute = location.pathname === APP_ROOT_ROUTE_PATH;
   const observerRef = useRef<ProjectCreateObserver | null>(null);
   const onCreatedRef = useRef<((projectId: string) => void) | null>(null);
@@ -92,16 +88,16 @@ export function useQuickCreateProject(): QuickCreateProjectController {
               onCreated(project.id);
               return;
             }
-            setRootComposeProjectId(project.id);
-            void navigate(getRootComposeRoutePath(), {
-              replace: shouldReplaceRoute,
+            openNewThread({
+              projectId: project.id,
+              ...(shouldReplaceRoute ? { replace: true } : {}),
             });
           },
           onError: (error) => observer?.onSettled({ outcome: "failed", error }),
         },
       );
     },
-    [mutate, navigate, setRootComposeProjectId, shouldReplaceRoute],
+    [mutate, openNewThread, shouldReplaceRoute],
   );
 
   const controller = useLocalPathPicker({

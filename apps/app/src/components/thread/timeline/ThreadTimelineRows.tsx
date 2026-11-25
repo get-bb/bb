@@ -50,7 +50,7 @@ import {
   resolveDeferredTimelineContent,
 } from "@bb/client-core";
 import {
-  getMessageLinkPath,
+  getThreadLocationPath,
   isRunningThreadRuntimeDisplayStatus,
 } from "@bb/client-core";
 import type {
@@ -137,21 +137,16 @@ import {
   type MessageMetadataProps,
 } from "./MessageMetadata.js";
 import { runPluginMessageAction } from "@/lib/plugin-message-actions.js";
+import type { ExperimentalPluginActionContext } from "@get-bb/plugin-sdk";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import { useAppNavigationHost } from "@/lib/app-navigation-host";
-import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { useSurfaceMessageActionSlots } from "@/lib/message-action-surface";
 import {
   usePluginComposerHost,
   type PluginComposerHost,
 } from "@/components/plugin/plugin-composer-host";
 import { isPluginSideChatSenderThread } from "@/lib/side-chat-plugin.js";
-import {
-  buildMessageDirectiveRegistry,
-  MessageDirectiveRegistryProvider,
-} from "@/components/ui/markdown-message-directives.js";
-import {
-  buildCodeFenceRendererRegistry,
-  CodeFenceRendererRegistryProvider,
-} from "@/components/ui/markdown-code-fence-renderers.js";
+import { MessageSlotRegistriesProvider } from "@/components/ui/message-markdown-slots.js";
 import {
   TimelineWindowedItems,
   TimelineWindowingMeasurementsContext,
@@ -168,17 +163,16 @@ export interface ThreadTimelineRowsProps {
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
-  includePluginMessageActions?: boolean;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   resolveImageViewSrc?: ThreadTimelineImageViewSrcResolver;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   hasOlderTimelineRows?: boolean;
+  isCatchingUpTimeline?: boolean;
   isLoadingOlderTimelineRows?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   timelineRows: TimelineRow[];
-  timelineNavigationTargetRowId?: string | null;
   threadId?: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -203,7 +197,7 @@ interface TimelineRendererStaticContextValue {
         message: ThreadChatMessageReference,
       ) => void)
     | undefined;
-  panel: AppPanelController;
+  messageActionContext: (pluginId: string) => ExperimentalPluginActionContext;
   onTitleAction: TimelineTitleActionResolver | undefined;
   projectId: string | undefined;
   resolveImageViewSrc: ThreadTimelineImageViewSrcResolver | undefined;
@@ -221,8 +215,8 @@ interface TimelineTurnStateContextValue {
 interface TimelineRowsListProps {
   compactActivityIntents: boolean;
   hasOlderTimelineRows?: boolean;
+  isCatchingUpTimeline?: boolean;
   isLoadingOlderTimelineRows?: boolean;
-  navigationTargetRowId?: string | null;
   onLoadOlderRows?: () => Promise<void> | void;
   rows: readonly ThreadTimelineViewRow[];
   scopeActive: boolean;
@@ -725,7 +719,7 @@ function buildRowPluginMessageActions(args: {
   timelineThreadId: string | undefined;
   message: ThreadChatMessageReference;
   selectedText?: string;
-  panel: AppPanelController;
+  messageActionContext: (pluginId: string) => ExperimentalPluginActionContext;
   composerHost: PluginComposerHost | null;
 }): readonly ThreadTimelinePluginMessageAction[] | undefined {
   const {
@@ -733,7 +727,7 @@ function buildRowPluginMessageActions(args: {
     timelineThreadId,
     message,
     selectedText,
-    panel,
+    messageActionContext,
     composerHost,
   } = args;
   if (timelineThreadId === undefined || slots.length === 0) {
@@ -750,8 +744,8 @@ function buildRowPluginMessageActions(args: {
         threadId: timelineThreadId,
         message,
         selectedText,
-        panel,
         composerHost,
+        actionContext: messageActionContext(slot.pluginId),
       }),
   }));
 }
@@ -882,7 +876,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     messageMetadata,
     consumerMessageActions,
     reportProseSelection,
-    panel,
+    messageActionContext,
     onTitleAction,
     projectId,
     resolveMentionLink,
@@ -911,7 +905,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     slots: pluginMessageActions,
     timelineThreadId: threadId,
     message: messageReference,
-    panel,
+    messageActionContext,
     composerHost,
   });
   const rowConsumerActions =
@@ -933,10 +927,10 @@ const ConversationRowContent = memo(function ConversationRowContent({
       : () => {
           void copyToClipboardWithToast(
             new URL(
-              getMessageLinkPath({
+              getThreadLocationPath({
                 projectId,
                 threadId: row.threadId,
-                seq: row.messageSeq,
+                messageSeq: row.messageSeq,
               }),
               window.location.origin,
             ).toString(),
@@ -950,6 +944,7 @@ const ConversationRowContent = memo(function ConversationRowContent({
     slots: messageMetadata,
     id: row.id,
     threadId: row.threadId,
+    messageSeq: row.messageSeq,
     createdAt: row.startedAt,
     turnId: row.turnId,
     ...(row.role === "user"
@@ -2136,8 +2131,8 @@ function estimateTimelineWindowedRowHeight(
 function TimelineRowsList({
   compactActivityIntents,
   hasOlderTimelineRows,
+  isCatchingUpTimeline,
   isLoadingOlderTimelineRows,
-  navigationTargetRowId,
   onLoadOlderRows,
   rows,
   scopeActive,
@@ -2161,6 +2156,7 @@ function TimelineRowsList({
   const stableSearchExpandedRowIds = useStableReadonlySet(searchExpandedRowIds);
   const isInitialRevealPending = useScrollToSearchedMessage(rows, threadId, {
     hasOlderRows: hasOlderTimelineRows,
+    isCatchingUpRows: isCatchingUpTimeline,
     isLoadingOlderRows: isLoadingOlderTimelineRows,
     onLoadOlderRows,
     reportsMissingTarget: spacing === "top-level",
@@ -2210,11 +2206,8 @@ function TimelineRowsList({
     for (const rowId of stableSearchExpandedRowIds) {
       keys.add(rowId);
     }
-    if (spacing === "top-level" && navigationTargetRowId != null) {
-      keys.add(navigationTargetRowId);
-    }
     return keys;
-  }, [items, rows, spacing, stableSearchExpandedRowIds, navigationTargetRowId]);
+  }, [items, rows, stableSearchExpandedRowIds]);
   const isTopLevelList = spacing === "top-level";
   return (
     <TimelineSearchExpansionContext.Provider value={stableSearchExpandedRowIds}>
@@ -2342,24 +2335,12 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     props.initialExpanded ?? EMPTY_ROW_ID_SET,
   );
   const projectId = props.projectId;
-  const messageDirectiveSlots = usePluginSlotKind("messageDirectives");
-  const codeFenceRendererSlots = usePluginSlotKind("codeFenceRenderers");
-  const messageActionSlots = usePluginSlotKind("messageActions");
+  const messageActionSlots = useSurfaceMessageActionSlots();
   const messageMetadataSlots = usePluginSlotKind("messageMetadata");
-  const messageDirectiveRegistry = useMemo(
-    () => buildMessageDirectiveRegistry(messageDirectiveSlots),
-    [messageDirectiveSlots],
-  );
-  const codeFenceRendererRegistry = useMemo(
-    () => buildCodeFenceRendererRegistry(codeFenceRendererSlots),
-    [codeFenceRendererSlots],
-  );
   const onSelectionAddToChat = props.onSelectionAddToChat;
   const timelineThreadId = props.threadId;
   const hasPluginSelectionActions =
-    timelineThreadId !== undefined &&
-    props.includePluginMessageActions !== false &&
-    messageActionSlots.length > 0;
+    timelineThreadId !== undefined && messageActionSlots.length > 0;
   const hasSelectionActions =
     onSelectionAddToChat !== undefined || hasPluginSelectionActions;
   const [activeSelection, setActiveSelection] = useState<{
@@ -2409,7 +2390,16 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
   const selectionAddToChatHandler =
     onSelectionAddToChat === undefined ? undefined : handleSelectionAddToChat;
-  const { panel } = useAppNavigationHost();
+  const navigationHost = useAppNavigationHost();
+  const latestNavigationHost = useRef(navigationHost);
+  useLayoutEffect(() => {
+    latestNavigationHost.current = navigationHost;
+  });
+  const bindPluginActionContext = useBindPluginActionContext();
+  const [messageActionContext] = useState(
+    () => (pluginId: string) =>
+      bindPluginActionContext(pluginId, () => latestNavigationHost.current),
+  );
   const composerHost = usePluginComposerHost();
   const selectionPluginActions = useMemo<
     readonly ThreadTimelinePluginMessageAction[]
@@ -2419,23 +2409,19 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
     }
     return (
       buildRowPluginMessageActions({
-        slots:
-          props.includePluginMessageActions === false
-            ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions
-            : messageActionSlots,
+        slots: messageActionSlots,
         timelineThreadId,
         message: activeSelection.message,
         selectedText: activeSelection.selection.text,
-        panel,
+        messageActionContext,
         composerHost,
       }) ?? []
     );
   }, [
     activeSelection,
     composerHost,
+    messageActionContext,
     messageActionSlots,
-    props.includePluginMessageActions,
-    panel,
     timelineThreadId,
   ]);
   const staticContextValue = useMemo<TimelineRendererStaticContextValue>(
@@ -2448,15 +2434,14 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       onMessageAddToChat: props.onMessageAddToChat,
       onSelectionAddToChat: selectionAddToChatHandler,
       pluginMessageActions:
-        timelineThreadId === undefined ||
-        props.includePluginMessageActions === false
+        timelineThreadId === undefined
           ? EMPTY_PLUGIN_SLOT_SNAPSHOT.messageActions
           : messageActionSlots,
       messageMetadata: messageMetadataSlots,
       consumerMessageActions:
         props.consumerMessageActions ?? EMPTY_CONSUMER_MESSAGE_ACTIONS,
       reportProseSelection,
-      panel,
+      messageActionContext,
       onTitleAction: props.onTitleAction,
       projectId,
       resolveImageViewSrc: props.resolveImageViewSrc,
@@ -2474,11 +2459,10 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
       selectionAddToChatHandler,
       messageActionSlots,
       messageMetadataSlots,
-      props.includePluginMessageActions,
       props.consumerMessageActions,
       reportProseSelection,
       timelineThreadId,
-      panel,
+      messageActionContext,
       props.onTitleAction,
       projectId,
       props.resolveImageViewSrc,
@@ -2501,72 +2485,68 @@ function ThreadTimelineRowsForTimelineView(props: ThreadTimelineRowsProps) {
   );
 
   return (
-    <CodeFenceRendererRegistryProvider registry={codeFenceRendererRegistry}>
+    <MessageSlotRegistriesProvider>
       <SearchMessageLocationProvider threadId={props.threadId}>
-        <MessageDirectiveRegistryProvider registry={messageDirectiveRegistry}>
-          <TimelineRendererStaticContext.Provider value={staticContextValue}>
-            <LatestActionableAssistantMessageIdContext.Provider
-              value={latestActionableAssistantMessageId}
+        <TimelineRendererStaticContext.Provider value={staticContextValue}>
+          <LatestActionableAssistantMessageIdContext.Provider
+            value={latestActionableAssistantMessageId}
+          >
+            <LatestActionableUserMessageIdContext.Provider
+              value={latestActionableUserMessageId}
             >
-              <LatestActionableUserMessageIdContext.Provider
-                value={latestActionableUserMessageId}
+              <StreamingAssistantMessageIdContext.Provider
+                value={streamingAssistantMessageId}
               >
-                <StreamingAssistantMessageIdContext.Provider
-                  value={streamingAssistantMessageId}
+                <TimelineTurnStateContext.Provider
+                  value={turnStateContextValue}
                 >
-                  <TimelineTurnStateContext.Provider
-                    value={turnStateContextValue}
+                  <TimelineWindowingMeasurementsContext.Provider
+                    value={windowingMeasurements}
                   >
-                    <TimelineWindowingMeasurementsContext.Provider
-                      value={windowingMeasurements}
-                    >
-                      <div className="relative">
-                        <TimelineRowsList
-                          hasOlderTimelineRows={props.hasOlderTimelineRows}
-                          isLoadingOlderTimelineRows={
-                            props.isLoadingOlderTimelineRows
-                          }
-                          navigationTargetRowId={
-                            props.timelineNavigationTargetRowId
-                          }
-                          onLoadOlderRows={props.onLoadOlderRows}
-                          rows={rows}
-                          scopeActive={scopeActive}
-                          showAssistantMessageActions={true}
-                          compactActivityIntents={false}
-                          spacing="top-level"
-                          unreadDividerAutoScroll={
-                            props.unreadDividerAutoScroll ?? true
-                          }
-                          unreadDividerPlacement={
-                            props.unreadDividerPlacement ?? null
-                          }
-                        />
-                        {hasSelectionActions ? (
-                          <div
-                            ref={setSelectionMenuLayer}
-                            className="pointer-events-none absolute inset-0 z-10 [contain:layout]"
-                          />
-                        ) : null}
-                      </div>
-                    </TimelineWindowingMeasurementsContext.Provider>
-                    {hasSelectionActions ? (
-                      <TimelineSelectionMenu
-                        selection={activeSelection?.selection ?? null}
-                        onAddToChat={selectionAddToChatHandler}
-                        pluginActions={selectionPluginActions}
-                        onDismiss={dismissSelection}
-                        container={selectionMenuLayer}
+                    <div className="relative">
+                      <TimelineRowsList
+                        hasOlderTimelineRows={props.hasOlderTimelineRows}
+                        isCatchingUpTimeline={props.isCatchingUpTimeline}
+                        isLoadingOlderTimelineRows={
+                          props.isLoadingOlderTimelineRows
+                        }
+                        onLoadOlderRows={props.onLoadOlderRows}
+                        rows={rows}
+                        scopeActive={scopeActive}
+                        showAssistantMessageActions={true}
+                        compactActivityIntents={false}
+                        spacing="top-level"
+                        unreadDividerAutoScroll={
+                          props.unreadDividerAutoScroll ?? true
+                        }
+                        unreadDividerPlacement={
+                          props.unreadDividerPlacement ?? null
+                        }
                       />
-                    ) : null}
-                  </TimelineTurnStateContext.Provider>
-                </StreamingAssistantMessageIdContext.Provider>
-              </LatestActionableUserMessageIdContext.Provider>
-            </LatestActionableAssistantMessageIdContext.Provider>
-          </TimelineRendererStaticContext.Provider>
-        </MessageDirectiveRegistryProvider>
+                      {hasSelectionActions ? (
+                        <div
+                          ref={setSelectionMenuLayer}
+                          className="pointer-events-none absolute inset-0 z-10 [contain:layout]"
+                        />
+                      ) : null}
+                    </div>
+                  </TimelineWindowingMeasurementsContext.Provider>
+                  {hasSelectionActions ? (
+                    <TimelineSelectionMenu
+                      selection={activeSelection?.selection ?? null}
+                      onAddToChat={selectionAddToChatHandler}
+                      pluginActions={selectionPluginActions}
+                      onDismiss={dismissSelection}
+                      container={selectionMenuLayer}
+                    />
+                  ) : null}
+                </TimelineTurnStateContext.Provider>
+              </StreamingAssistantMessageIdContext.Provider>
+            </LatestActionableUserMessageIdContext.Provider>
+          </LatestActionableAssistantMessageIdContext.Provider>
+        </TimelineRendererStaticContext.Provider>
       </SearchMessageLocationProvider>
-    </CodeFenceRendererRegistryProvider>
+    </MessageSlotRegistriesProvider>
   );
 }
 

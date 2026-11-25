@@ -1,10 +1,12 @@
 import { pluginCommandId, type PluginCommandId } from "@bb/domain";
-import type { PluginCommandContext } from "@get-bb/plugin-sdk";
-import type { AppPanelController } from "@/lib/app-fixed-tab-navigation";
-import {
-  createPluginPanelController,
-  createRetiredOpenPanel,
-} from "@/lib/plugin-panel-controller";
+import type {
+  ExperimentalPluginActionContext,
+  PluginCommandContext,
+} from "@get-bb/plugin-sdk";
+import type { ResolvedAppNavigationHostCapabilities } from "@/lib/app-navigation-host";
+import type { BindPluginActionContext } from "@/lib/plugin-navigation-hooks";
+import { bindFocusedSurfaceActionContext } from "@/lib/plugin-action-context-provider";
+import { createRetiredOpenPanel } from "@/lib/plugin-panel-controller";
 import type { PluginCommandPaletteActionSlot } from "@/lib/plugin-slots";
 import { getPluginDisplayName } from "@/lib/plugin-logos";
 import type { PaletteAction } from "./palette-action";
@@ -22,7 +24,7 @@ export interface BuildPluginPaletteActionsArgs {
   slots: readonly AppCommandSlot[];
   threadId: string | null;
   projectId: string | null;
-  panel: AppPanelController | null;
+  actionContext: (pluginId: string) => ExperimentalPluginActionContext;
 }
 
 function describeError(error: unknown): string {
@@ -33,17 +35,14 @@ function actionContext(
   slot: AppCommandSlot,
   args: BuildPluginPaletteActionsArgs,
 ): PluginCommandContext {
-  const experimental_panel = createPluginPanelController(
-    slot.pluginId,
-    () => args.panel,
-  );
+  const shared = args.actionContext(slot.pluginId);
   const context: PluginCommandContext & {
     openPanel: ReturnType<typeof createRetiredOpenPanel>;
   } = {
+    ...shared,
     threadId: args.threadId,
     projectId: args.projectId,
-    experimental_panel,
-    openPanel: createRetiredOpenPanel(experimental_panel),
+    openPanel: createRetiredOpenPanel(shared.panel),
   };
   return context;
 }
@@ -98,6 +97,20 @@ export interface BuildPluginComposerCommandActionsArgs {
     target: EventTarget | null,
   ) => boolean;
   dispatch: (command: PluginCommandId, target: EventTarget | null) => void;
+}
+
+export function buildFocusedSurfacePaletteActions({
+  bind,
+  host,
+  ...args
+}: Omit<BuildPluginPaletteActionsArgs, "actionContext"> & {
+  bind: BindPluginActionContext;
+  host: ResolvedAppNavigationHostCapabilities;
+}): PaletteAction[] {
+  return buildPluginPaletteActions({
+    ...args,
+    actionContext: bindFocusedSurfaceActionContext(bind, host),
+  });
 }
 
 export function buildPluginComposerCommandActions(

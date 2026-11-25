@@ -3,8 +3,12 @@ import { Command } from "commander";
 import type { PluginMarketplace } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import {
+  outputJson,
+  reportCommandResult,
+  type JsonOutputOptions,
+} from "../command-result.js";
 import { renderBorderlessTable } from "../table.js";
-import { outputJson, type JsonOutputOptions } from "./helpers.js";
 
 function normalizeSource(source: string): string {
   const trimmed = source.trim();
@@ -20,7 +24,9 @@ function formatTimestamp(value: number | null): string {
 }
 
 function printMarketplace(marketplace: PluginMarketplace): void {
-  console.log(`${marketplace.name}  ${marketplace.displayName}`);
+  console.log(
+    `${marketplace.name}  ${marketplace.displayName}${marketplace.enabled ? "" : " (disabled)"}`,
+  );
   console.log(`  source: ${marketplace.source}`);
   if (marketplace.subdirectory !== null) {
     console.log(`  subdirectory: ${marketplace.subdirectory}`);
@@ -119,9 +125,11 @@ export function registerMarketplaceCommands(
               entry.source,
               ...(showSubdirectory ? [entry.subdirectory ?? ""] : []),
               String(entry.entryCount),
-              entry.lastError === null
-                ? formatTimestamp(entry.lastRefreshAt)
-                : `failed: ${entry.lastError}`,
+              !entry.enabled
+                ? "disabled"
+                : entry.lastError === null
+                  ? formatTimestamp(entry.lastRefreshAt)
+                  : `failed: ${entry.lastError}`,
             ]),
           ),
         );
@@ -139,20 +147,49 @@ export function registerMarketplaceCommands(
         const results = await createCliBbSdk(
           getUrl(),
         ).plugins.marketplaces.refresh(name === undefined ? {} : { name });
-        if (opts.json) {
-          outputJson(opts, results);
-          return;
-        }
-        for (const result of results) {
-          console.log(
+        const failed = results.filter((result) => !result.ok);
+        reportCommandResult(opts, results, {
+          text: results.map((result) =>
             result.ok
               ? `${result.name}: ${result.marketplace.entryCount} entries`
               : `${result.name}: refresh failed (${result.error ?? "unknown error"}); keeping the last catalog`,
-          );
-        }
-        if (results.some((result) => !result.ok)) process.exit(1);
+          ),
+          failure:
+            failed.length === 0
+              ? null
+              : {
+                  message: `${failed.length} marketplace refresh${failed.length === 1 ? "" : "es"} failed: ${failed.map((result) => result.name).join(", ")}`,
+                  code: "marketplace_refresh_failed",
+                  hint: null,
+                },
+        });
       }),
     );
+
+  for (const enabled of [true, false]) {
+    marketplace
+      .command(`${enabled ? "enable" : "disable"} <name>`)
+      .description(
+        enabled
+          ? "Turn a disabled marketplace back on: its plugins return to search and installs, and bb refreshes its catalog"
+          : "Turn a marketplace off without forgetting it: bb stops refreshing its catalog and hides its plugins from search and installs. Installed plugins keep running. bb-official cannot be disabled",
+      )
+      .option("--json", "Output JSON")
+      .action(
+        action(async (name: string, opts: JsonOutputOptions) => {
+          const updated = await createCliBbSdk(
+            getUrl(),
+          ).plugins.marketplaces.setEnabled({ name, enabled });
+          if (opts.json) {
+            outputJson(opts, updated);
+            return;
+          }
+          console.log(
+            `${enabled ? "Enabled" : "Disabled"} marketplace ${updated.name}.`,
+          );
+        }),
+      );
+  }
 
   marketplace
     .command("remove <name>")

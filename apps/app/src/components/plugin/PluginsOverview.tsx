@@ -2,6 +2,7 @@ import {
   pluginSourceFilterId,
   pluginSourceFilterOptions,
 } from "./plugin-provenance";
+import { useOpenNewThread } from "@/hooks/useOpenNewThread";
 import { usePluginCollectionParams } from "./management/usePluginCollectionParams";
 import { useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
@@ -48,7 +49,6 @@ import { usePluginList } from "@/hooks/queries/plugin-settings-queries";
 import { pluginDetailLocation } from "@/components/plugin/plugin-detail-key";
 import {
   getPluginDetailRoutePath,
-  getRootComposeRoutePath,
 } from "@/lib/route-paths";
 
 export function PluginsOverview({
@@ -59,6 +59,7 @@ export function PluginsOverview({
   onOpenPlugin?: (pluginId: string, trigger: HTMLButtonElement) => void;
 } = {}) {
   const navigate = useNavigate();
+  const openNewThread = useOpenNewThread();
   const removal = usePluginRemoval();
   const {
     searchParams,
@@ -190,12 +191,10 @@ export function PluginsOverview({
   });
 
   const startCreatePlugin = (prompt?: string) => {
-    void navigate(getRootComposeRoutePath(), {
-      state: {
-        focusPrompt: true,
-        initialPrompt: prompt ?? CREATE_PLUGIN_PROMPT,
-        replaceInitialPrompt: prompt !== undefined,
-      },
+    openNewThread({
+      focusPrompt: true,
+      initialPrompt: prompt ?? CREATE_PLUGIN_PROMPT,
+      replaceInitialPrompt: prompt !== undefined,
     });
   };
 

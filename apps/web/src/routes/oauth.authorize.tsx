@@ -16,8 +16,6 @@ import {
 } from "@/server/fns";
 
 const OAUTH_AUTHORIZE_RESPONSE_HEADERS = {
-  "content-security-policy": "frame-ancestors 'none'",
-  "x-frame-options": "DENY",
   "x-robots-tag": "noindex, nofollow",
   "cache-control": "no-store",
 } as const;

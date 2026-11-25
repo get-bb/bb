@@ -192,13 +192,17 @@ describe("server skeleton", () => {
       expect(response.status).toBe(200);
       await expect(readJson(response)).resolves.toEqual({
         ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
         launchId: "launch-123",
       });
     });
     await withTestHarness(async (harness) => {
       await expect(
         readJson(await harness.app.request("/health")),
-      ).resolves.toEqual({ ok: true });
+      ).resolves.toEqual({
+        ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
+      });
     });
   });
 

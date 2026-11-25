@@ -1,0 +1,1 @@
+CREATE INDEX `threads_search_order_idx` ON `threads` (("archived_at" IS NOT NULL),`updated_at`,`id`) WHERE "threads"."deleted_at" IS NULL AND "threads"."visibility" = 'visible';

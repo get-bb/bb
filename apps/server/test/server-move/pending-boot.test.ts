@@ -752,10 +752,12 @@ describe("pending server mode", () => {
 
       expect(await readJson(await pendingApp.request("/health"))).toEqual({
         ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
         serverMove: { state: "pending", moveId: "move-1" },
       });
       expect(await readJson(await harness.app.request("/health"))).toEqual({
         ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
       });
 
       const sessionOpen = await pendingApp.request("/internal/session/open", {
@@ -864,6 +866,7 @@ describe("pending server mode", () => {
 
       expect(await readJson(await pendingApp.request("/health"))).toEqual({
         ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
         serverMove: { moveId: "move-1", state: "pending" },
       });
       await writeLastServerMoveFile(harness.config.dataDir, {
@@ -878,6 +881,7 @@ describe("pending server mode", () => {
       });
       expect(await readJson(await pendingApp.request("/health"))).toEqual({
         ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
         serverMove: { moveId: "move-1", state: "activating" },
       });
 
@@ -886,6 +890,7 @@ describe("pending server mode", () => {
       });
       expect(await readJson(ready)).toEqual({
         ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
         serverMove: { moveId: "move-1", state: "ready" },
       });
       expect(ready.headers.get("access-control-allow-origin")).toBe("*");
@@ -900,6 +905,7 @@ describe("pending server mode", () => {
       );
       expect(await readJson(await harness.app.request("/health"))).toEqual({
         ok: true,
+        serverId: expect.stringMatching(/^srv_/u),
       });
     }));
 });

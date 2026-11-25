@@ -9,6 +9,7 @@ import {
 import type {
   ComposerPlusMenuItem,
   ComposerView,
+  ExperimentalComposerActionContext,
   PluginComposerApi,
 } from "@get-bb/plugin-sdk";
 import { Button } from "@bb/shared-ui/button";
@@ -27,6 +28,8 @@ import type {
   ResolvedComposerPlusMenuItem,
 } from "@/lib/plugin-slot-resolvers";
 import { useComposer, useComposerView } from "@/lib/plugin-sdk-hooks";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import { useResolvedComposerActions } from "./composer-slot-hooks";
 import { PluginIcon } from "./PluginIcon";
 import { PluginSlotMount } from "./PluginSlotMount";
@@ -282,6 +285,10 @@ export function PluginComposerPlusMenuEntry({
   );
 }
 
+interface RetiredComposerMenuRunMembers {
+  view: ComposerView;
+}
+
 function useComposerMenuItemDisabled(
   item: ComposerPlusMenuItem,
   composer: PluginComposerApi,
@@ -315,10 +322,18 @@ function PluginComposerPlusMenuEntryContent({
   const composer = useComposer();
   const view = useComposerView();
   const disabled = useComposerMenuItemDisabled(item, composer);
+  const bind = useBindPluginActionContext();
+  const host = useAppNavigationHost();
 
   const run = async () => {
+    const context: ExperimentalComposerActionContext &
+      RetiredComposerMenuRunMembers = {
+      ...bind(pluginId, () => host),
+      composer,
+      view,
+    };
     try {
-      await item.run({ composer, view } as { composer: PluginComposerApi });
+      await item.run(context);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error(

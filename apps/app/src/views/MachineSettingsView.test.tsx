@@ -335,11 +335,20 @@ describe("MachineSettingsView", () => {
           ...stranded.lifecycle,
           phase: "removing",
           message: "Host is not connected",
-          teardown: { status: "failed", attempt: 0 },
+          teardown: {
+            status: "failed",
+            attempt: 0,
+            needsRecovery: false,
+            blockedByEnvironmentId: null,
+          },
         },
       },
     ]);
-    vi.mocked(sdk.hosts.delete).mockResolvedValue({ ok: true });
+    vi.mocked(sdk.hosts.delete).mockResolvedValue({
+      ok: true,
+      progress: "complete",
+      warnings: [],
+    });
     stubSupportingFetches();
     renderView();
 

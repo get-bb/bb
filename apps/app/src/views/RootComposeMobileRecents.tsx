@@ -10,7 +10,6 @@ import type { ProviderInfo, ThreadListEntry } from "@bb/domain";
 import { RouteAnchor } from "@/components/ui/app-route-anchor";
 import { ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
 import { ThreadActionsContextMenu } from "@/components/thread/ThreadActionsMenu";
-import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
 import { getSidebarThreadRowPaddingLeft } from "@bb/shared-ui/sidebar-row-classes";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { CHROME_SECTION_LABEL_CLASS } from "@bb/shared-ui/chrome-style-tokens";
@@ -21,7 +20,10 @@ import {
 } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { OverflowFade } from "@bb/shared-ui/overflow-fade";
-import { getThreadRoutePath, isProjectlessProjectId } from "@/lib/route-paths";
+import {
+  getThreadLocationPath,
+  isProjectlessProjectId,
+} from "@/lib/route-paths";
 import {
   buildChronologicalThreadList,
   getProjectThreadItemDescendants,
@@ -298,7 +300,7 @@ function MobileRecentThreadRow({
     </span>
   );
   return (
-    <ThreadActionsContextMenu thread={threadListEntryActionTarget(thread)}>
+    <ThreadActionsContextMenu thread={thread}>
       <li
         onTouchStart={(event) => {
           const touch = event.touches[0];
@@ -347,7 +349,7 @@ function MobileRecentThreadRow({
           providerTile
         )}
         <RouteAnchor
-          href={getThreadRoutePath({
+          href={getThreadLocationPath({
             projectId: thread.projectId,
             threadId: thread.id,
           })}

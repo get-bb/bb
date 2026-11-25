@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { BbHttpError } from "../src/response.js";
+import { BbHttpError } from "../src/http-error.js";
 import { createBbSdk } from "../src/core.js";
 import { createHttpTransport } from "../src/transport-http.js";
 

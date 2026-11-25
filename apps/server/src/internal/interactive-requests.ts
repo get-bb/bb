@@ -1,6 +1,7 @@
 import {
   hostDaemonInteractiveInterruptRequestSchema,
   hostDaemonInteractiveRequestSchema,
+  hostDaemonInteractiveWithdrawRequestSchema,
   typedRoutes,
   type HostDaemonInternalSchema,
 } from "@bb/host-daemon-contract";
@@ -13,6 +14,37 @@ import {
   requireThreadEnvironmentAllowingDestroyed,
 } from "../services/lib/entity-lookup.js";
 import { requireAuthenticatedDaemonSession } from "./session-state.js";
+
+function sessionHostThreadExists(
+  deps: AppDeps,
+  args: { hostId: string; threadId: string },
+): boolean {
+  let environmentHostId: string;
+  try {
+    const { environment } = requireThreadEnvironmentAllowingDestroyed(
+      deps.db,
+      args.threadId,
+    );
+    environmentHostId = environment.hostId;
+  } catch (error) {
+    if (
+      error instanceof ApiError &&
+      (error.status === 404 ||
+        error.body.code === "thread_environment_unavailable")
+    ) {
+      return false;
+    }
+    throw error;
+  }
+  if (environmentHostId !== args.hostId) {
+    throw new ApiError(
+      403,
+      "invalid_request",
+      "Thread does not belong to the session host",
+    );
+  }
+  return true;
+}
 
 export function registerInternalInteractiveRequestRoutes(
   app: Hono,
@@ -96,31 +128,14 @@ export function registerInternalInteractiveRequestRoutes(
 
       const interruptibleThreadIds: string[] = [];
       for (const threadId of payload.threadIds) {
-        let environmentHostId: string;
-        try {
-          const { environment } = requireThreadEnvironmentAllowingDestroyed(
-            deps.db,
+        if (
+          sessionHostThreadExists(deps, {
+            hostId: session.hostId,
             threadId,
-          );
-          environmentHostId = environment.hostId;
-        } catch (error) {
-          if (
-            error instanceof ApiError &&
-            (error.status === 404 ||
-              error.body.code === "thread_environment_unavailable")
-          ) {
-            continue;
-          }
-          throw error;
+          })
+        ) {
+          interruptibleThreadIds.push(threadId);
         }
-        if (environmentHostId !== session.hostId) {
-          throw new ApiError(
-            403,
-            "invalid_request",
-            "Thread does not belong to the session host",
-          );
-        }
-        interruptibleThreadIds.push(threadId);
       }
 
       const interrupted =
@@ -133,6 +148,37 @@ export function registerInternalInteractiveRequestRoutes(
       return context.json({
         ok: true,
         interactionIds: interrupted.map((interaction) => interaction.id),
+      });
+    },
+  );
+
+  post(
+    "/session/interactive-request/withdraw",
+    hostDaemonInteractiveWithdrawRequestSchema,
+    (context, payload) => {
+      const session = requireAuthenticatedDaemonSession({
+        context,
+        db: deps.db,
+        sessionId: payload.sessionId,
+      });
+
+      if (
+        !sessionHostThreadExists(deps, {
+          hostId: session.hostId,
+          threadId: payload.request.threadId,
+        })
+      ) {
+        return context.json({ ok: true, interactionId: null });
+      }
+
+      const interrupted =
+        deps.pendingInteractions.interruptWithdrawnProviderRequest({
+          ...payload.request,
+          reason: payload.reason,
+        });
+      return context.json({
+        ok: true,
+        interactionId: interrupted?.id ?? null,
       });
     },
   );

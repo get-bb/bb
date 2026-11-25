@@ -39,6 +39,8 @@ export function makePluginRegistrationSet(
     threadRowMetadata: [],
     threadInfoSections: [],
     threadHeaderRows: [],
+    threadRails: [],
+    threadRailOutlines: [],
     threadHeaderTitles: [],
     threadContextCardRows: [],
     threadContextCardSections: [],

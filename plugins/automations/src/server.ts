@@ -1,20 +1,14 @@
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
-import { migrations } from "./data.js";
+import { listRunningAutomationRuns, migrations } from "./data.js";
 import { ingestLegacyImport } from "./legacy-import.js";
 import { pluginDataDirFromDb } from "./path.js";
 import { automationRpcContract, createRpcHandlers } from "./rpc.js";
 import {
-  closeAutomationRunForSettledThread,
-  disableAutomationsForDeletedThreadEvent,
   errorMessage,
   reconcileRunningAutomationRuns,
+  settleAutomationRunsForThread,
 } from "./run.js";
 import { registerAutomationCli } from "./cli.js";
-import {
-  answerRetryConsent,
-  retryConsentContract,
-  retryConsentMethod,
-} from "./retry-consent.js";
 import { createScriptRunScope } from "./script-runner.js";
 import { createAutomationService } from "./service.js";
 import { sleep, sweepDueAutomations, SWEEP_INTERVAL_MS } from "./sweep.js";
@@ -35,62 +29,27 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   bb.rpc.register(automationRpcContract, createRpcHandlers(service));
-  bb.rpc.register(
-    retryConsentContract,
-    {
-      [retryConsentMethod]: (input) =>
-        answerRetryConsent(
-          db,
-          async (threadId) =>
-            (
-              await bb.sdk.threads.events.list({
-                threadId,
-                types: ["client/turn/requested"],
-                order: "desc",
-                limit: "1",
-              })
-            )[0]?.data,
-          input,
-        ),
-    },
-    {
-      experimental_discoverable: true,
-      experimental_description:
-        "Declines provider retries of recurring automation runs, which run again on their schedule.",
-    },
-  );
   registerAutomationCli({ bb, service });
 
-  bb.events.on("thread.idle", ({ thread }) => {
-    closeAutomationRunForSettledThread(bb, db, {
-      threadId: thread.id,
-      status: "idle",
-    });
-  });
-  bb.events.on("thread.failed", ({ thread, error }) => {
-    closeAutomationRunForSettledThread(bb, db, {
-      threadId: thread.id,
-      status: "failed",
-      error,
-    });
-  });
-
-  bb.events.on("thread.deleted", ({ thread }) => {
-    disableAutomationsForDeletedThreadEvent(bb, db, thread.id);
+  bb.events.on("experimental_thread.settled", (event) => {
+    settleAutomationRunsForThread(bb, db, event);
   });
 
   bb.background.service("automation-sweep", {
     async start(signal) {
-      try {
-        await reconcileRunningAutomationRuns(bb, db);
-      } catch (error) {
-        bb.log.error(
-          `Automation startup reconciliation failed: ${errorMessage(error)}`,
-        );
-      }
+      let uncheckedRuns: ReadonlySet<string> = new Set(
+        listRunningAutomationRuns(db).map((run) => run.id),
+      );
       let serverHostId: string | null = null;
       while (!signal.aborted) {
         try {
+          if (uncheckedRuns.size > 0) {
+            uncheckedRuns = await reconcileRunningAutomationRuns(
+              bb,
+              db,
+              uncheckedRuns,
+            );
+          }
           serverHostId ??= (await bb.sdk.system.config()).primaryHostId;
           await sweepDueAutomations(bb, db, {
             pluginDataDir,

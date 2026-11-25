@@ -578,25 +578,45 @@ describe("buildCodexConfig", () => {
     },
   );
 
-  it("injects contributed environment into session params and drops invalid keys", () => {
+  it("forces only bb's context variables past Codex's shell_environment_policy", () => {
     const config = configFor({
       ...FULL_OPTIONS,
       envVars: {
-        "BAD.KEY": "ignored",
+        BB_THREAD_ID: "bb-thread-1",
+        BB_PROJECT_ID: "proj_1",
+        BB_ENVIRONMENT_ID: "env_1",
+        BB_THREAD_STORAGE: "/data/thread-storage/bb-thread-1",
+        BB_CLI: "/data/bin/bb",
+        BB_SERVER_URL: "http://127.0.0.1:3334",
+        BB_HOST_DAEMON_PORT: "3335",
+        QA_PROJECT_VAR: "project-value",
+        CODEX_OPENAI_BASE_URL: "http://127.0.0.1:3334/pool/v1",
+        CODEX_POOL_AUTH_TOKEN: "pool-hub-token",
+        BB_ACCOUNT_POOL_PARENT_TOKEN: "pool-hub-token",
+        GH_TOKEN: "gh-token",
         PLUGIN_API_URL: "http://127.0.0.1:3334/plugins/example/auth",
-        TEST_VAR: "123",
       },
     });
 
-    expect(config).toMatchObject({
-      "shell_environment_policy.set.BB_THREAD_ID": "bb-thread-1",
-      "shell_environment_policy.set.PLUGIN_API_URL":
-        "http://127.0.0.1:3334/plugins/example/auth",
-      "shell_environment_policy.set.TEST_VAR": "123",
-    });
-    expect(config).not.toMatchObject({
-      "shell_environment_policy.set.BAD.KEY": "ignored",
-    });
+    expect(
+      Object.entries(config ?? {}).filter(([key]) =>
+        key.startsWith("shell_environment_policy."),
+      ),
+    ).toEqual([
+      ["shell_environment_policy.set.BB_PROJECT_ID", "proj_1"],
+      ["shell_environment_policy.set.BB_ENVIRONMENT_ID", "env_1"],
+      [
+        "shell_environment_policy.set.BB_THREAD_STORAGE",
+        "/data/thread-storage/bb-thread-1",
+      ],
+      ["shell_environment_policy.set.BB_CLI", "/data/bin/bb"],
+      ["shell_environment_policy.set.BB_SERVER_URL", "http://127.0.0.1:3334"],
+      ["shell_environment_policy.set.BB_HOST_DAEMON_PORT", "3335"],
+      ["shell_environment_policy.set.BB_THREAD_ID", "bb-thread-1"],
+    ]);
+    expect(JSON.stringify(config)).not.toContain("pool-hub-token");
+    expect(JSON.stringify(config)).not.toContain("gh-token");
+    expect(JSON.stringify(config)).not.toContain("project-value");
   });
 
   it("maps the reasoning level onto model_reasoning_effort", () => {

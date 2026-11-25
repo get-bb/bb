@@ -8,12 +8,11 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk/app";
 import type { SidebarThread } from "../model/sidebar-thread.js";
 import { useSidebarData } from "../model/use-sidebar-data.js";
-import { toThreadActionTarget } from "../rows/threadActionTarget.js";
-import { SIDEBAR_CONTENT_SELECTOR } from "../ui/sidebar.js";
+import { useSidebarScrollArea } from "../ui/sidebar.js";
 import { SIDEBAR_WINDOWED_NAV_ATTRIBUTE } from "../list/sidebarThreadShortcuts.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 const NO_THREAD_IDS: readonly string[] = [];
 
@@ -33,8 +32,9 @@ export class ThreadSelectionStore {
   private selectedSet: ReadonlySet<string> = new Set();
   private anchor: string | null = null;
   private activeThreadId: string | null = null;
+  private scrollElement: HTMLElement | null = null;
   private listedThreadsById: ReadonlyMap<string, SidebarThread> = new Map();
-  private selectionTargets: readonly PluginThreadActionTarget[] | null = null;
+  private selectionThreads: readonly SidebarThread[] | null = null;
   private readonly listeners = new Set<() => void>();
 
   subscribe = (listener: () => void): (() => void) => {
@@ -46,12 +46,12 @@ export class ThreadSelectionStore {
 
   getSelected = (): readonly string[] => this.selected;
 
-  getSelectionTargets = (): readonly PluginThreadActionTarget[] => {
-    this.selectionTargets ??= this.selected.flatMap((threadId) => {
+  getSelectionThreads = (): readonly SidebarThread[] => {
+    this.selectionThreads ??= this.selected.flatMap((threadId) => {
       const thread = this.listedThreadsById.get(threadId);
-      return thread === undefined ? [] : [toThreadActionTarget(thread)];
+      return thread === undefined ? [] : [thread];
     });
-    return this.selectionTargets;
+    return this.selectionThreads;
   };
 
   setListedThreads(threadsById: ReadonlyMap<string, SidebarThread>): void {
@@ -65,7 +65,7 @@ export class ThreadSelectionStore {
       return;
     }
     if (this.selected.length === 0) return;
-    this.selectionTargets = null;
+    this.selectionThreads = null;
     for (const listener of this.listeners) listener();
   }
 
@@ -75,6 +75,10 @@ export class ThreadSelectionStore {
 
   setActiveThreadId(threadId: string | null): void {
     this.activeThreadId = threadId;
+  }
+
+  setScrollElement(element: HTMLElement | null): void {
+    this.scrollElement = element;
   }
 
   clear(): void {
@@ -114,7 +118,7 @@ export class ThreadSelectionStore {
       if (this.selected.length > 0) this.replace(NO_THREAD_IDS);
       return false;
     }
-    const order = collectVisibleThreadIds(origin);
+    const order = collectVisibleThreadIds(origin, this.scrollElement);
     if (!modifiers.metaKey && !modifiers.ctrlKey) {
       const anchor = this.anchor ?? this.activeThreadId ?? threadId;
       const from = order.indexOf(anchor);
@@ -152,7 +156,7 @@ export class ThreadSelectionStore {
     }
     this.selected = next;
     this.selectedSet = new Set(next);
-    this.selectionTargets = null;
+    this.selectionThreads = null;
     for (const listener of this.listeners) listener();
   }
 }
@@ -169,12 +173,12 @@ function sortByOrder(
   );
 }
 
-export function collectVisibleThreadIds(origin: Element): string[] {
+export function collectVisibleThreadIds(
+  origin: Element,
+  scrollElement: HTMLElement | null,
+): string[] {
   const overflow = origin.closest("[data-sidebar-overflow='true']");
-  const root =
-    overflow ??
-    origin.closest(SIDEBAR_CONTENT_SELECTOR) ??
-    origin.ownerDocument;
+  const root = overflow ?? scrollElement ?? origin.ownerDocument;
   const elements = root.querySelectorAll<HTMLElement>(
     `${THREAD_ROW_TARGET_SELECTOR}, [${SIDEBAR_WINDOWED_NAV_ATTRIBUTE}]`,
   );
@@ -221,6 +225,12 @@ export function ThreadSelectionProvider({
   useLayoutEffect(() => {
     store.setActiveThreadId(activeThreadId);
   }, [activeThreadId, store]);
+  const scrollArea = useSidebarScrollArea();
+  const scrollElement =
+    scrollArea.kind === "sidebar" ? scrollArea.element : null;
+  useLayoutEffect(() => {
+    store.setScrollElement(scrollElement);
+  }, [scrollElement, store]);
   const { projects } = useSidebarData();
   const listedThreadsById = useMemo(
     () =>
@@ -241,7 +251,11 @@ export function ThreadSelectionProvider({
   useEffect(() => {
     if (!hasSelection) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" || !event.isTrusted || event.defaultPrevented)
+      if (
+        !isNonImeKey(event, "Escape") ||
+        !event.isTrusted ||
+        event.defaultPrevented
+      )
         return;
       store.clear();
       store.restoreActiveThreadFocus();

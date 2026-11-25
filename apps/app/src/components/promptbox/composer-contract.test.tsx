@@ -21,6 +21,7 @@ import {
   vi,
 } from "vitest";
 import type {
+  ComposerCustomization,
   PluginComposerApi,
   PluginComposerScope,
 } from "@get-bb/plugin-sdk";
@@ -35,7 +36,10 @@ import {
 } from "@/components/plugin/plugin-composer-host";
 import { FollowUpPromptBox } from "@/components/promptbox/FollowUpPromptBox";
 import { NewThreadPromptBoxUI } from "@/components/promptbox/NewThreadPromptBox";
-import type { PromptBoxHandle } from "@/components/promptbox/ComposerBox";
+import type {
+  AttachmentsConfig,
+  PromptBoxHandle,
+} from "@/components/promptbox/ComposerBox";
 import { focusPaneComposer } from "@/lib/pane-composer-focus";
 import { useComposers } from "@/lib/plugin-sdk-hooks";
 import {
@@ -118,6 +122,7 @@ interface SurfaceHarness {
   store: ComposerDraftStore;
   onSubmit: () => void;
   onModifierSubmit: () => void;
+  attachments: AttachmentsConfig;
 }
 
 interface Surface {
@@ -126,6 +131,7 @@ interface Surface {
   customizable: boolean;
   enter: EnterAction;
   pluginSubmit: EnterAction | "rejects";
+  running: boolean;
   render(harness: SurfaceHarness): ReactNode;
 }
 
@@ -215,7 +221,7 @@ function followUpSurface({
   customizable: boolean;
   enter: EnterAction;
   pluginSubmit?: EnterAction | "rejects";
-  submitMode: "ready" | "steer";
+  submitMode: "ready" | "steer" | "stopping";
   inline: boolean;
   primary?: boolean;
 }): Surface {
@@ -225,9 +231,10 @@ function followUpSurface({
     customizable,
     enter,
     pluginSubmit,
-    render: ({ host, store, onSubmit, onModifierSubmit }) => (
+    running: submitMode !== "ready",
+    render: ({ host, store, onSubmit, onModifierSubmit, attachments }) => (
       <FollowUpPromptBox
-        attachments={{ projectId: "proj_contract" }}
+        attachments={attachments}
         stack={null}
         composer={{
           history: {
@@ -245,9 +252,11 @@ function followUpSurface({
           submitMode:
             submitMode === "steer"
               ? { kind: "queue", onStop: () => {} }
-              : { kind: "ready" },
+              : submitMode === "stopping"
+                ? { kind: "queue-while-stopping" }
+                : { kind: "ready" },
           threadRuntimeDisplayStatus:
-            submitMode === "steer" ? "active" : "idle",
+            submitMode === "ready" ? "idle" : "active",
         }}
         environmentSummary={null}
         contextWindowUsage={null}
@@ -268,7 +277,12 @@ function followUpSurface({
   };
 }
 
-const THREAD_SCOPE = { kind: "thread", threadId: "thr_contract" } as const;
+const THREAD_SCOPE = {
+  kind: "thread",
+  threadId: "thr_contract",
+  projectId: "proj_test",
+  environmentId: null,
+} as const;
 
 const SURFACES: readonly Surface[] = [
   followUpSurface({
@@ -289,7 +303,12 @@ const SURFACES: readonly Surface[] = [
   }),
   followUpSurface({
     name: "embedded thread chat",
-    scope: { kind: "thread", threadId: "thr_embedded" },
+    scope: {
+      kind: "thread",
+      threadId: "thr_embedded",
+      projectId: "proj_test",
+      environmentId: null,
+    },
     customizable: true,
     enter: "submit",
     submitMode: "ready",
@@ -302,6 +321,8 @@ const SURFACES: readonly Surface[] = [
       kind: "queued-message",
       threadId: "thr_contract",
       queuedMessageId: "qm_contract",
+      projectId: "proj_test",
+      environmentId: null,
     },
     customizable: true,
     enter: "submit",
@@ -324,7 +345,8 @@ const SURFACES: readonly Surface[] = [
     customizable: true,
     enter: "submit",
     pluginSubmit: "submit",
-    render: ({ host, store, onSubmit }) => (
+    running: false,
+    render: ({ host, store, onSubmit, attachments }) => (
       <NewThreadPromptBoxUI
         draft={store}
         onSubmit={onSubmit}
@@ -336,7 +358,7 @@ const SURFACES: readonly Surface[] = [
           onSelectEntry: () => {},
         }}
         typeahead={typeahead}
-        attachments={{}}
+        attachments={attachments}
         mentionMenuPlacement="bottom"
         modeConfig={{
           environment: {
@@ -380,27 +402,73 @@ function ComposersProbe() {
   return null;
 }
 
-function registerProbePlugin() {
+const PROBE_POPUP = {
+  id: "probe-popup",
+  label: "Probe popup",
+  component: () => <p>Probe popup body</p>,
+};
+
+function registerProbePlugin(
+  extra: readonly ComposerCustomization[] = [],
+): void {
   setPluginSlotRegistrations(
     PROBE_PLUGIN_ID,
     makePluginRegistrationSet({
       composerCustomizations: [
-        {
-          id: "probe",
-          experimental_popups: [
-            {
-              id: "probe-popup",
-              label: "Probe popup",
-              component: () => <p>Probe popup body</p>,
-            },
-          ],
-        },
+        { id: "probe", experimental_popups: [PROBE_POPUP] },
+        ...extra,
       ],
     }),
   );
 }
 
-function renderSurface(surface: Surface) {
+const ALL_SCOPE_KINDS = [
+  "thread",
+  "queued-message",
+  "new-thread",
+] as const satisfies readonly PluginComposerScope["kind"][];
+
+function contributionCustomization(
+  id: string,
+  name: string,
+  scopes?: readonly PluginComposerScope["kind"][],
+): ComposerCustomization {
+  return {
+    id,
+    ...(scopes === undefined ? {} : { scopes }),
+    experimental_popups: [
+      {
+        id: `${id}-popup`,
+        label: `${name} popup`,
+        component: () => <p>{name} popup body</p>,
+      },
+    ],
+    plusMenu: [
+      {
+        id: "row",
+        label: `${name} plus row`,
+        run: ({ composer }) => {
+          composer.experimental_openPopup(`${id}-popup`);
+        },
+      },
+    ],
+    sendMenu: [{ id: "row", label: `${name} send row`, run: () => {} }],
+    banners: [{ id: "banner", component: () => <p>{name} banner</p> }],
+    actions: [
+      {
+        id: "action",
+        component: () => <button type="button">{name} action</button>,
+      },
+    ],
+  };
+}
+
+const CONTRACT_ATTACHMENTS: AttachmentsConfig = { projectId: "proj_contract" };
+
+function renderSurface(
+  surface: Surface,
+  attachments: AttachmentsConfig = CONTRACT_ATTACHMENTS,
+) {
   const store = createDraftStore(
     surface.scope,
     `contract:${surface.name}`,
@@ -408,33 +476,35 @@ function renderSurface(surface: Surface) {
   );
   const onSubmit = vi.fn();
   const onModifierSubmit = vi.fn();
-  function Harness() {
-    return (
-      <>
-        {surface.render({
-          host: store.host,
-          store: store.store,
-          onSubmit,
-          onModifierSubmit,
-        })}
-        <PluginContext.Provider value={PROBE_PLUGIN_ID}>
-          <ComposersProbe />
-        </PluginContext.Provider>
-      </>
-    );
-  }
-  const view = render(
+  const queryClient = new QueryClient();
+  const tree = (current: AttachmentsConfig) => (
     <MemoryRouter>
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <div data-testid="pane">
-            <Harness />
+            {surface.render({
+              host: store.host,
+              store: store.store,
+              onSubmit,
+              onModifierSubmit,
+              attachments: current,
+            })}
+            <PluginContext.Provider value={PROBE_PLUGIN_ID}>
+              <ComposersProbe />
+            </PluginContext.Provider>
           </div>
         </TooltipProvider>
       </QueryClientProvider>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
-  return { view, store, onSubmit, onModifierSubmit };
+  const view = render(tree(attachments));
+  return {
+    view,
+    store,
+    onSubmit,
+    onModifierSubmit,
+    setAttachments: (next: AttachmentsConfig) => view.rerender(tree(next)),
+  };
 }
 
 async function composerBox(): Promise<HTMLElement> {
@@ -463,6 +533,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  window.localStorage.clear();
   renderRecorder.reset();
   resetPluginSlotStoreForTest();
   resetAllCrashedPluginSlotsForTest();
@@ -607,6 +678,23 @@ describe.each(COMPOSERS)("$name", (composer) => {
       return;
     }
 
+    it("gives other plugins bb's run and submit state", async () => {
+      renderSurface(surface);
+      await composerBox();
+      const handle = await listedComposer();
+      expect({
+        isRunning: handle.isRunning,
+        isSubmitting: handle.isSubmitting,
+        isSubmittingBlocked: handle.isSubmittingBlocked,
+        submittingBlockedReason: handle.submittingBlockedReason,
+      }).toEqual({
+        isRunning: surface.running,
+        isSubmitting: false,
+        isSubmittingBlocked: false,
+        submittingBlockedReason: null,
+      });
+    });
+
     it("puts another plugin's insert at the editor's caret", async () => {
       const { store } = renderSurface(surface);
       await composerBox();
@@ -672,5 +760,170 @@ describe.each(COMPOSERS)("$name", (composer) => {
         expect(screen.queryByText("Probe popup body")).toBeNull(),
       );
     });
+  });
+});
+
+async function openMenuRows(trigger: string): Promise<readonly string[]> {
+  const box = await composerBox();
+  act(() => {
+    focusPaneComposer(screen.getByTestId("pane"));
+  });
+  await waitFor(() => expect(box.contains(document.activeElement)).toBe(true));
+  await act(
+    () =>
+      new Promise<void>((resolve) => requestAnimationFrame(() => resolve())),
+  );
+  const button = screen.queryByRole("button", { name: trigger });
+  if (button === null) return [];
+  fireEvent.pointerDown(button, { button: 0 });
+  const rows = await waitFor(() => {
+    const realized = document.querySelectorAll(
+      '[role="menu"] [role="menuitem"]',
+    );
+    if (realized.length === 0) throw new Error(`${trigger} has no rows yet`);
+    return realized;
+  });
+  return Array.from(rows, (row) => row.textContent ?? "");
+}
+
+function menuRow(label: string): HTMLElement {
+  const row = Array.from(
+    document.querySelectorAll<HTMLElement>('[role="menu"] [role="menuitem"]'),
+  ).find((candidate) => candidate.textContent === label);
+  if (row === undefined) throw new Error(`No menu row "${label}"`);
+  return row;
+}
+
+describe.each(SURFACES)(
+  "other plugins' composer contributions in the $name",
+  (surface) => {
+    beforeEach(async () => {
+      registerProbePlugin([
+        contributionCustomization("everywhere", "Everywhere"),
+        contributionCustomization(
+          "elsewhere",
+          "Elsewhere",
+          ALL_SCOPE_KINDS.filter((kind) => kind !== surface.scope.kind),
+        ),
+      ]);
+      await registerComposerPlugin();
+    });
+
+    it("shows plus rows in scope, and each opens its popup in this composer", async () => {
+      renderSurface(surface);
+      await composerBox();
+      const rows = await openMenuRows("Prompt actions");
+      expect(rows).toContain("Everywhere plus row");
+      expect(rows).not.toContain("Elsewhere plus row");
+      fireEvent.click(menuRow("Everywhere plus row"));
+      expect(await screen.findByText("Everywhere popup body")).toBeTruthy();
+    });
+
+    it(
+      surface.customizable
+        ? "mounts send rows, banners and actions in scope"
+        : "mounts no send rows, banners or actions",
+      async () => {
+        renderSurface(surface);
+        await composerBox();
+        const expected = surface.customizable ? ["Everywhere"] : [];
+        await waitFor(() =>
+          expect(
+            ["Everywhere", "Elsewhere"].filter(
+              (name) =>
+                screen.queryByText(`${name} banner`) !== null &&
+                screen.queryByRole("button", { name: `${name} action` }) !==
+                  null,
+            ),
+          ).toEqual(expected),
+        );
+        expect(screen.queryByText("Elsewhere banner")).toBeNull();
+        expect(
+          screen.queryByRole("button", { name: "Elsewhere action" }),
+        ).toBeNull();
+        if (!surface.customizable) {
+          expect(screen.queryByText("Everywhere banner")).toBeNull();
+          expect(
+            screen.queryByRole("button", { name: "Everywhere action" }),
+          ).toBeNull();
+        }
+        const sendRows = (await openMenuRows("Send options")).filter((row) =>
+          row.endsWith("send row"),
+        );
+        expect(sendRows).toEqual(expected.map((name) => `${name} send row`));
+      },
+    );
+  },
+);
+
+describe("a composer box that reports wrong run and upload state", () => {
+  const threadComposer = SURFACES[0]!;
+
+  beforeEach(() => {
+    registerMinimalComposer({
+      extraEditorState: {
+        isRunning: false,
+        isSubmitting: false,
+        isSubmittingBlocked: false,
+        submittingBlockedReason: null,
+        isAttaching: false,
+        attachmentError: null,
+      },
+    });
+  });
+
+  it.each([
+    followUpSurface({
+      name: "running thread composer",
+      scope: THREAD_SCOPE,
+      customizable: true,
+      enter: "submit",
+      submitMode: "steer",
+      inline: false,
+    }),
+    followUpSurface({
+      name: "stopping thread composer",
+      scope: THREAD_SCOPE,
+      customizable: true,
+      enter: "submit",
+      submitMode: "stopping",
+      inline: false,
+    }),
+  ])("leaves useComposer().isRunning true in the $name", async (surface) => {
+    renderSurface(surface);
+    await composerBox();
+    const handle = await listedComposer();
+    expect(handle.isRunning).toBe(true);
+  });
+
+  it("makes submit() wait for bb's upload and reject with bb's upload error", async () => {
+    const { onSubmit, setAttachments } = renderSurface(threadComposer, {
+      ...CONTRACT_ATTACHMENTS,
+      isAttaching: true,
+    });
+    await composerBox();
+    const handle = await listedComposer();
+    expect(handle.isSubmittingBlocked).toBe(true);
+    expect(handle.submittingBlockedReason).toBe("Uploading attachments...");
+
+    const submitted = handle.submit();
+    const outcome = submitted.then(
+      () => "submitted",
+      (error: unknown) => (error instanceof Error ? error.message : "failed"),
+    );
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onSubmit).not.toHaveBeenCalled();
+
+    act(() =>
+      setAttachments({
+        ...CONTRACT_ATTACHMENTS,
+        isAttaching: false,
+        error: "Failed to attach big.bin",
+      }),
+    );
+    await expect(outcome).resolves.toBe("Failed to attach big.bin");
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 });

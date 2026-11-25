@@ -5,7 +5,9 @@ interface TestKeyboardEvent {
   altKey: boolean;
   ctrlKey: boolean;
   defaultPrevented: boolean;
+  isComposing: boolean;
   key: string;
+  keyCode: number;
   metaKey: boolean;
 }
 
@@ -17,7 +19,9 @@ function createKeyboardEvent(
     altKey: false,
     ctrlKey: false,
     defaultPrevented: false,
+    isComposing: false,
     key,
+    keyCode: 0,
     metaKey: false,
     ...overrides,
   };

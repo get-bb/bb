@@ -15,7 +15,6 @@ const MAX_STDIO_LOG_BYTES_AT_SPAWN = 10 * 1024 * 1024;
 const MACOS_TASKPOLICY_PATH = "/usr/sbin/taskpolicy";
 
 interface SpawnLoggedProcessArgs {
-  appScheduling: boolean;
   args: string[];
   command: string;
   env: NodeJS.ProcessEnv;
@@ -43,11 +42,7 @@ function resolveLoggedProcessLaunch(
   args: SpawnLoggedProcessArgs,
 ): ProcessLaunch {
   const direct = { command: args.command, args: args.args, env: args.env };
-  if (
-    !args.appScheduling ||
-    process.platform !== "darwin" ||
-    !isExecutable(MACOS_TASKPOLICY_PATH)
-  ) {
+  if (process.platform !== "darwin" || !isExecutable(MACOS_TASKPOLICY_PATH)) {
     return direct;
   }
   const launch = hostToolchain.command(args.command, args.args, {

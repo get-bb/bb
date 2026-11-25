@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rm, stat } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { lstat, mkdir, readFile, rm, stat } from "node:fs/promises";
+import { dirname, join, resolve } from "node:path";
 import type { PluginMarketplaceSourceKind } from "@bb/db";
 import {
   normalizePluginSubdirectory,
@@ -9,12 +9,18 @@ import {
   realPathInside,
   runInstallCommand,
 } from "../plugins/install-sources.js";
-import type { MarketplaceFetch } from "./marketplace-http.js";
+import { resolveGitRef } from "../plugins/update-resolver.js";
+import {
+  marketplaceErrorMessage,
+  type MarketplaceFetch,
+} from "./marketplace-http.js";
 import {
   entryScreenshotUrls,
   parseMarketplaceManifest,
   parseMarketplaceManifestJson,
+  resolveEntryIcon,
   type MarketplaceIconBase,
+  type MarketplaceIconLocation,
   type MarketplaceManifest,
 } from "./marketplace-manifest.js";
 
@@ -26,6 +32,14 @@ type MarketplaceSource =
   | { kind: "path"; directory: string };
 
 const GIT_CLONE_ARGS = ["-c", "core.hooksPath=/dev/null"] as const;
+const SPARSE_CHECKOUT_PATTERN_CHARACTERS = /[*?[\]\\]/u;
+
+interface CachedMarketplace {
+  manifestJson: string;
+  etag: string | null;
+  lastModified: string | null;
+  commit: string | null;
+}
 
 const SOURCE_FORMS =
   'expected "https://<manifest-url>", "git:<url>[@<ref>]", or "path:<directory>"';
@@ -164,11 +178,7 @@ interface MaterializedMarketplace {
 
 export async function materializeMarketplace(args: {
   source: MarketplaceSource;
-  cached: {
-    manifestJson: string;
-    etag: string | null;
-    lastModified: string | null;
-  } | null;
+  cached: CachedMarketplace | null;
   stagingDir: string;
   fetch: MarketplaceFetch;
   fallbackManifestUrl?: string;
@@ -191,16 +201,12 @@ export async function materializeMarketplace(args: {
       args.warn,
     );
   }
-  return materializeGit(args.source, args.stagingDir, args.warn);
+  return materializeGit(args.source, args.cached, args.stagingDir, args.warn);
 }
 
 async function materializeHttps(
   source: Extract<MarketplaceSource, { kind: "https" }>,
-  cached: {
-    manifestJson: string;
-    etag: string | null;
-    lastModified: string | null;
-  } | null,
+  cached: CachedMarketplace | null,
   fetchMarketplace: MarketplaceFetch,
   fallbackManifestUrl: string | undefined,
   warn: ((message: string) => void) | undefined,
@@ -374,49 +380,236 @@ async function gitMarketplaceRoot(
   return realPathInside(checkout, directory, "marketplace subdirectory");
 }
 
-async function materializeGit(
+function unchangedGitMarketplace(
   source: Extract<MarketplaceSource, { kind: "git" }>,
-  stagingDir: string,
+  cached: CachedMarketplace,
+  commit: string,
   warn: ((message: string) => void) | undefined,
-): Promise<MaterializedMarketplace> {
-  await mkdir(stagingDir, { recursive: true });
-  const checkout = join(stagingDir, randomUUID());
-  const dispose = () => rm(checkout, { recursive: true, force: true });
+): MaterializedMarketplace {
+  const catalog = parseMarketplaceManifestJson(
+    cached.manifestJson,
+    "stored marketplace catalog",
+    warn,
+  );
+  const iconBase = { kind: "dir", root: source.url } as const;
+  for (const entry of catalog.plugins) {
+    entryScreenshotUrls(entry, iconBase, warn);
+  }
+  return {
+    catalog,
+    manifestJson: cached.manifestJson,
+    unchanged: true,
+    etag: cached.etag,
+    lastModified: cached.lastModified,
+    commit,
+    iconBase,
+    dispose: async () => {},
+  };
+}
+
+async function gitCommand(checkout: string, args: string[]): Promise<string> {
+  return runInstallCommand("git", [...GIT_CLONE_ARGS, "-C", checkout, ...args]);
+}
+
+async function disableSparseCheckout(checkout: string): Promise<void> {
+  await gitCommand(checkout, ["sparse-checkout", "disable"]);
+}
+
+function manifestLocalIconPaths(
+  catalog: MarketplaceManifest,
+  root: string,
+): string[] {
+  const paths = new Set<string>();
+  for (const entry of catalog.plugins) {
+    let icon: MarketplaceIconLocation | null;
+    try {
+      icon = resolveEntryIcon(entry, { kind: "dir", root });
+    } catch {
+      continue;
+    }
+    if (icon !== null && icon.kind === "local") paths.add(icon.relativePath);
+  }
+  return [...paths];
+}
+
+async function crossesSymlink(
+  checkout: string,
+  relativePath: string,
+): Promise<boolean> {
+  let current = checkout;
+  for (const segment of relativePath.split("/")) {
+    current = join(current, segment);
+    const entry = await lstat(current).catch(() => null);
+    if (entry === null) return false;
+    if (entry.isSymbolicLink()) return true;
+  }
+  return false;
+}
+
+async function sparseCheckoutHoldsCatalog(
+  checkout: string,
+  subdirectory: string | null,
+): Promise<boolean> {
+  const inRoot = (path: string) =>
+    subdirectory === null ? path : `${subdirectory}/${path}`;
+  const manifestPath = inRoot(MARKETPLACE_MANIFEST_FILENAME);
+  if (await crossesSymlink(checkout, manifestPath)) return false;
+  const raw = await readFile(
+    join(checkout, ...manifestPath.split("/")),
+    "utf8",
+  ).catch(() => null);
+  if (raw === null) return true;
+  let catalog: MarketplaceManifest;
   try {
-    await runInstallCommand("git", [
-      ...GIT_CLONE_ARGS,
-      "clone",
+    catalog = parseMarketplaceManifestJson(raw, "marketplace manifest");
+  } catch {
+    return true;
+  }
+  const iconPaths = manifestLocalIconPaths(
+    catalog,
+    join(checkout, ...(subdirectory === null ? [] : subdirectory.split("/"))),
+  );
+  if (subdirectory === null) {
+    const directories = [
+      ...new Set(
+        iconPaths.map((path) => dirname(path)).filter((path) => path !== "."),
+      ),
+    ];
+    if (
+      directories.some((directory) =>
+        SPARSE_CHECKOUT_PATTERN_CHARACTERS.test(directory),
+      )
+    ) {
+      return false;
+    }
+    if (
+      directories.length > 0 &&
+      !(await gitCommand(checkout, [
+        "sparse-checkout",
+        "add",
+        ...directories,
+      ]).then(
+        () => true,
+        () => false,
+      ))
+    ) {
+      return false;
+    }
+  }
+  for (const path of iconPaths) {
+    if (await crossesSymlink(checkout, inRoot(path))) return false;
+  }
+  return true;
+}
+
+async function fetchGitMarketplaceCommit(
+  source: Extract<MarketplaceSource, { kind: "git" }>,
+  checkout: string,
+  commit: string,
+): Promise<boolean> {
+  const subdirectory = source.subdirectory;
+  const sparse =
+    subdirectory === null ||
+    !SPARSE_CHECKOUT_PATTERN_CHARACTERS.test(subdirectory);
+  await runInstallCommand("git", ["init", "--quiet", checkout]);
+  try {
+    await gitCommand(checkout, ["remote", "add", "origin", source.url]);
+    await gitCommand(checkout, [
+      "fetch",
       "--quiet",
-      "--no-checkout",
-      source.url,
-      checkout,
+      "--depth",
+      "1",
+      "--no-tags",
+      "--filter=blob:none",
+      "origin",
+      commit,
     ]);
-    const commit = await runInstallCommand("git", [
+    if (sparse) {
+      await gitCommand(checkout, [
+        "sparse-checkout",
+        "set",
+        "--cone",
+        ...(subdirectory === null ? [] : [subdirectory]),
+      ]);
+    }
+    await gitCommand(checkout, [
+      "checkout",
+      "--quiet",
+      "--detach",
+      "FETCH_HEAD",
+    ]);
+    if (sparse && !(await sparseCheckoutHoldsCatalog(checkout, subdirectory))) {
+      await disableSparseCheckout(checkout);
+    }
+    return true;
+  } catch {
+    await rm(checkout, { recursive: true, force: true });
+    return false;
+  }
+}
+
+async function cloneGitMarketplaceRef(
+  source: Extract<MarketplaceSource, { kind: "git" }>,
+  checkout: string,
+): Promise<string> {
+  await runInstallCommand("git", [
+    ...GIT_CLONE_ARGS,
+    "clone",
+    "--quiet",
+    "--no-checkout",
+    source.url,
+    checkout,
+  ]);
+  const commit = await runInstallCommand("git", [
+    "-C",
+    checkout,
+    "rev-parse",
+    "--verify",
+    "--end-of-options",
+    `${source.ref}^{commit}`,
+  ]).catch(() =>
+    runInstallCommand("git", [
       "-C",
       checkout,
       "rev-parse",
       "--verify",
       "--end-of-options",
-      `${source.ref}^{commit}`,
-    ]).catch(() =>
-      runInstallCommand("git", [
-        "-C",
-        checkout,
-        "rev-parse",
-        "--verify",
-        "--end-of-options",
-        `refs/remotes/origin/${source.ref}^{commit}`,
-      ]),
-    );
-    await runInstallCommand("git", [
-      ...GIT_CLONE_ARGS,
-      "-C",
-      checkout,
-      "checkout",
-      "--quiet",
-      "--detach",
-      commit,
-    ]);
+      `refs/remotes/origin/${source.ref}^{commit}`,
+    ]),
+  );
+  await gitCommand(checkout, ["checkout", "--quiet", "--detach", commit]);
+  return commit;
+}
+
+async function materializeGit(
+  source: Extract<MarketplaceSource, { kind: "git" }>,
+  cached: CachedMarketplace | null,
+  stagingDir: string,
+  warn: ((message: string) => void) | undefined,
+): Promise<MaterializedMarketplace> {
+  const resolved = await resolveGitRef({ url: source.url, ref: source.ref });
+  if (
+    resolved.outcome === "resolved" &&
+    cached !== null &&
+    cached.commit === resolved.commit
+  ) {
+    try {
+      return unchangedGitMarketplace(source, cached, resolved.commit, warn);
+    } catch (error) {
+      warn?.(
+        `stored catalog for ${marketplaceSourceDisplay(source)} was re-read from the repository: ${marketplaceErrorMessage(error)}`,
+      );
+    }
+  }
+  await mkdir(stagingDir, { recursive: true });
+  const checkout = join(stagingDir, randomUUID());
+  const dispose = () => rm(checkout, { recursive: true, force: true });
+  try {
+    const commit =
+      resolved.outcome === "resolved" &&
+      (await fetchGitMarketplaceCommit(source, checkout, resolved.commit))
+        ? resolved.commit
+        : await cloneGitMarketplaceRef(source, checkout);
     await rm(join(checkout, ".git"), { recursive: true, force: true });
     return await materializeLocal(
       await gitMarketplaceRoot(checkout, source.subdirectory),

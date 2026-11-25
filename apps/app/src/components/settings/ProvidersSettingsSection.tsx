@@ -25,7 +25,7 @@ import {
   SettingsRowList,
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import { ProviderIcon } from "@/components/plugin/ProviderIcon";
 import { useSetProviderEnabled } from "@/hooks/mutations/provider-mutations";
 import {
@@ -204,7 +204,7 @@ function SortableProviderRow({
       style={style}
       className={cn(
         "group/provider-row",
-        isDragging && "relative z-10 rounded-md bg-card opacity-90 shadow-lift",
+        isDragging && "relative z-10 rounded-md bg-card shadow-lift",
       )}
     >
       {handle}

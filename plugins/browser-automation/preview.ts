@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { PreviewFrame, PreviewSize } from "./contracts.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/host";
 
 const messageSchema = z.object({
   id: z.number().int().optional(),
@@ -210,7 +211,7 @@ export function createPreview(
         ...latest,
         sequence: ++sequence,
         url: info.url.slice(0, 2_000),
-        title: info.title.slice(0, 300),
+        title: sliceUtf16Head(info.title, 300),
       };
       for (const waiter of [...waiters]) waiter.check();
     }
@@ -255,7 +256,7 @@ export function createPreview(
           width: frame.metadata.deviceWidth,
           height: frame.metadata.deviceHeight,
           url: (target?.url ?? "").slice(0, 2_000),
-          title: (target?.title ?? "").slice(0, 300),
+          title: sliceUtf16Head(target?.title ?? "", 300),
         };
         for (const waiter of [...waiters]) waiter.check();
       }

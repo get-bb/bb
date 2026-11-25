@@ -209,7 +209,7 @@ function parsePluginMentionTrigger(
 function localAuthProblem(
   context: Context,
   deps: PluginRoutesDeps,
-): WireAuthProblem | null {
+): BrowserRequestProblem | null {
   return browserRequestProblem(context, deps, {
     requireJsonForMutation: true,
   });
@@ -509,6 +509,7 @@ export function registerPluginRoutes(
       query,
       projectId: projectId !== null && projectId.length > 0 ? projectId : null,
       threadId: threadId !== null && threadId.length > 0 ? threadId : null,
+      signal: context.req.raw.signal,
     });
     return context.json({ ok: true, groups });
   });
@@ -814,17 +815,19 @@ export function registerPluginRoutes(
   });
 
   app.post("/plugins/:id/enable", async (context) => {
-    const plugin = await plugins.setEnabled(context.req.param("id"), true);
-    if (!plugin)
+    const outcome = await plugins.setEnabled(context.req.param("id"), true);
+    if (!outcome)
       return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
+    if (!outcome.ok) return context.json(outcome, 422);
+    return context.json(outcome);
   });
 
   app.post("/plugins/:id/disable", async (context) => {
-    const plugin = await plugins.setEnabled(context.req.param("id"), false);
-    if (!plugin)
+    const outcome = await plugins.setEnabled(context.req.param("id"), false);
+    if (!outcome)
       return context.json({ ok: false, error: "unknown plugin" }, 404);
-    return context.json({ ok: true, plugin });
+    if (!outcome.ok) return context.json(outcome, 422);
+    return context.json(outcome);
   });
 
   const NOT_RUNNING = {
@@ -849,12 +852,18 @@ export function registerPluginRoutes(
       );
     }
     try {
-      const view = await plugins.updateSettings(
+      const outcome = await plugins.updateSettings(
         context.req.param("id"),
         body.data.values,
       );
-      if (!view) return context.json(NOT_RUNNING, 404);
-      return context.json({ ok: true, ...view });
+      if (!outcome) return context.json(NOT_RUNNING, 404);
+      if (!outcome.ok) {
+        return context.json(
+          { ok: false, error: outcome.error, ...outcome.view },
+          422,
+        );
+      }
+      return context.json({ ok: true, ...outcome.view });
     } catch (error) {
       if (error instanceof PluginSettingsValidationError) {
         return context.json({ ok: false, error: error.message }, 400);
@@ -965,7 +974,10 @@ export function registerPluginRoutes(
     context.header("Cache-Control", "no-store");
     const problem = localAuthProblem(context, deps);
     if (problem) {
-      return context.json({ ok: false, error: problem.error }, problem.status);
+      return context.json(
+        { ok: false, error: { code: problem.code, message: problem.error } },
+        problem.status,
+      );
     }
     const callerResolution = plugins.resolveRpcCaller(
       context.req.header(PLUGIN_RPC_CALLER_HEADER),
@@ -974,7 +986,10 @@ export function registerPluginRoutes(
       return context.json(
         {
           ok: false,
-          error: `the ${PLUGIN_RPC_CALLER_HEADER} token isn't a running plugin's caller token`,
+          error: {
+            code: "invalid_caller",
+            message: `the ${PLUGIN_RPC_CALLER_HEADER} token isn't a running plugin's caller token`,
+          },
         },
         403,
       );
@@ -999,11 +1014,26 @@ export function registerPluginRoutes(
     }
     const lookup = plugins.getRpcHandler(id, method);
     if (lookup.outcome === "unknown-plugin") {
-      return context.json({ ok: false, error: `unknown plugin "${id}"` }, 404);
+      return context.json(
+        {
+          ok: false,
+          error: {
+            code: "plugin_not_found",
+            message: `unknown plugin "${id}"`,
+          },
+        },
+        404,
+      );
     }
     if (lookup.outcome === "not-running") {
       return context.json(
-        { ok: false, error: notRunningError(id, lookup) },
+        {
+          ok: false,
+          error: {
+            code: "plugin_not_running",
+            message: notRunningError(id, lookup),
+          },
+        },
         503,
       );
     }
@@ -1042,6 +1072,11 @@ export function registerPluginRoutes(
             invalid_output: 500,
             non_json_result: 500,
             unknown_method: 404,
+            plugin_not_found: 404,
+            plugin_not_running: 503,
+            invalid_caller: 403,
+            forbidden_origin: 403,
+            unsupported_media_type: 415,
             transport_error: 500,
             invalid_response: 500,
             unknown_error: 500,

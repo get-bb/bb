@@ -10,7 +10,7 @@ it("creates, enrolls, and removes a manual machine by host id", async () => {
     seedHost(harness.deps, { id: "local" });
     setAppSettings(harness.db, {
       ...defaultAppSettings,
-      defaultMachineAccess: "direct",
+      serverAccessOrder: ["direct"],
       machineServerUrl: "https://machine.example.test",
     });
     const response = await harness.app.request("/api/v1/hosts", {
@@ -89,7 +89,7 @@ it("creates, enrolls, and removes a manual machine by host id", async () => {
       body: await removed.clone().json(),
     }).toEqual({
       status: 200,
-      body: { ok: true },
+      body: { ok: true, progress: "complete", warnings: [] },
     });
     expect(getHost(harness.db, created.id)?.phase).toBe("destroyed");
   });

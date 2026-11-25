@@ -97,7 +97,13 @@ export function forkHostProcess(
       ? hostToolchain.node({ env, cwd: options.cwd })
       : options.execPath;
   return observe(
-    nodeFork(modulePath, args, { ...options, env, execArgv, execPath }),
+    nodeFork(modulePath, args, {
+      ...options,
+      env,
+      execArgv,
+      execPath,
+      windowsHide: options.windowsHide ?? true,
+    }),
   );
 }
 
@@ -224,6 +230,7 @@ export function spawnHostProcessSync(
   const result = crossSpawn.sync(launch.command, launch.args, {
     ...options,
     env: launch.env,
+    windowsHide: options.windowsHide ?? true,
   });
   hostToolchain.invalidateFailure(result.error ?? result.status);
   return result;

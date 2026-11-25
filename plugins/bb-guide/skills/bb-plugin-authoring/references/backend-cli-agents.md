@@ -96,7 +96,11 @@ callers can pipe it: the `bb` CLI reads exactly one non-empty line (at most
 `--<name> <value>`, keeping the value out of process arguments. Keep a
 required ID strict, but when `ctx.projectId` or
 `ctx.threadId` holds the value, throw an `PluginCliError` whose `hint`
-prints the exact flag to add. A registration built this way sets
+prints the exact flag to add. Any other error a command throws exits 1 with
+`bb <name> failed: <message>` on stderr and, under `--json`, the core
+`{ "ok": false, "error": { "code": "command_failed", "message" } }`
+envelope on stdout; its stack goes to `bb plugin logs <id>`. Do not wrap
+commands to convert errors yourself. A registration built this way sets
 `rendersHelp`, so `bb weather today --help` reaches the plugin and
 prints its full option help; a hand-written `run` leaves that unset and the
 `bb` CLI answers `--help` from the `commands[].usage` line without calling
@@ -135,6 +139,9 @@ frontend `pendingInteraction` slot. The promise resolves to
 `{ outcome: "submitted", value }` or `{ outcome: "cancelled", reason }`.
 Payloads and responses are JSON values capped at 64 KiB. `timeoutMs` defaults
 to ten minutes and is capped at seven days.
+The form's `cancel` prop does what Cancel on bb's own question form does: it
+cancels the request (a provider's request stops the turn instead), in the
+thread's composer and in a parent's Active child threads card alike.
 
 Two optional fields control the form's timeline row:
 
@@ -151,7 +158,10 @@ Two optional fields control the form's timeline row:
 Inside a tool's `execute`, opening a form returns a waiting notice to the
 agent while the plugin continues awaiting the answer. BB delivers the tool's
 eventual result separately: success resumes an active or idle agent; errors
-only reach an active agent.
+only reach an active agent. If the plugin is reloaded, updated or disabled
+first, or bb shuts down, BB ignores the tool's result and tells the agent,
+active or idle, that the call failed and can be made again. After a shutdown,
+that notice reaches the agent when bb starts again.
 
 Pass `ctx.signal` to cancel the form with its caller. For CLI commands,
 disconnection cancels it. For tools, request cancellation aborts the signal

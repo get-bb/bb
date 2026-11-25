@@ -19,20 +19,29 @@ import {
   type PluginThreadActionEntry,
   type PluginThreadActionRegistration,
   type PluginThreadActionsInlineItem,
+  type PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
 import type { ThreadListEntry } from "@bb/domain";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeEnvironment,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { CompactViewportOverrideProvider } from "@bb/shared-ui/hooks/use-compact-viewport";
-import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { appToast } from "@/components/ui/app-toast";
+import {
+  environmentQueryKey,
+  threadQueryKey,
+} from "@/hooks/queries/query-keys";
 import {
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
-import { getThreadRoutePath } from "@/lib/route-paths";
+import { getThreadLocationPath } from "@/lib/route-paths";
 import type { SplitLayout } from "@/lib/split-layout";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
+import { threadRequestsAtom } from "@/lib/thread-requests";
 import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
-import { threadListEntryActionTarget } from "@/lib/thread-actions/thread-action-target";
+import { holdSidebarThreads } from "@/test/fixtures/related-threads";
 import {
   ThreadActionCollectors,
   ThreadActionSurfaceVisibility,
@@ -46,14 +55,15 @@ import {
   useAppPanelController,
   type AppFixedTabDestination,
 } from "@/lib/app-fixed-tab-navigation";
+import { AppNavigationSurfaceProvider } from "@/lib/app-navigation-host";
 import {
   ThreadActionsContextMenu,
   ThreadActionsMenu,
 } from "./ThreadActionsMenu";
 
-const hostActions = vi.hoisted(() => ({
-  requestArchiveThreads: vi.fn(),
-  requestDeleteThreads: vi.fn(),
+const threadRequests = vi.hoisted(() => ({
+  requestArchive: vi.fn(async (_threadIds: readonly string[]) => {}),
+  requestDelete: vi.fn(async (_threadIds: readonly string[]) => {}),
 }));
 const sdkThreads = vi.hoisted(() => ({
   pin: vi.fn(),
@@ -65,13 +75,13 @@ const sdkThreads = vi.hoisted(() => ({
   get: vi.fn(),
   experimental_regenerateTitle: vi.fn(),
 }));
-const copyToClipboardWithToast = vi.hoisted(() => vi.fn(async () => true));
+const copyToClipboard = vi.hoisted(() => vi.fn(async () => true));
 
-vi.mock("@/lib/sdk", () => ({ sdk: { threads: sdkThreads } }));
-vi.mock("@/lib/clipboard", () => ({ copyToClipboardWithToast }));
-vi.mock("./ThreadActionsProvider", () => ({
-  useThreadActions: () => hostActions,
+vi.mock("@/lib/sdk", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/sdk")>()),
+  sdk: { threads: sdkThreads },
 }));
+vi.mock("@/lib/clipboard", () => ({ copyToClipboard }));
 
 const moveRun = vi.fn();
 const moveAction: PluginThreadActionRegistration = {
@@ -81,7 +91,9 @@ const moveAction: PluginThreadActionRegistration = {
   group: experimental_THREAD_ACTION_GROUPS.organize,
   order: 50,
   item: ({ thread }) =>
-    thread.parentThreadId !== null || thread.archivedAt !== null
+    thread.parentThreadId !== null ||
+    thread.archivedAt !== null ||
+    thread.isHidden
       ? null
       : {
           label: "Move to section",
@@ -133,7 +145,21 @@ const baseThread = makeThreadListEntry({
   latestAttentionAt: 5,
   environmentId: "env_a",
   environmentPath: "/repo",
+  environmentStatus: "ready",
+  environmentHostLifecycle: "active",
 });
+
+function sidebarQueryClient(threads: readonly ThreadListEntry[]): QueryClient {
+  const queryClient = new QueryClient();
+  holdSidebarThreads(queryClient, threads);
+  return queryClient;
+}
+
+function sidebarThreadsWithIds(ids: readonly string[]): QueryClient {
+  return sidebarQueryClient(
+    ids.map((id) => makeThreadListEntry({ ...baseThread, id })),
+  );
+}
 
 interface SurfaceOptions {
   thread: ThreadListEntry;
@@ -154,7 +180,7 @@ const SURFACES: readonly Surface[] = [
     compact: false,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         trigger={(props) => (
           <button {...props} type="button">
             Thread actions
@@ -176,7 +202,7 @@ const SURFACES: readonly Surface[] = [
     compact: false,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsContextMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         inline={inline}
         requestRename={requestRename}
       >
@@ -192,7 +218,7 @@ const SURFACES: readonly Surface[] = [
     compact: true,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         trigger={(props) => (
           <button {...props} type="button">
             Thread actions
@@ -211,7 +237,7 @@ const SURFACES: readonly Surface[] = [
     compact: true,
     render: ({ thread, inline, requestRename }) => (
       <ThreadActionsContextMenu
-        thread={threadListEntryActionTarget(thread)}
+        thread={thread}
         inline={inline}
         requestRename={requestRename}
       >
@@ -274,8 +300,9 @@ function renderSurface(
     threadActions = [],
   }: HostState = {},
 ) {
-  const queryClient = new QueryClient();
+  const queryClient = sidebarQueryClient([options.thread]);
   const store = createStore();
+  store.set(threadRequestsAtom, threadRequests);
   if (layout !== null) store.set(splitLayoutAtom, layout);
   if (cached) {
     queryClient.setQueryData(threadQueryKey(options.thread.id), options.thread);
@@ -349,6 +376,7 @@ afterEach(() => {
   resetPluginSlotStoreForTest();
   resetThreadActionRegistryForTest();
   vi.resetAllMocks();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -471,9 +499,47 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       ],
     },
     {
+      state: "a hidden side chat",
+      thread: makeThreadListEntry({ ...baseThread, visibility: "hidden" }),
+      route: "/",
+      layout: null,
+      desktop: [
+        "Open in split",
+        "Copy link",
+        "---",
+        "Mark unread",
+        "---",
+        "Rename",
+        "Regenerate title",
+        "---",
+        "Customize actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+      compact: [
+        "Copy link",
+        "New thread in environment",
+        "---",
+        "Mark unread",
+        "---",
+        "Rename",
+        "Regenerate title",
+        "---",
+        "Customize actions",
+        "---",
+        "Archive",
+        "Delete",
+        "---",
+        "Notifications",
+      ],
+    },
+    {
       state: "the thread already in view",
       thread: baseThread,
-      route: getThreadRoutePath({
+      route: getThreadLocationPath({
         projectId: baseThread.projectId,
         threadId: baseThread.id,
       }),
@@ -517,7 +583,10 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     {
       state: "a thread open in another split pane",
       thread: baseThread,
-      route: getThreadRoutePath({ projectId: "proj_a", threadId: "thr_other" }),
+      route: getThreadLocationPath({
+        projectId: "proj_a",
+        threadId: "thr_other",
+      }),
       layout: twoPaneLayout("pane_other"),
       desktop: [
         "Focus split",
@@ -559,7 +628,7 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     {
       state: "the thread in the focused split pane",
       thread: baseThread,
-      route: getThreadRoutePath({
+      route: getThreadLocationPath({
         projectId: baseThread.projectId,
         threadId: baseThread.id,
       }),
@@ -610,6 +679,49 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       );
       await surface.open();
       expect(await menuRows()).toEqual(surface.compact ? compact : desktop);
+    },
+  );
+
+  it.skipIf(!surface.compact).each([
+    {
+      environmentStatus: "ready",
+      environmentHostLifecycle: "active",
+      offered: true,
+    },
+    {
+      environmentStatus: "provisioning",
+      environmentHostLifecycle: "active",
+      offered: true,
+    },
+    {
+      environmentStatus: "error",
+      environmentHostLifecycle: "active",
+      offered: false,
+    },
+    {
+      environmentStatus: "ready",
+      environmentHostLifecycle: "removing",
+      offered: false,
+    },
+    {
+      environmentStatus: "ready",
+      environmentHostLifecycle: "removed",
+      offered: false,
+    },
+  ] as const)(
+    "offers New thread in environment for a $environmentStatus environment on a $environmentHostLifecycle machine: $offered",
+    async ({ environmentStatus, environmentHostLifecycle, offered }) => {
+      renderSurface(surface, {
+        thread: makeThreadListEntry({
+          ...baseThread,
+          environmentStatus,
+          environmentHostLifecycle,
+        }),
+      });
+      await surface.open();
+      expect((await menuRows()).includes("New thread in environment")).toBe(
+        offered,
+      );
     },
   );
 
@@ -689,16 +801,16 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
     await waitFor(() =>
-      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
+      expect(threadRequests.requestArchive).toHaveBeenCalledWith([
+        baseThread.id,
       ]),
     );
 
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
     await waitFor(() =>
-      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
+      expect(threadRequests.requestDelete).toHaveBeenCalledWith([
+        baseThread.id,
       ]),
     );
 
@@ -708,14 +820,14 @@ describe.each(SURFACES)("thread actions on the $name", (surface) => {
       expect.objectContaining({ value: "sec_building" }),
     );
 
+    const copiedToast = vi.spyOn(appToast, "success");
     await surface.open();
     fireEvent.click(await screen.findByRole("menuitem", { name: "Copy link" }));
-    expect(copyToClipboardWithToast).toHaveBeenCalledWith(
-      `${window.location.origin}/projects/proj_a/threads/thr_target`,
-      {
-        successMessage: "Thread link copied",
-        errorMessage: "Failed to copy thread link",
-      },
+    expect(copyToClipboard).toHaveBeenCalledWith({
+      text: `${window.location.origin}/projects/proj_a/threads/thr_target`,
+    });
+    await waitFor(() =>
+      expect(copiedToast).toHaveBeenCalledWith("Thread link copied", {}),
     );
   });
 
@@ -782,7 +894,7 @@ describe("thread actions menu trigger", () => {
         ...surface,
         render: ({ thread }) => (
           <ThreadActionsMenu
-            thread={threadListEntryActionTarget(thread)}
+            thread={thread}
             trigger={(props) => (
               <button {...props} type="button" className="mine">
                 Thread actions
@@ -820,7 +932,7 @@ describe("thread actions menu trigger", () => {
         ...surface,
         render: ({ thread }) => (
           <ThreadActionsMenu
-            thread={threadListEntryActionTarget(thread)}
+            thread={thread}
             trigger={() => <button type="button">Thread actions</button>}
           />
         ),
@@ -879,29 +991,7 @@ describe("thread actions outside bb's own surfaces", () => {
   const [surface] = SURFACES;
   if (surface === undefined) throw new Error("no surface");
 
-  it("fetches a thread bb has not cached before archiving or deleting it", async () => {
-    sdkThreads.get.mockResolvedValue(baseThread);
-    renderSurface(surface, { thread: baseThread }, { cached: false });
-
-    await surface.open();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Archive" }));
-    await waitFor(() =>
-      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
-      ]),
-    );
-
-    await surface.open();
-    fireEvent.click(await screen.findByRole("menuitem", { name: "Delete" }));
-    await waitFor(() =>
-      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: baseThread.id }),
-      ]),
-    );
-    expect(sdkThreads.get).toHaveBeenCalledWith({ threadId: baseThread.id });
-  });
-
-  it("opens a plugin's thread panel in the focused thread view, through experimental_panel and the retired openThreadPanel", async () => {
+  it("opens a plugin's thread panel in the focused thread view, through panel and the retired experimental_panel and openThreadPanel", async () => {
     const open = vi.fn(() => true);
     const close = vi.fn();
     const opened = vi.fn();
@@ -914,17 +1004,21 @@ describe("thread actions outside bb's own surfaces", () => {
       },
     ];
     function FocusedThreadView() {
-      useAppPanelController({
+      const panel = useAppPanelController({
         activeTabId: null,
         close,
         destinations,
-        isFocused: true,
       });
-      return null;
+      return (
+        <AppNavigationSurfaceProvider capabilities={{ panel }} isFocused>
+          {null}
+        </AppNavigationSurfaceProvider>
+      );
     }
     type RetiredNavigate = {
       openThreadPanel(options: { actionId: string }): boolean;
     };
+    type RetiredContext = { experimental_panel: unknown };
     render(<FocusedThreadView />);
     renderSurface(
       surface,
@@ -936,12 +1030,15 @@ describe("thread actions outside bb's own surfaces", () => {
             title: "Open details",
             icon: "Info",
             group: "5_plugin",
-            item: ({ navigate, experimental_panel }) => ({
+            item: (input) => ({
               label: "Open details",
               icon: "Info",
               run: () => {
+                const { navigate, panel } = input;
                 opened(
-                  experimental_panel.openTab({
+                  (input as unknown as RetiredContext).experimental_panel ===
+                    panel,
+                  panel.openTab({
                     tab: {
                       id: "details",
                       context: { kind: "thread" },
@@ -952,7 +1049,7 @@ describe("thread actions outside bb's own surfaces", () => {
                   (navigate as unknown as RetiredNavigate).openThreadPanel({
                     actionId: "details",
                   }),
-                  experimental_panel.close(),
+                  panel.close(),
                 );
               },
             }),
@@ -965,7 +1062,9 @@ describe("thread actions outside bb's own surfaces", () => {
     fireEvent.click(
       await screen.findByRole("menuitem", { name: "Open details" }),
     );
-    await waitFor(() => expect(opened).toHaveBeenCalledWith(true, true, true));
+    await waitFor(() =>
+      expect(opened).toHaveBeenCalledWith(true, true, true, true),
+    );
     expect(open).toHaveBeenNthCalledWith(1, undefined, {
       params: { from: "panel" },
     });
@@ -974,12 +1073,182 @@ describe("thread actions outside bb's own surfaces", () => {
   });
 });
 
+describe("thread action target", () => {
+  const expected: PluginThreadActionTarget = {
+    id: baseThread.id,
+    projectId: baseThread.projectId,
+    parentThreadId: null,
+    parentNotifications: baseThread.parentNotifications,
+    archivedAt: null,
+    pinnedAt: null,
+    sectionId: "sec_planning",
+    isUnread: false,
+    isHidden: false,
+    status: baseThread.status,
+    environment: {
+      id: "env_a",
+      path: "/repo",
+      status: "ready",
+      hostLifecycle: "active",
+    },
+  };
+  const seen: { from: string; thread: PluginThreadActionTarget }[] = [];
+  const recorder = (
+    placement: "menu" | "header",
+  ): PluginThreadActionRegistration => ({
+    id: `recorder-${placement}`,
+    title: "Recorder",
+    icon: "Notification",
+    group: "5_plugin",
+    placement,
+    useData: ({ experimental_threads }) => {
+      for (const thread of experimental_threads) {
+        seen.push({ from: `${placement} useData`, thread });
+      }
+      return undefined;
+    },
+    item: ({ thread }) => {
+      seen.push({ from: `${placement} item`, thread });
+      return null;
+    },
+    experimental_bulkItem: ({ threads }) => {
+      for (const thread of threads) seen.push({ from: "bulk", thread });
+      return null;
+    },
+  });
+
+  afterEach(() => {
+    seen.length = 0;
+  });
+
+  it.each(SURFACES)(
+    "is resolved from the thread's id on the $name",
+    async (surface) => {
+      renderSurface(
+        surface,
+        { thread: makeThreadListEntry({ ...baseThread, title: "Ignored" }) },
+        { threadActions: [recorder("menu")] },
+      );
+      await surface.open();
+      await waitFor(() =>
+        expect(seen.map(({ from }) => from)).toEqual(
+          expect.arrayContaining(["menu item", "menu useData"]),
+        ),
+      );
+      for (const { thread } of seen) expect(thread).toEqual(expected);
+    },
+  );
+
+  it("is the same for the open thread's header and a selection", async () => {
+    const other = makeThreadListEntry({ ...baseThread, id: "thr_other" });
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({
+        threadActions: [recorder("menu"), recorder("header")],
+      }),
+    );
+    function Header() {
+      useThreadHeaderActionEntries({ id: baseThread.id });
+      return null;
+    }
+    render(
+      <QueryClientProvider client={sidebarQueryClient([baseThread, other])}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Header />
+          <ThreadActionsContextMenu
+            thread={{ id: baseThread.id }}
+            experimental_bulkThreads={[{ id: baseThread.id }, { id: other.id }]}
+          >
+            <div>Selection</div>
+          </ThreadActionsContextMenu>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.contextMenu(screen.getByText("Selection"));
+    await waitFor(() =>
+      expect(seen.map(({ from }) => from)).toEqual(
+        expect.arrayContaining([
+          "header item",
+          "header useData",
+          "menu useData",
+          "bulk",
+        ]),
+      ),
+    );
+    const forThread = seen.filter(({ thread }) => thread.id === baseThread.id);
+    for (const { thread } of forThread) expect(thread).toEqual(expected);
+    expect(
+      seen.find(({ from, thread }) => from === "bulk" && thread.id === other.id)
+        ?.thread,
+    ).toEqual({ ...expected, id: other.id });
+  });
+});
+
+describe("thread action target outside the sidebar", () => {
+  it("is read through the thread and environment queries", async () => {
+    const seen: PluginThreadActionTarget[] = [];
+    setPluginSlotRegistrations(
+      "fixture",
+      makePluginRegistrationSet({
+        threadActions: [
+          {
+            id: "recorder",
+            title: "Recorder",
+            icon: "Notification",
+            group: "5_plugin",
+            item: ({ thread }) => {
+              seen.push(thread);
+              return null;
+            },
+          },
+        ],
+      }),
+    );
+    const unheld = makeThreadListEntry({
+      ...baseThread,
+      id: "thr_unheld",
+      archivedAt: 30,
+      environmentId: "env_b",
+    });
+    sdkThreads.get.mockResolvedValue(unheld);
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(threadQueryKey(unheld.id), unheld);
+    queryClient.setQueryData(
+      environmentQueryKey("env_b"),
+      makeEnvironment({ id: "env_b", path: "/b" }),
+    );
+    function Row() {
+      useThreadActionEntries({ id: unheld.id });
+      return null;
+    }
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MemoryRouter>
+          <ThreadActionCollectors
+            coreRegistrations={[]}
+            requestRename={defaultRequestRename}
+          />
+          <Row />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() =>
+      expect(seen.at(-1)).toMatchObject({
+        id: unheld.id,
+        archivedAt: 30,
+        environment: { id: "env_b", path: "/b" },
+      }),
+    );
+  });
+});
+
 describe("thread action data input", () => {
   function Row({ id }: { id: string }) {
-    useThreadActionEntries(
-      threadListEntryActionTarget({ ...baseThread, id }),
-      {},
-    );
+    useThreadActionEntries({ ...baseThread, id }, {});
     return null;
   }
 
@@ -1000,7 +1269,12 @@ describe("thread action data input", () => {
       "fixture",
       makePluginRegistrationSet({ threadActions: [recorder] }),
     );
-    const queryClient = new QueryClient();
+    const queryClient = sidebarThreadsWithIds([
+      "thr_a",
+      "thr_b",
+      "thr_c",
+      ...Array.from({ length: 250 }, (_, index) => `thr_${index}`),
+    ]);
     function Surface({
       ids,
       visible = true,
@@ -1075,13 +1349,13 @@ describe("thread action data input", () => {
       makePluginRegistrationSet({ threadActions: [headerRecorder] }),
     );
     function Header({ id }: { id: string }) {
-      useThreadHeaderActionEntries(
-        threadListEntryActionTarget({ ...baseThread, id }),
-      );
+      useThreadHeaderActionEntries({ ...baseThread, id });
       return null;
     }
     render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider
+        client={sidebarThreadsWithIds(["thr_row_a", "thr_row_b", "thr_open"])}
+      >
         <MemoryRouter>
           <ThreadActionCollectors
             coreRegistrations={[]}
@@ -1154,7 +1428,9 @@ describe.each([
   };
 
   function renderSelection(threads: readonly ThreadListEntry[]) {
-    const queryClient = new QueryClient();
+    const queryClient = sidebarQueryClient(threads);
+    const store = createStore();
+    store.set(threadRequestsAtom, threadRequests);
     for (const thread of threads) {
       queryClient.setQueryData(threadQueryKey(thread.id), thread);
     }
@@ -1171,7 +1447,7 @@ describe.each([
     );
     return render(
       <QueryClientProvider client={queryClient}>
-        <Provider store={createStore()}>
+        <Provider store={store}>
           <MemoryRouter>
             <CompactViewportOverrideProvider isCompactViewport={compact}>
               <ThreadActionCollectors
@@ -1179,10 +1455,8 @@ describe.each([
                 requestRename={defaultRequestRename}
               />
               <ThreadActionsContextMenu
-                thread={threadListEntryActionTarget(threads[0] ?? baseThread)}
-                experimental_bulkThreads={threads.map(
-                  threadListEntryActionTarget,
-                )}
+                thread={threads[0] ?? baseThread}
+                experimental_bulkThreads={threads}
                 inline={[CLEAR]}
                 onEscapeKeyDown={onEscapeKeyDown}
               >
@@ -1260,9 +1534,9 @@ describe.each([
       await screen.findByRole("menuitem", { name: "Archive 2 threads" }),
     );
     await waitFor(() =>
-      expect(hostActions.requestArchiveThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: "thr_read" }),
-        expect.objectContaining({ id: "thr_unread" }),
+      expect(threadRequests.requestArchive).toHaveBeenCalledWith([
+        "thr_read",
+        "thr_unread",
       ]),
     );
 
@@ -1271,9 +1545,9 @@ describe.each([
       await screen.findByRole("menuitem", { name: "Delete 2 threads" }),
     );
     await waitFor(() =>
-      expect(hostActions.requestDeleteThreads).toHaveBeenCalledWith([
-        expect.objectContaining({ id: "thr_read" }),
-        expect.objectContaining({ id: "thr_unread" }),
+      expect(threadRequests.requestDelete).toHaveBeenCalledWith([
+        "thr_read",
+        "thr_unread",
       ]),
     );
 
@@ -1355,9 +1629,7 @@ describe("header thread actions", () => {
   function HeaderLabels() {
     return (
       <ol>
-        {useThreadHeaderActionEntries(
-          threadListEntryActionTarget(baseThread),
-        ).map((entry) => (
+        {useThreadHeaderActionEntries(baseThread).map((entry) => (
           <li key={entry.key}>{entry.action.label}</li>
         ))}
       </ol>
@@ -1453,17 +1725,13 @@ describe("thread action rows", () => {
     const entries = new Map<string, readonly PluginThreadActionEntry[]>();
     function Row({ id }: { id: string }) {
       renders.set(id, (renders.get(id) ?? 0) + 1);
-      entries.set(
-        id,
-        useThreadActionEntries(
-          threadListEntryActionTarget({ ...baseThread, id }),
-          {},
-        ),
-      );
+      entries.set(id, useThreadActionEntries({ ...baseThread, id }, {}));
       return null;
     }
     render(
-      <QueryClientProvider client={new QueryClient()}>
+      <QueryClientProvider
+        client={sidebarThreadsWithIds(["thr_a", "thr_b", "thr_c"])}
+      >
         <MemoryRouter>
           <ThreadActionCollectors
             coreRegistrations={[]}

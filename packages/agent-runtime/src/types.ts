@@ -60,8 +60,6 @@ export interface AgentRuntimeProcessExitInfo {
 export interface AgentRuntimeOptions {
   workspacePath: string;
 
-  additionalWorkspaceWriteRoots?: readonly string[];
-
   env?: Record<string, string>;
 
   shellEnv?: AgentRuntimeShellEnvironment;
@@ -84,6 +82,7 @@ export interface AgentRuntimeOptions {
 
   onInteractiveRequest?: (
     request: PendingInteractionCreate,
+    signal: AbortSignal,
   ) => Promise<PendingInteractionResolution>;
 
   onStderr?: (line: string, threadId?: string) => void;
@@ -124,6 +123,7 @@ export interface EnsureProviderArgs {
 }
 
 export interface StartThreadArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -148,6 +148,7 @@ export interface StartThreadResult {
 }
 
 interface PrepareThreadRewindArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -173,6 +174,7 @@ interface DiscardThreadRewindArgs {
 }
 
 export interface ResumeThreadArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   skillRoots?: readonly AgentRuntimeSkillRoot[];
   environmentId: string;
@@ -192,6 +194,7 @@ export interface ResumeThreadResult {
 }
 
 export interface RunTurnArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   threadId: string;
   input: PromptInput[];
   clientRequestId: ClientTurnRequestId;
@@ -203,6 +206,7 @@ export interface RunTurnArgs {
 export type RunTurnResult = { status: "started" } | { status: "unconfirmed" };
 
 export interface SteerTurnArgs {
+  additionalWorkspaceWriteRoots: readonly string[];
   threadId: string;
   expectedTurnId: string;
   input: PromptInput[];
@@ -267,6 +271,14 @@ export interface ReapIdleProviderSessionsResult {
   reapedSessions: ReapedIdleProviderSession[];
 }
 
+export interface ReconfigureSkillRootsArgs {
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+}
+
+export interface ReconfigureSkillRootsResult {
+  appliedToEveryProvider: boolean;
+}
+
 export interface RenameThreadArgs {
   threadId: string;
   title: string;
@@ -295,19 +307,24 @@ export interface ListModelsArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
-  contributedEnv?: readonly AgentRuntimeContributedEnvEntry[];
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 export interface ListCommandsArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd: string;
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
-interface ProviderMaintenanceArgs {
+interface ProviderUsageArgs {
   providerId: string;
   bridgeLaunch: AgentRuntimeBridgeLaunch;
   cwd?: string;
+}
+
+interface ProviderMaintenanceArgs extends ProviderUsageArgs {
+  contributedEnv: readonly AgentRuntimeContributedEnvEntry[];
 }
 
 interface ProviderInstallationStatusArgs extends ProviderMaintenanceArgs {
@@ -356,7 +373,7 @@ export interface AgentRuntime {
 
   providerHealth(args: ProviderMaintenanceArgs): Promise<ProviderHealthResult>;
 
-  providerUsage(args: ProviderMaintenanceArgs): Promise<ProviderUsageResult>;
+  providerUsage(args: ProviderUsageArgs): Promise<ProviderUsageResult>;
 
   providerInstallationStatus(
     args: ProviderInstallationStatusArgs,
@@ -388,6 +405,10 @@ export interface AgentRuntime {
   getLiveThreadIds(): string[];
 
   hasOpenBackgroundWork(): boolean;
+
+  reconfigureSkillRoots(
+    args: ReconfigureSkillRootsArgs,
+  ): Promise<ReconfigureSkillRootsResult>;
 
   listOpenBackgroundWork(): RuntimeOpenBackgroundWork[];
 

@@ -1,8 +1,17 @@
 import {
+  outputJson,
+  reportCommandResult,
+  reportOperation,
+} from "../command-result.js";
+import {
   GIT_PLUGIN_ID,
+  environmentHolderSchema,
   environmentStatusSchema,
   environmentStatusValues,
+  jsonValueSchema,
+  type EnvironmentHolder,
   type EnvironmentStatus,
+  type JsonValue,
 } from "@bb/domain";
 import { Command } from "commander";
 import type { CommitActionResponse } from "@bb/server-contract";
@@ -11,13 +20,19 @@ import { action } from "../action.js";
 import { runPluginCliCommand } from "../plugin-cli-proxy.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
-import { outputJson, prependErrorContext } from "./helpers.js";
+import {
+  LIST_COMMAND_DEFAULT_LIMIT,
+  parseNonNegativeIntegerOption,
+  prependErrorContext,
+  printListPageNotice,
+} from "./helpers.js";
 
 interface EnvironmentCommitCommandOptions {
   json?: boolean;
 }
 
 interface EnvironmentListCommandOptions {
+  heldBy?: string;
   host?: string;
   instanceKey?: string;
   json?: boolean;
@@ -26,6 +41,16 @@ interface EnvironmentListCommandOptions {
   project?: string;
   provider?: string;
   status?: string;
+}
+
+interface EnvironmentCreateCommandOptions {
+  host?: string;
+  inputs?: string;
+  json?: boolean;
+  machine?: string;
+  name?: string;
+  project: string;
+  provider?: string;
 }
 
 interface EnvironmentProvidersCommandOptions {
@@ -83,6 +108,24 @@ const GIT_COMMAND_REPLACEMENTS: Record<
   "diff-viewed": "viewed",
 };
 
+function parseEnvironmentHolder(value: string): EnvironmentHolder {
+  const parsed = environmentHolderSchema.safeParse(value);
+  if (!parsed.success)
+    throw new Error('--held-by must be "user" or "plugin:<plugin-id>".');
+  return parsed.data;
+}
+
+function parseInputsOption(value: string | undefined): JsonValue | undefined {
+  if (value === undefined) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw new Error("--inputs must be valid JSON.");
+  }
+  return jsonValueSchema.parse(parsed);
+}
+
 function parseEnvironmentStatus(value: string): EnvironmentStatus {
   const parsed = environmentStatusSchema.safeParse(value);
   if (!parsed.success) {
@@ -97,21 +140,6 @@ function validateLimit(limit: string | undefined): void {
   if (limit !== undefined && !/^\d+$/u.test(limit)) {
     throw new Error("--limit must contain only digits.");
   }
-}
-
-function parseNonNegativeIntegerOption(
-  value: string | undefined,
-  optionName: "--limit" | "--offset",
-): number | undefined {
-  if (value === undefined) return undefined;
-  if (!/^\d+$/u.test(value)) {
-    throw new Error(`${optionName} must be a non-negative integer.`);
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed)) {
-    throw new Error(`${optionName} must be a non-negative integer.`);
-  }
-  return parsed;
 }
 
 function booleanQueryValue(value: boolean): "true" | "false" {
@@ -181,8 +209,10 @@ export function registerEnvironmentCommands(
             environmentId: id,
             recover: opts.recover,
           });
-          if (!outputJson(opts, result))
-            console.log("Environment cleanup requested.");
+          reportOperation(opts, result, {
+            complete: `Environment ${id} cleaned up.`,
+            inProgress: "Environment cleanup requested.",
+          });
         },
       ),
     );
@@ -253,6 +283,10 @@ export function registerEnvironmentCommands(
     )
     .option("--host <id-or-name>", "Only environments on this machine")
     .option(
+      "--held-by <holder>",
+      'Only environments kept alive by this holder: "user" or "plugin:<plugin-id>"',
+    )
+    .option(
       "--instance-key <key>",
       "Only the environment its provider named with this instance key",
     )
@@ -260,12 +294,17 @@ export function registerEnvironmentCommands(
       "--status <status>",
       "Only environments in this status: provisioning, ready, error, destroyed",
     )
-    .option("--limit <n>", "At most this many rows, oldest first")
+    .option(
+      "--limit <n>",
+      `At most this many rows, oldest first (default ${LIST_COMMAND_DEFAULT_LIMIT})`,
+    )
     .option("--offset <n>", "Skip this many rows")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (opts: EnvironmentListCommandOptions) => {
-        const limit = parseNonNegativeIntegerOption(opts.limit, "--limit");
+        const limit =
+          parseNonNegativeIntegerOption(opts.limit, "--limit") ??
+          LIST_COMMAND_DEFAULT_LIMIT;
         const offset = parseNonNegativeIntegerOption(opts.offset, "--offset");
         const sdk = createCliBbSdk(getUrl());
         const hostId =
@@ -279,19 +318,81 @@ export function registerEnvironmentCommands(
           ...(opts.project ? { projectId: opts.project } : {}),
           ...(opts.provider ? { environmentProviderId: opts.provider } : {}),
           ...(opts.instanceKey ? { instanceKey: opts.instanceKey } : {}),
+          ...(opts.heldBy === undefined
+            ? {}
+            : { heldBy: parseEnvironmentHolder(opts.heldBy) }),
           ...(hostId === undefined ? {} : { hostId }),
           ...(opts.status === undefined
             ? {}
             : { status: parseEnvironmentStatus(opts.status) }),
-          ...(limit === undefined ? {} : { limit }),
+          limit,
           ...(offset === undefined ? {} : { offset }),
         });
         if (outputJson(opts, rows)) return;
         for (const env of rows) {
           console.log(
-            `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
+            `${env.id}  ${env.status}  ${env.environmentProviderId ?? "-"}  ${env.path ?? "-"}${env.heldBy === null ? "" : `  held by ${env.heldBy}`}${env.lifecycle.teardown?.message ? `  ${env.lifecycle.teardown.message}` : ""}`,
           );
         }
+        printListPageNotice({
+          count: rows.length,
+          limit,
+          noun: "environments",
+          offset,
+        });
+      }),
+    );
+
+  environment
+    .command("create")
+    .description(
+      "Create an environment before any thread; you hold it until you delete it",
+    )
+    .requiredOption("--project <id>", "Project to create it in")
+    .option(
+      "--machine <id-or-name>",
+      "Machine to create it on; defaults to the project's default checkout machine",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option(
+      "--provider <id>",
+      "Environment provider; defaults to worktree (personal workspace for the personal project)",
+    )
+    .option(
+      "--inputs <json>",
+      "Provider inputs as JSON; `bb environment providers --json` shows each schema",
+    )
+    .option("--name <name>", "Environment display name")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (opts: EnvironmentCreateCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const target = resolveMachineTargetOption(opts);
+        const hostId =
+          target === undefined
+            ? undefined
+            : await resolveMachineHostId({ serverUrl: getUrl(), target });
+        const inputs = parseInputsOption(opts.inputs);
+        if (inputs !== undefined && opts.provider === undefined)
+          throw new Error("--inputs requires --provider <id>.");
+        const env = await sdk.environments.experimental_create({
+          projectId: opts.project,
+          ...(hostId === undefined ? {} : { hostId }),
+          ...(opts.provider === undefined
+            ? {}
+            : {
+                provider: {
+                  id: opts.provider,
+                  ...(inputs === undefined ? {} : { inputs }),
+                },
+              }),
+          ...(opts.name === undefined ? {} : { name: opts.name }),
+          hold: "user",
+        });
+        if (outputJson(opts, env)) return;
+        console.log(
+          `Creating environment ${env.id} (${env.environmentProviderId ?? "-"}). Follow it with: bb environment show ${env.id}`,
+        );
       }),
     );
 
@@ -305,10 +406,50 @@ export function registerEnvironmentCommands(
       action(async (id: string, opts: { json?: boolean }) => {
         const sdk = createCliBbSdk(getUrl());
         const result = await sdk.environments.delete({ environmentId: id });
-        if (outputJson(opts, result)) return;
+        if (result.progress === "complete" || opts.json) {
+          reportOperation(opts, result, {
+            complete: `Environment ${id} removed.`,
+            inProgress: `Cleanup requested for environment ${id}.`,
+          });
+          return;
+        }
         const environment = await sdk.environments.get({ environmentId: id });
-        console.log(`Cleanup requested for environment ${id}.`);
-        console.log(`Lifecycle: ${environment.lifecycle.phase}`);
+        reportCommandResult(opts, result, {
+          text: [
+            `Cleanup requested for environment ${id}.`,
+            `Lifecycle: ${environment.lifecycle.phase}`,
+          ],
+          failure: null,
+        });
+      }),
+    );
+
+  environment
+    .command("repos <id>")
+    .description(
+      "List a ready environment's git repositories: its main folder, extra folders, and repos found inside them",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentShowCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.environments.experimental_repos({
+          environmentId: id,
+        });
+        if (outputJson(opts, result)) return;
+        if (result.repos.length === 0) {
+          console.log("No git repositories.");
+          return;
+        }
+        for (const repo of result.repos) {
+          const label = repo.label.length === 0 ? "(main)" : repo.label;
+          const scope =
+            repo.path === repo.rootPath ? "" : `  (folder ${repo.path})`;
+          console.log(`${label}  ${repo.source}  ${repo.rootPath}${scope}`);
+        }
+        if (result.truncated) {
+          console.log("More repositories were found than are listed.");
+        }
       }),
     );
 
@@ -325,7 +466,10 @@ export function registerEnvironmentCommands(
         console.log(`Environment: ${env.id}`);
         console.log(`  Project: ${env.projectId}`);
         console.log(`  Status: ${env.status}`);
+        if (env.statusMessage !== null)
+          console.log(`  Status message: ${env.statusMessage}`);
         console.log(`  Lifecycle: ${env.lifecycle.phase}`);
+        if (env.heldBy !== null) console.log(`  Held by: ${env.heldBy}`);
         if (env.lifecycle.retireAt !== null)
           console.log(
             `  Retire at: ${new Date(env.lifecycle.retireAt).toISOString()}`,
@@ -341,6 +485,13 @@ export function registerEnvironmentCommands(
         }
         if (env.path) {
           console.log(`  Path: ${env.path}`);
+        }
+        for (const additionalPath of env.additionalPaths) {
+          console.log(
+            additionalPath.replaces === null
+              ? `  Folder: ${additionalPath.path}`
+              : `  Folder: ${additionalPath.path} (replaces project folder ${additionalPath.replaces})`,
+          );
         }
         if (env.name) {
           console.log(`  Name: ${env.name}`);

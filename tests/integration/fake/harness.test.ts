@@ -59,7 +59,10 @@ describe("integration harness", () => {
       const response = await harness.api.system.config.reload.$post({});
 
       expect(response.status).toBe(200);
-      await expect(response.json()).resolves.toEqual({ ok: true });
+      await expect(response.json()).resolves.toEqual({
+        ok: true,
+        progress: "complete",
+      });
       expect(harness.server.config.appUrl).toBe("https://stored.example.test");
     });
   });

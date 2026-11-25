@@ -5,6 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { TooltipProvider } from "@bb/shared-ui/tooltip";
 import { PaletteModeChip } from "./PaletteModeChip";
 import { PALETTE_INPUT_CLASS, PaletteInputBand } from "./PaletteInputBand";
+import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export const THREAD_SEARCH_INPUT = {
   label: "Search threads",
@@ -55,9 +56,9 @@ export function ThreadSearchPalettePlaceholder({
           className={cn(PALETTE_INPUT_CLASS, isCompact && "text-base")}
           onChange={(event) => onQueryChange(event.target.value)}
           onKeyDown={(event) => {
-            if (event.nativeEvent.isComposing) return;
+            if (isImeComposing(event)) return;
             if (
-              event.key === "Escape" ||
+              isNonImeKey(event, "Escape") ||
               (event.key === "Backspace" && query.length === 0)
             ) {
               event.preventDefault();

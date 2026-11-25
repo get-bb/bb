@@ -18,6 +18,7 @@ import {
   isLastInputKeyboard,
 } from "./overlay-trigger.js";
 import { useCloseWhenAnchorDetaches } from "./overlay-anchor.js";
+import { isNonImeKey } from "../../lib/ime-keyboard";
 
 const SELECT_OPEN_KEYS = new Set([" ", "Enter", "ArrowUp", "ArrowDown"]);
 const ENABLED_OPTION_SELECTOR = '[role="option"]:not([aria-disabled="true"])';
@@ -547,7 +548,7 @@ const SelectItem = React.forwardRef<
           if (event.defaultPrevented || event.target !== event.currentTarget) {
             return;
           }
-          if (event.key === "Enter" || event.key === " ") {
+          if (isNonImeKey(event, "Enter") || event.key === " ") {
             event.preventDefault();
             select();
           }

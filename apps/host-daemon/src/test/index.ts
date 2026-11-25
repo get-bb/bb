@@ -3,3 +3,8 @@ export type { HostDaemonApp } from "../app.js";
 export type { HostDaemon } from "../daemon.js";
 export { loadHostIdentity, persistHostId } from "../identity.js";
 export { acquireDaemonLock } from "../lock.js";
+export {
+  ServerRouteResolver,
+  persistServerRoutes,
+  readPersistedServerRoutes,
+} from "../server-routes.js";

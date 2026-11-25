@@ -31,6 +31,7 @@ import {
   createTestServerMoveEnvironment,
   inspectResult,
   registerFakeDaemon,
+  SERVER_MOVE_STEP_POLL,
   TEST_SERVER_MOVE_TIMINGS,
   type FakeDaemonReply,
 } from "../helpers/server-move.js";
@@ -252,7 +253,10 @@ describe("server move coordinator", () => {
       expect(coordinator.isFrozen()).toBe(true);
       await retired;
       await expect
-        .poll(() => existsSync(join(harness.config.dataDir, "server-move")))
+        .poll(
+          () => existsSync(join(harness.config.dataDir, "server-move")),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(false);
 
       const status = coordinator.getStatus();
@@ -407,10 +411,12 @@ describe("server move coordinator", () => {
       expect(coordinator.isFrozen()).toBe(true);
       expect(notifySystem).toHaveBeenCalledWith(["server-move-changed"]);
       await expect
-        .poll(() =>
-          existsSync(
-            join(harness.config.dataDir, "server-move", started.moveId),
-          ),
+        .poll(
+          () =>
+            existsSync(
+              join(harness.config.dataDir, "server-move", started.moveId),
+            ),
+          SERVER_MOVE_STEP_POLL,
         )
         .toBe(false);
       await expect(coordinator.start(START_DIRECT)).resolves.toMatchObject({
@@ -460,11 +466,15 @@ describe("server move coordinator", () => {
 
       const started = await coordinator.start(START_DIRECT);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.prepare`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.prepare`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       await expect
         .poll(
           async () => (await readServerMoveRunFile(dataDir))?.status.steps[2],
+          SERVER_MOVE_STEP_POLL,
         )
         .toMatchObject({ id: "export", status: "done" });
 
@@ -489,7 +499,10 @@ describe("server move coordinator", () => {
         ok({ localServerUrl: "http://127.0.0.1:39101", pid: 4242 }),
       );
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.activate`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.activate`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       expect(await readServerMoveRunFile(dataDir)).toMatchObject({
         status: { state: "switching" },
@@ -503,7 +516,10 @@ describe("server move coordinator", () => {
       activateReply.resolve(ok({ ok: true }));
       await retired;
       await expect
-        .poll(async () => (await readServerMoveRunFile(dataDir))?.status.state)
+        .poll(
+          async () => (await readServerMoveRunFile(dataDir))?.status.state,
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe("completed");
       expect(await readServerMoveRunFile(dataDir)).toMatchObject({
         activationConfirmedAt: expect.any(Number),
@@ -539,7 +555,10 @@ describe("server move coordinator", () => {
       ]);
       expect(second.moveId).toBe(first.moveId);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.prepare`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.prepare`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       await expect(coordinator.start(START_DIRECT)).resolves.toMatchObject({
         moveId: first.moveId,
@@ -619,7 +638,9 @@ describe("server move coordinator", () => {
         serverUrl: CONNECT_URL,
         destinationStatusUrl: null,
       });
-      await expect.poll(() => accountRpcStatuses).toEqual([200]);
+      await expect
+        .poll(() => accountRpcStatuses, SERVER_MOVE_STEP_POLL)
+        .toEqual([200]);
       await retired;
 
       expect(events).toEqual([
@@ -744,10 +765,16 @@ describe("server move coordinator", () => {
 
       await coordinator.start(START_DIRECT);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.abort`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.abort`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       await expect
-        .poll(() => events.includes("deferred-work:resumed"))
+        .poll(
+          () => events.includes("deferred-work:resumed"),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
 
       const status = coordinator.getStatus();
@@ -784,15 +811,19 @@ describe("server move coordinator", () => {
         ...target.movedMessages,
       ]).toEqual([]);
       await expect
-        .poll(() =>
-          existsSync(
-            join(harness.config.dataDir, "server-move", status?.moveId ?? ""),
-          ),
+        .poll(
+          () =>
+            existsSync(
+              join(harness.config.dataDir, "server-move", status?.moveId ?? ""),
+            ),
+          SERVER_MOVE_STEP_POLL,
         )
         .toBe(false);
       await expect
-        .poll(() =>
-          existsSync(join(harness.config.dataDir, SERVER_MOVE_RUN_FILE_NAME)),
+        .poll(
+          () =>
+            existsSync(join(harness.config.dataDir, SERVER_MOVE_RUN_FILE_NAME)),
+          SERVER_MOVE_STEP_POLL,
         )
         .toBe(false);
     }),
@@ -872,7 +903,9 @@ describe("server move coordinator", () => {
       });
 
       await coordinator.start(START_DIRECT);
-      await expect.poll(() => coordinator.getStatus()?.state).toBe("failed");
+      await expect
+        .poll(() => coordinator.getStatus()?.state, SERVER_MOVE_STEP_POLL)
+        .toBe("failed");
 
       expect(coordinator.getStatus()?.error).toEqual({
         step: "transfer",
@@ -933,7 +966,10 @@ describe("server move coordinator", () => {
 
       await coordinator.start(START_DIRECT);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.abort`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.abort`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
 
       expect(coordinator.getStatus()).toMatchObject({
@@ -991,18 +1027,21 @@ describe("server move coordinator", () => {
 
       const started = await coordinator.start(START_DIRECT);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.prepare`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.prepare`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       onDaemonSocketMessage(
         harness.deps,
         {
           hostId: NEW,
-          raw: JSON.stringify({
+          message: {
             type: "server_move.progress",
             moveId: started.moveId,
             step: "transfer",
             message: "Downloaded 40%",
-          }),
+          },
           sessionId: session.id,
           socket: { close() {}, send() {} },
         },
@@ -1028,22 +1067,29 @@ describe("server move coordinator", () => {
       });
       expect(coordinator.isFrozen()).toBe(false);
       expect(isServerMoveFrozen(harness.db)).toBe(false);
-      await expect.poll(() => events.includes("schedules:resumed")).toBe(true);
+      await expect
+        .poll(() => events.includes("schedules:resumed"), SERVER_MOVE_STEP_POLL)
+        .toBe(true);
       expect(events.indexOf("plugins:resume")).toBeLessThan(
         events.indexOf("schedules:resumed"),
       );
       expect(plugins.paused).toBe(false);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.abort`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.abort`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       prepareReply.resolve(
         ok({ localServerUrl: "http://127.0.0.1:39101", pid: 4242 }),
       );
       await expect
-        .poll(() =>
-          existsSync(
-            join(harness.config.dataDir, "server-move", started.moveId),
-          ),
+        .poll(
+          () =>
+            existsSync(
+              join(harness.config.dataDir, "server-move", started.moveId),
+            ),
+          SERVER_MOVE_STEP_POLL,
         )
         .toBe(false);
       expect(coordinator.getStatus()?.state).toBe("cancelled");
@@ -1152,10 +1198,13 @@ describe("server move coordinator", () => {
       try {
         await coordinator.start(START_DIRECT);
         await expect
-          .poll(() => coordinator.getStatus()?.state)
+          .poll(() => coordinator.getStatus()?.state, SERVER_MOVE_STEP_POLL)
           .toBe("recovery_required");
         await expect
-          .poll(() => countEvents(events, `${OLD}:server_move.probe`))
+          .poll(
+            () => countEvents(events, `${OLD}:server_move.probe`),
+            SERVER_MOVE_STEP_POLL,
+          )
           .toBeGreaterThan(2);
 
         expect(coordinator.getStatus()).toMatchObject({
@@ -1275,10 +1324,13 @@ describe("server move coordinator", () => {
       try {
         await coordinator.start({ ...START_DIRECT, serverUrl: null });
         await expect
-          .poll(() => coordinator.getStatus()?.state)
+          .poll(() => coordinator.getStatus()?.state, SERVER_MOVE_STEP_POLL)
           .toBe("recovery_required");
         await expect
-          .poll(() => countEvents(events, `${OLD}:server_move.probe`))
+          .poll(
+            () => countEvents(events, `${OLD}:server_move.probe`),
+            SERVER_MOVE_STEP_POLL,
+          )
           .toBeGreaterThan(1);
 
         expect(coordinator.isFrozen()).toBe(true);
@@ -1344,7 +1396,7 @@ describe("server move coordinator", () => {
       try {
         await coordinator.start(START_DIRECT);
         await expect
-          .poll(() => coordinator.getStatus()?.state)
+          .poll(() => coordinator.getStatus()?.state, SERVER_MOVE_STEP_POLL)
           .toBe("recovery_required");
         expect(isServerMoveSnapshotFenced(harness.db)).toBe(true);
 
@@ -1362,7 +1414,9 @@ describe("server move coordinator", () => {
         expect(coordinator.isFrozen()).toBe(false);
         expect(isServerMoveFrozen(harness.db)).toBe(false);
         expect(isServerMoveSnapshotFenced(harness.db)).toBe(false);
-        await expect.poll(() => plugins.paused).toBe(false);
+        await expect
+          .poll(() => plugins.paused, SERVER_MOVE_STEP_POLL)
+          .toBe(false);
         expect(plugins).toMatchObject({ resumes: 1, stops: 0 });
         expect(await readServerMovedFile(harness.config.dataDir)).toBeNull();
         expect(JSON.parse(await readFile(config.path, "utf8"))).toEqual(
@@ -1375,7 +1429,10 @@ describe("server move coordinator", () => {
           handle: targetReply,
         });
         await expect
-          .poll(() => events.includes(`${NEW}:server_move.abort`))
+          .poll(
+            () => events.includes(`${NEW}:server_move.abort`),
+            SERVER_MOVE_STEP_POLL,
+          )
           .toBe(true);
         destination.state = "ready";
         await new Promise<void>((resolve) => setTimeout(resolve, 80));
@@ -1432,8 +1489,10 @@ describe("server move coordinator", () => {
       }).sessionId;
 
       await coordinator.start(START_DIRECT);
-      await expect.poll(() => coordinator.getStatus()?.state).toBe("failed");
-      await expect.poll(() => plugins.resumes).toBe(1);
+      await expect
+        .poll(() => coordinator.getStatus()?.state, SERVER_MOVE_STEP_POLL)
+        .toBe("failed");
+      await expect.poll(() => plugins.resumes, SERVER_MOVE_STEP_POLL).toBe(1);
 
       expect(coordinator.getStatus()?.error).toEqual({
         step: "switch",
@@ -1492,18 +1551,21 @@ describe("server move coordinator", () => {
       });
 
       await coordinator.start(START_DIRECT);
-      await expect.poll(() => prepares).toBe(1);
+      await expect.poll(() => prepares, SERVER_MOVE_STEP_POLL).toBe(1);
       coordinator.cancel();
-      await expect.poll(() => plugins.resumes).toBe(1);
+      await expect.poll(() => plugins.resumes, SERVER_MOVE_STEP_POLL).toBe(1);
 
       await coordinator.start(START_DIRECT);
       await expect
-        .poll(() => coordinator.getStatus()?.steps[0]?.message)
+        .poll(
+          () => coordinator.getStatus()?.steps[0]?.message,
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe("Pausing plugins");
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
       expect(plugins.suspends).toBe(1);
       slowResume.resolve();
-      await expect.poll(() => prepares).toBe(2);
+      await expect.poll(() => prepares, SERVER_MOVE_STEP_POLL).toBe(2);
 
       expect(coordinator.getStatus()?.state).toBe("preparing");
       expect(isServerMoveFrozen(harness.db)).toBe(true);
@@ -1549,11 +1611,13 @@ describe("server move coordinator", () => {
       registerFakeDaemon(harness, { events, hostId: NEW, handle: targetReply });
 
       const first = await coordinator.start(START_DIRECT);
-      await expect.poll(() => suspensions).toBe(1);
+      await expect.poll(() => suspensions, SERVER_MOVE_STEP_POLL).toBe(1);
       coordinator.cancel();
       const second = await coordinator.start(START_DIRECT);
       expect(second.moveId).not.toBe(first.moveId);
-      await expect.poll(() => isServerMoveFrozen(harness.db)).toBe(true);
+      await expect
+        .poll(() => isServerMoveFrozen(harness.db), SERVER_MOVE_STEP_POLL)
+        .toBe(true);
       firstSuspension.resolve();
       await retired;
 
@@ -1600,7 +1664,10 @@ describe("server move coordinator", () => {
 
       await coordinator.start(START_DIRECT);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.prepare`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.prepare`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       expect(isServerMoveFrozen(harness.db)).toBe(true);
 
@@ -1608,7 +1675,7 @@ describe("server move coordinator", () => {
 
       expect(coordinator.isFrozen()).toBe(false);
       expect(isServerMoveFrozen(harness.db)).toBe(false);
-      await expect.poll(() => plugins.resumes).toBe(1);
+      await expect.poll(() => plugins.resumes, SERVER_MOVE_STEP_POLL).toBe(1);
       await new Promise<void>((resolve) => setTimeout(resolve, 20));
       expect(isServerMoveFrozen(harness.db)).toBe(false);
       expect(plugins.paused).toBe(true);
@@ -1616,7 +1683,10 @@ describe("server move coordinator", () => {
 
       slowResume.resolve();
       await expect
-        .poll(() => events.includes("deferred-work:resumed"))
+        .poll(
+          () => events.includes("deferred-work:resumed"),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       expect(plugins.paused).toBe(false);
     }));
@@ -1645,7 +1715,10 @@ describe("server move coordinator", () => {
 
       await coordinator.start(START_DIRECT);
       await expect
-        .poll(() => events.includes(`${NEW}:server_move.activate`))
+        .poll(
+          () => events.includes(`${NEW}:server_move.activate`),
+          SERVER_MOVE_STEP_POLL,
+        )
         .toBe(true);
       expect(coordinator.getStatus()).toMatchObject({
         state: "switching",

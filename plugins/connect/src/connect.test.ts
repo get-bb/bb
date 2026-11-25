@@ -1,3 +1,4 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import { createServer, type Server } from "node:http";
 import { gzipSync } from "node:zlib";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -64,8 +65,11 @@ function createConnectFakeHost(options?: {
                 ? { id: REMOTE_HOST_ID, name: REMOTE_HOST_NAME }
                 : null;
           if (!host) {
-            throw Object.assign(new Error(`host ${hostId} not found`), {
+            throw new experimental_BbHttpError({
               status: 404,
+              code: null,
+              message: `host ${hostId} not found`,
+              body: null,
             });
           }
           return host as never;
@@ -2009,10 +2013,16 @@ describe("connect plugin", () => {
           suspendedAt: null,
           message: null,
           pendingLog: "",
-          teardown: { status: "removed", attempt: 0 },
+          teardown: {
+            status: "removed",
+            attempt: 0,
+            needsRecovery: false,
+            blockedByEnvironmentId: null,
+          },
         },
         maxPermissionMode: "full",
         lastSeenAt: null,
+        route: null,
         lastRejectedProtocolVersion: null,
         createdAt: 1,
         updatedAt: 2,

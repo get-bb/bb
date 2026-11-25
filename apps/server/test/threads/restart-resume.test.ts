@@ -3,7 +3,8 @@ import {
   getLatestThreadSequence,
   getThread,
   listQueuedThreadMessages,
-  setExperiments,
+  getAppSettings,
+  setAppSettings,
   threads,
 } from "@bb/db";
 import { threadScope, turnRequestEventDataSchema, turnScope } from "@bb/domain";
@@ -49,7 +50,10 @@ const WORKSPACE_PATH = "/tmp/restart-resume-project";
 afterEach(() => vi.useRealTimers());
 
 function continueAfterRestarts(harness: TestAppHarness, enabled: boolean) {
-  setExperiments(harness.db, { resumeThreadsAfterRestart: enabled });
+  setAppSettings(harness.db, {
+    ...getAppSettings(harness.db),
+    resumeThreadsAfterRestart: enabled,
+  });
 }
 
 function seedHostWithProject(harness: TestAppHarness) {
@@ -672,6 +676,29 @@ describe("resuming threads after a restart", () => {
     });
   });
 
+  it("names a long background command without splitting an emoji", async () => {
+    await withTestHarness(async (harness) => {
+      continueAfterRestarts(harness, true);
+      const fixture = seedHostWithProject(harness);
+      const waiting = seedRunningThread(harness, fixture, {
+        text: "Run the migration",
+      });
+      seedBackgroundCommand(harness, fixture, waiting, {
+        command: `echo ${"x".repeat(194)}\u{1F600} done`,
+        description: "Echo a long line",
+        id: "task-echo",
+      });
+      finishTurn(harness, waiting.thread.id);
+
+      await restartDaemon(harness, fixture);
+      await sweepPastResume(harness);
+
+      const text = requestTexts(harness, waiting.thread.id).at(-1);
+      expect(text).toContain(`\`echo ${"x".repeat(194)}…\``);
+      expect(text).not.toMatch(/[\uD800-\uDFFF]/u);
+    });
+  });
+
   it("wakes an idle thread whose background command the daemon stopped as it shut down, once", async () => {
     await withTestHarness(async (harness) => {
       continueAfterRestarts(harness, true);
@@ -952,10 +979,6 @@ describe("resuming threads after a restart", () => {
 });
 
 describe("holding sends while bb restarts to update", () => {
-  function updateWhenIdle(harness: TestAppHarness, enabled: boolean) {
-    setExperiments(harness.db, { updateWhenIdle: enabled });
-  }
-
   function seedIdleThread(harness: TestAppHarness, fixture: HostFixture) {
     const seeded = seedRunningThread(harness, fixture);
     moveThreadStatus(harness.deps, {
@@ -971,7 +994,6 @@ describe("holding sends while bb restarts to update", () => {
 
   it("holds a send while the restart is pending and sends it at once when the update is called off", async () => {
     await withTestHarness(async (harness) => {
-      updateWhenIdle(harness, true);
       const fixture = seedHostWithProject(harness);
       const { thread } = seedIdleThread(harness, fixture);
       const sendHold = createAppUpdateSendHold(harness.deps);
@@ -998,28 +1020,8 @@ describe("holding sends while bb restarts to update", () => {
     });
   });
 
-  it("does not hold sends while the updateWhenIdle experiment is off", async () => {
-    await withTestHarness(async (harness) => {
-      const fixture = seedHostWithProject(harness);
-      const { thread } = seedIdleThread(harness, fixture);
-
-      createAppUpdateSendHold(harness.deps).hold();
-      await sendMessage(harness, {
-        mode: "auto",
-        text: "Not held",
-        threadId: thread.id,
-      });
-
-      expect(requestTexts(harness, thread.id)).toEqual([
-        "Do the thing",
-        "Not held",
-      ]);
-    });
-  });
-
   it("sends held messages after the restart, behind the resume, in order", async () => {
     await withTestHarness(async (harness) => {
-      updateWhenIdle(harness, true);
       continueAfterRestarts(harness, true);
       const fixture = seedHostWithProject(harness);
       const running = seedRunningThread(harness, fixture);

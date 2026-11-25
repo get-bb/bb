@@ -1,4 +1,7 @@
-import { experimental_makePanelController } from "@get-bb/plugin-sdk/testing";
+import {
+  experimental_makeActionContext,
+  experimental_makePanelController,
+} from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 
@@ -74,12 +77,12 @@ describe("reply-in-side-chat message action", () => {
       inputs.push(input);
       return { threadId: "thr_fork" };
     });
-    const experimental_panel = panelStub();
+    const panel = panelStub();
 
     await app.messageActions[0]!.run({
+      ...experimental_makeActionContext({ panel }),
       threadId: "thr_src",
       message,
-      experimental_panel,
       composer: null,
     });
 
@@ -94,7 +97,7 @@ describe("reply-in-side-chat message action", () => {
         anchorText: "whole message text",
       },
     ]);
-    expect(experimental_panel.openTab).toHaveBeenCalledWith({
+    expect(panel.openTab).toHaveBeenCalledWith({
       tab: {
         id: "side-chat",
         context: { kind: "thread" },
@@ -120,11 +123,11 @@ describe("reply-in-side-chat message action", () => {
       return rpcResponse({ threadId: "thr_fork" });
     });
     vi.stubGlobal("fetch", fetchMock);
-    const experimental_panel = panelStub();
+    const panel = panelStub();
     const context = {
+      ...experimental_makeActionContext({ panel }),
       threadId: "thr_src",
       message,
-      experimental_panel,
       composer: null,
     };
 
@@ -136,7 +139,7 @@ describe("reply-in-side-chat message action", () => {
     await Promise.all([first, second]);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(experimental_panel.openTab).toHaveBeenCalledTimes(1);
+    expect(panel.openTab).toHaveBeenCalledTimes(1);
 
     await app.messageActions[0]!.run(context);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -144,17 +147,17 @@ describe("reply-in-side-chat message action", () => {
 
   it("anchors on the selection when invoked from the selection menu", async () => {
     stubRpcFetch(() => ({ threadId: "thr_fork" }));
-    const experimental_panel = panelStub();
+    const panel = panelStub();
 
     await app.messageActions[0]!.run({
+      ...experimental_makeActionContext({ panel }),
       threadId: "thr_src",
       message,
       selectedText: "just this part",
-      experimental_panel,
       composer: null,
     });
 
-    expect(experimental_panel.openTab).toHaveBeenCalledWith(
+    expect(panel.openTab).toHaveBeenCalledWith(
       expect.objectContaining({
         title: "Side chat",
         params: expect.objectContaining({

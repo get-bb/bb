@@ -9,8 +9,8 @@ const githubCredentialHelper =
   '!f() { test "$1" = get || exit 0; protocol=; host=; while IFS= read -r line && test -n "$line"; do case "$line" in protocol=*) protocol=${line#protocol=} ;; host=*) host=${line#host=} ;; esac; done; if test "$protocol" = https && test "$host" = github.com && test -n "$GH_TOKEN"; then printf "username=x-access-token\\npassword=%s\\n" "$GH_TOKEN"; fi; }; f';
 
 const gitConfig = [
-  ["credential.helper", ""],
-  ["credential.helper", githubCredentialHelper],
+  ["credential.https://github.com.helper", ""],
+  ["credential.https://github.com.helper", githubCredentialHelper],
   ["url.https://github.com/.insteadOf", "git@github.com:"],
   ["url.https://github.com/.insteadOf", "ssh://git@github.com/"],
 ] as const;

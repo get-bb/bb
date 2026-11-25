@@ -40,7 +40,12 @@ Listeners are different: `bb.events.on`, settings `onChange`, `onDispose`, and
 
 `bb.log.debug|info|warn|error(message: string)` — goes to the server log
 (prefixed `[plugin:<id>]`) and to the per-plugin JSONL file behind
-`bb plugin logs <id> [-n N] [-f]`.
+`bb plugin logs <id> [-n N] [-f]`. The same file records bb's own lines
+about the plugin: load and reload failures (a factory throw included),
+`onInstall`, handler, hook, RPC and CLI throws, service crashes, a throwing
+`contributeInstructions` or `deriveProviderOptions`, and each host worker's
+stdout, stderr and unexpected exit. Lines for a thrown error carry its
+`stack`.
 
 ### bb.settings
 
@@ -136,6 +141,11 @@ plugin requires it.
 - `bb.storage.migrate(db, statements)` — statement index = migration id;
   unapplied statements run in one transaction. **Append-only**: never
   reorder or edit shipped statements, only push new ones.
+- `bb.storage.experimental_directory()` — the plugin's own directory for
+  files, `<dataDir>/plugins/<id>/files`, created (mode 0700) on each call if
+  missing. Use it for files that don't fit kv or SQLite: credentials, caches,
+  exports, downloaded binaries. bb snapshots it with `data.db` before a git:
+  or npm: update, restores it on rollback, and deletes it on uninstall.
 
 ```ts
 const db = bb.storage.database();
@@ -153,9 +163,10 @@ the server itself. **Bind-gated** like `bb.sdk`: reading it before the server is
 listening throws, so prefer reading it from handlers, services, and timers.
 `bb.server.experimental_appUrl` gives the operator-configured public app URL,
 or `null` when `BB_APP_URL` is empty. It is not bind-gated.
-`bb.server.experimental_dataDir` gives the exact server data directory for a
-migration from BB-managed files. Do not write plugin state there. Use
-`bb.storage` for plugin-owned state.
+`bb.server.experimental_dataDir` gives the exact server data directory. It is
+read-only: use it to migrate off files bb used to manage, or to compare
+paths. Never write under it; a plugin's own files go in
+`bb.storage.experimental_directory()`.
 
 ### bb.hosts
 

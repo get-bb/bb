@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 export interface ContextMenuItem {
   label: string;
@@ -54,7 +55,7 @@ export function ContextMenu({
       if (!menuRef.current?.contains(event.target as Node)) onClose();
     };
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.stopPropagation();
         onClose();
         return;

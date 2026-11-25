@@ -7,7 +7,7 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import type { ExperimentalSidebarFooterCommandKind } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
@@ -24,7 +24,11 @@ import {
   usePluginSlotKind,
   type PluginSidebarFooterItemSlot,
 } from "@/lib/plugin-slots";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import {
+  bindFocusedSurfaceActionContext,
+  useBindPluginActionContext,
+} from "@/lib/plugin-action-context-provider";
 
 import {
   ContextMenu,
@@ -47,6 +51,7 @@ import {
   type BuiltinFooterId,
 } from "@/components/sidebar/sidebarFooterPreferences";
 import { SIDEBAR_FOOTER_ACTION_CLASS } from "@bb/shared-ui/sidebar-row-classes";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 function footerItemKey(item: PluginSidebarFooterItemSlot): string {
   return `${item.pluginId}/${item.id}/${item.generation}`;
@@ -121,7 +126,7 @@ export function usePluginSidebarFooterDisclosure() {
   useEffect(() => {
     if (activeItem === null) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!isNonImeKey(event, "Escape")) return;
       event.preventDefault();
       dismiss();
     };
@@ -210,7 +215,10 @@ export function PluginSidebarFooterItems({
   onCustomize: () => void;
   builtInActions?: readonly BuiltinFooterAction[];
 }) {
-  const navigate = useNavigate();
+  const actionContext = bindFocusedSurfaceActionContext(
+    useBindPluginActionContext(),
+    useAppNavigationHost(),
+  );
   const preferences = useSidebarFooterPreferences();
   const isCompactViewport = useIsCompactViewport();
   const previousHidden = useRef(preferences.hidden);
@@ -275,14 +283,13 @@ export function PluginSidebarFooterItems({
       slot.source === "sidebarFooterAction"
         ? `sidebarFooterAction "${slot.id}"`
         : `experimental_sidebarFooter item "${slot.id}"`,
-      () =>
-        slot.onActivate({
-          openPluginDetails: () => {
-            void navigate(
-              getPluginConfigurationRoutePath({ pluginId: slot.pluginId }),
-            );
-          },
-        }),
+      () => {
+        const context = actionContext(slot.pluginId);
+        return slot.onActivate({
+          ...context,
+          openPluginDetails: () => context.navigate.experimental_toSettings(),
+        });
+      },
     );
   }
   return (

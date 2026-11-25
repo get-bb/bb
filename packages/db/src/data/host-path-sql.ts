@@ -2,9 +2,10 @@ import {
   getHostPathComparisonKey,
   isHostPathWithin,
   isWindowsHostPath,
+  isWindowsUncHostPath,
 } from "@bb/domain";
 import type Database from "better-sqlite3";
-import { eq, sql, type SQL } from "drizzle-orm";
+import { eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 
 function hostPathComparisonKeyForSql(value: unknown): string | null {
@@ -48,6 +49,37 @@ export function hostPathEquals(column: SQLiteColumn, path: string): SQL {
     : eq(column, path);
 }
 
+function posixPathAndAncestors(path: string): string[] {
+  const paths = [path];
+  for (
+    let separator = path.indexOf("/");
+    separator >= 0;
+    separator = path.indexOf("/", separator + 1)
+  ) {
+    paths.push(path.slice(0, separator));
+  }
+  return paths;
+}
+
+function windowsRootPrefixes(path: string): string[] {
+  if (isWindowsUncHostPath(path)) {
+    return ["\\", "/"];
+  }
+  const drive = path.slice(0, 1);
+  return [`${drive.toUpperCase()}:`, `${drive.toLowerCase()}:`];
+}
+
+function startsWith(column: SQLiteColumn, prefix: string): SQL {
+  const end = `${prefix.slice(0, -1)}${String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1)}`;
+  return sql`(${column} >= ${prefix} and ${column} < ${end})`;
+}
+
 export function hostPathContains(column: SQLiteColumn, path: string): SQL {
-  return sql`bb_host_path_contains(${column}, ${path}) = 1`;
+  if (!isWindowsHostPath(path)) {
+    return inArray(column, posixPathAndAncestors(path));
+  }
+  const roots = windowsRootPrefixes(path).map((prefix) =>
+    startsWith(column, prefix),
+  );
+  return sql`(${sql.join(roots, sql` or `)}) and bb_host_path_contains(${column}, ${path}) = 1`;
 }

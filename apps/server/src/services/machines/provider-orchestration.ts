@@ -1,12 +1,14 @@
 import { withHostCleanup } from "../hosts/cleanup-context.js";
 import { readPrimaryHostIdFromDataDir } from "../hosts/primary-host.js";
 import { requestQueuedMachineReadiness } from "../threads/queued-message-dispatch.js";
-import { and, desc, eq } from "drizzle-orm";
 import {
   createHostId,
-  hostDaemonSessions,
-  hosts,
-  environments as environmentRows,
+  getFailedTeardownEnvironmentOnHost,
+  getLatestHostAttemptForLaunchKey,
+  insertHost,
+  listActiveSessionIdsForHost,
+  persistedRetryExhausted,
+  retryFailedEnvironmentTeardownsOnHost,
 } from "@bb/db";
 import { handleHostRemoved } from "../../internal/session-owner-side-effects.js";
 import type { WorkSessionDeps } from "../../types.js";
@@ -31,6 +33,7 @@ import {
   updateHost,
 } from "@bb/db";
 import { jsonValueSchema, type Host, type JsonValue } from "@bb/domain";
+import type { HostRemovalResponse } from "@bb/server-contract";
 import type {
   PluginMachineProviderCreateResult,
   PluginMachineProviderResource,
@@ -38,6 +41,10 @@ import type {
 } from "@get-bb/plugin-sdk/machine-provider";
 import { summarizeStandardIssues } from "@get-bb/plugin-sdk/internal/host-policy";
 import { ApiError } from "../../errors.js";
+import {
+  operationComplete,
+  operationInProgress,
+} from "../lib/operation-response.js";
 import type { ThreadProvisioningDeps } from "../threads/thread-provisioning-environment.js";
 import { decideWithinBox } from "../threads/dispatch-hooks.js";
 import {
@@ -55,26 +62,25 @@ import {
 import { hasPendingProjectSourceSetupOnHost } from "../projects/project-source-setup.js";
 import { machineProviderUnavailableReason } from "./provider-availability.js";
 import { errorMessage } from "../lib/error-log-fields.js";
+import {
+  NEEDS_RECOVERY_RETRY_INTERVAL_MS,
+  TEARDOWN_RETRY_DELAYS_MS,
+  needsRecoveryMessage,
+  nextSlowPersistedRetryAt,
+  teardownNeedsRecovery,
+} from "../lib/persisted-retry.js";
 import { toHostWithStatus } from "../lib/entity-lookup.js";
 import { perDbRegistry } from "../lib/per-db-registry.js";
 import { defineItemSweep, type ItemSweep } from "../system/item-sweep.js";
 import { emitPluginHostDeleted } from "../plugins/plugin-thread-events.js";
+import { sliceUtf16Head, sliceUtf16Tail } from "@bb/text-utils";
 
 type Deps = ThreadProvisioningDeps;
 type MachineLifecycleDeps = Pick<Deps, "db" | "hub" | "logger">;
 
 function expireMachineSessions(deps: Deps, hostId: string): void {
-  for (const session of deps.db
-    .select({ id: hostDaemonSessions.id })
-    .from(hostDaemonSessions)
-    .where(
-      and(
-        eq(hostDaemonSessions.hostId, hostId),
-        eq(hostDaemonSessions.status, "active"),
-      ),
-    )
-    .all()) {
-    handleHostRemoved(deps, { hostId, sessionId: session.id });
+  for (const sessionId of listActiveSessionIdsForHost(deps.db, hostId)) {
+    handleHostRemoved(deps, { hostId, sessionId });
   }
 }
 
@@ -186,7 +192,7 @@ function createReporter(
       const current = getHost(deps.db, owner.id);
       if (!createOwns(current, owner) || current.phase !== "creating") return;
       updateHost(deps.db, deps.hub, owner.id, {
-        statusMessage: text.slice(0, 500),
+        statusMessage: sliceUtf16Head(text, 500),
       });
       deps.hub.notifyHost(owner.id, ["host-connected"]);
     },
@@ -194,9 +200,10 @@ function createReporter(
       const current = getHost(deps.db, owner.id);
       if (!createOwns(current, owner) || current.phase !== "creating") return;
       updateHost(deps.db, deps.hub, owner.id, {
-        pendingLog: (
-          current.pendingLog + (text.endsWith("\n") ? text : `${text}\n`)
-        ).slice(-16_384),
+        pendingLog: sliceUtf16Tail(
+          current.pendingLog + (text.endsWith("\n") ? text : `${text}\n`),
+          16_384,
+        ),
       });
       deps.hub.notifyHost(owner.id, ["host-connected"]);
     },
@@ -221,7 +228,7 @@ function lifecycleReporter(
       )
         return;
       updateHost(deps.db, deps.hub, hostId, {
-        statusMessage: text.slice(0, 500),
+        statusMessage: sliceUtf16Head(text, 500),
       });
       deps.hub.notifyHost(hostId, ["host-connected"]);
     },
@@ -527,37 +534,28 @@ export function askMachineLaunch(
   if (row === null) {
     const id = createHostId();
     const attempt =
-      (deps.db
-        .select({ attempt: hosts.attempt })
-        .from(hosts)
-        .where(eq(hosts.launchKey, args.key))
-        .orderBy(desc(hosts.attempt))
-        .limit(1)
-        .get()?.attempt ?? 0) + 1;
+      (getLatestHostAttemptForLaunchKey(deps.db, args.key) ?? 0) + 1;
     const suffix = id.replace(/[^a-z0-9]/giu, "").slice(-6);
     const operationId = `${args.record.pluginId}:${randomUUID()}`;
-    deps.db
-      .insert(hosts)
-      .values({
-        id,
-        name: `${args.record.provider.displayName} ${suffix}`,
-        type:
-          args.lifetime === "thread" && args.record.provider.ephemeral
-            ? "ephemeral"
-            : "persistent",
-        machineProviderId: args.record.provider.id,
-        machineOperationId: operationId,
-        launchKey: args.key,
-        inputs: args.inputs,
-        attempt,
-        phase: "creating",
-        resource: null,
-        statusMessage: `Creating ${args.record.provider.displayName}…`,
-        pendingLog: "",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run();
+    insertHost(deps.db, {
+      id,
+      name: `${args.record.provider.displayName} ${suffix}`,
+      type:
+        args.lifetime === "thread" && args.record.provider.ephemeral
+          ? "ephemeral"
+          : "persistent",
+      machineProviderId: args.record.provider.id,
+      machineOperationId: operationId,
+      launchKey: args.key,
+      inputs: args.inputs,
+      attempt,
+      phase: "creating",
+      resource: null,
+      statusMessage: `Creating ${args.record.provider.displayName}…`,
+      pendingLog: "",
+      createdAt: now,
+      updatedAt: now,
+    });
     deps.hub.notifyHost(id, ["host-connected"]);
     row = getHost(deps.db, id)!;
     startCreate(deps, args.record, row);
@@ -662,7 +660,7 @@ async function suspendMachine(
       throw new ApiError(
         409,
         "machine_maintenance",
-        "Machine already has a lifecycle operation or is waiting for retry.",
+        "Machine already has a lifecycle operation in progress.",
       );
     await suspending.done;
     return;
@@ -1027,10 +1025,7 @@ async function resumeMachineWithIntent(
   });
   try {
     await operation.done;
-    updateHost(deps.db, deps.hub, hostId, {
-      statusMessage: null,
-      suspendRetryAt: null,
-    });
+    updateHost(deps.db, deps.hub, hostId, { statusMessage: null });
   } catch (error) {
     const current = getHost(deps.db, hostId);
     const ownsResume = lifecycleOwns(
@@ -1046,7 +1041,6 @@ async function resumeMachineWithIntent(
           }
         : {}),
       statusMessage: `Machine resume failed: ${errorMessage(error)}`,
-      suspendRetryAt: Date.now() + 10_000,
     });
     deps.hub.notifyHost(hostId, ["host-disconnected"]);
     throw error;
@@ -1103,10 +1097,28 @@ export function requestAutomaticMachineRemoval(
   return requestMachineRemoval(deps, hostId);
 }
 
+export function readMachineRemovalOutcome(
+  deps: Deps,
+  hostId: string,
+): HostRemovalResponse {
+  const row = getHost(deps.db, hostId);
+  if (row === null || row.destroyedAt !== null) {
+    return { ...operationComplete(), warnings: [] };
+  }
+  if (row.teardownStatus === "failed") {
+    throw new ApiError(
+      502,
+      "machine_teardown_failed",
+      row.statusMessage ?? "Machine teardown failed",
+    );
+  }
+  return { ...operationInProgress(), warnings: [] };
+}
+
 export async function retryMachineCleanup(
   deps: Deps,
   hostId: string,
-): Promise<void> {
+): Promise<HostRemovalResponse> {
   const row = getHost(deps.db, hostId);
   if (row === null || row.destroyedAt !== null) {
     throw new ApiError(404, "host_not_found", "Host not found");
@@ -1122,26 +1134,56 @@ export async function retryMachineCleanup(
       "Cleanup can only be retried after machine teardown fails",
     );
   }
-  for (const environment of deps.db
-    .update(environmentRows)
-    .set({ retireAt: Date.now() })
-    .where(
-      and(
-        eq(environmentRows.hostId, hostId),
-        eq(environmentRows.teardownStatus, "failed"),
-      ),
-    )
-    .returning({ id: environmentRows.id })
-    .all()) {
-    deps.hub.notifyEnvironment(environment.id, ["metadata-changed"]);
+  for (const environmentId of retryFailedEnvironmentTeardownsOnHost(
+    deps.db,
+    hostId,
+    Date.now(),
+  )) {
+    deps.hub.notifyEnvironment(environmentId, ["metadata-changed"]);
   }
   updateHost(deps.db, deps.hub, hostId, {
     removeRetryAt: Date.now(),
+    teardownAttempt: 0,
+    teardownBlockedByEnvironmentId: null,
     teardownStatus: "running",
     statusMessage: null,
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
   await sweepProviderMachine(deps, hostId);
+  return readMachineRemovalOutcome(deps, hostId);
+}
+
+function recordMachineTeardownFailure(
+  deps: Pick<Deps, "db" | "hub" | "logger">,
+  hostId: string,
+  failure: { attempt: number; message: string },
+): void {
+  const now = Date.now();
+  const needsRecovery = persistedRetryExhausted(
+    TEARDOWN_RETRY_DELAYS_MS,
+    failure.attempt,
+  );
+  const removeRetryAt = nextSlowPersistedRetryAt(
+    TEARDOWN_RETRY_DELAYS_MS,
+    failure.attempt,
+    now,
+  );
+  updateHost(deps.db, deps.hub, hostId, {
+    teardownAttempt: failure.attempt,
+    teardownBlockedByEnvironmentId: null,
+    teardownStatus: "failed",
+    statusMessage: needsRecovery
+      ? needsRecoveryMessage(failure.message, null)
+      : failure.message,
+    removeRetryAt,
+  });
+  deps.hub.notifyHost(hostId, ["host-disconnected"]);
+  deps.logger.warn(
+    { hostId, attempt: failure.attempt, removeRetryAt, error: failure.message },
+    needsRecovery
+      ? "Machine teardown needs recovery; retrying hourly"
+      : "Machine teardown failed; retrying later",
+  );
 }
 
 function assertForcedRemovalAllowed(deps: Deps, row: MachineHostRow): void {
@@ -1182,7 +1224,7 @@ function assertForcedRemovalAllowed(deps: Deps, row: MachineHostRow): void {
 export async function forceMachineRemoval(
   deps: Deps,
   hostId: string,
-): Promise<void> {
+): Promise<HostRemovalResponse> {
   const row = getHost(deps.db, hostId);
   if (row === null || row.destroyedAt !== null) {
     throw new ApiError(404, "host_not_found", "Host not found");
@@ -1209,6 +1251,7 @@ export async function forceMachineRemoval(
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
   await sweepProviderMachine(deps, hostId);
+  return readMachineRemovalOutcome(deps, hostId);
 }
 
 async function removeMachine(deps: Deps, hostId: string): Promise<void> {
@@ -1254,6 +1297,7 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
   updateHost(deps.db, deps.hub, hostId, {
     machineOperationId: operationId,
     teardownAttempt: attempt,
+    teardownBlockedByEnvironmentId: null,
     teardownStatus: "running",
     statusMessage: creationFailureMessage,
   });
@@ -1313,12 +1357,10 @@ async function removeMachine(deps: Deps, hostId: string): Promise<void> {
           !lifecycleOwns(current, record.provider.id, operationId, "removing")
         )
           return;
-        updateHost(deps.db, deps.hub, hostId, {
-          teardownStatus: "failed",
-          statusMessage: errorMessage(error),
-          removeRetryAt: Date.now() + 60_000,
+        recordMachineTeardownFailure(deps, hostId, {
+          attempt,
+          message: errorMessage(error),
         });
-        deps.hub.notifyHost(hostId, ["host-disconnected"]);
       }
     },
   });
@@ -1367,7 +1409,6 @@ export async function sweepProviderMachine(
         row.suspendedAt !== null
           ? null
           : "Machine suspension was interrupted; recovery will use the last persisted provider resource.",
-      suspendRetryAt: row.suspendedAt !== null ? null : Date.now(),
     });
     await resumeMachine(deps, hostId);
     return;
@@ -1430,24 +1471,22 @@ export async function sweepProviderMachine(
       if (current.length > 0) pendingEnvironment = true;
     }
     if (pendingEnvironment) {
-      const failed = deps.db
-        .select()
-        .from(environmentRows)
-        .where(
-          and(
-            eq(environmentRows.hostId, hostId),
-            eq(environmentRows.teardownStatus, "failed"),
-          ),
-        )
-        .limit(1)
-        .get();
+      const failed = getFailedTeardownEnvironmentOnHost(deps.db, hostId);
       if (failed) {
         updateHost(deps.db, deps.hub, hostId, {
           teardownStatus: "failed",
+          teardownBlockedByEnvironmentId: teardownNeedsRecovery(failed)
+            ? failed.id
+            : null,
           statusMessage: failed.teardownMessage ?? "Environment cleanup failed",
-          removeRetryAt: failed.retireAt ?? Date.now() + 60_000,
+          removeRetryAt:
+            failed.retireAt ?? Date.now() + NEEDS_RECOVERY_RETRY_INTERVAL_MS,
         });
         deps.hub.notifyHost(hostId, ["host-disconnected"]);
+      } else if (row.teardownBlockedByEnvironmentId !== null) {
+        updateHost(deps.db, deps.hub, hostId, {
+          teardownBlockedByEnvironmentId: null,
+        });
       }
       return;
     }
@@ -1497,22 +1536,12 @@ export function machineLifecycleSweep(deps: Deps): ItemSweep {
         run: async () => sweepProviderMachine(deps, machine.id),
       }).done.catch((error: unknown) => {
         const current = getHost(deps.db, machine.id);
-        if (current !== null && current.destroyedAt === null) {
-          updateHost(deps.db, deps.hub, machine.id, {
-            teardownAttempt: current.teardownAttempt + 1,
-            teardownStatus: "failed",
-            statusMessage: errorMessage(error),
-            ...(current.phase === "removing"
-              ? {
-                  removeRetryAt: Date.now() + 60_000,
-                }
-              : {}),
-          });
-        }
-        deps.logger.warn(
-          { hostId: machine.id, error: errorMessage(error) },
-          "Machine lifecycle sweep will retry",
-        );
+        if (current === null || current.destroyedAt !== null) return;
+        if (current.phase !== "removing") throw error;
+        recordMachineTeardownFailure(deps, machine.id, {
+          attempt: current.teardownAttempt + 1,
+          message: errorMessage(error),
+        });
       }),
   });
 }

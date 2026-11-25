@@ -21,7 +21,10 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { Icon } from "@bb/shared-ui/icon";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
-import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
+import {
+  useAppCommandFocusedPluginPage,
+  useAppCommandHandler,
+} from "@/components/commands/AppCommandProvider";
 import { PluginItemIcon } from "@/components/plugin/PluginIcon";
 import {
   RIGHT_PANEL_TOGGLE_BUTTON_CLASS,
@@ -77,8 +80,14 @@ import {
 } from "@/lib/bb-desktop";
 import { useIsSidebarFramed } from "@/components/ui/sidebar.js";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
+import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
-import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
+import {
+  AppNavigationHostCapture,
+  AppNavigationSurfaceProvider,
+  useAppNavigationHostRef,
+} from "@/lib/app-navigation-host";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import {
   FixedTabTargetScope,
   getPluginFixedTabOwnerId,
@@ -211,10 +220,12 @@ export function PluginPanelRightPanelHost({
       (candidate) =>
         candidate.pluginId === pluginId && candidate.path === panelPath,
     ) ?? null;
+  const awaitedPluginIds = useMemo(() => [pluginId], [pluginId]);
   const registeredTabs = usePluginTabs(
     panel === null
       ? null
       : { kind: "nav-panel", panelId: panel.id, pluginId, subPath },
+    awaitedPluginIds,
   );
   const pageTabs = useMemo(
     () =>
@@ -471,8 +482,9 @@ export function PluginPanelRightPanelHost({
     activeTabId: isOpen ? (activeTab?.id ?? null) : null,
     close: hidePanel,
     destinations: panelDestinations,
-    isFocused: isFocused && panel !== null,
   });
+  const surfaceHost = useAppNavigationHostRef();
+  const bindPluginActionContext = useBindPluginActionContext();
   const pluginActions = useMemo(
     () =>
       pageActions.map((action) => ({
@@ -491,11 +503,21 @@ export function PluginPanelRightPanelHost({
               panelId: panel.id,
               subPath,
             },
-            panel: panelController,
+            actionContext: bindPluginActionContext(
+              action.pluginId,
+              () => surfaceHost.current,
+            ),
           });
         },
       })),
-    [pageActions, panel, pluginId, subPath, panelController],
+    [
+      bindPluginActionContext,
+      pageActions,
+      panel,
+      pluginId,
+      subPath,
+      surfaceHost,
+    ],
   );
   const panelFiles = usePanelFiles({
     available: panel !== null,
@@ -539,6 +561,7 @@ export function PluginPanelRightPanelHost({
     revealPanel();
   }, [activeTab, isOpen, openTab, panelController, revealPanel]);
 
+  useAppCommandFocusedPluginPage(pluginId, isFocused && panel !== null);
   useAppCommandHandler("panel.toggle", () => {
     if (!isFocused || panel === null) return false;
     togglePanel();
@@ -574,6 +597,11 @@ export function PluginPanelRightPanelHost({
     reveal: revealPanel,
   });
   const openBrowser = panelBrowser.open;
+  const openBrowserUrl = panelBrowser.openUrl;
+  const handleOpenPanelLink = useCallback<MarkdownPreviewLinkHandler>(
+    ({ href }) => openBrowserUrl(href),
+    [openBrowserUrl],
+  );
 
   const fixedTabs = useMemo<readonly SecondaryPanelFixedTab[]>(
     () =>
@@ -649,7 +677,9 @@ export function PluginPanelRightPanelHost({
               isPanelPersistedOpen={panelState.secondary.isOpen}
               onAutoFocusHandled={terminals.handleAutoFocusHandled}
               onCloseStart={() => terminals.close(tab.terminalId)}
+              onOpenLink={handleOpenPanelLink}
               onRetryStart={() => terminals.retryStart(tab.terminalId)}
+              onSelectionAddToChat={null}
               target={tab.target}
               terminalId={tab.terminalId}
             />
@@ -724,6 +754,7 @@ export function PluginPanelRightPanelHost({
     },
     [
       activateTab,
+      handleOpenPanelLink,
       pluginActions,
       panel,
       panelPath,
@@ -948,7 +979,11 @@ export function PluginPanelRightPanelHost({
 
   return (
     <UrlOpenRoutingProvider openInAppBrowser={openBrowser}>
-      <AppNavigationHostProvider capabilities={navigationCapabilities}>
+      <AppNavigationSurfaceProvider
+        capabilities={navigationCapabilities}
+        isFocused={isFocused && panel !== null}
+      >
+        <AppNavigationHostCapture hostRef={surfaceHost} />
         <AppPanelTabsPublisher
           publish={panelController.publishTabs}
           activeTabId={activeTab?.id ?? null}
@@ -963,7 +998,7 @@ export function PluginPanelRightPanelHost({
           {registeredTabs.observers}
           {routedPage}
         </PluginDetailRouteNavigationProvider>
-      </AppNavigationHostProvider>
+      </AppNavigationSurfaceProvider>
     </UrlOpenRoutingProvider>
   );
 }

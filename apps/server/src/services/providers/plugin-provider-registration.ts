@@ -127,7 +127,10 @@ export function buildPluginProviderRegistration(args: {
   declaration: NormalizedPluginProviderDeclaration;
   iconHash: string | null;
   readSettings: () => PluginProviderOptionsContext["settings"];
-}): Omit<ProviderRegistration, "pluginId" | "iconNames"> {
+}): Omit<
+  ProviderRegistration,
+  "pluginId" | "iconNames" | "reportBridgeFailure"
+> {
   const { declaration } = args;
   const { capabilities } = declaration;
   const {

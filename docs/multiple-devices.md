@@ -24,27 +24,65 @@ account from Settings → bb connect (or `bb account login`, or
 `bb connect --code ...` with a dashboard code), then open its getbb.app URL.
 The server owns the tunnel and reconnects after restart.
 
-For a private tailnet route, keep bb on its loopback default and publish it
-through Tailscale Serve:
+For a private tailnet route, keep bb on its loopback default and install the
+official Tailscale plugin on the server's machine (Plugins → Browse →
+Tailscale), then choose Settings → Tailscale → **Set up**. From the CLI:
 
 ```bash
-tailscale serve --bg --https=443 http://127.0.0.1:38886
-npx bb-app config set BB_APP_URL https://<machine>.<tailnet>.ts.net
+bb plugin install tailscale
+bb tailscale setup
 ```
 
-Start bb with `npx bb-app` and open the HTTPS URL. Tailscale ACLs are the access
-boundary for this route; do not expose the server through Funnel or the public
-internet. bb connect URLs require the paired account owner's session.
+Setup publishes bb through Tailscale Serve at
+`https://<machine>.<tailnet>.ts.net` (on bb's own port, such as `:38886`, when
+another service already uses 443), and bb accepts that address without
+`BB_APP_URL`. A Serve mapping to bb that you made by hand is adopted unchanged. Tailscale must be installed
+and signed in on the server's machine, with MagicDNS and HTTPS certificates on
+in the tailnet; `bb tailscale status` says what is missing. **Remove** (or
+`bb tailscale teardown`) turns off only the mapping bb created. Tailscale ACLs
+are the access boundary for this route; do not expose the server through
+Funnel or the public internet. bb connect URLs require the paired account
+owner's session.
 
 Existing remote host daemons that target a direct tailnet IP or
 `http://<machine>.<tailnet>.ts.net:38886` must migrate before restarting an
 upgraded server. Prefer pairing bb connect and re-adding the machine from
 Settings → Machines so its installer records the account-gated route. The
-private alternative is to open bb through the Tailscale Serve URL and re-run
-the Add machine installer from there.
+private alternative is to set up the Tailscale plugin, drag it to the top of
+Settings → Machines → How devices reach this server (or run
+`bb server access order tailscale`), and re-run the Add machine installer.
 
-For compatibility only, `npx bb-app --server-bind-host 0.0.0.0` restores direct
-IPv4 network access. The public API is unauthenticated and permits command
+### Local network
+
+With the **Reach machines over several routes** experiment (`serverRoutes`,
+on for early adopters), add **Local network** from **Add a route** in
+Settings → Machines → How devices reach this server (or run
+`bb server access add local-network`) and bb also listens on this
+computer's private LAN addresses, without a restart. Devices and machines on
+that network then reach bb at `http://<LAN address>:38886`; the address is
+shown in Settings and `bb server access list`. Connected machines learn the
+route the next time their session opens and Settings → Machines shows "via
+Local network" for those using it.
+
+Anyone on that network can use bb: the public API is unauthenticated and
+permits command execution and file reads. Add it only for a network you
+trust, and never on public Wi-Fi.
+
+Every route is optional and each keeps its own trust boundary: the local
+network trusts the network, the Tailscale route trusts the tailnet's ACLs, a
+Manual address trusts whatever fronts it, and bb connect trusts the account
+gate.
+`bb server access order` sets which one devices try first. Each time a machine
+connects it checks every route at once and uses the first that answers,
+favoring routes higher in the order. It stays on that route until the
+connection drops, then picks again, so a machine whose route stops answering
+moves to the next one within seconds, keeping its session if it reconnects
+within 30 seconds. Attachments and daemon updates stay on an
+encrypted (HTTPS) route while a machine uses the local network, unless the
+local network is the only route.
+
+For compatibility, `npx bb-app --server-bind-host 0.0.0.0` restores direct
+IPv4 network access on every interface. The public API is unauthenticated and permits command
 execution and file reads, so use wildcard binding only behind a trusted network
 boundary and never through Funnel or the public internet.
 
@@ -156,9 +194,10 @@ execute work. Choose Windows in the dialog for a PowerShell command; a Windows
 machine needs Node.js 22.19 or newer and Git for Windows, and its daemon starts
 when you sign in to Windows. It installs and enrolls a host daemon; when bb connect is paired,
 the installer also configures the machine credential used to reach the server
-through the account gate. Without bb connect, open the server through a
-Tailscale Serve URL before generating the installer; the loopback listener is
-not directly reachable from another machine. When bb connect is not paired and
+through the account gate. Without bb connect, set up the Tailscale plugin; the
+installer targets the first working route in the Settings → Machines order, so
+with Tailscale first it targets `https://<machine>.<tailnet>.ts.net`; the loopback listener
+is not directly reachable from another machine. When bb connect is not paired and
 the server URL is a loopback or unspecified address, the dialog does not show an
 installer. It asks you to set up machine access first by choosing the address
 machines should use. Once access is ready, the dialog also names the server

@@ -1,8 +1,10 @@
+import { outputJson, printJsonResult } from "../../command-result.js";
 import {
   GIT_PLUGIN_ID,
   type WorkspaceDiffTarget,
   resolveEnvironmentMergeBaseBranch,
   type Environment,
+  type ResolvedThreadExecutionOptions,
   type Thread,
   type ThreadEventRow,
   type ThreadTimelinePendingTodos,
@@ -34,11 +36,7 @@ import {
 } from "@bb/server-contract";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import {
-  getErrorMessage,
-  outputJson,
-  requireThreadIdOrSelf,
-} from "../helpers.js";
+import { getErrorMessage, requireThreadIdOrSelf } from "../helpers.js";
 import {
   type ThreadEnvironmentInfo,
   fetchEnvironmentInfo,
@@ -77,6 +75,7 @@ interface ThreadOutputCommandOptions {
 
 interface ThreadStatusPayload {
   thread: Thread;
+  executionOptions: ResolvedThreadExecutionOptions | null;
 }
 
 type ThreadShowEnvironmentJsonPayload = Environment & {
@@ -272,9 +271,15 @@ export function registerShowCommand(
       action(async (id: string | undefined, opts: ThreadShowCommandOptions) => {
         const threadId = requireThreadIdOrSelf(id, opts);
         const sdk = createCliBbSdk(getUrl());
-        const thread = await sdk.threads.get({ threadId });
+        const [thread, executionOptions] = await Promise.all([
+          sdk.threads.get({ threadId }),
+          sdk.threads.defaultExecutionOptions({ threadId }),
+        ]);
 
-        const statusPayload: ThreadStatusPayload = { thread };
+        const statusPayload: ThreadStatusPayload = {
+          thread,
+          executionOptions,
+        };
         let environment: Environment | null | undefined;
         const getEnvironment = async () => {
           if (!thread.environmentId) {
@@ -540,7 +545,7 @@ export function registerShowCommand(
                 ),
                 afterSeq: opts.afterSeq,
               });
-          console.log(JSON.stringify(events.rows, null, 2));
+          printJsonResult(events.rows);
           if (events.hasMore) {
             const lastSeq = events.rows[events.rows.length - 1]?.seq;
             console.error(
@@ -589,10 +594,13 @@ export function registerShowCommand(
           page = older.timelinePage;
         }
         const color = process.stdout.isTTY === true && !process.env.NO_COLOR;
-        const text = formatThreadTimelineText(rows, {
-          verbose: format === "verbose",
-          color,
-        });
+        const text = formatThreadTimelineText(
+          [...rows, ...timeline.pendingSteers],
+          {
+            verbose: format === "verbose",
+            color,
+          },
+        );
         const notice =
           page.olderCursor !== null
             ? `(Showing the newest ${page.returnedSegmentCount} user-message turns; older history omitted. Use --limit <n> (max ${THREAD_LOG_TIMELINE_SEGMENT_LIMIT_MAX}) or --all to see more.)`
@@ -628,7 +636,7 @@ function printThreadStatus(
   environmentInfo: ThreadEnvironmentInfo | null,
   pullRequest: FetchedPullRequest | null,
 ): void {
-  const { thread } = payload;
+  const { thread, executionOptions } = payload;
   console.log(`Thread: ${thread.id}`);
   console.log(
     thread.archivedAt === null
@@ -639,6 +647,11 @@ function printThreadStatus(
     console.log(`  Title: ${thread.title}`);
   }
   console.log(`  Project: ${thread.projectId}`);
+  console.log(`  Provider: ${thread.providerId}`);
+  if (executionOptions !== null) {
+    console.log(`  Model: ${executionOptions.model}`);
+    console.log(`  Reasoning level: ${executionOptions.reasoningLevel}`);
+  }
   if (thread.parentThreadId) {
     console.log(`  Parent: ${thread.parentThreadId}`);
     console.log(`  Parent notifications: ${thread.parentNotifications}`);
@@ -730,7 +743,7 @@ async function printThreadLogMessage(
     after: context,
   });
   if (format === "json") {
-    console.log(JSON.stringify(result, null, 2));
+    printJsonResult(result);
     return;
   }
   const color = process.stdout.isTTY === true && !process.env.NO_COLOR;

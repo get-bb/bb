@@ -1,5 +1,8 @@
 import { bridgeLaunchProcessKey } from "@bb/agent-runtime";
-import type { HostDaemonBridgeLaunch } from "@bb/host-daemon-contract";
+import type {
+  HostDaemonBridgeLaunch,
+  HostDaemonContributedEnvEntry,
+} from "@bb/host-daemon-contract";
 import type {
   ProviderInstallationRequirement,
   ProviderInstallationStatus,
@@ -11,6 +14,7 @@ export interface ProviderInstallationGateKeyArgs {
   providerId: string;
   bridgeLaunch: HostDaemonBridgeLaunch;
   requirement?: ProviderInstallationRequirement;
+  contributedEnv: readonly HostDaemonContributedEnvEntry[];
 }
 
 export interface ProviderInstallationGate {
@@ -34,7 +38,10 @@ interface SettledEntry {
 export function providerInstallationGateKey(
   args: ProviderInstallationGateKeyArgs,
 ): string {
-  return `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}#${args.requirement ?? "thread_start"}`;
+  const contributedEnv = JSON.stringify(
+    args.contributedEnv.map((entry) => [entry.name, entry.value]),
+  );
+  return `${args.providerId}#bridge:${bridgeLaunchProcessKey(args.bridgeLaunch)}#${args.requirement ?? "thread_start"}#env:${contributedEnv}`;
 }
 
 export function createProviderInstallationGate({

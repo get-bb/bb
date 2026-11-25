@@ -1,5 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { getLatestThreadSequence, listQueuedThreadMessages } from "@bb/db";
+import type {
+  MessageDispatchHookContext,
+  MessageDispatchHookDecision,
+  PluginHookName,
+} from "@get-bb/plugin-sdk";
+import {
+  invokePluginInline,
+  setPluginHookProvider,
+  type PluginHookRegistration,
+} from "../../src/services/plugins/plugin-hook-registry.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import {
   createStandaloneBuiltinCompactCommandInput,
   turnRequestEventDataSchema,
@@ -105,6 +116,27 @@ function seedAcceptedProviderTurn(
     },
   });
 }
+
+function installDispatchHook(
+  handler: (context: MessageDispatchHookContext) => MessageDispatchHookDecision,
+): void {
+  const registry: {
+    [K in PluginHookName]: PluginHookRegistration<K>[];
+  } = {
+    "thread.delete_finalize": [],
+    "message.dispatch": [{ pluginId: "compaction-hook-test", handler }],
+  };
+  setPluginHookProvider({
+    listHooks: (hook) => registry[hook],
+    invokeHook: (_pluginId, _label, run) => invokePluginInline(run),
+    decisionTimeoutMs: 10_000,
+    isLoadingPlugins: () => false,
+  });
+}
+
+afterEach(() => {
+  setPluginHookProvider(undefined);
+});
 
 describe("public thread compaction", () => {
   it("dispatches the same structured /compact turn as the composer", async () => {
@@ -815,6 +847,101 @@ describe("public thread compaction", () => {
       expect(response.status).toBe(status);
       await expect(readJson(response)).resolves.toMatchObject({ message });
       expect(responder.requests).toHaveLength(0);
+    });
+  });
+
+  it("does not compact when the dispatch hook rejects a compact-first send", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedCompactableThread(harness, {
+        providerId: "pi",
+        providerThreadId: "provider-thread-compact-reject",
+      });
+      const responder = registerSuccessfulTurnResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      installDispatchHook(() => ({ action: "reject", message: "Not now" }));
+      const sequenceBefore = getLatestThreadSequence(harness.db, {
+        threadId: thread.id,
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "queue-if-active",
+            compactFirst: true,
+            input: [{ type: "text", text: "Continue after compacting" }],
+          }),
+        },
+      );
+
+      expect(response.status).toBe(409);
+      expect(
+        responder.requests.filter(
+          ({ command }) => command.type === "turn.submit",
+        ),
+      ).toHaveLength(0);
+      expect(getLatestThreadSequence(harness.db, { threadId: thread.id })).toBe(
+        sequenceBefore,
+      );
+    });
+  });
+
+  it("holds the compaction with a compact-first send the dispatch hook makes wait", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session, thread } = seedCompactableThread(harness, {
+        providerId: "pi",
+        providerThreadId: "provider-thread-compact-wait",
+      });
+      const responder = registerSuccessfulTurnResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+      });
+      const turnSubmits = () =>
+        responder.requests.flatMap(({ command }) =>
+          command.type === "turn.submit" ? [command] : [],
+        );
+      let decision: MessageDispatchHookDecision = {
+        action: "wait",
+        reason: "At capacity",
+      };
+      installDispatchHook(() => decision);
+
+      const response = await harness.app.request(
+        `/api/v1/threads/${thread.id}/send`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "queue-if-active",
+            compactFirst: true,
+            input: [{ type: "text", text: "Continue after compacting" }],
+          }),
+        },
+      );
+      expect(response.status).toBe(200);
+      expect(turnSubmits()).toHaveLength(0);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([
+        expect.objectContaining({ compactFirst: true }),
+      ]);
+
+      decision = { action: "proceed" };
+      await runQueuedMessageDispatch(harness.deps, { kind: "plugin-recheck" });
+
+      expect(turnSubmits()).toEqual([
+        expect.objectContaining({
+          input: createStandaloneBuiltinCompactCommandInput(),
+        }),
+      ]);
+      expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([
+        expect.objectContaining({
+          compactFirst: false,
+          waitingOn: JSON.stringify({ kind: "thread-busy" }),
+        }),
+      ]);
     });
   });
 

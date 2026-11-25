@@ -240,13 +240,7 @@ async function addExistingAccount(
 ): Promise<Account> {
   const store = new AccountStore(
     target.host.bb.storage.kv,
-    path.join(
-      target.host.bb.server.experimental_dataDir,
-      "plugins",
-      "account-pool",
-      "secrets",
-      "accounts",
-    ),
+    path.join(target.host.bb.storage.experimental_directory(), "accounts"),
   );
   const priority = placement.priority ?? 100;
   let account: Account;
@@ -989,10 +983,7 @@ describe("Account Pool plugin", () => {
       JSON.parse(
         await fs.readFile(
           path.join(
-            dataDir,
-            "plugins",
-            "account-pool",
-            "secrets",
+            host.bb.storage.experimental_directory(),
             "accounts",
             `account-${firstCodex?.id}.json`,
           ),
@@ -1117,11 +1108,13 @@ describe("Account Pool plugin", () => {
 
   it("prunes token files for unenrolled hosts on startup and status", async () => {
     const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-prune-"));
-    const secretDir = path.join(
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
       dataDir,
-      "plugins",
-      "account-pool",
-      "secrets",
+      sdk: sdkStubs(),
+    });
+    const secretDir = path.join(
+      host.bb.storage.experimental_directory(),
       "accounts",
     );
     const seededTokens = new HubTokenStore(secretDir);
@@ -1129,11 +1122,6 @@ describe("Account Pool plugin", () => {
     await seededTokens.forHost("host-gone");
     const goneTokenFile = path.join(secretDir, "hub-token-host-gone.json");
     await expect(fs.access(goneTokenFile)).resolves.toBeUndefined();
-    const host = createFakePluginHost({
-      pluginId: "account-pool",
-      dataDir,
-      sdk: sdkStubs(),
-    });
     await createAccountPoolPlugin()(host.bb);
     cleanups.push(async () => {
       await host.harness.lifecycle.dispose();
@@ -1157,6 +1145,124 @@ describe("Account Pool plugin", () => {
     );
     expect(status.hosts).toEqual([]);
     await expect(fs.access(hostTwoTokenFile)).rejects.toThrow();
+  });
+
+  it("moves account and machine-token files out of secrets/accounts once and fails over across them", async () => {
+    const keys: string[] = [];
+    const upstream = await startUpstream((request, response) => {
+      const key = request.headers["x-api-key"]?.toString() ?? "";
+      keys.push(key);
+      if (key === "sk-one") {
+        response.writeHead(429, {
+          "content-type": "application/json",
+          "anthropic-ratelimit-unified-5h-status": "rejected",
+          "anthropic-ratelimit-unified-5h-reset": "4102444800",
+        });
+        response.end('{"rejected":true}');
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ servedBy: key }));
+    });
+    cleanups.push(upstream.close);
+    const dataDir = await mkdtemp(path.join(tmpdir(), "bb-pool-move-"));
+    const host = createFakePluginHost({
+      pluginId: "account-pool",
+      dataDir,
+      sdk: sdkStubs(),
+    });
+    cleanups.push(async () => {
+      await host.harness.lifecycle.dispose();
+      await fs.rm(dataDir, { recursive: true, force: true });
+    });
+    await host.bb.storage.kv.set("config", {
+      anthropicUpstreamBaseUrl: upstream.url,
+      codexUpstreamBaseUrl: upstream.url,
+    });
+    const legacyDir = path.join(
+      dataDir,
+      "plugins",
+      "account-pool",
+      "secrets",
+      "accounts",
+    );
+    const legacyAccounts = new AccountStore(host.bb.storage.kv, legacyDir);
+    for (const [index, apiKey] of ["sk-one", "sk-two", "sk-three"].entries()) {
+      await legacyAccounts.add(
+        {
+          provider: "claude",
+          kind: "api-key",
+          label: apiKey,
+          email: null,
+          accountUuid: null,
+          subscriptionType: null,
+          rateLimitTier: null,
+          enabled: true,
+          priority: 100 + index,
+        },
+        { kind: "api-key", apiKey },
+      );
+    }
+    const legacyTokens = new HubTokenStore(legacyDir);
+    const machineToken = await legacyTokens.forHost("host-one");
+    const readFiles = async (dir: string) =>
+      Object.fromEntries(
+        await Promise.all(
+          (await fs.readdir(dir)).map(async (name) => {
+            const file = path.join(dir, name);
+            const [content, stat] = await Promise.all([
+              fs.readFile(file, "utf8"),
+              fs.stat(file),
+            ]);
+            return [name, { content, mode: stat.mode & 0o777 }] as const;
+          }),
+        ),
+      );
+    const legacyFiles = await readFiles(legacyDir);
+    expect(Object.keys(legacyFiles)).toHaveLength(4);
+
+    const plugin = createAccountPoolPlugin({
+      usageUrl: "data:application/json,{}",
+    });
+    await plugin(host.bb);
+    const accountsDir = path.join(
+      host.bb.storage.experimental_directory(),
+      "accounts",
+    );
+    await expect(fs.access(legacyDir)).rejects.toThrow();
+    expect(await readFiles(accountsDir)).toEqual(legacyFiles);
+    if (process.platform !== "win32") {
+      expect(
+        Object.values(legacyFiles).every((file) => file.mode === 0o600),
+      ).toBe(true);
+      expect((await fs.stat(accountsDir)).mode & 0o777).toBe(0o700);
+    }
+
+    const reloaded = await host.harness.lifecycle.reload(plugin);
+    cleanups.push(() => reloaded.harness.lifecycle.dispose());
+    expect(await readFiles(accountsDir)).toEqual(legacyFiles);
+
+    const service = reloaded.harness.behavior.runService("hub");
+    cleanups.push(async () => {
+      service.controller.abort();
+      await service.done;
+    });
+    await vi.waitFor(async () => {
+      expect(
+        statusSchema.parse(
+          await reloaded.harness.behavior.callRpc("status.get", null),
+        ).accepting,
+      ).toBe(true);
+    });
+    expect(await resolveToken(reloaded)).toBe(machineToken);
+    const response = await reloaded.harness.behavior.fetchHttp(
+      "POST",
+      "/v1/messages",
+      { headers: authHeaders(machineToken), body: "{}" },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ servedBy: "sk-two" });
+    expect(keys).toEqual(["sk-one", "sk-two"]);
   });
 
   it("uses a single-process token cache and throttles last-use file writes", async () => {
@@ -1591,10 +1697,7 @@ describe("Account Pool plugin", () => {
       JSON.parse(
         await fs.readFile(
           path.join(
-            dataDir,
-            "plugins",
-            "account-pool",
-            "secrets",
+            host.bb.storage.experimental_directory(),
             "accounts",
             `account-${account.id}.json`,
           ),
@@ -1917,7 +2020,10 @@ describe("Account Pool plugin", () => {
   });
 
   it("lists Claude models through the hub with a pooled account's credentials", async () => {
-    const seen: Array<{ url: string | undefined; authorization: string | undefined }> = [];
+    const seen: Array<{
+      url: string | undefined;
+      authorization: string | undefined;
+    }> = [];
     const upstream = await startUpstream(async (request, response) => {
       await readRequestBody(request);
       seen.push({
@@ -2053,10 +2159,7 @@ describe("Account Pool plugin", () => {
     cleanups.push(upstream.close);
     const fixture = await createFixture({ upstreamUrl: upstream.url });
     const accountSecretFile = path.join(
-      fixture.dataDir,
-      "plugins",
-      "account-pool",
-      "secrets",
+      fixture.host.bb.storage.experimental_directory(),
       "accounts",
       `account-${fixture.account.id}.json`,
     );
@@ -2128,10 +2231,7 @@ describe("Account Pool plugin", () => {
     expect(current.status).toBe(200);
     await current.text();
     const tokenFile = path.join(
-      fixture.dataDir,
-      "plugins",
-      "account-pool",
-      "secrets",
+      fixture.host.bb.storage.experimental_directory(),
       "accounts",
       "hub-token-host-one.json",
     );
@@ -3988,9 +4088,7 @@ describe("Account Pool plugin", () => {
     const upstreamKey = (init: RequestInit | undefined) => {
       const headers = new Headers(init?.headers);
       return (
-        headers.get("x-api-key") ??
-        headers.get("authorization")?.slice(7) ??
-        ""
+        headers.get("x-api-key") ?? headers.get("authorization")?.slice(7) ?? ""
       );
     };
 
@@ -5340,10 +5438,10 @@ describe("Account Pool plugin", () => {
               : reason === "network error"
                 ? ["sk-first", "sk-first", "sk-first", "sk-first"]
                 : [
-                  "sk-first",
-                  "sk-second",
-                  reason === "family quota" ? "sk-first" : "sk-second",
-                ],
+                    "sk-first",
+                    "sk-second",
+                    reason === "family quota" ? "sk-first" : "sk-second",
+                  ],
           );
         } finally {
           finishOld();
@@ -5832,10 +5930,7 @@ describe("Account Pool plugin", () => {
     expect(refreshCalls).toBe(1);
     expect(authorizations).toEqual(["Bearer oauth-new", "Bearer oauth-new"]);
     const secretPath = path.join(
-      fixture.dataDir,
-      "plugins",
-      "account-pool",
-      "secrets",
+      fixture.host.bb.storage.experimental_directory(),
       "accounts",
       `account-${fixture.account.id}.json`,
     );
@@ -6459,7 +6554,10 @@ describe("sequential pool recovery", () => {
         fetch: async (_input, init) => {
           attempts.push(new Headers(init?.headers).get("x-api-key"));
           return outage
-            ? Response.json({}, { status: 503, headers: { "retry-after": "0" } })
+            ? Response.json(
+                {},
+                { status: 503, headers: { "retry-after": "0" } },
+              )
             : Response.json({});
         },
       },
@@ -6846,29 +6944,60 @@ describe("sequential pool recovery", () => {
     ).toBe("exhausted");
   });
 
+  const emptyPlan = {
+    primary_window: { used_percent: 100, reset_at: 4102444800 },
+  };
+  const includedPlan = {
+    allowed: true,
+    primary_window: {
+      used_percent: 0,
+      reset_at: 4102444800,
+      limit_window_seconds: 604800,
+    },
+  };
+  const funded = { has_credits: true, unlimited: false };
+  const depleted = { has_credits: false, unlimited: false };
+  const cap = { reached: true };
   it.each([
-    ["funded", { has_credits: true, unlimited: false }, null, 200],
-    ["unlimited", { has_credits: false, unlimited: true }, null, 200],
-    ["depleted", { has_credits: false, unlimited: false }, null, 429],
-    ["unknown", null, null, 429],
+    ["funded", emptyPlan, funded, null, 200],
     [
-      "spending cap",
-      { has_credits: true, unlimited: true },
-      { reached: true },
-      429,
+      "unlimited",
+      emptyPlan,
+      { has_credits: false, unlimited: true },
+      null,
+      200,
     ],
+    ["depleted", emptyPlan, depleted, null, 429],
+    ["unknown", emptyPlan, null, null, 429],
+    ["workspace cap with included capacity", includedPlan, depleted, cap, 200],
     [
-      "individual cap",
-      { has_credits: true, unlimited: false },
+      "individual cap with included capacity",
+      includedPlan,
+      funded,
       {
         reached: false,
         individual_limit: { remaining_percent: 0, reset_at: 4102444800 },
       },
+      200,
+    ],
+    ["cap without windows", {}, funded, cap, 429],
+    [
+      "cap with exhausted secondary window",
+      { ...includedPlan, secondary_window: emptyPlan.primary_window },
+      funded,
+      cap,
+      429,
+    ],
+    [
+      "cap with refused plan",
+      { ...includedPlan, allowed: false },
+      funded,
+      cap,
       429,
     ],
   ])(
-    "routes Codex credit fallback with %s allowance",
-    async (_label, credits, spendControl, expected) => {
+    "routes Codex requests with %s",
+    async (_label, rateLimit, credits, spendControl, expected) => {
       let calls = 0;
       const fixture = await createFixture({
         upstreamUrl: "https://upstream.example",
@@ -6887,12 +7016,7 @@ describe("sequential pool recovery", () => {
           fetch: async (input) => {
             if (new URL(String(input)).pathname === "/usage")
               return Response.json({
-                rate_limit: {
-                  primary_window: {
-                    used_percent: spendControl === null ? 100 : 10,
-                    reset_at: 4102444800,
-                  },
-                },
+                rate_limit: rateLimit,
                 credits,
                 spend_control: spendControl,
               });
@@ -6912,8 +7036,15 @@ describe("sequential pool recovery", () => {
       const report = statusSchema.parse(
         await fixture.host.harness.behavior.callRpc("status.get", null),
       );
+      expect(report.accounts[0]?.status).toBe(
+        expected === 200 ? "ready" : "exhausted",
+      );
       expect(report.accounts[0]?.extraUsage?.status ?? null).toBe(
-        credits === null ? null : expected === 200 ? "allowed" : "rejected",
+        credits === null
+          ? null
+          : expected === 200 && spendControl === null
+            ? "allowed"
+            : "rejected",
       );
     },
   );

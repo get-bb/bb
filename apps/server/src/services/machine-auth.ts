@@ -1,10 +1,15 @@
 import { createHash } from "node:crypto";
-import { and, eq, inArray, isNotNull, lt, ne } from "drizzle-orm";
-import { sql } from "drizzle-orm";
 import { betterAuth } from "better-auth";
 import { apiKey } from "@better-auth/api-key";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
-import { authApiKeys, authUsers, type DbConnection } from "@bb/db";
+import {
+  authApiKeys,
+  authUsers,
+  deleteExpiredAuthApiKeys,
+  disableEnabledAuthApiKeysForHost,
+  insertAuthUserIfMissing,
+  type DbConnection,
+} from "@bb/db";
 import { readOrCreateSecretFile } from "@bb/secret-storage";
 import { z } from "zod";
 import type { ServerLogger } from "../types.js";
@@ -193,20 +198,12 @@ export async function createMachineAuthService(
   }
 
   async function ensureSystemUser(): Promise<void> {
-    const now = new Date();
-    args.db
-      .insert(authUsers)
-      .values({
-        id: MACHINE_AUTH_SYSTEM_USER_ID,
-        name: MACHINE_AUTH_SYSTEM_USER_NAME,
-        email: MACHINE_AUTH_SYSTEM_USER_EMAIL,
-        emailVerified: true,
-        image: null,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing()
-      .run();
+    insertAuthUserIfMissing(args.db, {
+      id: MACHINE_AUTH_SYSTEM_USER_ID,
+      name: MACHINE_AUTH_SYSTEM_USER_NAME,
+      email: MACHINE_AUTH_SYSTEM_USER_EMAIL,
+      now: new Date(),
+    });
   }
 
   async function ensureReady(): Promise<void> {
@@ -284,40 +281,20 @@ export async function createMachineAuthService(
   ): Promise<void> {
     await ensureReady();
     if (configId === DAEMON_HOST_CONFIG_ID) invalidateDaemonHostKeys(hostId);
-    args.db
-      .update(authApiKeys)
-      .set({
-        enabled: false,
-        updatedAt: new Date(),
-      })
-      .where(
-        and(
-          eq(authApiKeys.configId, configId),
-          eq(authApiKeys.enabled, true),
-          preserveKeyId === undefined
-            ? undefined
-            : ne(authApiKeys.id, preserveKeyId),
-          sql`json_extract(${authApiKeys.metadata}, '$.hostId') = ${hostId}`,
-        ),
-      )
-      .run();
+    disableEnabledAuthApiKeysForHost(args.db, {
+      configId,
+      hostId,
+      preserveKeyId: preserveKeyId ?? null,
+      updatedAt: new Date(),
+    });
   }
 
   async function pruneExpiredKeys(): Promise<void> {
     await ensureReady();
-    args.db
-      .delete(authApiKeys)
-      .where(
-        and(
-          inArray(authApiKeys.configId, [
-            DAEMON_ENROLL_CONFIG_ID,
-            DAEMON_HOST_CONFIG_ID,
-          ]),
-          isNotNull(authApiKeys.expiresAt),
-          lt(authApiKeys.expiresAt, new Date()),
-        ),
-      )
-      .run();
+    deleteExpiredAuthApiKeys(args.db, {
+      configIds: [DAEMON_ENROLL_CONFIG_ID, DAEMON_HOST_CONFIG_ID],
+      now: new Date(),
+    });
   }
 
   return {

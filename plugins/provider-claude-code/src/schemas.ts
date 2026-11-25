@@ -53,6 +53,10 @@ export const toolResultBlockSchema = z.object({
   tool_use_result: claudeToolUseResultSchema.nullish(),
 });
 
+export const toolResultContentBlocksSchema = z.array(
+  z.object({ type: z.string() }).passthrough(),
+);
+
 export const thinkingBlockSchema = z
   .object({
     type: z.literal("thinking"),
@@ -167,6 +171,22 @@ export const claudeConversationResetMessageSchema = z
 export const claudeSystemMessageSchema = z
   .object({
     type: z.literal("system"),
+  })
+  .passthrough();
+
+export const claudeBlockingInformationalSystemMessageSchema =
+  claudeSystemMessageSchema
+    .extend({
+      subtype: z.literal("informational"),
+      content: z.string(),
+      prevent_continuation: z.literal(true),
+    })
+    .passthrough();
+
+export const claudePromptBlockedByHookOutcomeSchema = z
+  .object({
+    kind: z.literal("blocked_by_hook"),
+    reason: z.string().trim().min(1),
   })
   .passthrough();
 

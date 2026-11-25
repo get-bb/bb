@@ -33,7 +33,6 @@ import {
   usePluginThreadRowStatus,
   usePluginThreadRowStatuses,
 } from "./plugin-thread-row-status";
-import { getThreadConversationCollapsedAtom } from "@/components/secondary-panel/threadSecondaryPanelAtoms";
 import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { useRetiredSidebarEnvironmentPullRequest } from "./retired-sidebar-pull-request";
 import { useHosts } from "@/hooks/queries/host-queries";
@@ -51,14 +50,11 @@ import {
   useSidebarThreadEntriesStore,
   useSidebarThreadEntry,
 } from "./sidebar-thread-entries";
-import { useSetRootComposeProjectId } from "./root-compose-selection";
-import { openThreadInSplit } from "./split-layout/openThreadInSplit";
-import {
-  getProjectComposeRoutePath,
-  getRootComposeRoutePath,
-  getSettingsProjectRoutePath,
-  getThreadRoutePath,
-} from "./route-paths";
+import { openThreadForPlugin } from "./plugin-navigation-hooks";
+import { openNewThread } from "./split-layout/openNewThread";
+import { getProjectComposeRoutePath } from "./route-paths";
+import { useThreadRequests } from "@/lib/thread-requests";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
 export { lookupCachedThread, resolveThread } from "./cached-thread.js";
 const EMPTY_THREADS: readonly PluginSidebarThread[] = [];
 const EMPTY_PROJECTS: readonly PluginSidebarProject[] = [];
@@ -98,8 +94,7 @@ function toPluginSidebarThreadCached(
   const hostName =
     entry.environmentHostId === null
       ? null
-      : (hostNamesById.get(entry.environmentHostId) ??
-        entry.environmentHostId);
+      : (hostNamesById.get(entry.environmentHostId) ?? entry.environmentHostId);
   const displayTitle = resolveThreadTitleDisplayText(
     getThreadDisplayTitle(entry),
     titleResources,
@@ -199,7 +194,7 @@ export function useSidebarThreads(
         name: project.name,
         isPersonal: project.id === PERSONAL_PROJECT_ID,
         href: getProjectComposeRoutePath(project.id),
-        settingsHref: getSettingsProjectRoutePath(project.id),
+        settingsHref: getSettingsTargetPath({ projectId: project.id }),
       })),
       sections: data.sections,
     };
@@ -220,8 +215,8 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
   const navigate = useRouteNavigate();
   const store = useStore();
   const isCompact = useIsCompactViewport();
-  const setRootComposeProjectId = useSetRootComposeProjectId();
   const hostActions = useThreadActions();
+  const threadRequests = useThreadRequests();
   const entries = useSidebarThreadEntriesStore();
   const { mutateAsync: pinThreadAsync } = usePinThread();
   const { mutateAsync: unpinThreadAsync } = useUnpinThread();
@@ -243,47 +238,33 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       open(threadId, options) {
         const entry = entries.get(threadId);
         if (entry === null) return;
-        const { projectId } = entry;
-        if (options?.split) {
-          store.set(getThreadConversationCollapsedAtom(threadId), false);
-          openThreadInSplit({
-            store,
-            navigate,
-            projectId,
-            threadId,
-            isCompact,
-          });
-          return;
-        }
-        store.set(getThreadConversationCollapsedAtom(threadId), false);
-        navigate(getThreadRoutePath({ projectId, threadId }));
+        openThreadForPlugin({
+          store,
+          navigate,
+          projectId: entry.projectId,
+          threadId,
+          isCompact,
+          split: options?.split ?? false,
+        });
       },
       openNewThread(options) {
-        const projectId = options?.projectId;
-        if (projectId !== undefined) {
-          setRootComposeProjectId(projectId);
-        }
-        const state = {
+        openNewThread({
+          navigate,
+          store,
+          isCompact,
+          ...(options?.projectId !== undefined
+            ? { projectId: options.projectId }
+            : {}),
           placement: options?.experimental_placement ?? {
             sectionId: options?.sectionId ?? null,
             pinned: false,
           },
-          ...(options?.focusPrompt ? { focusPrompt: true } : {}),
-          ...(options?.sectionId !== undefined
-            ? { sectionId: options.sectionId }
-            : {}),
+          ...(options?.focusPrompt === true ? { focusPrompt: true } : {}),
           ...(options?.environmentId !== undefined
-            ? { reuseEnvironmentId: options.environmentId }
+            ? { environmentId: options.environmentId }
             : {}),
-          ...(typeof options?.hostId === "string" &&
-          options.hostId.trim().length > 0
-            ? { newEnvironmentHostId: options.hostId.trim() }
-            : {}),
-        };
-        navigate(
-          getRootComposeRoutePath(),
-          Object.keys(state).length > 0 ? { state } : undefined,
-        );
+          ...(options?.hostId !== undefined ? { hostId: options.hostId } : {}),
+        });
       },
       async setPinned(threadId, pinned) {
         const entry = requireEntry(threadId);
@@ -304,13 +285,13 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
         await updateThreadAsync({ id: threadId, title });
       },
       archive(threadId) {
-        hostActions.requestArchive(requireEntry(threadId));
+        void threadRequests.requestArchive([threadId]);
       },
       experimental_archiveEnvironmentThreads(environmentId) {
         return hostActions.archiveEnvironmentThreads(environmentId);
       },
       requestDelete(threadId) {
-        hostActions.requestDelete(requireEntry(threadId));
+        void threadRequests.requestDelete([threadId]);
       },
     }),
     [
@@ -320,8 +301,8 @@ export function useSidebarThreadActions(): PluginSidebarThreadActions {
       navigate,
       pinThreadAsync,
       requireEntry,
-      setRootComposeProjectId,
       store,
+      threadRequests,
       unpinThreadAsync,
       updateThreadAsync,
     ],

@@ -32,7 +32,7 @@ describe.each(["local", "daemon"] as const)(
       } else {
         const metadata = {
           path: "/recording.mp4",
-          content: "",
+          content: new Uint8Array(),
           offset: 0,
           mimeType: "video/mp4",
           sizeBytes: content.length,
@@ -47,9 +47,9 @@ describe.each(["local", "daemon"] as const)(
             return {
               ...metadata,
               offset,
-              content: content
-                .subarray(offset, offset + length)
-                .toString("base64"),
+              content: new Uint8Array(
+                content.subarray(offset, offset + length),
+              ),
             };
           },
         );
@@ -242,11 +242,11 @@ describe.each(["local", "daemon"] as const)(
         const response = await respond({}, "GET", abort.signal);
         const reader = opened[0]!;
         const stream = response.body!.getReader();
-        expect(reader.read).toHaveBeenCalledTimes(1);
+        const reads = reader.read.mock.calls.length;
         expect((await stream.read()).value!.every((byte) => byte === 7)).toBe(
           true,
         );
-        expect(reader.read).toHaveBeenCalledTimes(1);
+        expect(reader.read).toHaveBeenCalledTimes(reads);
         if (action === "cancel") {
           await stream.cancel();
           expect((await stream.read()).done).toBe(true);
@@ -256,7 +256,7 @@ describe.each(["local", "daemon"] as const)(
         }
         expect(reader.signal.aborted).toBe(true);
         expect(reader.close).toHaveBeenCalledTimes(1);
-        expect(reader.read).toHaveBeenCalledTimes(1);
+        expect(reader.read).toHaveBeenCalledTimes(reads);
       },
     );
 

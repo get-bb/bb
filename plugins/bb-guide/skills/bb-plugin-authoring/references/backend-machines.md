@@ -147,7 +147,11 @@ By default it waits until the host is active; `wait: false` returns the
 creating host for polling with `bb.sdk.hosts.get`. `bb machine create`
 (`--no-wait`) and `bb machine show` are the CLI equivalents. Deleting the host
 (`bb.sdk.hosts.delete`, `bb machine remove`) cancels creation; closing a
-client or aborting its signal only stops following.
+client or aborting its signal only stops following. `hosts.delete` and
+`hosts.experimental_retryCleanup` resolve with `progress: "complete"` or
+`"in-progress"` and any `warnings`, and reject with `machine_teardown_failed`
+when the provider's removal fails; the host then stays removing and core
+retries it.
 
 With `wait: false` the manual enrollment command may not be ready yet. Poll
 `bb.sdk.hosts.experimental_getEnrollmentCommand({ hostId })` while the host
@@ -214,10 +218,31 @@ provides no retention or keep controls.
 
 ## Server access
 
-`bb.experimental_serverAccess.register` declares how a new machine reaches
-this server: `id`, `displayName`, `description`, `availability()`,
-`acquire({ key, hostId, signal })` returning a `ServerAccessGrant` or
-`{ status: "failed", message }`, and `release({ key, hostId, grantId })`.
+`bb.experimental_serverAccess.register` declares a route by which machines
+and apps reach this server: `id`, `displayName`, `description`, `routeKind`
+(`"local-network" | "private-overlay" | "relay" | "custom"`; core treats a
+plugin built before SDK 0.6.188 that omits it as `"custom"`), `availability()`, `acquire({ key, hostId, signal })`
+returning a `ServerAccessGrant` or `{ status: "failed", message }`, and
+`release({ key, hostId, grantId })`. The ids `direct` and `local-network`
+are reserved for core.
+
+Every available provider is a route; core has no separate on/off for plugin
+routes, so a plugin stops offering its route by reporting it unavailable or
+needing setup (for example when the user turns the feature off in the plugin's
+own settings). Routes follow the user's order from Settings → Machines → How
+devices reach this server or `bb server access order`. After that, with the
+`serverRoutes` experiment on, core ranks them by `routeKind` (local network,
+private overlay such as a tailnet, relay, custom); with it off, by plugin
+install order with Manual last. A new machine is installed with the first
+working route in that order, and with `local-network` only when nothing else
+works. With the experiment on, each connected machine also acquires a grant
+from every available provider when its session opens, and core sends the daemon
+all of them with their own headers. Only available routes are advertised, and
+their hostnames pass the server's host and origin checks.
+Core stores the admitted addresses so they work from the first request after a
+restart; an address survives a failed or timed-out `availability()` and is
+dropped on a definite `unavailable`/`setup-required` answer or when the plugin
+is disabled or removed.
 
 Acquire is idempotent by key and returns
 `{ id, serverUrl, headers?: Record<string, string> }`; the grant serves
@@ -230,9 +255,8 @@ interrupted; core retries release by key and hostId. Keep intent and
 credential-bearing grants in private plugin storage. Never put credentials in
 machine inputs, resources, or progress output.
 
-Machines settings select the default provider. Without a saved selection,
-core uses the first registered provider, or direct when none are registered,
-and it keeps the selected provider for later enrollment of the same machine.
+Providers of one `routeKind` rank by the earliest-installed plugin, not load
+order. Core keeps a machine's install route for its later enrollment.
 The direct provider reads `machineServerUrl`, falling back to
 `BB_EXTERNAL_URL`. Declaring a URL does not prove reachability from a sandbox.
 
@@ -241,5 +265,174 @@ configuration, which checks provider availability in parallel with a
 five-second deadline per check; invalid output, exceptions, and timeouts
 appear unavailable. Machines settings, manual setup, and promptbox banners use
 that status; a registered provider alone is not ready. Availability's optional
-public `serverUrl` is validated and displayed in Machines settings. Reading
-configuration never acquires access; the grant's URL is the one machines use.
+public `serverUrl` is validated and displayed in Settings → Machines, and
+while the provider is available core's Host and Origin guards
+admit its origin (also with the `serverRoutes` experiment off), so browsers and
+machines can use it without `BB_APP_URL`. Reading configuration
+never acquires access; the grant's URL is the one machines use.
+
+## Create steps and holds
+
+Declare `apiVersion: 2`. Create and restore contexts carry
+`environment: { id, name, projectId }`, the environment being created, and no
+thread, so core can also create the environment before any thread exists
+(`bb environment create`, `bb.sdk.environments.experimental_create`).
+
+A provider calls core's steps in the order it needs: `branchName()` resolves
+to `<prefix><slug>-<id>` once the thread's title settles (at once from the
+environment's name and id without a thread), so await it late; `setup(path)`
+claims `path` as a provider-owned workspace and starts core's setup there
+while create continues. The thread starts only after create returns `created`
+with the same path; without a call, core runs setup after create.
+`setup(path, { folders })` sets up each new folder once, in order, before
+`path` (teardown in reverse, after it); return them in `additionalPaths`.
+`projectCheckout.ownsPath` says bb cloned the checkout.
+
+Path keys come from the driving thread when there is one, so thread
+workspaces keep their names, and from the environment id otherwise.
+
+Providers built before `apiVersion: 2` still run, but the types no longer
+offer their contexts, and the plugin shows a problem asking to migrate:
+replace `suggestedBranchName` with `await branchName()`,
+`experimental_existingPath(inputs)` with `locate()` returning
+`{ path, reuse: true }`, and `experimental_claimPath` with `locate()` or
+`setup()`; read `projectCheckout.ownsPath` and `environment` instead of
+`experimental_ownsPath` and `thread`. Core refuses to create their
+environments without a thread.
+
+### Environments created before threads, and holds
+
+`bb.sdk.environments.experimental_create({ projectId, hostId?, provider?:
+{ id, inputs? }, name?, hold: "user" })` creates an environment no thread
+asked for. Its project, machine, provider selection, name and holder are
+stored on the environment, and core runs it, setup included, on the same
+create path threads use; restart resumes it on the same setup operation. A
+held environment is never retired for having no threads. `hold: "user"` keeps
+it until the user deletes it and lets threads join it. `hold: "plugin"` holds
+it for the calling plugin, and threads cannot join it ("held by <plugin>").
+Disabling or uninstalling that plugin releases its holds, and the environments
+retire like any other.
+That plugin's version-2 provider hands one to a new thread by calling
+`adopt(environmentId, resource)` in `create` and returning its path: core
+moves the thread onto it and records `resource` at once; the hold stays until
+create returns. Setup does not run again unless the provider then calls
+`setup(path)` with the adopted path, which starts setup at once (do this after
+changing the checkout). The resource create returns replaces the recorded one.
+If bb restarts before create returns, core discards the environment, removing
+it with the recorded resource, and provisions the thread again. A refused
+adopt changes nothing. After an adopt, a
+create that does not return `created` at that path fails the environment and
+its thread, and `remove()` later receives the recorded resource. Environment responses carry `heldBy`
+(`"user"`, `"plugin:<id>"` or null) and `statusMessage`, and
+`sdk.environments.list({ heldBy })` filters by holder. The Worktree plugin's
+warm pool is built on this. Environment responses
+expose only the read-only lifecycle projection: phase, retireAt, and
+teardown status/attempt/message.
+
+### Keeping prebuilt environments for your provider
+
+A provider can build environments ahead of time and hand one to each new
+thread. Here each environment is an app checkout with sibling `api` and
+`docs` checkouts, which threads also read and write. `StackBuilder` stands
+for your own code that builds and removes them on the machine, such as a
+host RPC:
+
+```ts
+interface StackBuilder {
+  build(
+    key: string,
+    signal: AbortSignal,
+  ): Promise<{ app: string; api: string; docs: string }>;
+  remove(app: string): Promise<void>;
+}
+
+function registerStackProvider(stacks: StackBuilder) {
+  const PROVIDER_ID = "stack";
+  const holder = `plugin:${bb.pluginId}` as const;
+
+  const warmUp = (projectId: string, hostId: string) =>
+    bb.sdk.environments.experimental_create({
+      projectId,
+      hostId,
+      provider: { id: PROVIDER_ID },
+      hold: "plugin",
+    });
+
+  const build = async (key: string, signal: AbortSignal) => {
+    const stack = await stacks.build(key, signal);
+    return {
+      status: "created" as const,
+      path: stack.app,
+      ownsPath: true,
+      additionalPaths: [{ path: stack.api }, { path: stack.docs }],
+      resource: stack.app,
+    };
+  };
+
+  bb.experimental_environments.register({
+    apiVersion: 2,
+    id: PROVIDER_ID,
+    displayName: "Stack",
+    description: "The app with its api and docs checkouts.",
+    icon: "Folder",
+    requires: { projectCheckout: true },
+    async create(context) {
+      const creating = await bb.sdk.environments.get({
+        environmentId: context.environment.id,
+        signal: context.signal,
+      });
+      if (creating.heldBy === null) {
+        const warm = await bb.sdk.environments.list({
+          projectId: context.project.id,
+          hostId: context.host.id,
+          heldBy: holder,
+          environmentProviderId: PROVIDER_ID,
+          limit: 20,
+          signal: context.signal,
+        });
+        for (const candidate of warm) {
+          if (candidate.status !== "ready" || candidate.path === null) continue;
+          try {
+            await context.adopt(candidate.id, candidate.path);
+          } catch {
+            continue;
+          }
+          void warmUp(context.project.id, context.host.id);
+          return {
+            status: "created",
+            path: candidate.path,
+            ownsPath: true,
+            resource: candidate.path,
+          };
+        }
+      }
+      return build(context.pathKey, context.signal);
+    },
+    restore: (context) => build(context.pathKey, context.signal),
+    async remove(context) {
+      if (typeof context.resource === "string")
+        await stacks.remove(context.resource);
+      return { status: "removed" };
+    },
+  });
+}
+```
+
+- `warmUp` builds one environment ahead of time: call it to fill the pool,
+  and after each hand-off to refill it. `create` also runs for those, and
+  they are held by your plugin (`heldBy` is `plugin:<id>`), so build them,
+  and adopt only for an environment nobody holds.
+- After `adopt`, omit `additionalPaths` to keep the folders the warm
+  environment was built with; return a list to replace them. Return its
+  `path`, or the thread fails, and return its `resource`: the one create
+  returns replaces the one `adopt` recorded, and `remove()` receives it.
+- `adopt` rejects an environment that is not ready, is held by another
+  plugin, or was just taken by another create; then nothing changed, so try
+  the next one or build a new one.
+- `restore` builds a new environment, so return the folders it built.
+  `previous.environment.additionalPaths` lists the ones the destroyed
+  environment had. A restore may also adopt a warm environment, which keeps
+  that environment's folders.
+- Your plugin decides how many to keep and when to refill or discard them.
+  The Worktree plugin's `warm-pools.ts` keeps a per-project count, refills
+  after each hand-off and discards members that fell behind.

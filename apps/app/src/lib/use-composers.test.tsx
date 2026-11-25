@@ -81,11 +81,20 @@ describe("useComposers", () => {
     const thread = createHost("thread-a", {
       kind: "thread",
       threadId: "thr_a",
+      projectId: "proj_test",
+      environmentId: null,
     });
-    const side = createHost("thread-b", { kind: "thread", threadId: "thr_b" });
+    const side = createHost("thread-b", {
+      kind: "thread",
+      threadId: "thr_b",
+      projectId: "proj_test",
+      environmentId: null,
+    });
     const sentEdit = createHost("sent-edit", {
       kind: "thread",
       threadId: "thr_a",
+      projectId: "proj_test",
+      environmentId: null,
     });
     mountEditor(thread);
     const unmountSide = mountEditor(side);
@@ -116,6 +125,8 @@ describe("useComposers", () => {
     const thread = createHost("thread-a", {
       kind: "thread",
       threadId: "thr_a",
+      projectId: "proj_test",
+      environmentId: null,
     });
     mountEditor(thread);
     const { result } = renderHook(() => useComposers()[0]?.isEmpty, {
@@ -134,6 +145,8 @@ describe("useComposers", () => {
     const thread = createHost("thread-a", {
       kind: "thread",
       threadId: "thr_a",
+      projectId: "proj_test",
+      environmentId: null,
     });
     mountEditor(thread);
     const { result } = renderHook(() => useComposers(), { wrapper });

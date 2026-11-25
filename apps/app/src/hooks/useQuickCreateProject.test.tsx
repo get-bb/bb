@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => ({
   onOpenChange: vi.fn(),
   openPathEntry: vi.fn(),
   openPicker: vi.fn(),
-  setRootComposeProjectId: vi.fn(),
 }));
 
 vi.mock("react-router-dom", () => ({
@@ -73,10 +72,6 @@ function mutateCallbacks() {
     onError: (error: unknown) => void;
   };
 }
-
-vi.mock("@/lib/root-compose-selection", () => ({
-  useSetRootComposeProjectId: () => mocks.setRootComposeProjectId,
-}));
 
 function host(
   id: string,

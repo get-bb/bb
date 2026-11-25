@@ -37,7 +37,10 @@ import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import type {} from "./types.js";
 import { turnRequestLabel } from "@bb/client-core";
 import { TurnRequestLabel } from "./TurnRequestLabel.js";
-import { formatShortMessageTime, MessageTime } from "./message-time.js";
+import {
+  formatShortMessageTime,
+  MessageTime,
+} from "@bb/shared-ui/message-time";
 import { useIsOverflowing } from "./conversation-message-overflow.js";
 import { PromptMentionPill } from "./ConversationMessageMentions.js";
 import { useThreadTitleDisplayText } from "@/components/thread/ThreadTitleMentions.js";
@@ -47,6 +50,8 @@ import {
   endsInsideExactRawThreadIdCodeSpan,
   GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP,
 } from "@bb/client-core";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 interface AutomationLink {
   automationId: string;
@@ -134,8 +139,8 @@ export function generatedConversationBodySlice({
 export function generatedConversationCollapsedPreview(
   text: string,
 ): GeneratedConversationCollapsedPreview {
-  const previewWindow = text.slice(
-    0,
+  const previewWindow = sliceUtf16Head(
+    text,
     GENERATED_MESSAGE_COLLAPSED_PREVIEW_CHAR_CAP + 1,
   );
   const lineBreakMatch = /\r\n|\r|\n/u.exec(previewWindow);
@@ -438,7 +443,7 @@ function stopRowToggle(event: MouseEvent<HTMLAnchorElement>): void {
 }
 
 function stopRowToggleKey(event: KeyboardEvent<HTMLAnchorElement>): void {
-  if (event.key === "Enter" || event.key === " ") {
+  if (isNonImeKey(event, "Enter") || event.key === " ") {
     event.stopPropagation();
   }
 }

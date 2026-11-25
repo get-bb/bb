@@ -20,17 +20,18 @@ import {
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { ThreadContextCardRow } from "./ThreadContextCardRow";
+import { SurfaceInfoSection } from "./ThreadContextCardSection";
 import {
   ThreadContextCard,
   ThreadContextCardHeaderButton,
   ThreadContextCardProvider,
   resolveThreadContextCardLayout,
-  useThreadContextCardContentInset,
-  useThreadContextKind,
+  useThreadContextCardTranscriptCenteredMinWidth,
   WithoutThreadContextCard,
   type CoreThreadContextCardRow,
   type CoreThreadContextCardSection,
 } from "./PluginThreadContextCard";
+import { useThreadContextKind } from "./thread-context-card-pane";
 
 function section(label: string) {
   return function Section({ threadId }: ExperimentalThreadContextCardProps) {
@@ -38,6 +39,20 @@ function section(label: string) {
       <p data-testid="section">
         {label} for {threadId}
       </p>
+    );
+  };
+}
+
+function titledSection(label: string, body: string) {
+  return function TitledSection({
+    threadId,
+  }: ExperimentalThreadContextCardProps) {
+    return (
+      <SurfaceInfoSection label={label}>
+        <p data-testid="section">
+          {body} for {threadId}
+        </p>
+      </SurfaceInfoSection>
     );
   };
 }
@@ -56,9 +71,11 @@ function Empty() {
   return null;
 }
 
-function Inset() {
+function TranscriptCenteredMinWidth() {
   return (
-    <output aria-label="Inset">{useThreadContextCardContentInset()}</output>
+    <output aria-label="Transcript centered min width">
+      {useThreadContextCardTranscriptCenteredMinWidth() ?? "none"}
+    </output>
   );
 }
 
@@ -78,20 +95,21 @@ const CORE: CoreThreadContextCardRow[] = [
 const CORE_SECTIONS: CoreThreadContextCardSection[] = [
   {
     id: "childThreads",
-    title: "Child threads",
     group: "1_related",
     order: 10,
-    component: section("Core children"),
+    component: titledSection("Child threads", "Core children"),
   },
 ];
 
 function renderPane({
+  store = createStore(),
   enabled = true,
   paneWidth = 1600,
   threadIds = ["thr_1"],
   coreRows = CORE,
   coreSections = CORE_SECTIONS,
 }: {
+  store?: ReturnType<typeof createStore>;
   enabled?: boolean;
   paneWidth?: number;
   threadIds?: readonly string[];
@@ -102,7 +120,7 @@ function renderPane({
     paneWidth,
   );
   return render(
-    <JotaiProvider store={createStore()}>
+    <JotaiProvider store={store}>
       <TooltipProvider>
         <MemoryRouter>
           {threadIds.map((threadId) => (
@@ -118,7 +136,7 @@ function renderPane({
               <header>
                 <ThreadContextCardHeaderButton />
               </header>
-              <Inset />
+              <TranscriptCenteredMinWidth />
               <div data-scroll-overlay="">
                 <ThreadContextCard />
               </div>
@@ -134,15 +152,15 @@ afterEach(() => {
   cleanup();
   removePluginSlotRegistrations("first");
   removePluginSlotRegistrations("second");
+  removePluginSlotRegistrations("core");
   resetAllCrashedPluginSlotsForTest();
   vi.restoreAllMocks();
 });
 
 describe("resolveThreadContextCardLayout", () => {
   it.each([
-    [1384, "gutter"],
-    [1383, "shift"],
-    [1072, "shift"],
+    [1600, "card"],
+    [1072, "card"],
     [1071, "banner"],
     [390, "banner"],
   ] as const)("lays out a %ipx pane as %s", (width, layout) => {
@@ -184,9 +202,9 @@ describe("thread context card", () => {
         threadContextCardSections: [
           {
             id: "deploys",
-            title: "Deploys",
             group: "2_deploys",
-            component: section("Deploys body"),
+            component: titledSection("Deploys", "Deploys body"),
+            legacyTitle: null,
           },
         ],
       }),
@@ -264,13 +282,17 @@ describe("thread context card", () => {
       })),
     });
     expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
-    expect(screen.getByLabelText("Inset").textContent).toBe("0");
+    expect(
+      screen.getByLabelText("Transcript centered min width").textContent,
+    ).toBe("none");
 
     fireEvent.click(screen.getByRole("button", { name: "Pin thread context" }));
     expect(
       screen.getByRole("group", { name: "Thread context" }).textContent,
     ).toContain("Nothing to show yet");
-    expect(screen.getByLabelText("Inset").textContent).not.toBe("0");
+    expect(
+      screen.getByLabelText("Transcript centered min width").textContent,
+    ).toBe("1384");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Unpin thread context" }),
@@ -293,7 +315,7 @@ describe("thread context card", () => {
     ).toContain("Branch for thr_1");
   });
 
-  it("lays out the card and the transcript inset in the same frame as a resize", () => {
+  it("lays out the card and the transcript clearance in the same frame as a resize", () => {
     const resize: Array<(entries: ResizeObserverEntry[]) => void> = [];
     vi.stubGlobal(
       "ResizeObserver",
@@ -312,19 +334,20 @@ describe("thread context card", () => {
       for (const callback of resize) callback([]);
     };
     const card = () => screen.queryByRole("group", { name: "Thread context" });
-    const inset = () => screen.getByLabelText("Inset").textContent;
+    const centeredMinWidth = () =>
+      screen.getByLabelText("Transcript centered min width").textContent;
 
     resizeTo(1200);
     expect(card()).toBeTruthy();
-    expect(inset()).toBe("312");
+    expect(centeredMinWidth()).toBe("1384");
 
     resizeTo(900);
     expect(card()).toBeNull();
-    expect(inset()).toBe("0");
+    expect(centeredMinWidth()).toBe("none");
 
     resizeTo(1200);
     expect(card()).toBeTruthy();
-    expect(inset()).toBe("312");
+    expect(centeredMinWidth()).toBe("1384");
     vi.unstubAllGlobals();
   });
 
@@ -350,6 +373,67 @@ describe("thread context card", () => {
     expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
   });
 });
+
+function registerSection(
+  pluginId: string,
+  id: string,
+  title: string,
+  legacy: boolean,
+) {
+  setPluginSlotRegistrations(
+    pluginId,
+    makePluginRegistrationSet({
+      threadContextCardSections: [
+        {
+          id,
+          group: "2_deploys",
+          component: legacy
+            ? titledSection(`Inner ${title}`, `${title} body`)
+            : titledSection(title, `${title} body`),
+          legacyTitle: legacy ? title : null,
+        },
+      ],
+    }),
+  );
+}
+
+function expanded(name: string) {
+  return screen
+    .getAllByRole("button", { name: new RegExp(`^${name}`) })
+    .map((node) => node.getAttribute("aria-expanded"));
+}
+
+describe.each([false, true])(
+  "thread context card sections (legacy title: %s)",
+  (legacy) => {
+    it("start open, fold from the title, and remember folds by owner and id in every thread", () => {
+      registerSection("first", "status", "First", legacy);
+      registerSection("second", "status", "Second", legacy);
+      registerSection("core", "childThreads", "Plugin children", legacy);
+      const store = createStore();
+      const first = renderPane({ store, threadIds: ["thr_1", "thr_2"] });
+      expect(expanded("First")).toEqual(["true", "true"]);
+
+      fireEvent.click(screen.getAllByRole("button", { name: "First" })[0]!);
+      fireEvent.click(
+        screen.getAllByRole("button", { name: "Plugin children" })[0]!,
+      );
+      expect(expanded("First")).toEqual(["false", "false"]);
+      expect(expanded("Second")).toEqual(["true", "true"]);
+      expect(expanded("Plugin children")).toEqual(["false", "false"]);
+      expect(expanded("Child threads")).toEqual(["true", "true"]);
+      expect(screen.queryByText("Inner First")).toBeNull();
+      const body = screen.queryAllByText("First body for thr_1");
+      expect(body.map((node) => node.closest("[hidden]") !== null)).toEqual(
+        legacy ? [true] : [],
+      );
+
+      first.unmount();
+      renderPane({ store, threadIds: ["thr_3"] });
+      expect(expanded("First")).toEqual(["false"]);
+    });
+  },
+);
 
 describe("useThreadContextKind", () => {
   function kindIn(wrap: (children: ReactNode) => ReactNode) {

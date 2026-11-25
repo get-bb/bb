@@ -504,6 +504,56 @@ describe("bb.agents.registerTool", () => {
     );
   });
 
+  it("runs a version-1 environment provider and reports every registration problem", async () => {
+    const first = await writePlugin(workDir, {
+      name: "bb-plugin-tool-owner",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.agents.registerTool({
+            name: "shared_tool",
+            description: "First owner",
+            parameters: { type: "object" },
+            execute: () => "from tool-owner",
+          });
+        }
+      `,
+    });
+    const second = await writePlugin(workDir, {
+      name: "bb-plugin-legacy-env",
+      serverSource: `
+        export default function plugin(bb: any) {
+          bb.experimental_environments.register({
+            id: "legacy-env",
+            displayName: "Legacy",
+            description: "Create a workspace the version-1 way.",
+            icon: "Folder",
+            create: async () => ({ status: "failed", message: "waiting" }), remove: async () => ({ status: "removed" }),
+          });
+          bb.agents.registerTool({
+            name: "shared_tool",
+            description: "Second owner",
+            parameters: { type: "object" },
+            execute: () => "from legacy-env",
+          });
+        }
+      `,
+    });
+    await service.installPath(first);
+    const entry = await service.installPath(second);
+
+    expect(entry.status).toBe("running");
+    expect(entry.statusDetail).toContain(
+      'environment provider "legacy-env" uses the version-1 provider API',
+    );
+    expect(entry.statusDetail).toContain(
+      'tool "shared_tool" is already registered by plugin "tool-owner"',
+    );
+    expect(
+      service.environmentProviders.getEnvironmentProvider("legacy-env")
+        ?.provider.apiVersion,
+    ).toBe(1);
+  });
+
   it("rejects the reserved built-in tool name at registration", async () => {
     expect(RESERVED_AGENT_TOOL_NAMES).toContain(
       UPDATE_ENVIRONMENT_DIRECTORY_TOOL_NAME,

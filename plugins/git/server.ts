@@ -303,6 +303,7 @@ export default function gitPlugin(bb: BbPluginApi): void {
       },
       fileSide: ({ environmentId, query }) =>
         reads.fileSide(environmentId, query),
+      repos: ({ environmentId }) => reads.repos(environmentId),
       branches: ({ environmentId, query, limit, selectedBranch }) =>
         reads.branches({
           environmentId,

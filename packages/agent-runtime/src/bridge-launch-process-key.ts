@@ -1,5 +1,8 @@
 import { createHash } from "node:crypto";
-import type { AgentRuntimeBridgeLaunch } from "./types.js";
+import type {
+  AgentRuntimeBridgeLaunch,
+  AgentRuntimeSkillRoot,
+} from "./types.js";
 
 type StableJsonValue =
   | string
@@ -51,4 +54,18 @@ export function bridgeLaunchProcessKey(
     capabilities: bridgeLaunch.capabilities,
     providerOptions: bridgeLaunch.providerOptions,
   })}`;
+}
+
+interface ProviderProcessKeyArgs {
+  bridgeLaunchKey: string;
+  providerId: string;
+  skillRoots: readonly AgentRuntimeSkillRoot[];
+}
+
+export function providerProcessKey(args: ProviderProcessKeyArgs): string {
+  const catalogKey =
+    args.skillRoots.length === 0
+      ? ""
+      : `#skills:${createHash("sha256").update(JSON.stringify(args.skillRoots)).digest("hex")}`;
+  return `${args.providerId}#bridge:${args.bridgeLaunchKey}${catalogKey}`;
 }

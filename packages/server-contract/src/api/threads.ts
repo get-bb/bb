@@ -43,6 +43,7 @@ import { providerCommandSchema } from "./projects.js";
 import {
   timelineConversationRowSchema,
   timelineRowSchema,
+  timelineUserConversationRowSchema,
   timelineWorkflowWorkRowSchema,
 } from "../thread-timeline.js";
 import {
@@ -569,6 +570,7 @@ export const threadSearchResultSchema = z
 export const threadSearchResultGroupSchema = z
   .object({
     total: z.number().int().nonnegative(),
+    totalCapped: z.boolean(),
     results: z.array(threadSearchResultSchema),
   })
   .strict();
@@ -1252,6 +1254,7 @@ const threadTimelineWindowFieldsShape = {
   activeThinking: activeThinkingSchema.nullable(),
   activeWorkflows: z.array(timelineWorkflowWorkRowSchema),
   activeBackgroundCommands: z.array(timelineWorkflowWorkRowSchema),
+  pendingSteers: z.array(timelineUserConversationRowSchema),
   pendingTodos: threadTimelinePendingTodosSchema.nullable(),
   extensionStates: z.record(z.string(), jsonValueSchema),
   providerCommands: z
@@ -1269,6 +1272,7 @@ export const THREAD_TIMELINE_WINDOW_FIELD_KEYS = [
   "activeThinking",
   "activeWorkflows",
   "activeBackgroundCommands",
+  "pendingSteers",
   "pendingTodos",
   "extensionStates",
   "providerCommands",
@@ -1399,6 +1403,7 @@ export type ThreadConversationOutlineAttachmentSummary = z.infer<
 export const threadConversationOutlineItemSchema = z
   .object({
     id: z.string().min(1),
+    messageSeq: z.number().int(),
     role: z.enum(["user", "assistant"]),
     preview: z.string(),
     attachmentSummary:

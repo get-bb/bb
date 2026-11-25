@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
 import { useLayoutEffect } from "react";
 import type {
   PluginThreadAction,
@@ -20,11 +21,11 @@ afterEach(() => {
 
 describe("notification delivery", () => {
   it.each([
-    [["skipFocusedThreadNotifications"], 0],
-    [[], 1],
+    ["thr_open", 0],
+    ["thr_other", 1],
   ])(
-    "with experiments %j shows %i notifications for the focused thread",
-    async (experiments, expected) => {
+    "for a notification about %s shows %i notifications while thr_open is focused",
+    async (notifiedThreadId, expected) => {
       const shown: string[] = [];
       vi.stubGlobal(
         "Notification",
@@ -45,14 +46,13 @@ describe("notification delivery", () => {
         {
           settings: { webEnabled: true },
           context: { threadId: "thr_open" },
-          experiments,
         },
       );
       await view.emitRealtime("notification", {
         id: "event-1",
         title: "Finished",
         body: "Ready",
-        threadId: "thr_open",
+        threadId: notifiedThreadId,
         channels: ["web"],
       });
       await waitFor(() => expect(shown).toHaveLength(expected));
@@ -154,6 +154,7 @@ function makeTarget(
     pinnedAt: null,
     sectionId: null,
     isUnread: false,
+    isHidden: false,
     status: "idle",
     environment: null,
     ...overrides,
@@ -172,27 +173,26 @@ function Probe({
   threadIds: readonly string[];
   onItem(item: ItemFor, bulkItem: BulkItemFor): void;
 }) {
-  const data = notificationsThreadAction.useData!({ threadIds });
+  const data = notificationsThreadAction.useData!({
+    threadIds,
+    experimental_threads: [],
+  });
   const sdk = useSdk();
   const navigate = useBbNavigate();
-  const experimental_panel = experimental_useAppPanel();
+  const panel = experimental_useAppPanel();
   useLayoutEffect(() => {
     onItem(
       (thread) =>
         notificationsThreadAction.item({
           thread,
           data,
-          sdk,
-          navigate,
-          experimental_panel,
+          ...experimental_makeActionContext({ sdk, navigate, panel }),
         }),
       (threads) =>
         notificationsThreadAction.experimental_bulkItem?.({
           threads,
           data,
-          sdk,
-          navigate,
-          experimental_panel,
+          ...experimental_makeActionContext({ sdk, navigate, panel }),
         }) ?? null,
     );
   });

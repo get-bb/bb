@@ -50,7 +50,6 @@ export interface ThreadTimelineSurfaceProps {
   onMessageAddToChat?: ThreadTimelineAddToChatHandler;
   onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
   consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
-  includePluginMessageActions?: boolean;
   onLoadOlderRows?: () => Promise<void> | void;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
@@ -61,7 +60,6 @@ export interface ThreadTimelineSurfaceProps {
   stoppingAnchorAt?: number;
   timelineErrorClassName?: string;
   timelineRows: TimelineRow[];
-  timelineNavigationTargetRowId?: string | null;
   threadId: string;
   threadRuntimeDisplayStatus: ThreadRuntimeDisplayStatus;
   unreadDividerAutoScroll?: boolean;
@@ -147,7 +145,6 @@ export function ThreadTimelineSurface({
   onMessageAddToChat,
   onSelectionAddToChat,
   consumerMessageActions,
-  includePluginMessageActions,
   onLoadOlderRows,
   onTitleAction,
   projectId,
@@ -158,7 +155,6 @@ export function ThreadTimelineSurface({
   stoppingAnchorAt = 0,
   timelineErrorClassName = "mt-6 text-destructive",
   timelineRows,
-  timelineNavigationTargetRowId,
   threadId,
   threadRuntimeDisplayStatus,
   unreadDividerAutoScroll,
@@ -227,16 +223,15 @@ export function ThreadTimelineSurface({
             onMessageAddToChat={onMessageAddToChat}
             onSelectionAddToChat={onSelectionAddToChat}
             consumerMessageActions={consumerMessageActions}
-            includePluginMessageActions={includePluginMessageActions}
             onTitleAction={onTitleAction}
             projectId={projectId}
             resolveMentionLink={resolveMentionLink}
             resolveUserAttachmentImageSrc={toUserAttachmentImageSrc}
             hasOlderTimelineRows={hasOlderTimelineRows}
+            isCatchingUpTimeline={isCatchingUpTimeline}
             isLoadingOlderTimelineRows={isLoadingOlderTimelineRows}
             onLoadOlderRows={onLoadOlderRows}
             timelineRows={timelineRowsWithPendingStop}
-            timelineNavigationTargetRowId={timelineNavigationTargetRowId}
             threadId={threadId}
             threadRuntimeDisplayStatus={threadRuntimeDisplayStatus}
             unreadDividerAutoScroll={unreadDividerAutoScroll}
