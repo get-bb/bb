@@ -1804,14 +1804,22 @@ blocked.
 
 Desktop quit confirmation is controlled by the server-backed general setting
 `confirmDesktopQuit` (default `true`), the Settings → General → Ask before
-quitting switch. When quitting would stop the bundled runtime and agents are
-working, a native dialog offers Quit anyway, Cancel, and Don't ask again. Quitting covers ⌘Q, the app
-menu, and Dock → Quit on macOS, and closing the last window on Windows and
-Linux. Cancel keeps the window and runtime open. Don't ask again saves `false`
+quitting switch. The desktop app reads it from its own bundled server, so the
+switch appears only in the desktop app while the window shows that server
+(This Mac or This Computer). Web clients, and desktop windows showing another
+server, do not show it.
+
+When quitting would stop the bundled runtime and agents are working on it, a
+native dialog says how many agents are working on this computer's bb server and
+offers Quit anyway, Cancel, and Don't ask again. This still applies after
+Choose server… switches the window to another server, because the bundled
+runtime keeps running. Quitting covers ⌘Q, the app menu, and Dock → Quit on
+macOS, and closing the last window on Windows and Linux. Cancel keeps the
+window and runtime open. Don't ask again saves `false` on the bundled server
 only when Quit anyway is chosen. Logout, system shutdown, and updater restarts
 bypass this dialog. Attached servers are not stopped by desktop quit and do not
 trigger the warning.
 
-Set it with `bb settings general confirmDesktopQuit false` (or `true` to restore),
-or pass the current general settings with `confirmDesktopQuit: false` to
-`sdk.system.updateGeneralSettings`.
+Set it with `bb settings general confirmDesktopQuit false` (or `true` to
+restore) against the desktop's bundled server, or pass the current general
+settings with `confirmDesktopQuit: false` to `sdk.system.updateGeneralSettings`.

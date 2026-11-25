@@ -11,6 +11,7 @@ export type SettingsSearchCondition =
   | "cliCommand"
   | "composers"
   | "desktopBrowser"
+  | "desktopQuitConfirmation"
   | "diffRenderers"
   | "fileOpeners"
   | "filePreferences"
@@ -52,6 +53,7 @@ export const SETTINGS_SEARCH_INDEX: Record<
       {
         title: "Ask before quitting",
         keywords: ["quit", "agents", "confirmation", "desktop"],
+        when: "desktopQuitConfirmation",
       },
       {
         title: "Thread archive confirmation",

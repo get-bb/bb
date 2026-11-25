@@ -208,6 +208,7 @@ function GeneralSettingsStory({
         resumeThreadsAfterRestart={resumeThreadsAfterRestart}
         onResumeThreadsAfterRestartChange={setResumeThreadsAfterRestart}
         confirmDesktopQuit={state.confirmDesktopQuit}
+        desktopQuitConfirmationAvailable={desktopBrowserAvailable}
         onConfirmDesktopQuitChange={state.setConfirmDesktopQuit}
         confirmThreadArchive={state.confirmThreadArchive}
         onConfirmThreadArchiveChange={state.setConfirmThreadArchive}

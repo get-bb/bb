@@ -2363,13 +2363,18 @@ const quitController = createDesktopQuitController({
     return desktopQuitStatusSchema.parse(await response.json());
   },
   async confirm(count) {
+    const localServerLabel =
+      process.platform === "darwin"
+        ? "this Mac's bb server"
+        : "this computer's bb server";
     const options: MessageBoxOptions = {
       type: "warning",
       title: "Quit bb?",
       message:
         count === null
-          ? "Agents may be working; quitting stops them"
-          : `${count} agent${count === 1 ? " is" : "s are"} working; quitting stops ${count === 1 ? "it" : "them"}`,
+          ? `Agents may be working on ${localServerLabel}`
+          : `${count} agent${count === 1 ? " is" : "s are"} working on ${localServerLabel}`,
+      detail: `Quitting bb stops ${count === 1 ? "it" : "them"}.`,
       buttons: ["Quit anyway", "Cancel"],
       defaultId: 1,
       cancelId: 1,
