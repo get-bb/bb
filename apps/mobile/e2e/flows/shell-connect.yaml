@@ -19,8 +19,13 @@ env:
   METRO_URL: "http://127.0.0.1:8082"
   APEX_URL: "https://localhost:42998"
   STUB_URL: "https://stub.localhost:42998"
+  SERVER_HANDLE: "stub"
   CODE: "STUB-PAIR"
 ---
+- runScript:
+    file: ../scripts/connect-stub-control.js
+    env:
+      STUB_ACTION: "reset"
 - runFlow: ../subflows/launch-app.yaml
 # First run: Add server offers bb connect above the direct URL form.
 - extendedWaitUntil:
@@ -35,33 +40,49 @@ env:
     visible: "Connect to getbb.app"
     timeout: 15000
 - takeScreenshot: p5-connect-enroll-form
-- tapOn: "Cancel"
-# Supply the loopback address and pairing codes through the app's pairing links.
-- runFlow:
-    file: ../subflows/open-bb-link.yaml
-    env:
-      LINK: "bb://connect?code=EXPIRED-CODE&serverUrl=${encodeURIComponent(STUB_URL)}&apex=${encodeURIComponent(APEX_URL)}"
+- tapOn:
+    id: "connect-advanced-toggle"
 - scrollUntilVisible:
     element:
-      id: "connect-submit"
+      id: "connect-apex-input"
     direction: DOWN
 - tapOn:
-    id: "connect-submit"
+    id: "connect-apex-input"
+- inputText: "${APEX_URL}"
+- assertVisible:
+    id: "connect-apex-input"
+    text: "${APEX_URL}"
+- scrollUntilVisible:
+    element:
+      id: "connect-code-input"
+    direction: UP
+- tapOn:
+    id: "connect-code-input"
+- inputText: "EXPIRED-CODE"
+- tapOn:
+    id: "connect-server-input"
+- inputText: "${SERVER_HANDLE}"
+- assertVisible:
+    id: "connect-server-input"
+    text: "${SERVER_HANDLE}"
+- tapOn:
+    id: "Go"
 - extendedWaitUntil:
     visible: "Code expired"
     timeout: 20000
 - takeScreenshot: p5-connect-expired-code
-- tapOn: "Cancel"
-- runFlow:
-    file: ../subflows/open-bb-link.yaml
-    env:
-      LINK: "bb://connect?code=${CODE}&serverUrl=${encodeURIComponent(STUB_URL)}&apex=${encodeURIComponent(APEX_URL)}"
 - scrollUntilVisible:
     element:
-      id: "connect-submit"
-    direction: DOWN
+      id: "connect-code-input"
+    direction: UP
 - tapOn:
-    id: "connect-submit"
+    id: "connect-code-input"
+- eraseText: 12
+- inputText: "${CODE}"
+- tapOn:
+    id: "connect-server-input"
+- tapOn:
+    id: "Go"
 # The first successful connection may raise the one-time push-notification
 # prompt over the enrolled screen; decline it.
 - extendedWaitUntil:
@@ -149,6 +170,10 @@ env:
 - extendedWaitUntil:
     visible: ".*Response to: Reply with exactly READY.*"
     timeout: 60000
+- runScript:
+    file: ../scripts/connect-stub-control.js
+    env:
+      STUB_ACTION: "assert-session-renewed"
 - takeScreenshot: p5-connect-session-renewed
 # The credential itself is revoked: the shell offers to pair again.
 - runScript:
