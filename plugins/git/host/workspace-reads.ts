@@ -288,7 +288,7 @@ function splitRawNumstatZ(stdout: string): { raw: string; numstat: string } {
     numstat: tokens.slice(index).join("\0"),
   };
 }
-const MISSING_DIFF_REVISION = "missing";
+export const MISSING_DIFF_REVISION = "missing";
 
 function squashChangeSignature(entries: RawDiffEntry[]): string {
   return JSON.stringify(

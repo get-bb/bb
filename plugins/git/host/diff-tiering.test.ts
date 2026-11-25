@@ -1,9 +1,12 @@
-import type { DiffFileEntry, RawDiffFileStat } from "../contract.js";
+import {
+  DIFF_FILES_INLINE_PATCH_MAX_FILES,
+  type DiffFileEntry,
+  type RawDiffFileStat,
+} from "../contract.js";
 import { describe, expect, it } from "vitest";
 import {
   DIFF_FILE_AUTO_LOAD_MAX_CHANGED_LINES,
   DIFF_FILE_TOO_LARGE_CHANGED_LINES,
-  DIFF_FILES_INLINE_PATCH_MAX_FILES,
   selectInitialPatchPaths,
   toDiffFileEntry,
 } from "./diff-tiering.js";

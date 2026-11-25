@@ -134,6 +134,7 @@ const changedFile = {
 function filesHost() {
   return {
     outcome: "available",
+    fingerprint: "files-fingerprint",
     value: {
       initialPatches: [
         {
@@ -142,6 +143,7 @@ function filesHost() {
           path: "src/a.ts",
         },
       ],
+      reusedPatchPaths: [],
       mergeBaseRef: null,
       shortstat: " 1 file changed, 2 insertions(+), 1 deletion(-)\n",
       truncated: false,
