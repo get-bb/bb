@@ -2263,6 +2263,58 @@ describe("CommandPalette", () => {
     },
   );
 
+  it.each([
+    { mode: "commands", key: "h", shiftKey: false },
+    { mode: "threads", key: "h", shiftKey: false },
+    { mode: "commands", key: "H", shiftKey: true },
+    { mode: "threads", key: "H", shiftKey: true },
+  ])(
+    "keeps printable $key shortcuts as search input in $mode mode",
+    async ({ mode, key, shiftKey }) => {
+      const run = vi.fn();
+      setPluginSlotRegistrations(
+        "linear",
+        collectPluginAppRegistrations({
+          __bbPluginApp: true,
+          setup(app) {
+            app.commands.register({
+              id: "open-issue",
+              title: "Linear: open issue",
+              run,
+            });
+          },
+        }),
+      );
+      testState.overrides = [
+        {
+          command: "plugin:linear/open-issue",
+          shortcut: {
+            key: "h",
+            mod: false,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: shiftKey,
+          },
+        },
+      ];
+      renderPalette();
+      fireEvent.keyDown(window, { key, shiftKey });
+      expect(run).toHaveBeenCalledTimes(1);
+      run.mockClear();
+
+      if (mode === "commands") openPalette();
+      else openThreadSearch();
+      await waitFor(() => expect(searchField()).toBeTruthy());
+
+      expect(fireEvent.keyDown(searchField(), { key, shiftKey })).toBe(true);
+      expect(run).not.toHaveBeenCalled();
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      fireEvent.change(searchField(), { target: { value: key } });
+      expect(searchField()).toHaveProperty("value", key);
+    },
+  );
+
   it("dispatches defaults and overrides, respects availability, and unregisters disabled commands", async () => {
     let available = true;
     const run = vi.fn();
