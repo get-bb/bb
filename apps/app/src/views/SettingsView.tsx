@@ -967,29 +967,14 @@ export function GeneralSettingsSection({
 
           <SettingsWithControl
             label="Ask before quitting"
-            description="Quitting the desktop app stops its bundled server and agents."
+            description="Quitting the desktop app stops its bundled server, so ask first while agents are running."
           >
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="outline" disabled={generalSettingsDisabled}>
-                  {confirmDesktopQuit
-                    ? "When agents are running (default)"
-                    : "Never"}
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent>
-                <DropdownMenuItem
-                  onSelect={() => onConfirmDesktopQuitChange(true)}
-                >
-                  When agents are running (default)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onSelect={() => onConfirmDesktopQuitChange(false)}
-                >
-                  Never
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <Switch
+              checked={confirmDesktopQuit}
+              disabled={generalSettingsDisabled}
+              onCheckedChange={onConfirmDesktopQuitChange}
+              aria-label="Ask before quitting"
+            />
           </SettingsWithControl>
 
           <SettingsWithControl

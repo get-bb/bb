@@ -1803,10 +1803,9 @@ blocked.
 ## Desktop quit confirmation
 
 Desktop quit confirmation is controlled by the server-backed general setting
-`confirmDesktopQuit` (default `true`). Settings → General → Ask before quitting
-lets you choose **When agents are running (default)** or **Never**. When
-quitting would stop the bundled runtime and agents are working, a native dialog
-offers Quit anyway, Cancel, and Don't ask again. Quitting covers ⌘Q, the app
+`confirmDesktopQuit` (default `true`), the Settings → General → Ask before
+quitting switch. When quitting would stop the bundled runtime and agents are
+working, a native dialog offers Quit anyway, Cancel, and Don't ask again. Quitting covers ⌘Q, the app
 menu, and Dock → Quit on macOS, and closing the last window on Windows and
 Linux. Cancel keeps the window and runtime open. Don't ask again saves `false`
 only when Quit anyway is chosen. Logout, system shutdown, and updater restarts
