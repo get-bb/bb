@@ -1880,7 +1880,7 @@ export function registerPluginCommands(
   plugin
     .command("build [path]")
     .description(
-      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json), plus, when declared, the bb.app frontend bundle (app.js, app.css, app.meta.json) and the self-contained bb.host daemon bundle (host.js, host.js.map, host.meta.json) — which carries the plugin's host RPC entry, its provider bridge, or both; each *.meta.json stamps SDK/identity metadata; no server required",
+      "Compile the plugin into dist/: the bb.server backend bundle (server.js, server.meta.json), plus, when declared, the bb.app frontend bundle (app.js, chunks/ for dynamic imports, app.css, app.meta.json) and the self-contained bb.host daemon bundle (host.js, host.js.map, host.meta.json) — which carries the plugin's host RPC entry, its provider bridge, or both; each *.meta.json stamps SDK/identity metadata; no server required",
     )
     .action(
       action(async (path: string | undefined) => {
@@ -1899,7 +1899,7 @@ export function registerPluginCommands(
           const app = await buildPluginApp(rootDir, bbVersion, toolchain);
           for (const warning of app.migrationWarnings)
             console.warn(`warning: ${warning}`);
-          files.push(app.jsPath, app.cssPath, app.metaPath);
+          files.push(app.jsPath, ...app.chunkPaths, app.cssPath, app.metaPath);
         }
         if (hasHost) {
           const host = await buildPluginHost(rootDir, bbVersion, toolchain);

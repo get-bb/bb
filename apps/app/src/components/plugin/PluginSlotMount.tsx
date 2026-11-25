@@ -1,4 +1,4 @@
-import { Component, type ErrorInfo, type ReactNode } from "react";
+import { Component, Suspense, type ErrorInfo, type ReactNode } from "react";
 import { Pill } from "@bb/shared-ui/pill";
 import { useRouteAnchorDelegate } from "@/components/ui/app-route-anchor";
 import { usePluginCss } from "@/lib/plugin-css";
@@ -185,7 +185,7 @@ class PluginSlotBoundary extends Component<
     }
     return (
       <PluginSlotOwnershipContext.Provider value={this.ownershipRegistry}>
-        {this.props.children}
+        <Suspense fallback={null}>{this.props.children}</Suspense>
       </PluginSlotOwnershipContext.Provider>
     );
   }

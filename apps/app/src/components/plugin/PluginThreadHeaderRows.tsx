@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import { PLUGIN_SLOT_REVEAL, useOrderedReveal } from "@/lib/lazy-parts";
 import type { ExperimentalThreadHeaderRowProps } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
@@ -43,13 +44,17 @@ export function PluginThreadHeaderRows({
     }),
     [environmentId, projectId, threadId],
   );
-  if (threadHeaderRows.length === 0) return null;
+  const rows = useOrderedReveal(
+    sortThreadHeaderRows(threadHeaderRows),
+    PLUGIN_SLOT_REVEAL,
+  );
+  if (rows.length === 0) return null;
   return (
     <div
       data-thread-header-rows=""
       className="flex w-full min-w-0 shrink-0 flex-col"
     >
-      {sortThreadHeaderRows(threadHeaderRows).map(
+      {rows.map(
         ({ pluginId, id, generation, component: Component }) => (
           <PluginSlotMount
             key={`${pluginId}/${id}/${generation}/${threadId}`}

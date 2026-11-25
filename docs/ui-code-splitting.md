@@ -176,6 +176,65 @@ still loading delays the route's own content by up to 300 ms.
 Keep the existing persistent responsive drawer's deferred realization and
 retained content. Avoid rendering a split merely to preload it.
 
+## Core contributions and plugin surfaces
+
+Core contributions (`apps/app/src/core-contributions/`) are registered from
+modules that load with the app, so everything their registration file imports
+statically lands in that payload. They cannot import `defineSplit`:
+`bb/core-contribution-imports` limits them to the public SDK. They split with
+`experimental_lazy` from `@get-bb/plugin-sdk/app`, the same call plugins use:
+
+```tsx
+const ThreadOutline = experimental_lazy(
+  () => import("./components/ThreadOutline"),
+);
+
+export default definePluginApp((app) => {
+  app.slots.experimental_threadRailOutline({
+    id: "outline",
+    component: ThreadOutline,
+  });
+});
+```
+
+The registration file keeps ids, groups and order. The component module lives
+in `src/core-contributions/components/` and default-exports the component.
+`experimental_lazy` is `lazyComponent` in `src/lib/lazy-component.tsx` for both
+callers: the core binding and the plugin runtime serve the same function. It is
+a `preload`-tier `defineSplit`, so it warms at idle once critical loads and
+plugin frontends settle, gets the same download retries, and renders the loaded
+component directly on later mounts. A final load failure throws into the
+surrounding slot boundary.
+
+Stacking slot hosts call `useOrderedReveal` from `src/lib/lazy-parts.ts`, one
+rule for bb's entries and plugins' alike: an entry shows once every entry above
+it is ready. A lazy entry still loading after `ORDERED_REVEAL_BOUND_MS`
+(3 seconds) stops holding the entries below it: they show what is ready, and
+the late entry is inserted in its place when it arrives, moving the entries
+below it once. A missing row is worse than one shift on a slow link. Eager
+entries that register later still appear in their place. The page owner and
+core page preparation find lazy components through
+`PLUGIN_APP_COMPONENT_FIELDS` in the SDK's collector, where every slot kind
+lists its component fields. The plugin that owns
+the current page (`getRouteOwnerPluginId`) preloads its lazy chunks with its
+bundle and publishes its registrations once its lazy parts load, bounded the
+same way. Core contributions register at startup (`src/lib/core-contribution-parts.ts`
+lists them), and the thread route starts their lazy parts alongside the thread
+view chunk, so a part the page shows, such as the rail outline, arrives with
+the page instead of after it.
+
+The bound comes from Slow 4G (562.5 ms RTT, 1.44 Mbps) cold loads: a lazy
+chunk a host waited on at render took 2.1 to 2.8 seconds while the app's
+other bundles shared the link (bb connect's settings sections 2.4 s, the
+automations panel 2.8 s, the rail outline 2.7 s), and about 0.6 seconds
+uncontended. Three seconds covers those loads, and one stuck chunk cannot
+hold the entries below it for longer.
+
+`src/core-contributions/components/*` is a split boundary for `boot`,
+`ThreadPage` and `NewThreadPage`, so a component module that becomes eager fails
+the budget check. Pattern entries ending in `/*` match the modules directly in
+that directory and fail when they match none.
+
 ## Enforce the boundary
 
 Add the heavy source module to `splitBoundaries` in

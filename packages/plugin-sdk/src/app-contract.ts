@@ -10,6 +10,7 @@ import type {
 } from "./rpc-contract.js";
 import type {
   ComponentPropsWithRef,
+  ComponentProps,
   ComponentPropsWithoutRef,
   ComponentType,
   CSSProperties,
@@ -6161,7 +6162,30 @@ export interface ExperimentalServers {
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
+/**
+ * A component that `experimental_lazy` loads from a separate chunk. Pass it
+ * straight to a slot's `component` so bb can see that it is lazy: hosts load
+ * it before they reveal it, and bb downloads it once startup settles.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export type ExperimentalLazyComponent<P> = (props: P) => ReactNode;
+
 export interface PluginSdkApp {
+  /**
+   * Load a component from a separate chunk instead of the plugin's startup
+   * bundle. `load` is a dynamic import resolving to `{ default: Component }`,
+   * as for `React.lazy`. bb downloads and evaluates the chunk once startup
+   * settles, so a surface opened later renders in its first frame. A host that
+   * stacks entries (Info rows and sections, context card rows, the rail,
+   * settings sections) reveals an entry only after the entries above it are
+   * ready, and a page waits for the lazy parts of the plugin that owns it. A
+   * chunk that fails to load crashes only its slot, which reaches `onCrash`
+   * like any render error. Call it once at module scope, never during render.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_lazy<T extends ComponentType<any>>(
+    load: () => Promise<{ default: T }>,
+  ): ExperimentalLazyComponent<ComponentProps<T>>;
   /** List URL schemes approved for this BB site in the viewing client's localStorage. Core Settings uses the same implementation. */
   experimental_getApplicationLinkApprovals(): Promise<string[]>;
   /** Revoke one scheme, or all with null, for this BB site on this client. Does not grant permission. */

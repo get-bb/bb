@@ -1,4 +1,5 @@
 import * as voiceInputTextarea from "@bb/shared-ui/voice-input-textarea";
+import { getRouteOwnerPluginId } from "./route-paths";
 import * as react from "react";
 import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
@@ -54,7 +55,12 @@ import {
 } from "./plugin-app-definition";
 import { setPluginAssetIcons } from "@bb/shared-ui/icon-registry";
 import { setPluginLogoUrls, type PluginLogoUrls } from "./plugin-logos";
-import { pluginRuntimeGroupsFor } from "./plugin-runtime-groups";
+import {
+  pluginRuntimeGroupsFor,
+  warmPluginRuntimeGroups,
+} from "./plugin-runtime-groups";
+import { queueSplitPreload } from "./split-prefetch";
+import { loadLazyPartsIn, ORDERED_REVEAL_BOUND_MS } from "./lazy-parts";
 import { whenScreenPainted } from "./screen-paint";
 import {
   pluginSdkAppImplementation,
@@ -86,6 +92,9 @@ interface PluginFrontendBundle {
   sdkVersion: string;
   compatible: boolean;
   runtimeSlots: string[];
+  staticChunkUrls: string[];
+  lazyChunkUrls: string[];
+  lazyRuntimeSlots: string[];
 }
 
 export interface PluginFrontendCandidate {
@@ -168,6 +177,7 @@ export async function loadPluginFrontend(
     };
   }
   try {
+    for (const url of bundle.staticChunkUrls) deps.prefetchModule(url);
     const runtimeGroups = pluginRuntimeGroupsFor(bundle.runtimeSlots);
     if (runtimeGroups.length > 0) {
       const slotsProvided = Promise.all(
@@ -182,6 +192,12 @@ export async function loadPluginFrontend(
     const mod = await deps.importModule(bundle.jsUrl);
     if (typeof mod !== "object" || mod === null) {
       throw new Error("bundle did not evaluate to a module namespace");
+    }
+    if (bundle.lazyChunkUrls.length > 0 || bundle.lazyRuntimeSlots.length > 0) {
+      queueSplitPreload(async () => {
+        for (const url of bundle.lazyChunkUrls) deps.prefetchModule(url);
+        warmPluginRuntimeGroups(bundle.lazyRuntimeSlots);
+      });
     }
     return {
       pluginId,
@@ -224,6 +240,7 @@ export interface BbPluginRuntime {
   classVarianceAuthority: unknown;
   sharedUiIcon: unknown;
   voiceInputTextarea: typeof voiceInputTextarea;
+  loadRuntimeSlot: (slot: string) => Promise<void>;
 }
 
 type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: BbPluginRuntime };
@@ -257,6 +274,11 @@ export function installPluginRuntime(): BbPluginRuntime {
     classVarianceAuthority,
     sharedUiIcon,
     voiceInputTextarea,
+    loadRuntimeSlot: async (slot) => {
+      for (const group of pluginRuntimeGroupsFor([slot])) {
+        Object.assign(installPluginRuntime(), await group.load());
+      }
+    },
   };
   return host.__bbPluginRuntime;
 }
@@ -430,6 +452,7 @@ export interface PluginFrontendReconcileDeps {
   flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
+  pageOwnerPluginId: () => string | null;
   whenScreenPainted: () => Promise<void>;
   mountTimeoutMs?: number;
   cssReadyTimeoutMs?: number;
@@ -791,6 +814,9 @@ async function reconcileCandidates(
       }
       prefetched.add(candidate.pluginId);
       deps.prefetchModule(candidate.bundle.jsUrl);
+      for (const url of candidate.bundle.staticChunkUrls) {
+        deps.prefetchModule(url);
+      }
     }
   };
   if (pendingPriority === 0) priorityLoaded();
@@ -828,6 +854,20 @@ function isCandidateApplied(
   );
 }
 
+function loadingLazyParts(
+  registrations: ReturnType<typeof collectPluginAppRegistrations>,
+): Promise<void> | null {
+  const loading = loadLazyPartsIn(registrations);
+  if (loading === null) return null;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    loading,
+    new Promise<void>((resolve) => {
+      timer = setTimeout(resolve, ORDERED_REVEAL_BOUND_MS);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
 async function reconcileCandidate(
   candidate: PluginFrontendCandidate,
   state: PluginFrontendReconcileState,
@@ -863,6 +903,10 @@ async function reconcileCandidate(
     );
   if (candidate.bundle.cssUrl !== null)
     deps.prefetchCss(candidate.bundle.cssUrl);
+  const ownsPage = deps.pageOwnerPluginId() === pluginId;
+  if (ownsPage) {
+    for (const url of candidate.bundle.lazyChunkUrls) deps.prefetchModule(url);
+  }
   let record = await importAttempt();
   for (const delayMs of deps.importRetryDelaysMs) {
     if (record.status !== "failed" || state.discarded) break;
@@ -937,6 +981,8 @@ async function reconcileCandidate(
   const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
   state.generationByPluginId.set(pluginId, generation);
   await applyCssBeforePublish(pluginId, candidate.bundle.cssUrl, deps);
+  const lazyParts = ownsPage ? loadingLazyParts(collected) : null;
+  if (lazyParts !== null) await lazyParts;
   const replacesActiveGeneration = state.activeGenerations.has(pluginId);
   const cssRelease =
     collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
@@ -1087,6 +1133,7 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   prefetchModule: prefetchPluginModule,
   retainCss: retainPluginCss,
   priorityPluginIds: () => frontendPriorityPluginIds(window.location.pathname),
+  pageOwnerPluginId: () => getRouteOwnerPluginId(window.location.pathname),
   whenScreenPainted: whenScreenPainted,
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,

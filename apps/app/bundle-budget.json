@@ -187,7 +187,17 @@
     "rolldown matches the name in every module, so it also removed calls to",
     "unrelated functions named z in sonner, cmdk and d3-scale. The limits stay:",
     "10% over the new measurement would raise them, and the payload has 6.2%",
-    "brotli headroom."
+    "brotli headroom.",
+    "",
+    "On 2026-11-24 core contributions split with experimental_lazy, the",
+    "public SDK helper plugins use. Component modules live in",
+    "src/core-contributions/components/, and the src/core-contributions/components/*",
+    "split boundary keeps every one of them out of boot and both page journeys;",
+    "a pattern ending in /* matches the modules directly in that directory.",
+    "The rail outline moved out of ThreadPage (7.1 KB raw, 1.0 KB brotli), and",
+    "the ThreadPage limits dropped by that. The shared reveal rule, the lazy",
+    "helper and the core contribution registrations added 3.9 KB raw and",
+    "1.2 KB brotli to boot, within its limits, so the boot limits did not change."
   ],
   "maxBootBytes": 1722436,
   "maxBootBrotliBytes": 429151,
@@ -336,7 +346,12 @@
       "NewThreadPage",
       "PluginFrontend"
     ],
-    "src/views/RootComposeView.tsx": ["boot", "ThreadPage"]
+    "src/views/RootComposeView.tsx": ["boot", "ThreadPage"],
+    "src/core-contributions/components/*": [
+      "boot",
+      "ThreadPage",
+      "NewThreadPage"
+    ]
   },
   "onDemandPackages": {
     "ansi-to-html": "src/components/thread/timeline/TerminalOutputBlock.tsx",
@@ -362,8 +377,8 @@
       ]
     },
     "ThreadPage": {
-      "maxBytes": 2428911,
-      "maxBrotliBytes": 699019,
+      "maxBytes": 2421641,
+      "maxBrotliBytes": 697995,
       "forbiddenPackages": [
         "@dnd-kit/accessibility",
         "@dnd-kit/core",

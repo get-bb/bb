@@ -6,6 +6,7 @@ import { PLUGIN_SDK_MAJOR } from "@bb/domain";
 import {
   assertValidPluginCompactIconSvg,
   assertValidPluginIconSvg,
+  PLUGIN_APP_CHUNK_DIRECTORY,
   RUNTIME_SLOT_BY_SPECIFIER,
   dropAnonymousPluginRootScope,
   dropHostProvidedTailwind,
@@ -16,7 +17,7 @@ import {
 interface PluginArtifactMeta {
   sdkMajor: number;
   sdkVersion: string;
-  artifactFormatVersion?: 1;
+  artifactFormatVersion?: 1 | 2;
   pluginId?: string;
   pluginVersion?: string;
   builtWith?: {
@@ -24,6 +25,13 @@ interface PluginArtifactMeta {
     pluginSdkVersion: string;
   };
   runtimeSlots?: string[];
+  chunks?: PluginAppChunkMeta;
+}
+
+interface PluginAppChunkMeta {
+  files: string[];
+  entryFiles: string[];
+  runtimeSlots: string[];
 }
 
 interface PluginArtifactMetaParseResult {
@@ -40,6 +48,9 @@ interface PluginAppBundleInfo {
   sdkVersion: string;
   compatible: boolean;
   runtimeSlots: string[];
+  staticChunkUrls: string[];
+  lazyChunkUrls: string[];
+  lazyRuntimeSlots: string[];
 }
 
 interface PluginAppState {
@@ -52,8 +63,14 @@ interface PluginCssBytes {
   withoutHostTailwind: Buffer;
 }
 
+interface PluginAppChunk {
+  path: string;
+  digest: string;
+}
+
 interface PluginAppAssets {
   jsPath: string;
+  chunks: ReadonlyMap<string, PluginAppChunk>;
   css: PluginCssBytes | null;
   ownedRootCss: PluginCssBytes | null;
   pluginAttributeCss: PluginCssBytes | null;
@@ -94,6 +111,28 @@ export function pluginAppAsset(
             : selected.original;
         },
       };
+}
+
+export function pluginAppChunk(
+  assets: PluginAppAssets,
+  file: string,
+): PluginAppAsset | undefined {
+  const chunk = assets.chunks.get(file);
+  if (chunk === undefined) return undefined;
+  return {
+    hash: assets.hash,
+    read: async () => {
+      const bytes = await readFile(chunk.path);
+      if (sha256(bytes) !== chunk.digest) {
+        throw new Error(`plugin app chunk ${file} changed since it was loaded`);
+      }
+      return bytes;
+    },
+  };
+}
+
+function sha256(bytes: Uint8Array): string {
+  return createHash("sha256").update(bytes).digest("hex");
 }
 
 export interface PluginAppBundleSnapshot {
@@ -236,6 +275,8 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
     }
     runtimeSlots = meta.runtimeSlots;
   }
+  const chunks = parsePluginAppChunkMeta(meta);
+  if (typeof chunks === "string") return { meta: null, error: chunks };
   const authoritativeKeys = [
     "artifactFormatVersion",
     "pluginId",
@@ -244,6 +285,12 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
   ];
   const hasAuthoritativeField = authoritativeKeys.some((key) => key in meta);
   if (!hasAuthoritativeField) {
+    if (chunks !== undefined) {
+      return {
+        meta: null,
+        error: "an app bundle with chunks needs artifactFormatVersion 2",
+      };
+    }
     return {
       meta: {
         sdkMajor: meta.sdkMajor,
@@ -253,12 +300,20 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
       error: null,
     };
   }
-  if (meta.artifactFormatVersion !== 1) {
+  const formatVersion = meta.artifactFormatVersion;
+  if (formatVersion !== 1 && formatVersion !== 2) {
     return {
       meta: null,
-      error: `unknown artifactFormatVersion ${JSON.stringify(meta.artifactFormatVersion)}; supported value is 1`,
+      error: `unknown artifactFormatVersion ${JSON.stringify(formatVersion)}; supported values are 1 and 2`,
     };
   }
+  if (chunks !== undefined && formatVersion !== 2) {
+    return {
+      meta: null,
+      error: "an app bundle with chunks needs artifactFormatVersion 2",
+    };
+  }
+
   if (typeof meta.pluginId !== "string" || meta.pluginId.length === 0) {
     return { meta: null, error: "pluginId must be a non-empty string" };
   }
@@ -298,7 +353,7 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
     meta: {
       sdkMajor: meta.sdkMajor,
       sdkVersion: meta.sdkVersion,
-      artifactFormatVersion: 1,
+      artifactFormatVersion: formatVersion,
       pluginId: meta.pluginId,
       pluginVersion: meta.pluginVersion,
       builtWith: {
@@ -306,8 +361,47 @@ function parsePluginArtifactMeta(raw: string): PluginArtifactMetaParseResult {
         pluginSdkVersion: builtWith.pluginSdkVersion,
       },
       ...(runtimeSlots !== undefined ? { runtimeSlots } : {}),
+      ...(chunks !== undefined ? { chunks } : {}),
     },
     error: null,
+  };
+}
+
+const PLUGIN_APP_CHUNK_FILE_PATTERN = new RegExp(
+  `^${PLUGIN_APP_CHUNK_DIRECTORY}/[A-Za-z0-9_-]+\\.js$`,
+  "u",
+);
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+function parsePluginAppChunkMeta(
+  meta: Record<string, unknown>,
+): PluginAppChunkMeta | undefined | string {
+  if (!("chunks" in meta)) return undefined;
+  const { chunks, entryChunks, chunkRuntimeSlots } = meta;
+  if (
+    !isStringArray(chunks) ||
+    !chunks.every((file) => PLUGIN_APP_CHUNK_FILE_PATTERN.test(file))
+  ) {
+    return `chunks must be an array of ${PLUGIN_APP_CHUNK_DIRECTORY}/<name>.js files`;
+  }
+  if (
+    !isStringArray(entryChunks) ||
+    !entryChunks.every((file) => chunks.includes(file))
+  ) {
+    return "entryChunks must list files from chunks";
+  }
+  if (!isStringArray(chunkRuntimeSlots)) {
+    return "chunkRuntimeSlots must be an array of strings";
+  }
+  return {
+    files: chunks,
+    entryFiles: entryChunks,
+    runtimeSlots: chunkRuntimeSlots,
   };
 }
 
@@ -335,7 +429,7 @@ export function validatePluginArtifactMeta(args: {
   if (meta.sdkMajor !== PLUGIN_SDK_MAJOR) {
     return `${args.artifact} artifact for plugin "${args.pluginId}" was built for SDK major ${meta.sdkMajor}, running SDK major is ${PLUGIN_SDK_MAJOR}; rebuild the ${args.artifact} artifact with this bb version`;
   }
-  if (meta.artifactFormatVersion !== 1) return null;
+  if (meta.artifactFormatVersion === undefined) return null;
   if (meta.pluginId !== args.pluginId) {
     return `${args.artifact} artifact pluginId "${meta.pluginId}" does not match manifest pluginId "${args.pluginId}"`;
   }
@@ -392,6 +486,20 @@ export async function loadPluginAppBundle(
   if (meta === null) {
     return { state: { hasApp: true, bundle: null }, assets: null };
   }
+  const chunkMeta = meta.chunks ?? {
+    files: [],
+    entryFiles: [],
+    runtimeSlots: [],
+  };
+  const chunkSources: { file: string; path: string; bytes: Buffer }[] = [];
+  for (const file of chunkMeta.files) {
+    const path = join(distDir, file);
+    try {
+      chunkSources.push({ file, path, bytes: await readFile(path) });
+    } catch {
+      return { state: { hasApp: true, bundle: null }, assets: null };
+    }
+  }
   let css: PluginAppAssets["css"];
   try {
     const original = await readFile(cssPath);
@@ -404,8 +512,9 @@ export async function loadPluginAppBundle(
   } catch {
     css = null;
   }
-  const ownsEveryRoot =
-    findUnnamedPluginRoots(js.toString("utf8")).length === 0;
+  const ownsEveryRoot = [js, ...chunkSources.map((chunk) => chunk.bytes)].every(
+    (source) => findUnnamedPluginRoots(source.toString("utf8")).length === 0,
+  );
   const ownedRootCss =
     css !== null && ownsEveryRoot
       ? transformCss(css, dropAnonymousPluginRootScope)
@@ -415,6 +524,10 @@ export async function loadPluginAppBundle(
       ? transformCss(css, keyPluginScopeOnAttribute)
       : null;
   const hasher = createHash("sha256").update(js);
+  for (const chunk of chunkSources) {
+    hasher.update(chunk.file);
+    hasher.update(chunk.bytes);
+  }
   for (const variant of [css, ownedRootCss, pluginAttributeCss]) {
     if (variant === null) continue;
     hasher.update(variant.original);
@@ -431,14 +544,35 @@ export async function loadPluginAppBundle(
       bundle: {
         jsUrl: assetUrl("app.js"),
         cssUrl: css !== null ? assetUrl("app.css") : null,
-        jsBytes: js.byteLength,
+        jsBytes:
+          js.byteLength +
+          chunkSources
+            .filter((chunk) => chunkMeta.entryFiles.includes(chunk.file))
+            .reduce((total, chunk) => total + chunk.bytes.byteLength, 0),
         hash,
         sdkMajor: meta.sdkMajor,
         sdkVersion: meta.sdkVersion,
         compatible: meta.sdkMajor === PLUGIN_SDK_MAJOR,
         runtimeSlots: meta.runtimeSlots ?? ALL_RUNTIME_SLOTS,
+        staticChunkUrls: chunkMeta.entryFiles.map(assetUrl),
+        lazyChunkUrls: chunkMeta.files
+          .filter((file) => !chunkMeta.entryFiles.includes(file))
+          .map(assetUrl),
+        lazyRuntimeSlots: chunkMeta.runtimeSlots,
       },
     },
-    assets: { jsPath, css, ownedRootCss, pluginAttributeCss, hash },
+    assets: {
+      jsPath,
+      chunks: new Map(
+        chunkSources.map((chunk) => [
+          chunk.file.slice(PLUGIN_APP_CHUNK_DIRECTORY.length + 1),
+          { path: chunk.path, digest: sha256(chunk.bytes) },
+        ]),
+      ),
+      css,
+      ownedRootCss,
+      pluginAttributeCss,
+      hash,
+    },
   };
 }

@@ -1,12 +1,14 @@
+import { useState } from "react";
 import {
   definePluginApp,
+  experimental_lazy,
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "@get-bb/plugin-sdk/app";
 import { GIT_DIFF_TAB_ID } from "./contract.js";
 import { GitChangesContextCardRow } from "./ui/context-card/GitChangesContextCardRow.js";
-import { DiffTab, useDiffTabVisible } from "./ui/diff/DiffTab.js";
+import { useDiffTabVisible } from "./ui/diff/diff-tab-visible.js";
 import { gitDiffTabTarget } from "./ui/diff-tab-target.js";
 import {
   BranchInfoRow,
@@ -20,7 +22,26 @@ import {
   useChangedFilesSegmentVisible,
 } from "./ui/segment/ChangedFilesSegment.js";
 import { commitThreadAction } from "./ui/commit/commit-action.js";
-import { CommitDialogOverlay } from "./ui/commit/CommitDialog.js";
+import { useCommitDialogTarget } from "./ui/commit/commit-store.js";
+
+const DiffTab = experimental_lazy(() =>
+  import("./ui/diff/DiffTab.js").then((module) => ({
+    default: module.DiffTab,
+  })),
+);
+
+const LazyCommitDialogOverlay = experimental_lazy(() =>
+  import("./ui/commit/CommitDialog.js").then((module) => ({
+    default: module.CommitDialogOverlay,
+  })),
+);
+
+function CommitDialogOverlay() {
+  const target = useCommitDialogTarget();
+  const [opened, setOpened] = useState(false);
+  if (target !== null && !opened) setOpened(true);
+  return opened ? <LazyCommitDialogOverlay /> : null;
+}
 
 const TOGGLE_DIFF_COMMAND_ID = "toggle-diff";
 

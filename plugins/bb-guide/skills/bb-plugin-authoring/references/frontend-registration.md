@@ -146,6 +146,43 @@ export default definePluginApp((app) => {
 });
 ```
 
+### Loading a surface's code when it first renders
+
+bb loads every enabled plugin's `app.js` at startup. Keep the entry small:
+register surfaces there and load any surface that is not on screen at startup
+(a settings section, a panel, a dialog, a tab) with `experimental_lazy`. It
+takes the same loader as `React.lazy` and returns a component to pass straight
+to the slot:
+
+```tsx
+import { definePluginApp, experimental_lazy } from "@get-bb/plugin-sdk/app";
+
+const AccountSettings = experimental_lazy(() =>
+  import("./ui/AccountSettings.js").then((module) => ({
+    default: module.AccountSettings,
+  })),
+);
+
+export default definePluginApp((app) => {
+  app.slots.settingsSection({ id: "accounts", component: AccountSettings });
+});
+```
+
+- Call it once at module scope. Keep hooks the host calls outside render
+  (`useVisible`, `experimental_usePageTitle`) and their imports out of the
+  lazy module, or they pull it back into the entry.
+- bb downloads and evaluates lazy chunks once startup settles, so a surface
+  opened afterwards renders in its first frame.
+- Hosts that stack entries (Info rows and sections, context card rows, the
+  rail, settings sections) show an entry only once the entries above it are
+  ready, holding them at most 3 seconds behind a slow one, which then appears
+  in its place when it loads. A plugin that owns the page
+  (its panel or its settings page) loads its lazy parts before the page shows.
+- A chunk that fails to load crashes only its slot, which reaches `onCrash`.
+- Wrapping the lazy component in your own function hides it from hosts; pass
+  it directly. Plain `React.lazy` still works but suspends after the host has
+  shown its neighbours.
+
 ### A button in the thread header
 
 A thread action with `placement: "header"` is a button in the open thread's

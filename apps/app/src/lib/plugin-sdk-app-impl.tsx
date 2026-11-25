@@ -1,4 +1,5 @@
 import { useConversationOutline } from "@/lib/conversation-outline";
+import { lazyComponent } from "./lazy-component";
 import { useTimelineViewport } from "@/lib/timeline-viewport";
 import { applicationLinkApprovals } from "./application-url";
 import { matchesAppShortcutKey } from "@bb/domain";
@@ -234,6 +235,7 @@ export const pluginSdkAppImplementation = {
   experimental_DetailRow: DetailRow,
   experimental_ThreadContextCardRow: ThreadContextCardRow,
   experimental_InfoList: InfoList,
+  experimental_lazy: lazyComponent,
   experimental_InfoListRow: PluginInfoListRow,
   experimental_useSidebarThreads: useSidebarThreads,
   experimental_useThread: useThreadState,

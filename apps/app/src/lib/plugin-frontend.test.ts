@@ -3,7 +3,10 @@ import * as react from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import clsx from "clsx";
 import { Icon } from "@bb/shared-ui/icon";
-import { RUNTIME_SLOT_BY_SPECIFIER } from "@bb/plugin-build/runtime-shims";
+import {
+  HOST_LOADED_RUNTIME_SLOTS,
+  RUNTIME_SLOT_BY_SPECIFIER,
+} from "@bb/plugin-build/runtime-shims";
 import {
   createPluginFrontendPageLifecycle,
   installPluginRuntime,
@@ -15,6 +18,7 @@ import {
   retiredPluginSdkAppMembers,
 } from "./plugin-sdk-app-impl";
 import { settleLazyModules } from "@/test/lazy-modules";
+import { pluginRuntimeGroupsFor } from "./plugin-runtime-groups";
 
 function candidate(
   pluginId: string,
@@ -31,6 +35,9 @@ function candidate(
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      staticChunkUrls: [],
+      lazyChunkUrls: [],
+      lazyRuntimeSlots: [],
       ...overrides,
     },
   };
@@ -108,7 +115,6 @@ describe("loadPluginFrontend", () => {
 });
 
 describe("installPluginRuntime", () => {
-  const LAZY_RUNTIME_SLOTS = new Set(["pierreDiffs", "pierreDiffsReact"]);
   type RuntimeHost = typeof globalThis & { __bbPluginRuntime?: unknown };
 
   afterEach(() => {
@@ -122,9 +128,12 @@ describe("installPluginRuntime", () => {
       unknown
     >;
     expect(Object.keys(runtime).sort()).toEqual(
-      [...new Set(Object.values(RUNTIME_SLOT_BY_SPECIFIER))]
-        .filter((slot) => !LAZY_RUNTIME_SLOTS.has(slot))
-        .sort(),
+      [
+        ...[...new Set(Object.values(RUNTIME_SLOT_BY_SPECIFIER))].filter(
+          (slot) => !HOST_LOADED_RUNTIME_SLOTS.includes(slot),
+        ),
+        "loadRuntimeSlot",
+      ].sort(),
     );
     expect((runtime.clsx as { default: unknown }).default).toBe(clsx);
     expect((runtime.sharedUiIcon as { Icon: unknown }).Icon).toBe(Icon);
@@ -192,6 +201,56 @@ describe("installPluginRuntime", () => {
     expect(slot.WorkerPoolContext).toBe(pierreDiffsReact.WorkerPoolContext);
     expect(slot.FileDiff).not.toBe(pierreDiffsReact.FileDiff);
     expect(slot.File).not.toBe(pierreDiffsReact.File);
+  });
+});
+
+describe("split plugin bundles", () => {
+  it("preloads the entry's static chunks with it and keeps lazy chunks off the load path", async () => {
+    const shared = "/api/v1/plugin-app-assets/0123456789abcdef/chunks/chunk-A.js";
+    const lazySurface =
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/DiffTab-B.js";
+    const events: string[] = [];
+    const prefetchModule = vi.fn((url: string) => events.push(`prefetch ${url}`));
+    const importModule = vi.fn(async (url: string) => {
+      events.push(`import ${url}`);
+      return { default: {} };
+    });
+
+    const record = await loadPluginFrontend(
+      candidate("split", {
+        jsUrl: "/api/v1/plugin-app-assets/0123456789abcdef/app.js",
+        staticChunkUrls: [shared],
+        lazyChunkUrls: [lazySurface],
+        lazyRuntimeSlots: ["pierreDiffs"],
+      }),
+      { importModule, prefetchModule, warn: vi.fn() },
+    );
+
+    expect(record.status).toBe("loaded");
+    expect(events).toEqual([
+      `prefetch ${shared}`,
+      "import /api/v1/plugin-app-assets/0123456789abcdef/app.js",
+    ]);
+  });
+
+  it("has a host loader for every slot the build loads on demand", () => {
+    for (const slot of HOST_LOADED_RUNTIME_SLOTS) {
+      expect(pluginRuntimeGroupsFor([slot]), slot).toHaveLength(1);
+    }
+  });
+
+  it("gives a chunk's shim the host slot it needs when the chunk first loads", async () => {
+    const runtime = installPluginRuntime() as unknown as Record<string, unknown>;
+    const saved = { pierreDiffs: runtime.pierreDiffs, pierreDiffsReact: runtime.pierreDiffsReact };
+    delete runtime.pierreDiffs;
+    delete runtime.pierreDiffsReact;
+    try {
+      await settleLazyModules(installPluginRuntime().loadRuntimeSlot("pierreDiffs"));
+      expect(runtime.pierreDiffs).toBe(await import("@pierre/diffs"));
+      expect(runtime.pierreDiffsReact).toBeDefined();
+    } finally {
+      Object.assign(runtime, saved);
+    }
   });
 });
 

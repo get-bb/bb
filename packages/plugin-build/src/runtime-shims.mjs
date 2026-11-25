@@ -100,6 +100,12 @@ export const VERSIONED_RUNTIME_SLOT_BY_SPECIFIER = Object.freeze({
   zod: "zod",
 });
 
+export const HOST_LOADED_RUNTIME_SLOTS = Object.freeze([
+  "pierreDiffs",
+  "pierreDiffsReact",
+  "zod",
+]);
+
 /** The npm package owning a specifier: `react/jsx-runtime` → `react`. */
 function packageNameOf(specifier) {
   const segments = specifier.split("/");

@@ -207,6 +207,7 @@ export const experimental_useTabVisible = runtimeFunction(
 export const experimental_useServers = runtimeFunction(
   "experimental_useServers",
 );
+export const experimental_lazy = runtimeFunction("experimental_lazy");
 export const experimental_hasServers = runtimeFunction(
   "experimental_hasServers",
 );

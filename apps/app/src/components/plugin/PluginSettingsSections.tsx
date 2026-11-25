@@ -2,7 +2,14 @@ import {
   usePluginSlotKind,
   type PluginSettingsSectionSlot,
 } from "@/lib/plugin-slots";
+import { useOrderedReveal } from "@/lib/lazy-parts";
 import { PluginSlotMount } from "./PluginSlotMount";
+
+const ORDERED_SETTINGS_SECTIONS = {
+  key: (section: PluginSettingsSectionSlot) =>
+    `${section.pluginId}/${section.id}/${section.generation}`,
+  parts: (section: PluginSettingsSectionSlot) => [section.component],
+};
 
 export function PluginSettingsSections({ pluginId }: { pluginId: string }) {
   const settingsSections = usePluginSlotKind("settingsSections");
@@ -33,9 +40,10 @@ function PluginSettingsSectionList({
 }: {
   sections: readonly PluginSettingsSectionSlot[];
 }) {
+  const revealed = useOrderedReveal(sections, ORDERED_SETTINGS_SECTIONS);
   return (
     <div className="space-y-6" data-testid="plugin-settings-sections">
-      {sections.map((section) => {
+      {revealed.map((section) => {
         const key = `${section.pluginId}/${section.id}/${section.generation}`;
         return (
           <div key={key} className="space-y-3">

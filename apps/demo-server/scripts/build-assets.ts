@@ -32,6 +32,9 @@ const artifactMetaSchema = z.object({
   sdkMajor: z.number().int(),
   sdkVersion: z.string(),
   runtimeSlots: z.array(z.string()),
+  chunks: z.array(z.string()).default([]),
+  entryChunks: z.array(z.string()).default([]),
+  chunkRuntimeSlots: z.array(z.string()).default([]),
 });
 for (const id of ["navigation", "thread-list"]) {
   const source = new URL(
@@ -48,12 +51,14 @@ for (const id of ["navigation", "thread-list"]) {
   await mkdir(assetDir, { recursive: true });
   const js = await readFile(new URL("dist/app.js", source));
   const css = await readFile(new URL("dist/app.css", source));
-  const hash = createHash("sha256")
-    .update(js)
-    .update(css)
-    .update(meta.sdkVersion)
-    .digest("hex")
-    .slice(0, 16);
+  const hasher = createHash("sha256").update(js).update(css);
+  for (const chunk of meta.chunks) {
+    const bytes = await readFile(new URL(`dist/${chunk}`, source));
+    hasher.update(chunk).update(bytes);
+    await mkdir(new URL("chunks/", assetDir), { recursive: true });
+    await writeFile(new URL(chunk, assetDir), bytes);
+  }
+  const hash = hasher.update(meta.sdkVersion).digest("hex").slice(0, 16);
   await writeFile(new URL("app.js", assetDir), js);
   await writeFile(new URL("app.css", assetDir), css);
   plugins.push({
@@ -93,6 +98,13 @@ for (const id of ["navigation", "thread-list"]) {
         sdkVersion: meta.sdkVersion,
         compatible: true,
         runtimeSlots: meta.runtimeSlots,
+        staticChunkUrls: meta.entryChunks.map(
+          (chunk) => `/demo-plugins/${id}/${chunk}`,
+        ),
+        lazyChunkUrls: meta.chunks
+          .filter((chunk) => !meta.entryChunks.includes(chunk))
+          .map((chunk) => `/demo-plugins/${id}/${chunk}`),
+        lazyRuntimeSlots: meta.chunkRuntimeSlots,
       },
     },
     logoUrl: null,

@@ -1,4 +1,5 @@
 import { appQueryClient } from "./lib/app-query-client";
+import { preloadCoreContributionParts } from "./lib/core-contribution-parts";
 import { environmentProvidersQueryOptions } from "./hooks/queries/environment-provider-queries";
 import { machineProvidersQueryOptions } from "./hooks/queries/machine-provider-queries";
 import { PluginUpdateJobsHost } from "./components/plugin/PluginUpdateJobsHost";
@@ -286,7 +287,9 @@ export function AppRoutes() {
   const { isThreadView } = useRouteState();
   const isRootComposeView = useLocation().pathname === APP_ROOT_ROUTE_PATH;
   useEffect(() => {
-    if (isThreadView) void trackCriticalLoad(LazyThreadDetailView.preload());
+    if (!isThreadView) return;
+    void trackCriticalLoad(LazyThreadDetailView.preload());
+    preloadCoreContributionParts();
   }, [isThreadView]);
   useEffect(() => {
     if (!isRootComposeView) return;

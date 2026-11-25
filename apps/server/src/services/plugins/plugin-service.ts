@@ -116,6 +116,7 @@ import {
 import { buildTurnFailedEvent } from "../threads/turn-failed.js";
 import {
   pluginAppAsset,
+  pluginAppChunk,
   type PluginAppAsset,
   type PluginBrandingAssetSet,
   type PluginBrandingAssetSnapshot,
@@ -377,6 +378,7 @@ export interface PluginService {
     hash: string,
     kind: "js" | "css",
   ): PluginAppAsset | undefined;
+  getAppChunkByHash(hash: string, file: string): PluginAppAsset | undefined;
   getBrandingAsset(
     id: string,
     variant: PluginBrandingAssetVariant,
@@ -2072,6 +2074,14 @@ export function createPluginService(deps: PluginServiceDeps): PluginService {
         if (!loaded.has(id) || snapshot.assets?.hash !== hash) continue;
         const asset = pluginAppAsset(snapshot.assets, kind);
         if (asset !== undefined) return asset;
+      }
+      return undefined;
+    },
+
+    getAppChunkByHash(hash, file) {
+      for (const [id, snapshot] of appBundles) {
+        if (!loaded.has(id) || snapshot.assets?.hash !== hash) continue;
+        return pluginAppChunk(snapshot.assets, file);
       }
       return undefined;
     },

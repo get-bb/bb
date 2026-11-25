@@ -2215,13 +2215,13 @@ describe("plugin install flows", () => {
         validatePluginArtifactMeta({
           artifact: "server",
           raw: artifactMeta({
-            artifactFormatVersion: 2,
+            artifactFormatVersion: 3,
             pluginId: "artifact-format",
           }),
           pluginId: "artifact-format",
           pluginVersion: "0.1.0",
         }),
-      ).toMatch(/unknown artifactFormatVersion 2.*supported value is 1/);
+      ).toMatch(/unknown artifactFormatVersion 3.*supported values are 1 and 2/);
     });
   });
 

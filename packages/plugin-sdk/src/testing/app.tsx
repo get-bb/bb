@@ -25,6 +25,7 @@ import {
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
 import {
+  type ExperimentalLazyComponent,
   type ExperimentalPageTitle,
   type ExperimentalThreadRequests,
   type BbContext,
@@ -1767,7 +1768,32 @@ function captureErrorToasts(): TestErrorToast[] {
   return toasts;
 }
 
+const startedTestLazyLoads: Promise<unknown>[] = [];
+
+function testLazy<T extends React.ComponentType<any>>(
+  load: () => Promise<{ default: T }>,
+): ExperimentalLazyComponent<React.ComponentProps<T>> {
+  type P = React.ComponentProps<T>;
+  let loaded: React.ComponentType<P> | null = null;
+  const pending = load().then((module) => {
+    const component: React.ComponentType<P> = module.default;
+    loaded = component;
+    return { default: component };
+  });
+  pending.catch(() => {});
+  startedTestLazyLoads.push(pending);
+  const Suspending = React.lazy(() => pending);
+  function TestLazy(props: P) {
+    const [View] = React.useState<React.ComponentType<P>>(
+      () => loaded ?? Suspending,
+    );
+    return <View {...props} />;
+  }
+  return TestLazy;
+}
+
 const testPluginSdkApp = {
+  experimental_lazy: testLazy,
   experimental_getApplicationLinkApprovals: async (): Promise<string[]> => [],
   experimental_revokeApplicationLinkApproval: async (
     _scheme: string | null,
@@ -2332,7 +2358,8 @@ export interface LoadPluginAppOptions {
 /**
  * Install the test runtime, resolve the plugin app definition, and capture
  * its slot registrations. Pass the imported module, its default export, or a
- * thunk (`() => import("../app.tsx")`).
+ * thunk (`() => import("../app.tsx")`). Waits for the chunks its
+ * `experimental_lazy` components start loading, so slots render loaded.
  */
 export async function loadPluginApp(
   source: PluginAppSource,
@@ -2340,6 +2367,7 @@ export async function loadPluginApp(
 ): Promise<CapturedPluginApp> {
   installTestPluginRuntime();
   const resolved = typeof source === "function" ? await source() : source;
+  await Promise.allSettled(startedTestLazyLoads.splice(0));
   const definition = isPluginAppDefinition(resolved)
     ? resolved
     : (resolved as PluginAppModule).default;

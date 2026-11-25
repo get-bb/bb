@@ -8,7 +8,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { dirname, extname, join, resolve } from "node:path";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { derivePluginId } from "@bb/domain";
 import type { Metafile, Plugin } from "esbuild";
 import {
@@ -29,6 +29,7 @@ import {
   validatePluginBuildManifest,
 } from "./plugin-manifest.js";
 import {
+  HOST_LOADED_RUNTIME_SLOTS,
   LEGACY_PLUGIN_SDK_APP_SPECIFIER,
   PLUGIN_SDK_APP_SPECIFIER,
   RUNTIME_SLOT_BY_SPECIFIER,
@@ -139,6 +140,13 @@ async function shimModuleSource(
   const names = await shimExportsOf(specifier, pluginSdkAppModuleUrl);
   return [
     `const runtime = globalThis.__bbPluginRuntime;`,
+    ...(HOST_LOADED_RUNTIME_SLOTS.includes(slot)
+      ? [
+          `if (runtime != null && runtime.${slot} == null && typeof runtime.loadRuntimeSlot === "function") {`,
+          `  await runtime.loadRuntimeSlot(${JSON.stringify(slot)});`,
+          `}`,
+        ]
+      : []),
     `if (runtime == null || runtime.${slot} == null) {`,
     `  throw new Error(${JSON.stringify(
       `Cannot load "${specifier}": this bundle must be loaded by the BB app, which provides the shared plugin runtime (globalThis.__bbPluginRuntime).`,
@@ -154,6 +162,9 @@ async function shimModuleSource(
 }
 
 const SHIM_NAMESPACE = "bb-plugin-runtime-shim";
+
+export const PLUGIN_APP_ENTRY_FILE = "app.js";
+export const PLUGIN_APP_CHUNK_DIRECTORY = "chunks";
 
 const RETIRED_PLUGIN_SDK_APP_EXPORTS: Readonly<Record<string, string>> = {
   experimental_useSidebarThreadPullRequest:
@@ -597,22 +608,84 @@ async function bundledInputPaths(
   return paths;
 }
 
-function bundledRuntimeSlots(metafile: Metafile): string[] {
+function outputRuntimeSlots(inputs: Record<string, unknown>): string[] {
   const prefix = `${SHIM_NAMESPACE}:`;
-  const slots = new Set<string>();
-  for (const input of Object.keys(metafile.inputs)) {
+  const slots: string[] = [];
+  for (const input of Object.keys(inputs)) {
     if (!input.startsWith(prefix)) continue;
-    const specifier = input.slice(prefix.length);
-    const slot = runtimeSlotOf(specifier);
-    if (slot !== undefined) slots.add(slot);
+    const slot = runtimeSlotOf(input.slice(prefix.length));
+    if (slot !== undefined) slots.push(slot);
   }
-  return [...slots].sort();
+  return slots;
+}
+
+interface PluginAppOutputGraph {
+  chunks: string[];
+  entryChunks: string[];
+  runtimeSlots: string[];
+  chunkRuntimeSlots: string[];
+  chunkCss: string[];
+}
+
+function pluginAppOutputGraph(
+  metafile: Metafile,
+  absWorkingDir: string,
+  stageDir: string,
+): PluginAppOutputGraph {
+  const stagePath = (output: string) =>
+    relative(stageDir, resolve(absWorkingDir, output)).split(sep).join("/");
+  const outputs = new Map(
+    Object.entries(metafile.outputs).map(([output, info]) => [
+      stagePath(output),
+      info,
+    ]),
+  );
+  const entryClosure = new Set<string>();
+  const pending = [PLUGIN_APP_ENTRY_FILE];
+  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+    if (entryClosure.has(next)) continue;
+    entryClosure.add(next);
+    for (const imported of outputs.get(next)?.imports ?? []) {
+      if (imported.kind !== "import-statement" || imported.external) continue;
+      pending.push(stagePath(imported.path));
+    }
+  }
+  const chunks = [...outputs.keys()]
+    .filter(
+      (file) =>
+        file.startsWith(`${PLUGIN_APP_CHUNK_DIRECTORY}/`) &&
+        file.endsWith(".js"),
+    )
+    .sort();
+  const runtimeSlots = new Set<string>();
+  const chunkSlots = new Set<string>();
+  for (const [file, info] of outputs) {
+    if (!file.endsWith(".js")) continue;
+    const target = entryClosure.has(file) ? runtimeSlots : chunkSlots;
+    for (const slot of outputRuntimeSlots(info.inputs)) target.add(slot);
+  }
+  return {
+    chunks,
+    entryChunks: chunks.filter((file) => entryClosure.has(file)),
+    runtimeSlots: [...runtimeSlots].sort(),
+    chunkRuntimeSlots: [...chunkSlots]
+      .filter((slot) => !runtimeSlots.has(slot))
+      .sort(),
+    chunkCss: [...outputs.keys()]
+      .filter(
+        (file) =>
+          file.startsWith(`${PLUGIN_APP_CHUNK_DIRECTORY}/`) &&
+          file.endsWith(".css"),
+      )
+      .sort(),
+  };
 }
 
 interface PluginAppBuildResult {
   jsPath: string;
   cssPath: string;
   metaPath: string;
+  chunkPaths: string[];
   migrationWarnings: string[];
 }
 
@@ -637,19 +710,25 @@ export async function buildPluginApp(
   const cssPath = join(distDir, "app.css");
   const metaPath = join(distDir, "app.meta.json");
 
+  const chunkDir = join(distDir, PLUGIN_APP_CHUNK_DIRECTORY);
+
   let migrationWarnings: string[] = [];
+  let chunkPaths: string[] = [];
   const stageDir = await mkdtemp(join(distDir, ".stage-"));
   try {
-    const stagedJsPath = join(stageDir, "app.js");
+    const stagedJsPath = join(stageDir, PLUGIN_APP_ENTRY_FILE);
     const stagedCssPath = join(stageDir, "app.css");
     const stagedMetaPath = join(stageDir, "app.meta.json");
+    const stagedChunkDir = join(stageDir, PLUGIN_APP_CHUNK_DIRECTORY);
 
     const esbuild = (await import(
       toolchain.esbuild
     )) as typeof import("esbuild");
     const bundle = await esbuild.build({
-      entryPoints: [appEntry],
-      outfile: stagedJsPath,
+      entryPoints: { app: appEntry },
+      outdir: stageDir,
+      chunkNames: `${PLUGIN_APP_CHUNK_DIRECTORY}/[name]-[hash]`,
+      splitting: true,
       absWorkingDir: rootDir,
       bundle: true,
       metafile: true,
@@ -672,6 +751,7 @@ export async function buildPluginApp(
         }),
       ],
     });
+    const graph = pluginAppOutputGraph(bundle.metafile, rootDir, stageDir);
 
     migrationWarnings = bundle.warnings
       .filter((warning) => warning.pluginName === "bb-plugin-runtime-shims")
@@ -680,7 +760,13 @@ export async function buildPluginApp(
           ? warning.text
           : `${warning.location.file}:${warning.location.line}: ${warning.text}`,
       );
-    const builtJs = await readFile(stagedJsPath, "utf8");
+    const builtJs = (
+      await Promise.all(
+        [PLUGIN_APP_ENTRY_FILE, ...graph.chunks].map((file) =>
+          readFile(join(stageDir, file), "utf8"),
+        ),
+      )
+    ).join("\n");
     const unnamedRoots = findUnnamedPluginRoots(builtJs);
     const [first] = unnamedRoots;
     if (first !== undefined) {
@@ -689,13 +775,18 @@ export async function buildPluginApp(
       );
     }
 
-    let authoredCss = "";
-    try {
-      authoredCss = await readFile(stagedCssPath, "utf8");
-    } catch (error) {
-      if (!isRecord(error) || error.code !== "ENOENT") throw error;
+    const authoredCssParts: string[] = [];
+    for (const file of ["app.css", ...graph.chunkCss]) {
+      try {
+        authoredCssParts.push(await readFile(join(stageDir, file), "utf8"));
+      } catch (error) {
+        if (!isRecord(error) || error.code !== "ENOENT") throw error;
+      }
     }
-    const runtimeSlots = bundledRuntimeSlots(bundle.metafile);
+    await Promise.all(
+      graph.chunkCss.map((file) => rm(join(stageDir, file), { force: true })),
+    );
+    const authoredCss = authoredCssParts.join("\n");
     const bundledInputs: ReadonlySet<string> =
       dependencySources.length > 0
         ? await bundledInputPaths(bundle.metafile, rootDir)
@@ -725,18 +816,30 @@ export async function buildPluginApp(
             pluginVersion,
             bbVersion,
           }),
-          runtimeSlots,
+          runtimeSlots: graph.runtimeSlots,
+          ...(graph.chunks.length > 0
+            ? {
+                artifactFormatVersion: 2,
+                chunks: graph.chunks,
+                entryChunks: graph.entryChunks,
+                chunkRuntimeSlots: graph.chunkRuntimeSlots,
+              }
+            : {}),
         },
         null,
         2,
       ) + "\n",
     );
 
+    await rm(chunkDir, { recursive: true, force: true });
+    if (graph.chunks.length > 0)
+      await renameIntoPlace(stagedChunkDir, chunkDir);
     await renameIntoPlace(stagedJsPath, jsPath);
     await renameIntoPlace(stagedCssPath, cssPath);
     await renameIntoPlace(stagedMetaPath, metaPath);
+    chunkPaths = graph.chunks.map((file) => join(distDir, file));
   } finally {
     await rm(stageDir, { recursive: true, force: true });
   }
-  return { jsPath, cssPath, metaPath, migrationWarnings };
+  return { jsPath, cssPath, metaPath, chunkPaths, migrationWarnings };
 }

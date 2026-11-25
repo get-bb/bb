@@ -22,6 +22,8 @@
     "src/**/*.tsx",
     "actions-menu.tsx",
     "app.tsx",
+    "automation-route.ts",
+    "panel.tsx",
     "automations.stories.tsx",
     "detail-view.tsx",
     "metadata.tsx",
