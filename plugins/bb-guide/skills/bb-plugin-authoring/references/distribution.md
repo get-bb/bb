@@ -202,7 +202,7 @@ lands on — so keep your listed URL, subdirectory, and range honest.
 Two marketplaces ship with bb. `bb-official` lists the plugins bundled inside
 the app, which install from that local copy with no network fetch; inclusion
 there is a BB release decision. `bb-community` lists public third-party
-plugins, and listing one there is self-service; see the next section.
+plugins that BB does not review; to list one there, see the next section.
 
 ### Getting listed on the public marketplace
 
