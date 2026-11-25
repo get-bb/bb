@@ -18,7 +18,7 @@ const UTF8_TEXT_MIME_TYPES = new Set([
   "application/yaml",
 ]);
 
-const MARKDOWN_FILE_EXTENSIONS = [".md", ".markdown"];
+const MARKDOWN_FILE_EXTENSIONS = [".md", ".markdown", ".mdx"];
 const MARKDOWN_MIME_TYPES = new Set(["text/markdown", "text/x-markdown"]);
 const CSV_FILE_EXTENSIONS = [".csv"];
 const CSV_MIME_TYPES = new Set(["application/csv", "text/csv"]);

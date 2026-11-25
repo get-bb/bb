@@ -45,7 +45,8 @@ export function resolveRightPanelFileVisual({
   const extension = getFileExtension({ path });
   const inReports = hasPathDirectorySegment({ path, segment: "reports" });
   const inPlans = hasPathDirectorySegment({ path, segment: "plans" });
-  const isMarkdown = extension === "md" || extension === "markdown";
+  const isMarkdown =
+    extension === "md" || extension === "markdown" || extension === "mdx";
   const isHtml = extension === "html" || extension === "htm";
 
   if (inReports && (isMarkdown || isHtml)) {

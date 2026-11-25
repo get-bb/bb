@@ -79,6 +79,7 @@ import {
 } from "./markdown-message-directives.js";
 import { normalizePromptBlockquoteBoundaries } from "./markdown-prompt-blockquote-boundaries.js";
 import { MarkdownMermaidDiagram } from "./markdown-mermaid-diagram.js";
+import { MarkdownInlineVisDiagram } from "./markdown-inline-vis-diagram.js";
 import type { PromptTextMention } from "@bb/domain";
 import type { PromptMentionLinkResolver } from "@/components/promptbox/editor/prompt-mention-link";
 import type { TimelineTitleLinkResolver } from "@/components/thread/timeline/TimelineTitleView.js";
@@ -711,14 +712,17 @@ function MarkdownCode({
   const language = getMarkdownCodeLanguage({ className: codeClassName });
   const isBlock = isMarkdownCodeBlock({ codeText, language });
   const [softWrap, setSoftWrap] = useState(false);
-  // Highlight only fenced blocks (mermaid renders as a diagram, inline code stays
-  // plain). The HTML is escaped by sugar-high, so dangerouslySetInnerHTML is safe.
+  // Highlight only fenced blocks (mermaid and inline-vis/svg render as diagrams,
+  // inline code stays plain). The HTML is escaped by sugar-high, so
+  // dangerouslySetInnerHTML is safe.
+  const isDiagramLanguage =
+    language === "mermaid" || language === "inline-vis" || language === "svg";
   const highlightedHtml = useMemo(
     () =>
-      isBlock && language !== "mermaid"
+      isBlock && !isDiagramLanguage
         ? highlightMarkdownCode({ code: codeText, language })
         : null,
-    [isBlock, language, codeText],
+    [isBlock, isDiagramLanguage, language, codeText],
   );
   if (isBlock) {
     if (language === "mermaid") {
@@ -728,6 +732,10 @@ function MarkdownCode({
           source={codeText}
         />
       );
+    }
+
+    if (language === "inline-vis" || language === "svg") {
+      return <MarkdownInlineVisDiagram source={codeText} />;
     }
 
     return (
