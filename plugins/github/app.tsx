@@ -1965,15 +1965,17 @@ function PullPanelTab({ threadId }: ExperimentalThreadActionTabProps) {
     const repos = projectRepos ?? [];
     const scope = chosenScope ?? defaultPullScope(repos);
     return (
-      <div className="flex flex-col gap-3">
-        <p className="text-xs text-muted-foreground">
-          No pull request is linked to this thread yet — pick one:
-        </p>
-        <PullScopeSelect
-          scope={scope}
-          projectRepos={repos}
-          onScopeChange={setChosenScope}
-        />
+      <div className="flex flex-col">
+        <div className="sticky -top-4 z-10 -mt-4 flex flex-col gap-3 bg-sidebar pt-4 pb-3">
+          <p className="text-xs text-muted-foreground">
+            No pull request is linked to this thread yet — pick one:
+          </p>
+          <PullScopeSelect
+            scope={scope}
+            projectRepos={repos}
+            onScopeChange={setChosenScope}
+          />
+        </div>
         <PullPickerList
           scope={scope}
           projectRepos={repos}
