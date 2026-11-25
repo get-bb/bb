@@ -69,6 +69,7 @@ export interface DesktopWindowWebContents extends DesktopContextMenuWebContents 
   openDevTools(options: DesktopWindowOpenDevToolsOptions): void;
   setWindowOpenHandler(handler: DesktopWindowOpenHandler): void;
   getZoomFactor(): number;
+  getURL(): string;
   setZoomFactor(factor: number): void;
   ipc: { on(channel: string, listener: () => void): void };
   on(eventName: "dom-ready", listener: () => void): void;
@@ -147,6 +148,7 @@ export interface DesktopWindowFactory {
   focusFirstWindow(): boolean;
   hasOpenWindows(): boolean;
   loadUrl(args: LoadDesktopWindowsUrlArgs): Promise<void>;
+  retargetWindows(resolveUrl: (currentUrl: string) => string): Promise<void>;
   openDevTools(): void;
   persistOpenWindows(): Promise<void>;
   zoom(webContentsId: number, command: BbDesktopZoomCommand): boolean;
@@ -476,6 +478,21 @@ export function createDesktopWindowFactory(
     await Promise.all(loadPromises);
   }
 
+  async function retargetWindows(
+    resolveUrl: (currentUrl: string) => string,
+  ): Promise<void> {
+    await Promise.all(
+      [...activeWindows.values()]
+        .filter((browserWindow) => !browserWindow.isDestroyed())
+        .map((browserWindow) =>
+          loadUrlIntoWindow({
+            browserWindow,
+            url: resolveUrl(browserWindow.webContents.getURL()),
+          }),
+        ),
+    );
+  }
+
   function focusFirstWindow(): boolean {
     for (const browserWindow of activeWindows.values()) {
       if (browserWindow.isMinimized()) {
@@ -507,6 +524,7 @@ export function createDesktopWindowFactory(
       return activeWindows.size > 0;
     },
     loadUrl,
+    retargetWindows,
     openDevTools,
     persistOpenWindows,
     zoom(webContentsId, command) {

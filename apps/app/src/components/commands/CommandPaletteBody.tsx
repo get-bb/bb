@@ -1,4 +1,5 @@
 import { useServerChoices } from "@/hooks/useServerChoices";
+import { useDesktopServerRoute } from "@/hooks/useDesktopServerRoute";
 import {
   useCallback,
   useEffect,
@@ -45,6 +46,11 @@ export interface CommandPaletteBodyProps {
   query: string;
   onQueryChange: (value: string) => void;
   onChoose: (action: PaletteAction) => void;
+}
+
+function routeOptionLabel(option: { label: string; url: string }): string {
+  const host = new URL(option.url).host;
+  return option.label === host ? host : `${option.label} (${host})`;
 }
 
 export function CommandPaletteBody({
@@ -108,14 +114,45 @@ export function CommandPaletteBody({
     [serverChoices],
   );
 
+  const serverRoute = useDesktopServerRoute();
+  const routeActions = useMemo<PaletteAction[]>(() => {
+    if (serverRoute === null) return [];
+    const { route, setRoute } = serverRoute;
+    return [
+      ...(route.pinnedUrl === null
+        ? []
+        : [
+            {
+              id: "server-route:automatic",
+              title: `Reach ${route.serverName} over any route`,
+              bucket: "Actions" as const,
+              group: "Servers",
+              shortcut: null,
+              run: () => setRoute(null),
+            },
+          ]),
+      ...route.routes
+        .filter((option) => option.url !== route.pinnedUrl)
+        .map((option) => ({
+          id: `server-route:${option.url}`,
+          title: `Reach ${route.serverName} only via ${routeOptionLabel(option)}`,
+          bucket: "Actions" as const,
+          group: "Servers",
+          shortcut: null,
+          run: () => setRoute(option.url),
+        })),
+    ];
+  }, [serverRoute]);
+
   const availableActions = useMemo<readonly PaletteAction[]>(
     () => [
       ...actions,
       ...settingsActions,
       ...pluginPageActions,
       ...serverActions,
+      ...routeActions,
     ],
-    [actions, pluginPageActions, settingsActions, serverActions],
+    [actions, pluginPageActions, settingsActions, serverActions, routeActions],
   );
   const commandQuery = query.startsWith(">") ? query.slice(1) : query;
   const ranked = useMemo(

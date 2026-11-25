@@ -36,6 +36,7 @@
     "@bb/process-utils": "workspace:*",
     "@bb/provider-bridge-protocol": "workspace:*",
     "@bb/server-archive": "workspace:*",
+    "@bb/server-routes": "workspace:*",
     "@bb/skill-index": "workspace:*",
     "@bb/text-utils": "workspace:*",
     "@bb/tunnel-client": "workspace:*",

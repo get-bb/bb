@@ -2,6 +2,12 @@ import { readFile, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { serverRouteKindSchema } from "@bb/domain";
+import {
+  orderServerRoutes,
+  probeServerRoute,
+  selectServerRoute,
+  serverRouteKey,
+} from "@bb/server-routes";
 import type {
   HostDaemonServerRoutes,
   HostDaemonSessionRoute,
@@ -31,9 +37,6 @@ const persistedServerRoutesSchema = z
   .strict();
 export type PersistedServerRoutes = z.infer<typeof persistedServerRoutesSchema>;
 
-export const ROUTE_PROBE_TIMEOUT_MS = 2_000;
-export const ROUTE_HEAD_START_MS = 500;
-
 const CONNECT_MACHINE_HEADER = "x-bb-connect-machine";
 
 export interface ServerRouteTarget {
@@ -62,15 +65,6 @@ export interface ServerRouteResolverOptions {
   fetchFn?: RouteFetch;
 }
 
-const healthResponseSchema = z
-  .object({ ok: z.literal(true), serverId: z.string().min(1).optional() })
-  .passthrough();
-
-function routeKey(url: string): string {
-  const parsed = new URL(url);
-  return `${parsed.origin}${parsed.pathname.replace(/\/+$/u, "")}`;
-}
-
 export function sameServerRoute(
   left: HostDaemonSessionRoute | null,
   right: HostDaemonSessionRoute | null,
@@ -88,14 +82,14 @@ export class ServerRouteResolver {
 
   constructor(private readonly options: ServerRouteResolverOptions) {
     this.anchor = {
-      key: routeKey(options.anchorUrl),
+      key: serverRouteKey(options.anchorUrl),
       url: options.anchorUrl,
       headers: options.anchorHeaders,
       route: null,
     };
     const persisted =
       options.persisted !== null &&
-      routeKey(options.persisted.anchorUrl) === this.anchor.key
+      serverRouteKey(options.persisted.anchorUrl) === this.anchor.key
         ? options.persisted
         : null;
     this.serverId = persisted?.serverId ?? null;
@@ -134,7 +128,9 @@ export class ServerRouteResolver {
       this.setActive(candidates[0] ?? this.anchor);
       return this.active();
     }
-    const winner = await this.race(candidates);
+    const winner = await selectServerRoute(candidates, (candidate, signal) =>
+      this.probe(candidate, signal),
+    );
     if (winner === null) {
       this.options.logger.info(
         { routes: candidates.map((candidate) => candidate.url) },
@@ -212,21 +208,15 @@ export class ServerRouteResolver {
   }
 
   private rankedCandidates(): Candidate[] {
-    const candidates: Candidate[] = [];
-    for (const route of this.learned) {
-      const key = routeKey(route.url);
-      if (candidates.some((candidate) => candidate.key === key)) continue;
-      candidates.push({
-        key,
+    return orderServerRoutes(
+      this.learned.map((route) => ({
+        key: serverRouteKey(route.url),
         url: route.url,
         headers: route.headers,
         route: { providerId: route.providerId, kind: route.kind },
-      });
-    }
-    if (!candidates.some((candidate) => candidate.key === this.anchor.key)) {
-      candidates.push(this.anchor);
-    }
-    return candidates;
+      })),
+      [this.anchor],
+    );
   }
 
   private setActive(candidate: Candidate): void {
@@ -248,72 +238,24 @@ export class ServerRouteResolver {
     candidate: Candidate,
     signal: AbortSignal,
   ): Promise<boolean> {
-    try {
-      const response = await this.fetchFn(new URL("/health", candidate.url), {
-        headers: candidate.headers,
-        redirect: "error",
-        signal: AbortSignal.any([
-          signal,
-          AbortSignal.timeout(ROUTE_PROBE_TIMEOUT_MS),
-        ]),
-      });
-      if (!response.ok) {
-        await response.body?.cancel().catch(() => undefined);
-        return false;
-      }
-      const health = healthResponseSchema.safeParse(await response.json());
-      if (!health.success) return false;
-      if (this.serverId !== null && health.data.serverId !== this.serverId) {
-        this.options.logger.warn(
-          {
-            url: candidate.url,
-            expectedServerId: this.serverId,
-            serverId: health.data.serverId ?? null,
-          },
-          "Ignoring a server route that answers as a different server",
-        );
-        return false;
-      }
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private race(candidates: readonly Candidate[]): Promise<Candidate | null> {
-    const controller = new AbortController();
-    const startedAt = Date.now();
-    return new Promise((resolve) => {
-      let unanswered = candidates.length;
-      let settled = false;
-      let best: { rank: number; timer: ReturnType<typeof setTimeout> } | null =
-        null;
-      const finish = (winner: Candidate | null) => {
-        if (settled) return;
-        settled = true;
-        if (best !== null) clearTimeout(best.timer);
-        controller.abort();
-        resolve(winner);
-      };
-      candidates.forEach((candidate, rank) => {
-        void this.probe(candidate, controller.signal).then((answered) => {
-          if (settled) return;
-          if (!answered) {
-            unanswered -= 1;
-            if (unanswered === 0) finish(null);
-            return;
-          }
-          const wait = rank * ROUTE_HEAD_START_MS - (Date.now() - startedAt);
-          if (wait <= 0) {
-            finish(candidate);
-            return;
-          }
-          if (best !== null && best.rank < rank) return;
-          if (best !== null) clearTimeout(best.timer);
-          best = { rank, timer: setTimeout(() => finish(candidate), wait) };
-        });
-      });
+    const result = await probeServerRoute({
+      url: candidate.url,
+      headers: candidate.headers,
+      expectedServerId: this.serverId,
+      fetchFn: this.fetchFn,
+      signal,
     });
+    if (result.kind === "different-server") {
+      this.options.logger.warn(
+        {
+          url: candidate.url,
+          expectedServerId: this.serverId,
+          serverId: result.serverId,
+        },
+        "Ignoring a server route that answers as a different server",
+      );
+    }
+    return result.kind === "answered";
   }
 
   private persistLearned(serverId: string): void {

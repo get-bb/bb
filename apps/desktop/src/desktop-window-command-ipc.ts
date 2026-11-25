@@ -27,6 +27,12 @@ export const BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL =
   "bb-desktop:server-choices-changed";
 export const BB_DESKTOP_SELECT_SERVER_CHANNEL = "bb-desktop:select-server";
 export const BB_DESKTOP_ADD_SERVER_CHANNEL = "bb-desktop:add-server";
+export const BB_DESKTOP_GET_SERVER_ROUTE_CHANNEL =
+  "bb-desktop:get-server-route";
+export const BB_DESKTOP_SERVER_ROUTE_CHANGED_CHANNEL =
+  "bb-desktop:server-route-changed";
+export const BB_DESKTOP_SET_SERVER_ROUTE_CHANNEL =
+  "bb-desktop:set-server-route";
 export const BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL =
   "bb-desktop:sign-in-to-connect";
 

@@ -5,8 +5,10 @@ import {
   type AppKeybinding,
   type AppKeybindings,
 } from "@bb/domain";
+import { serverRouteSchema } from "@bb/server-contract";
 import { z } from "zod";
 import { STARTUP_RELOAD_KEYBINDINGS } from "./desktop-reload-shortcut.js";
+import type { ServerRouteEntry } from "./server-target.js";
 
 const desktopKeybindingSchema = appKeybindingSchema.extend({
   command: z.string(),
@@ -20,10 +22,18 @@ const desktopDefaultKeybindingSchema = z.object({
 const desktopSystemConfigSchema = z.object({
   defaultKeybindings: z.array(desktopDefaultKeybindingSchema).max(256),
   keybindings: z.array(desktopKeybindingSchema).max(256),
+  serverId: z.string().min(1).optional(),
+  routes: z.array(serverRouteSchema).max(64).optional().catch(undefined),
 });
+
+export interface AdvertisedServerRoutes {
+  serverId: string;
+  routes: ServerRouteEntry[];
+}
 
 interface DesktopSystemConfig {
   keybindings: AppKeybindings;
+  serverRoutes: AdvertisedServerRoutes | null;
 }
 
 export function parseDesktopSystemConfig(
@@ -44,5 +54,19 @@ export function parseDesktopSystemConfig(
     }
     keybindings.push({ ...binding, command: command.data });
   }
-  return { keybindings };
+  return {
+    keybindings,
+    serverRoutes:
+      parsed.serverId === undefined
+        ? null
+        : {
+            serverId: parsed.serverId,
+            routes: (parsed.routes ?? []).map((route) => ({
+              url: route.url,
+              kind: route.kind,
+              providerId: route.providerId,
+              label: route.displayName,
+            })),
+          },
+  };
 }

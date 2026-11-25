@@ -1,9 +1,13 @@
 import {
   bbDesktopServerListSchema,
+  bbDesktopServerRouteChangeSchema,
+  bbDesktopServerRouteSchema,
   MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   type BbDesktopServerChoice,
   type BbDesktopServerList,
+  type BbDesktopServerRoute,
+  type BbDesktopServerRouteChange,
 } from "@bb/desktop-contract";
 import { contextBridge, ipcRenderer, webFrame } from "electron";
 import { appCommandIdSchema, type AppCommandId } from "@bb/domain";
@@ -101,6 +105,9 @@ import {
   BB_DESKTOP_GET_SERVER_CHOICES_CHANNEL,
   BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
   BB_DESKTOP_SELECT_SERVER_CHANNEL,
+  BB_DESKTOP_GET_SERVER_ROUTE_CHANNEL,
+  BB_DESKTOP_SERVER_ROUTE_CHANGED_CHANNEL,
+  BB_DESKTOP_SET_SERVER_ROUTE_CHANNEL,
   BB_DESKTOP_ADD_SERVER_CHANNEL,
   BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL,
   BB_DESKTOP_APP_COMMAND_CHANNEL,
@@ -144,6 +151,10 @@ function createInitialDesktopWindowState(): BbDesktopWindowState {
 }
 
 const serverListListeners = new Set<(list: BbDesktopServerList) => void>();
+const serverRouteListeners = new Set<
+  (change: BbDesktopServerRouteChange) => void
+>();
+let pendingServerRouteSwitch: BbDesktopServerRouteChange | null = null;
 const listeners = new Set<BbDesktopInfoChangeHandler>();
 const appCommandListeners = new Set<BbDesktopAppCommandHandler>();
 const windowStateListeners = new Set<BbDesktopWindowStateChangeHandler>();
@@ -274,6 +285,22 @@ async function getServerList(): Promise<BbDesktopServerList> {
 
 async function listServerChoices(): Promise<BbDesktopServerChoice[]> {
   return (await getServerList()).servers;
+}
+
+async function getServerRoute(): Promise<BbDesktopServerRoute | null> {
+  return bbDesktopServerRouteSchema
+    .nullable()
+    .parse(await ipcRenderer.invoke(BB_DESKTOP_GET_SERVER_ROUTE_CHANNEL));
+}
+
+function onServerRouteChange(
+  listener: (change: BbDesktopServerRouteChange) => void,
+): () => void {
+  const unsubscribe = addListener(serverRouteListeners, listener);
+  const pending = pendingServerRouteSwitch;
+  pendingServerRouteSwitch = null;
+  if (pending !== null) queueMicrotask(() => listener(pending));
+  return unsubscribe;
 }
 
 function forwardParsed<T>(
@@ -458,6 +485,11 @@ const bbDesktopApi: BbDesktopApi = {
   selectServer(id) {
     ipcRenderer.send(BB_DESKTOP_SELECT_SERVER_CHANNEL, id);
   },
+  getServerRoute,
+  onServerRouteChange,
+  setServerRoute(url) {
+    ipcRenderer.send(BB_DESKTOP_SET_SERVER_ROUTE_CHANNEL, url);
+  },
   addServer() {
     ipcRenderer.send(BB_DESKTOP_ADD_SERVER_CHANNEL);
   },
@@ -569,6 +601,19 @@ forwardParsed(
   BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
   bbDesktopServerListSchema,
   serverListListeners,
+);
+
+ipcRenderer.on(
+  BB_DESKTOP_SERVER_ROUTE_CHANGED_CHANNEL,
+  (_event, payload: unknown) => {
+    const parsed = bbDesktopServerRouteChangeSchema.safeParse(payload);
+    if (!parsed.success) return;
+    if (serverRouteListeners.size === 0) {
+      if (parsed.data.switched !== null) pendingServerRouteSwitch = parsed.data;
+      return;
+    }
+    for (const listener of serverRouteListeners) listener(parsed.data);
+  },
 );
 
 ipcRenderer.on(BB_DESKTOP_INFO_CHANGED_CHANNEL, (_event, payload: unknown) => {

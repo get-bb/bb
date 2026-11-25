@@ -1,4 +1,9 @@
-import type { BbDesktopServerChoice, BbDesktopServerList } from "./servers.js";
+import type {
+  BbDesktopServerChoice,
+  BbDesktopServerList,
+  BbDesktopServerRoute,
+  BbDesktopServerRouteChange,
+} from "./servers.js";
 import { z } from "zod";
 import type { BbDesktopBrowserApi } from "./browser.js";
 import type { BbDesktopWindowFindRequest } from "./find.js";
@@ -79,6 +84,11 @@ export interface BbDesktopApi extends BbDesktopInfo {
     listener: (list: BbDesktopServerList) => void,
   ): () => void;
   selectServer?(id: string): void;
+  getServerRoute?(): Promise<BbDesktopServerRoute | null>;
+  onServerRouteChange?(
+    listener: (change: BbDesktopServerRouteChange) => void,
+  ): () => void;
+  setServerRoute?(url: string | null): void;
   addServer?(): void;
   signInToConnect?(): void;
   checkForUpdates(): Promise<BbDesktopInfo>;

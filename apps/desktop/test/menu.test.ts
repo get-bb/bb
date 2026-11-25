@@ -51,6 +51,8 @@ function menuArgs(
     zoomFocusedPage: () => {},
     selectServer: () => {},
     servers: [{ checked: true, id: "builtin", name: BUILTIN_SERVER_NAME }],
+    serverRoute: null,
+    setServerRoute: () => {},
     setServerUrl: () => {},
     signInToConnect: () => {},
     addServer: () => {},

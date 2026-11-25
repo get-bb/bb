@@ -117,29 +117,6 @@ describe("ServerRouteResolver", () => {
     ]);
   });
 
-  it("picks the best-ranked route that answers within its head start", async () => {
-    const network = createNetwork({
-      [LAN]: { answer: true, delayMs: 400 },
-      [TAILNET]: { answer: true, delayMs: 10 },
-      [new URL(RELAY).origin]: { answer: true, delayMs: 10 },
-    });
-    const resolver = createResolver(network);
-    const selected = resolver.select();
-    await vi.advanceTimersByTimeAsync(2_000);
-    expect((await selected).route?.providerId).toBe("local-network");
-  });
-
-  it("does not wait for a better route past its head start", async () => {
-    const network = createNetwork({
-      [LAN]: { answer: true, delayMs: 1_500 },
-      [TAILNET]: { answer: true, delayMs: 10 },
-    });
-    const resolver = createResolver(network);
-    const selected = resolver.select();
-    await vi.advanceTimersByTimeAsync(600);
-    expect((await selected).route?.providerId).toBe("tailscale");
-  });
-
   it("ignores a route that answers as a different server", async () => {
     const network = createNetwork({
       [LAN]: { answer: true, serverId: "srv_other" },
