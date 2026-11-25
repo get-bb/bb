@@ -44,7 +44,9 @@ export function registerAsyncQuestions(bb: BbPluginApi): void {
   async function readNewQuestions(
     threadId: string,
   ): Promise<CodexAsyncQuestionState[]> {
-    let cursor = (await bb.storage.kv.get<number>(cursorKey(threadId))) ?? 0;
+    const storedCursor =
+      (await bb.storage.kv.get<number>(cursorKey(threadId))) ?? 0;
+    let cursor = storedCursor;
     const questions: CodexAsyncQuestionState[] = [];
     for (;;) {
       const page = await bb.sdk.threads.events.list({
@@ -66,7 +68,9 @@ export function registerAsyncQuestions(bb: BbPluginApi): void {
       }
       if (page.length < EVENT_PAGE_SIZE) break;
     }
-    await bb.storage.kv.set(cursorKey(threadId), cursor);
+    if (cursor > storedCursor) {
+      await bb.storage.kv.set(cursorKey(threadId), cursor);
+    }
     return questions;
   }
 
