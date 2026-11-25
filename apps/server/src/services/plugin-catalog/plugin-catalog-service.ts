@@ -684,7 +684,7 @@ export function createPluginCatalogService(deps: {
         marketplaceName: row.name,
         base: materialized.iconBase,
         entries: catalog.plugins,
-        onlyMissing: materialized.unchanged,
+        rereadLocalIcons: !materialized.unchanged,
         fetch: fetchMarketplace,
         ...(deps.warn === undefined ? {} : { warn: deps.warn }),
       });
@@ -937,19 +937,12 @@ export function createPluginCatalogService(deps: {
 
   async function resolvedEntrySourceView(
     entry: MarketplaceEntry,
-    official: boolean,
   ): Promise<PluginCatalogResolvedSource> {
     if ("bundled" in entry.source) {
       throw new Error("a bundled marketplace entry has no remote source");
     }
-    if ("npm" in entry.source) {
-      const npm = entry.source.npm;
-      if (official) return npmSourceView(npm);
-      return resolveNpmEntrySource(npm);
-    }
-    const git = entry.source.git;
-    if (official) return gitSourceView(git);
-    return resolveGitEntrySource(git);
+    if ("npm" in entry.source) return resolveNpmEntrySource(entry.source.npm);
+    return resolveGitEntrySource(entry.source.git);
   }
 
   type ConfirmedEntryBinding =
@@ -959,7 +952,7 @@ export function createPluginCatalogService(deps: {
   async function installMarketplaceEntry(
     row: PluginMarketplaceRow,
     entry: MarketplaceEntry,
-    binding?: ConfirmedEntryBinding,
+    binding: ConfirmedEntryBinding,
   ): Promise<InstalledPlugin> {
     if (isBundledMarketplaceEntry(entry)) {
       throw new Error("a bundled marketplace entry must install from disk");
@@ -974,8 +967,8 @@ export function createPluginCatalogService(deps: {
       ...(resolved.npmRegistry === undefined
         ? {}
         : { npmRegistry: resolved.npmRegistry }),
-      ...(binding?.kind === "git" ? { expectedGitCommit: binding.commit } : {}),
-      ...(binding?.kind === "npm"
+      ...(binding.kind === "git" ? { expectedGitCommit: binding.commit } : {}),
+      ...(binding.kind === "npm"
         ? {
             expectedNpmVersion: binding.version,
             ...(binding.integrity === undefined
@@ -986,16 +979,14 @@ export function createPluginCatalogService(deps: {
     });
   }
 
-  async function confirmedThirdPartySource(args: {
+  async function confirmedMarketplaceSource(args: {
     entry: MarketplaceEntry;
     confirmed: PluginCatalogResolvedSource | undefined;
   }): Promise<ConfirmedEntryBinding> {
     if (args.confirmed === undefined) {
-      throw new Error(
-        "install refused: confirm the third-party marketplace source first",
-      );
+      throw new Error("install refused: confirm the marketplace source first");
     }
-    const current = await resolvedEntrySourceView(args.entry, false);
+    const current = await resolvedEntrySourceView(args.entry);
     if (!isDeepStrictEqual(current, args.confirmed)) {
       throw new Error(
         "install refused: the marketplace source changed after confirmation; review it again",
@@ -1106,7 +1097,7 @@ export function createPluginCatalogService(deps: {
             marketplaceName: name,
             base: materialized.iconBase,
             entries: materialized.catalog.plugins,
-            onlyMissing: false,
+            rereadLocalIcons: true,
             fetch: fetchMarketplace,
             ...(deps.warn === undefined ? {} : { warn: deps.warn }),
           });
@@ -1312,7 +1303,6 @@ export function createPluginCatalogService(deps: {
         };
       }
       const { row, entry } = resolved;
-      const official = isReservedMarketplace(row.name);
       return {
         kind: "marketplace",
         entryId: entry.id,
@@ -1320,10 +1310,10 @@ export function createPluginCatalogService(deps: {
         displayName: entry.displayName,
         marketplace: row.name,
         marketplaceDisplayName: catalogOf(row)?.displayName ?? row.name,
-        official,
+        official: isReservedMarketplace(row.name),
         author: entryAuthor(entry),
         source: resolvedEntrySource(entry).source,
-        resolvedSource: await resolvedEntrySourceView(entry, official),
+        resolvedSource: await resolvedEntrySourceView(entry),
         compatible: true,
         incompatibleReason: null,
       };
@@ -1349,25 +1339,17 @@ export function createPluginCatalogService(deps: {
         if (bundled !== undefined) {
           if (input.confirmedSource !== undefined) {
             throw new Error(
-              "install refused: confirmedSource applies only to third-party marketplaces",
+              "install refused: confirmedSource does not apply to plugins bundled with bb",
             );
           }
           const { problem } = await requireBundledManifest(bundled);
           if (problem !== null) throw new Error(`install refused: ${problem}`);
           return deps.plugins.installOfficialPlugin(bundled.name);
         }
-        const thirdParty = !isReservedMarketplace(current.row.name);
-        if (!thirdParty && input.confirmedSource !== undefined) {
-          throw new Error(
-            "install refused: confirmedSource applies only to third-party marketplaces",
-          );
-        }
-        const binding = thirdParty
-          ? await confirmedThirdPartySource({
-              entry: current.entry,
-              confirmed: input.confirmedSource,
-            })
-          : undefined;
+        const binding = await confirmedMarketplaceSource({
+          entry: current.entry,
+          confirmed: input.confirmedSource,
+        });
         return installMarketplaceEntry(current.row, current.entry, binding);
       });
     },

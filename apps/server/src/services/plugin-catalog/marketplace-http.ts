@@ -2,15 +2,27 @@ import { lookup as dnsLookup } from "node:dns";
 import type { ClientRequest, IncomingMessage } from "node:http";
 import { request, type RequestOptions } from "node:https";
 import { BlockList, isIP, type LookupFunction } from "node:net";
-import { Readable } from "node:stream";
+import { pipeline, Readable, Transform } from "node:stream";
+import { createBrotliDecompress, createGunzip, createInflate } from "node:zlib";
 
 export type MarketplaceFetch = (
   input: string,
   init: RequestInit,
 ) => Promise<Response>;
 
-export const MARKETPLACE_FETCH_TIMEOUT_MS = 10_000;
+export interface MarketplaceFetchTimeouts {
+  responseMs: number;
+  stallMs: number;
+}
+
+export const MARKETPLACE_FETCH_TIMEOUTS: MarketplaceFetchTimeouts = {
+  responseMs: 15_000,
+  stallMs: 30_000,
+};
 export const MARKETPLACE_PACKUMENT_MAX_BYTES = 8 * 1024 * 1024;
+export const MARKETPLACE_RESPONSE_MAX_BYTES = 128 * 1024 * 1024;
+
+const MARKETPLACE_ACCEPT_ENCODING = "gzip, deflate, br";
 
 const deniedMarketplaceIpv4Addresses = new BlockList();
 for (const [network, prefix] of [
@@ -153,45 +165,158 @@ type MarketplaceRequest = (
 export interface PublicMarketplaceFetchDeps {
   request?: MarketplaceRequest;
   lookup?: LookupFunction;
+  timeouts?: MarketplaceFetchTimeouts;
+  maxResponseBytes?: number;
 }
 
-export function createPublicMarketplaceFetch(
-  deps: PublicMarketplaceFetchDeps = {},
+function timeoutError(message: string): DOMException {
+  return new DOMException(`request timed out: ${message}`, "TimeoutError");
+}
+
+function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(error);
+      },
+    );
+  });
+}
+
+function stallGuardedBody(
+  source: ReadableStream<Uint8Array>,
+  signal: AbortSignal,
+  stallMs: number,
+  onStall: () => void,
+): ReadableStream<Uint8Array> {
+  const reader = source.getReader();
+  return new ReadableStream<Uint8Array>(
+    {
+      async pull(controller) {
+        const stall = setTimeout(onStall, stallMs);
+        try {
+          const next = await abortable(reader.read(), signal);
+          if (next.done) controller.close();
+          else controller.enqueue(next.value);
+        } catch (error) {
+          reader.cancel(error).catch(() => {});
+          throw error;
+        } finally {
+          clearTimeout(stall);
+        }
+      },
+      cancel(reason) {
+        return reader.cancel(reason);
+      },
+    },
+    { highWaterMark: 0 },
+  );
+}
+
+export function createStallTimeoutFetch(
+  fetchImpl: MarketplaceFetch,
+  timeouts: MarketplaceFetchTimeouts = MARKETPLACE_FETCH_TIMEOUTS,
 ): MarketplaceFetch {
-  const sendRequest = deps.request ?? request;
-  const lookup = deps.lookup ?? publicMarketplaceLookup;
+  return async (input, init) => {
+    const timeoutController = new AbortController();
+    const callerSignal = init.signal ?? null;
+    const signal =
+      callerSignal === null
+        ? timeoutController.signal
+        : AbortSignal.any([callerSignal, timeoutController.signal]);
+    const responseTimer = setTimeout(() => {
+      timeoutController.abort(
+        timeoutError(`no response within ${timeouts.responseMs}ms`),
+      );
+    }, timeouts.responseMs);
+    let response: Response;
+    try {
+      response = await abortable(fetchImpl(input, { ...init, signal }), signal);
+    } finally {
+      clearTimeout(responseTimer);
+    }
+    if (response.body === null) return response;
+    return new Response(
+      stallGuardedBody(response.body, signal, timeouts.stallMs, () => {
+        timeoutController.abort(
+          timeoutError(`no data received for ${timeouts.stallMs}ms`),
+        );
+      }),
+      {
+        status: response.status,
+        statusText: response.statusText,
+        headers: response.headers,
+      },
+    );
+  };
+}
+
+function responseDecoder(contentEncoding: string | null): Transform | null {
+  const encoding = (contentEncoding ?? "").trim().toLowerCase();
+  if (encoding === "" || encoding === "identity") return null;
+  if (encoding === "gzip" || encoding === "x-gzip") return createGunzip();
+  if (encoding === "deflate") return createInflate();
+  if (encoding === "br") return createBrotliDecompress();
+  throw new Error(
+    `marketplace response has unsupported content-encoding ${encoding}`,
+  );
+}
+
+function decodedBody(
+  incoming: IncomingMessage,
+  contentEncoding: string | null,
+  maxBytes: number,
+): Readable {
+  const decoder = responseDecoder(contentEncoding);
+  let decodedBytes = 0;
+  const limit = new Transform({
+    transform(chunk: Buffer, _encoding, callback) {
+      decodedBytes += chunk.byteLength;
+      if (decodedBytes > maxBytes) {
+        callback(new Error(`marketplace response exceeds ${maxBytes} bytes`));
+        return;
+      }
+      callback(null, chunk);
+    },
+  });
+  const ignore = () => {};
+  return decoder === null
+    ? pipeline(incoming, limit, ignore)
+    : pipeline(incoming, decoder, limit, ignore);
+}
+
+function createRawPublicMarketplaceFetch(
+  sendRequest: MarketplaceRequest,
+  lookup: LookupFunction,
+  maxResponseBytes: number,
+): MarketplaceFetch {
   return async (input, init) => {
     const url = assertPublicMarketplaceUrl(input);
     if (init.body !== undefined && init.body !== null) {
       throw new Error("marketplace requests cannot contain a body");
     }
-    const timeoutController = new AbortController();
-    const timeout = setTimeout(() => {
-      timeoutController.abort(
-        new DOMException(
-          "The operation was aborted due to timeout",
-          "TimeoutError",
-        ),
-      );
-    }, MARKETPLACE_FETCH_TIMEOUT_MS);
-    const stopTimeout = () => clearTimeout(timeout);
-    const callerSignal = init.signal ?? null;
-    const requestSignal =
-      callerSignal === null
-        ? timeoutController.signal
-        : AbortSignal.any([callerSignal, timeoutController.signal]);
     return new Promise<Response>((resolve, reject) => {
       const headers = Object.fromEntries(new Headers(init.headers).entries());
+      headers["accept-encoding"] ??= MARKETPLACE_ACCEPT_ENCODING;
       const outgoing = sendRequest(
         url,
         {
           method: init.method ?? "GET",
           headers,
           lookup,
-          signal: requestSignal,
+          ...(init.signal === undefined || init.signal === null
+            ? {}
+            : { signal: init.signal }),
         },
         (incoming) => {
-          incoming.once("close", stopTimeout);
           const status = incoming.statusCode;
           if (status === undefined) {
             incoming.destroy();
@@ -207,33 +332,56 @@ export function createPublicMarketplaceFetch(
             }
           }
           const hasNoBody = status === 204 || status === 205 || status === 304;
-          if (hasNoBody) incoming.resume();
+          if (hasNoBody) {
+            incoming.resume();
+            resolve(new Response(null, { status, headers: responseHeaders }));
+            return;
+          }
+          let body: Readable;
+          try {
+            body = decodedBody(
+              incoming,
+              responseHeaders.get("content-encoding"),
+              maxResponseBytes,
+            );
+          } catch (error) {
+            incoming.destroy();
+            reject(error);
+            return;
+          }
+          responseHeaders.delete("content-encoding");
+          responseHeaders.delete("content-length");
           resolve(
-            new Response(
-              hasNoBody
-                ? null
-                : (Readable.toWeb(incoming) as ReadableStream<Uint8Array>),
-              { status, headers: responseHeaders },
-            ),
+            new Response(Readable.toWeb(body) as ReadableStream<Uint8Array>, {
+              status,
+              headers: responseHeaders,
+            }),
           );
         },
       );
-      outgoing.once("error", (error) => {
-        stopTimeout();
-        reject(error);
-      });
+      outgoing.once("error", reject);
       outgoing.end();
     });
   };
+}
+
+export function createPublicMarketplaceFetch(
+  deps: PublicMarketplaceFetchDeps = {},
+): MarketplaceFetch {
+  return createStallTimeoutFetch(
+    createRawPublicMarketplaceFetch(
+      deps.request ?? request,
+      deps.lookup ?? publicMarketplaceLookup,
+      deps.maxResponseBytes ?? MARKETPLACE_RESPONSE_MAX_BYTES,
+    ),
+    deps.timeouts,
+  );
 }
 
 export const publicMarketplaceFetch: MarketplaceFetch =
   createPublicMarketplaceFetch();
 
 export function marketplaceErrorMessage(error: unknown): string {
-  if (error instanceof DOMException && error.name === "TimeoutError") {
-    return `request timed out after ${MARKETPLACE_FETCH_TIMEOUT_MS}ms`;
-  }
   return error instanceof Error ? error.message : String(error);
 }
 

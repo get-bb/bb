@@ -43,7 +43,7 @@ import {
   createListedRegistryNpmResolverRun,
   type createManagedPluginArtifacts,
 } from "./managed-plugin-artifacts.js";
-import { MARKETPLACE_FETCH_TIMEOUT_MS } from "../plugin-catalog/marketplace-http.js";
+import { createStallTimeoutFetch } from "../plugin-catalog/marketplace-http.js";
 import { removeUnusedPluginArtifacts } from "./plugin-artifact-gc.js";
 import {
   SERVER_MOVE_FROZEN_RETRY_MS,
@@ -157,16 +157,14 @@ export function parsePersistedUpdateEntry(
 }
 const UPDATE_CHECK_CONCURRENCY = 4;
 
+const npmRegistryFetch = createStallTimeoutFetch((input, init) =>
+  fetch(input, init),
+);
+
 function npmRunForRow(row: InstalledPluginRow): NpmResolverRun {
   const registry = row.provenance === "catalog" ? row.sourceNpmRegistry : null;
   return registry === null
-    ? createNpmResolverRun({
-        fetch: (input, init) =>
-          fetch(input, {
-            ...init,
-            signal: AbortSignal.timeout(MARKETPLACE_FETCH_TIMEOUT_MS),
-          }),
-      })
+    ? createNpmResolverRun({ fetch: npmRegistryFetch })
     : createListedRegistryNpmResolverRun(registry);
 }
 

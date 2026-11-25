@@ -190,6 +190,21 @@ describe("third-party marketplaces", () => {
     return repo;
   }
 
+  async function taggedRepo(tag: string): Promise<string> {
+    const repo = await mkdtemp(join(tmpdir(), "bb-plugin-repo-"));
+    cleanup.push(repo);
+    await run("git", ["init", "-q", "-b", "main"], { cwd: repo });
+    await run("git", ["config", "user.email", "test@example.com"], {
+      cwd: repo,
+    });
+    await run("git", ["config", "user.name", "Test"], { cwd: repo });
+    await writeFile(join(repo, "file.txt"), tag);
+    await run("git", ["add", "."], { cwd: repo });
+    await run("git", ["commit", "-qm", tag], { cwd: repo });
+    await run("git", ["tag", tag], { cwd: repo });
+    return repo;
+  }
+
   async function headCommit(repo: string): Promise<string> {
     return (
       await run("git", ["rev-parse", "HEAD"], { cwd: repo })
@@ -1046,9 +1061,18 @@ describe("third-party marketplaces", () => {
       },
     ]);
 
-    await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
-      "catalog installation stopped by test",
+    await useGitUrlRewrite(
+      "https://github.com/acme/plugins.git",
+      await taggedRepo("v1.0.0"),
     );
+    const plan = await catalog.installPlan({ entryId: "notes" });
+    if (plan.kind !== "marketplace") throw new Error("expected a listing");
+    await expect(
+      catalog.install({
+        entryId: "notes",
+        confirmedSource: plan.resolvedSource,
+      }),
+    ).rejects.toThrow("catalog installation stopped by test");
     expect(installedCatalogEntries).toMatchObject([
       {
         marketplace: "bb-community",
@@ -1537,41 +1561,52 @@ describe("third-party marketplaces", () => {
       });
     });
 
-    it("names the official catalog without a network round trip", async () => {
+    it("resolves and binds a bb-community git range like a third-party listing", async () => {
+      const repo = await taggedRepo("v1.1.0");
+      const expected = await headCommit(repo);
+      const listedUrl = "https://community.test/bb-plugins.git";
+      await useGitUrlRewrite(listedUrl, repo);
       const catalog = service({
         fetch: marketplaceFetch({
           [OFFICIAL_URL]: manifest("bb-community", [
             entry({
-              id: "official-notes",
-              source: {
-                git: {
-                  url: "https://github.invalid/bb/plugins.git",
-                  range: "^1.0.0",
-                },
-              },
+              id: "community-notes",
+              source: { git: { url: listedUrl, range: "^1.0.0" } },
             }),
           ]),
         }),
       });
       await refreshCuratedMarketplace(catalog, 1_000);
 
-      const plan = await catalog.installPlan({ entryId: "official-notes" });
+      const plan = await catalog.installPlan({ entryId: "community-notes" });
       expect(plan).toMatchObject({
         kind: "marketplace",
         marketplace: "bb-community",
         official: true,
+        author: { name: "Acme", url: "https://github.com/acme" },
         resolvedSource: {
           kind: "git",
-          url: "https://github.invalid/bb/plugins.git",
+          url: listedUrl,
           range: "^1.0.0",
+          resolvedTag: "v1.1.0",
+          resolvedCommit: expected,
         },
       });
       if (plan.kind !== "marketplace") throw new Error("expected a listing");
-      expect(
-        plan.resolvedSource.kind === "git"
-          ? plan.resolvedSource.unresolvedReason
-          : undefined,
-      ).toBeUndefined();
+      await expect(
+        catalog.install({ entryId: "community-notes" }),
+      ).rejects.toThrow(
+        "install refused: confirm the marketplace source first",
+      );
+      await expect(
+        catalog.install({
+          entryId: "community-notes",
+          confirmedSource: plan.resolvedSource,
+        }),
+      ).rejects.toThrow("catalog installation stopped by test");
+      expect(installedCatalogEntries).toMatchObject([
+        { marketplace: "bb-community", expectedGitCommit: expected },
+      ]);
     });
   });
 
