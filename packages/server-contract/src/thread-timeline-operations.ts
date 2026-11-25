@@ -21,17 +21,26 @@ export function withTimelineRowChildren(
 export function mapTimelineRowTree(
   rows: TimelineRow[],
   mapRow: (row: TimelineRow) => TimelineRow,
+  mappedRows?: WeakMap<TimelineRow, TimelineRow>,
 ): TimelineRow[] {
   let changed = false;
   const next = rows.map((row) => {
+    const cached = mappedRows?.get(row);
+    if (cached !== undefined) {
+      if (cached !== row) changed = true;
+      return cached;
+    }
     const children = timelineRowChildren(row);
     const mappedChildren =
-      children === null ? children : mapTimelineRowTree(children, mapRow);
+      children === null
+        ? children
+        : mapTimelineRowTree(children, mapRow, mappedRows);
     const mapped = mapRow(
       mappedChildren === children || mappedChildren === null
         ? row
         : withTimelineRowChildren(row, mappedChildren),
     );
+    mappedRows?.set(row, mapped);
     if (mapped !== row) {
       changed = true;
     }
