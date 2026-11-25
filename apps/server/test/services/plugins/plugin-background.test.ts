@@ -427,6 +427,10 @@ describe("plugin background services", () => {
         { name: "flaky", state: "running" },
       ]);
     });
+    const entry = service.list().find((p) => p.id === "crashy");
+    expect(entry?.status).toBe("running");
+    expect(entry?.statusDetail).toBe("service flaky crashed: crash 2");
+    expect(entry?.handlerStats?.errorCount).toBe(2);
   });
 
   it("routes an uncaught exception from a service's async context to the supervisor", async () => {
