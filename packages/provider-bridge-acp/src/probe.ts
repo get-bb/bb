@@ -10,6 +10,7 @@ import {
   type AcpAgentConnection,
 } from "./bridge/agent-connection.js";
 import type { AcpAgentCapabilities } from "./client/capabilities.js";
+import { decodeGrokCapabilitySnapshot } from "./grok-capabilities.js";
 import {
   assertGrokForkIdentity,
   buildGrokForkParams,
@@ -33,6 +34,7 @@ export type AcpAgentProbe =
       reachable: true;
       fork: boolean;
       extensionFork?: boolean;
+      extensionRewind?: boolean;
     }
   | { reachable: false; reason: string };
 
@@ -86,6 +88,8 @@ async function probeGrokExtensionFork(
     ...(request.env ?? {}),
   });
   const sessionIds: string[] = [];
+  const extensionRewind =
+    decodeGrokCapabilitySnapshot(capabilities).cancelRewind;
   try {
     let createdSessionId: string;
     try {
@@ -129,12 +133,14 @@ async function probeGrokExtensionFork(
         reachable: true,
         fork: capabilities.session.fork,
         extensionFork: true,
+        extensionRewind,
       };
     } catch {
       return {
         reachable: true,
         fork: capabilities.session.fork,
         extensionFork: false,
+        extensionRewind,
       };
     }
   } finally {
@@ -207,6 +213,7 @@ export const acpAgentProbeSchema: z.ZodType<AcpAgentProbe> = z.union([
     reachable: z.literal(true),
     fork: z.boolean(),
     extensionFork: z.boolean().optional(),
+    extensionRewind: z.boolean().optional(),
   }),
   z.object({ reachable: z.literal(false), reason: z.string() }),
 ]);

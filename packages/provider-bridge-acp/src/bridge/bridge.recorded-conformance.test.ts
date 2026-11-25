@@ -193,6 +193,71 @@ it("replays a Grok tip fork with a distinct child identity", async () => {
   );
 }, 90_000);
 
+it("replays Grok checkpoint rewind with exact identity and checkpoint outcomes", async () => {
+  const recordingDir = join(COMMITTED_RECORDINGS_ROOT, "acp-grok", "rewind");
+  const { launch, profile } = firstPartyReplayBridge(
+    "acp-grok",
+    RECORDINGS_CHECKOUT_ROOT,
+  );
+  const collector = createBridgeDeltaEventCollector("acp-grok");
+  const run = await replayRecording({
+    recordingDir,
+    providerId: "acp-grok",
+    bridge: launch,
+    profile,
+    createAssembler: () => collector,
+    timeoutMs: 60_000,
+  });
+
+  expect(run.stalls).toEqual([]);
+  const identities = run.lines.flatMap((line) => {
+    try {
+      const message = JSON.parse(line) as {
+        method?: string;
+        params?: { providerThreadId?: string };
+      };
+      return message.method === "thread/identity" &&
+        typeof message.params?.providerThreadId === "string"
+        ? [message.params.providerThreadId]
+        : [];
+    } catch {
+      return [];
+    }
+  });
+  expect(identities).toEqual(["grok-fork-child-1"]);
+  expect(run.events).toContainEqual(
+    expect.objectContaining({
+      type: "turn/completed",
+      status: "completed",
+      providerCheckpointId: "0",
+    }),
+  );
+  const providerRequests = readFileSync(
+    join(recordingDir, "bridge→provider.ndjson"),
+    "utf8",
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line).line as string)
+    .map((line) => JSON.parse(line) as { method?: string; params?: unknown });
+  expect(
+    providerRequests.find(
+      (request) => request.method === "_x.ai/rewind/execute",
+    )?.params,
+  ).toMatchObject({
+    sessionId: "grok-fork-child-1",
+    targetPromptIndex: 0,
+    mode: "all",
+    force: true,
+  });
+  expect(
+    providerRequests.filter(
+      (request) => request.method === "_x.ai/rewind/points",
+    ),
+  ).toHaveLength(2);
+  expect(JSON.stringify(run.events)).not.toContain("x.ai");
+}, 90_000);
+
 it("replays Grok plan approval and request changes with exact text", async () => {
   const recordingDir = join(
     COMMITTED_RECORDINGS_ROOT,

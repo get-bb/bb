@@ -157,7 +157,7 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     supportsNativeUserQuestion: true,
     supportsManualCompaction: true,
     supportsSubagentMessaging: true,
-    fork: "tip",
+    fork: "checkpoint",
     launch: {
       displayName: "Grok Build",
       command: "grok",

@@ -6208,6 +6208,226 @@ describe("acp bridge", () => {
     expect(notifications("thread/identity")).toEqual([]);
   });
 
+  it("stamps Grok turn completions and rewinds a forked child at the exact checkpoint", async () => {
+    const requestLog = join(workspaceDir, "grok-rewind-requests.jsonl");
+    const envVars = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_GROK_CAPABILITIES: "1",
+      FAKE_ACP_GROK_FORK: "1",
+      FAKE_ACP_GROK_REWIND: "1",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const source = await startThread({ dialectId: "grok", envVars });
+    await completeTurnWith(
+      source.providerThreadId,
+      "first checkpoint",
+      executionOptions({
+        providerOptions: launchProviderOptions({ dialectId: "grok", envVars }),
+      }),
+    );
+    expect(threadEventsOfType("turn/completed").at(-1)).toMatchObject({
+      status: "completed",
+      providerCheckpointId: "0",
+    });
+    await completeTurnWith(
+      source.providerThreadId,
+      "second checkpoint",
+      executionOptions({
+        providerOptions: launchProviderOptions({ dialectId: "grok", envVars }),
+      }),
+    );
+    expect(threadEventsOfType("turn/completed").at(-1)).toMatchObject({
+      status: "completed",
+      providerCheckpointId: "1",
+    });
+
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-checkpoint-fork",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: launchProviderOptions({ dialectId: "grok", envVars }),
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+      sourceProviderCheckpointId: "0",
+    });
+    const response = await waitForResponse(forkId);
+    expect(response.error).toBeUndefined();
+    expect(providerThreadIdOf(response)).toContain("grok-fork-");
+    const requests = loggedAcpRequests(requestLog);
+    expect(
+      requests.find((request) => request.method === "_x.ai/rewind/execute")
+        ?.params,
+    ).toMatchObject({
+      targetPromptIndex: 0,
+      mode: "all",
+      force: true,
+    });
+    expect(
+      requests.find((request) => request.method === "_x.ai/session/fork")
+        ?.params,
+    ).toMatchObject({ sourceSessionId: source.providerThreadId });
+
+    const childProviderThreadId = providerThreadIdOf(response);
+    const completedBeforeChildTurn =
+      threadEventsOfType("turn/completed").length;
+    const turnId = sendRequest("turn/start", {
+      threadId: "thread-grok-checkpoint-fork",
+      providerThreadId: childProviderThreadId,
+      clientRequestId: CLIENT_REQUEST_ID,
+      input: [{ type: "text", text: "after rewind", mentions: [] }],
+      options: executionOptions({
+        providerOptions: launchProviderOptions({ dialectId: "grok", envVars }),
+      }),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+    const childCompletion = await waitFor(
+      () =>
+        threadEventsOfType("turn/completed").length > completedBeforeChildTurn
+          ? threadEventsOfType("turn/completed").at(-1)
+          : undefined,
+      "rewound child turn completion",
+    );
+    expect(childCompletion).toMatchObject({
+      status: "completed",
+      providerCheckpointId: "0",
+    });
+  });
+
+  it("rejects an invalid Grok checkpoint without reporting an identity", async () => {
+    const envVars = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_GROK_CAPABILITIES: "1",
+      FAKE_ACP_GROK_FORK: "1",
+      FAKE_ACP_GROK_REWIND: "1",
+    };
+    const source = await startThread({ dialectId: "grok", envVars });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-invalid-checkpoint",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: launchProviderOptions({ dialectId: "grok", envVars }),
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+      sourceProviderCheckpointId: "99",
+    });
+
+    expect((await waitForResponse(forkId)).error?.message).toMatch(
+      /not found/i,
+    );
+    expect(
+      messagesForThread("thread-grok-invalid-checkpoint").filter(
+        (message) => message.method === "thread/identity",
+      ),
+    ).toEqual([]);
+  });
+
+  it.each([
+    ["failure", "FAKE_ACP_GROK_REWIND_EXECUTE_FAILURE", /failed|unavailable/i],
+    ["stale response", "FAKE_ACP_GROK_REWIND_STALE", /stale|target/i],
+    ["disconnect", "FAKE_ACP_GROK_REWIND_DISCONNECT", /.*/],
+  ])(
+    "does not report Grok rewind success after %s",
+    async (_name, flag, error) => {
+      const envVars = {
+        FAKE_ACP_LOAD_SESSION: "1",
+        FAKE_ACP_GROK_CAPABILITIES: "1",
+        FAKE_ACP_GROK_FORK: "1",
+        FAKE_ACP_GROK_REWIND: "1",
+        [flag]: "1",
+      };
+      const source = await startThread({ dialectId: "grok", envVars });
+      const threadId = `thread-grok-rewind-${_name}`;
+      const forkId = sendRequest("thread/fork", {
+        threadId,
+        cwd: workspaceDir,
+        instructionMode: "append",
+        options: executionOptions({
+          providerOptions: launchProviderOptions({
+            dialectId: "grok",
+            envVars,
+          }),
+        }),
+        sourceProviderThreadId: source.providerThreadId,
+        sourceProviderCheckpointId: "0",
+      });
+
+      expect((await waitForResponse(forkId)).error?.message).toMatch(error);
+      expect(
+        messagesForThread(threadId).filter(
+          (message) => message.method === "thread/identity",
+        ),
+      ).toEqual([]);
+    },
+  );
+
+  it("rejects checkpoint rewind when this Grok session lacks cancelRewind", async () => {
+    const requestLog = join(workspaceDir, "grok-no-rewind-capability.jsonl");
+    const envVars = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_GROK_FORK: "1",
+      FAKE_ACP_GROK_REWIND: "1",
+      FAKE_ACP_REQUEST_LOG: requestLog,
+    };
+    const source = await startThread({ dialectId: "grok", envVars });
+    const forkId = sendRequest("thread/fork", {
+      threadId: "thread-grok-no-rewind-capability",
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: launchProviderOptions({ dialectId: "grok", envVars }),
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+      sourceProviderCheckpointId: "0",
+    });
+
+    expect((await waitForResponse(forkId)).error?.message).toMatch(
+      /cancelRewind|rewind.*not supported/i,
+    );
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "_x.ai/session/fork",
+      ),
+    ).toEqual([]);
+  });
+
+  it("keeps concurrent Grok checkpoint forks on distinct child identities", async () => {
+    const envVars = {
+      FAKE_ACP_LOAD_SESSION: "1",
+      FAKE_ACP_GROK_CAPABILITIES: "1",
+      FAKE_ACP_GROK_FORK: "1",
+      FAKE_ACP_GROK_REWIND: "1",
+    };
+    const source = await startThread({ dialectId: "grok", envVars });
+    const params = (threadId: string) => ({
+      threadId,
+      cwd: workspaceDir,
+      instructionMode: "append",
+      options: executionOptions({
+        providerOptions: launchProviderOptions({ dialectId: "grok", envVars }),
+      }),
+      sourceProviderThreadId: source.providerThreadId,
+      sourceProviderCheckpointId: "0",
+    });
+    const firstId = sendRequest(
+      "thread/fork",
+      params("thread-grok-rewind-first"),
+    );
+    const secondId = sendRequest(
+      "thread/fork",
+      params("thread-grok-rewind-second"),
+    );
+    const [first, second] = await Promise.all([
+      waitForResponse(firstId),
+      waitForResponse(secondId),
+    ]);
+
+    expect(first.error).toBeUndefined();
+    expect(second.error).toBeUndefined();
+    expect(providerThreadIdOf(first)).not.toBe(providerThreadIdOf(second));
+  });
+
   it("rejects a fork result that reuses the source session id", async () => {
     const forkId = sendRequest("thread/fork", {
       threadId: "thread-colliding-fork",

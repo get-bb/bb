@@ -121,6 +121,13 @@ import {
   decodeGrokForkResult,
 } from "../grok-fork.js";
 import {
+  assertGrokRewindExecuted,
+  buildGrokRewindExecuteParams,
+  decodeGrokRewindExecuteResult,
+  decodeGrokRewindPoints,
+  selectGrokRewindPoint,
+} from "../grok-rewind.js";
+import {
   buildGrokInterjectParams,
   decodeGrokInterjectResult,
 } from "../grok-queue.js";
@@ -2761,6 +2768,7 @@ type AcpSessionStartRequest =
       kind: "fork";
       params: AcpSessionParams;
       sourceProviderThreadId: string;
+      sourceProviderCheckpointId?: string;
       sourceCwd?: string;
     };
 
@@ -2999,6 +3007,15 @@ async function startAgentSession(
         `ACP agent "${agentLabel}" does not advertise session/fork support.`,
       );
     }
+    if (
+      request.kind === "fork" &&
+      request.sourceProviderCheckpointId !== undefined &&
+      session.grokCapabilities?.cancelRewind !== true
+    ) {
+      throw new Error(
+        `ACP agent "${agentLabel}" does not advertise cancelRewind support.`,
+      );
+    }
     session.supportsLoadSession =
       supportsLoadSession || capabilities.session.resume;
     const mcpServers = await buildSessionMcpServers(params);
@@ -3067,6 +3084,30 @@ async function startAgentSession(
           loadedConfigOptions = configState?.configOptions;
           loadedModels = configState?.models;
           rememberGrokContextWindow(session, configState?.models);
+          if (request.sourceProviderCheckpointId !== undefined) {
+            const checkpointId = request.sourceProviderCheckpointId;
+            const points = decodeGrokRewindPoints(
+              await connection.request({
+                method: "_x.ai/rewind/points",
+                params: { sessionId },
+                resultSchema: z.unknown(),
+                timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
+              }),
+            );
+            selectGrokRewindPoint(points, checkpointId);
+            const rewindResult = decodeGrokRewindExecuteResult(
+              await connection.request({
+                method: "_x.ai/rewind/execute",
+                params: buildGrokRewindExecuteParams({
+                  sessionId,
+                  checkpointId,
+                }),
+                resultSchema: z.unknown(),
+                timeoutMs: ACP_SESSION_SETUP_TIMEOUT_MS,
+              }),
+            );
+            assertGrokRewindExecuted(rewindResult, checkpointId);
+          }
         } finally {
           session.loading = false;
           session.model.endReplay();
@@ -3838,9 +3879,42 @@ function dropQueuedTurnInputs(session: AcpThreadSession, reason: string): void {
   }
 }
 
+async function grokTurnCheckpoint(
+  session: AcpThreadSession,
+): Promise<string | undefined> {
+  if (session.grokCapabilities?.cancelRewind !== true) {
+    return undefined;
+  }
+  const providerThreadId = session.providerThreadId;
+  const points = decodeGrokRewindPoints(
+    await session.connection.request({
+      method: "_x.ai/rewind/points",
+      params: { sessionId: providerThreadId },
+      resultSchema: z.unknown(),
+      timeoutMs: ACP_SESSION_CONFIG_TIMEOUT_MS,
+    }),
+  );
+  if (
+    sessionsByBbThreadId.get(session.bbThreadId) !== session ||
+    session.providerThreadId !== providerThreadId ||
+    session.stopping
+  ) {
+    throw new Error("Grok session was replaced before checkpoint discovery");
+  }
+  const latest = points.reduce(
+    (current, point) =>
+      current === undefined || point.prompt_index > current.prompt_index
+        ? point
+        : current,
+    undefined as (typeof points)[number] | undefined,
+  );
+  return latest === undefined ? undefined : String(latest.prompt_index);
+}
+
 function finishTurn(
   session: AcpThreadSession,
   stopReason: z.infer<typeof acpStopReasonSchema>,
+  providerCheckpointId?: string,
 ): void {
   if (session.activePromptKind !== "turn") {
     return;
@@ -3861,6 +3935,7 @@ function finishTurn(
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     stopReason,
+    ...(providerCheckpointId === undefined ? {} : { providerCheckpointId }),
   });
 }
 
@@ -3952,6 +4027,7 @@ function runTurn(
       }
 
       let stopReason: z.infer<typeof acpStopReasonSchema>;
+      let providerCheckpointId: string | undefined;
       session.cancelRequested = false;
       try {
         const previousSession = session;
@@ -4001,6 +4077,9 @@ function runTurn(
             const result = await promptResult;
             stopReason = result.stopReason;
             emitGrokPromptUsage(session, result);
+            if (stopReason === "end_turn") {
+              providerCheckpointId = await grokTurnCheckpoint(session);
+            }
             break;
           } catch (error) {
             if (
@@ -4076,7 +4155,7 @@ function runTurn(
             "The agent reported no error and sent nothing back. If this keeps happening, check that the agent runs and is signed in on the machine that hosts the thread.",
         });
       }
-      finishTurn(session, stopReason);
+      finishTurn(session, stopReason, providerCheckpointId);
       return;
     }
   })();
@@ -5553,7 +5632,8 @@ async function handleRequest(
     case "thread/fork": {
       if (
         request.method === "thread/fork" &&
-        request.params.sourceProviderCheckpointId !== undefined
+        request.params.sourceProviderCheckpointId !== undefined &&
+        decodeDialectId(request.params.options.providerOptions) !== "grok"
       ) {
         sendError(
           request.id,
@@ -5604,6 +5684,12 @@ async function handleRequest(
                 kind: "fork",
                 params: sessionParams,
                 sourceProviderThreadId: request.params.sourceProviderThreadId,
+                ...(request.params.sourceProviderCheckpointId === undefined
+                  ? {}
+                  : {
+                      sourceProviderCheckpointId:
+                        request.params.sourceProviderCheckpointId,
+                    }),
                 ...(request.params.sourceCwd === undefined
                   ? {}
                   : { sourceCwd: request.params.sourceCwd }),

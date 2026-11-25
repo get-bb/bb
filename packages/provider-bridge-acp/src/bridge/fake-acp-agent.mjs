@@ -274,6 +274,7 @@ const fakeModels = [
 let activePromptId = null;
 let permissionRequestCount = 0;
 let grokForkSerial = 0;
+let grokRewindPoints = [];
 let stuckAfterCancel = false;
 let nextAgentRequestId = 1000;
 let selectedModel = process.env.FAKE_ACP_INITIAL_MODEL ?? "fake/default";
@@ -1603,6 +1604,18 @@ async function handlePrompt(message) {
     const usageMetadata = grokUsageMetadata();
     const usageDelay = Number(process.env.FAKE_ACP_GROK_USAGE_DELAY_MS ?? "0");
     if (usageDelay > 0) await sleep(usageDelay);
+    if (process.env.FAKE_ACP_GROK_REWIND === "1" && text !== "/compact") {
+      const promptIndex =
+        Math.max(-1, ...grokRewindPoints.map((point) => point.prompt_index)) + 1;
+      grokRewindPoints.push({
+        prompt_index: promptIndex,
+        created_at: new Date().toISOString(),
+        num_file_snapshots: 1,
+        prompt_preview:
+          text.length > 60 ? `${text.slice(0, 57)}...` : text,
+        has_file_changes: true,
+      });
+    }
     send({
       jsonrpc: "2.0",
       id: message.id,
@@ -1976,6 +1989,15 @@ async function handleMessage(message) {
         process.exit(7);
       }
       grokForkSerial += 1;
+      if (process.env.FAKE_ACP_GROK_REWIND === "1") {
+        grokRewindPoints = [0, 1].map((prompt_index) => ({
+          prompt_index,
+          created_at: "2026-11-24T21:00:40.206740+00:00",
+          num_file_snapshots: 1,
+          prompt_preview: `Synthetic prompt ${prompt_index}`,
+          has_file_changes: true,
+        }));
+      }
       activeSessionId = forkReuseSourceId
         ? message.params.sourceSessionId
         : `grok-fork-${process.pid}-${grokForkSerial}`;
@@ -1990,6 +2012,76 @@ async function handleMessage(message) {
           planStateCopied: false,
           newCwd: message.params.newCwd,
           parentSessionId: message.params.sourceSessionId,
+        },
+      });
+      return;
+    }
+    case "_x.ai/rewind/points":
+      if (!requireAuthenticated(message)) {
+        return;
+      }
+      if (process.env.FAKE_ACP_GROK_REWIND !== "1") {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32601, message: "rewind is not supported" },
+        });
+        return;
+      }
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: { rewind_points: grokRewindPoints },
+      });
+      return;
+    case "_x.ai/rewind/execute": {
+      if (!requireAuthenticated(message)) {
+        return;
+      }
+      if (process.env.FAKE_ACP_GROK_REWIND_DISCONNECT === "1") {
+        process.exit(7);
+      }
+      const targetPromptIndex = message.params?.targetPromptIndex;
+      const target = grokRewindPoints.find(
+        (point) => point.prompt_index === targetPromptIndex,
+      );
+      if (process.env.FAKE_ACP_GROK_REWIND_EXECUTE_FAILURE === "1") {
+        send({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            success: false,
+            target_prompt_index: targetPromptIndex,
+            mode: "all",
+            reverted_files: [],
+            clean_files: [],
+            conflicts: [],
+            prompt_text: target?.prompt_preview ?? "",
+            error: "rewind unavailable",
+          },
+        });
+        return;
+      }
+      const responseTarget = process.env.FAKE_ACP_GROK_REWIND_STALE === "1"
+        ? targetPromptIndex + 1
+        : targetPromptIndex;
+      if (process.env.FAKE_ACP_GROK_REWIND_STALE !== "1" && target) {
+        grokRewindPoints = grokRewindPoints.filter(
+          (point) => point.prompt_index < targetPromptIndex,
+        );
+      }
+      send({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: {
+          success: true,
+          target_prompt_index: responseTarget,
+          mode: "all",
+          reverted_files: ["rewind-probe.txt"],
+          clean_files: [],
+          conflicts: [],
+          prompt_text: target?.prompt_preview ?? "",
+          error: null,
         },
       });
       return;

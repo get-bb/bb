@@ -119,6 +119,12 @@
     "unhandled": 0,
     "grammarDrops": 0
   },
+  "acp-grok/rewind": {
+    "events": 6,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
   "acp-grok/session-metadata": {
     "events": 11,
     "rows": 2,

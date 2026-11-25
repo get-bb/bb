@@ -356,6 +356,29 @@ describe("acp delta translation (bridge-shared invariants)", () => {
     );
   });
 
+  it("carries a Grok provider checkpoint through turn completion", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+
+    const events = harness.translate({
+      jsonrpc: "2.0",
+      method: ACP_TURN_COMPLETED_METHOD,
+      params: {
+        threadId: THREAD_ID,
+        stopReason: "end_turn",
+        providerCheckpointId: "7",
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "completed",
+        providerCheckpointId: "7",
+      }),
+    );
+  });
+
   it("settles both items at turn end when a non-terminal update changed the item type", () => {
     const harness = createHarness();
     harness.translate(turnStartedEvent());

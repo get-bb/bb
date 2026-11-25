@@ -113,6 +113,29 @@ describe("Grok extension fork probing", () => {
       reachable: true,
       fork: false,
       extensionFork: true,
+      extensionRewind: false,
+    });
+    expect(acpAgentProbeSchema.safeParse(probe).success).toBe(true);
+  });
+
+  it("reports Grok rewind independently from extension fork support", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      env: {
+        FAKE_ACP_GROK_FORK: "1",
+        FAKE_ACP_GROK_CAPABILITIES: "1",
+      },
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe).toEqual({
+      reachable: true,
+      fork: false,
+      extensionFork: true,
+      extensionRewind: true,
     });
     expect(acpAgentProbeSchema.safeParse(probe).success).toBe(true);
   });
@@ -130,6 +153,7 @@ describe("Grok extension fork probing", () => {
       reachable: true,
       fork: false,
       extensionFork: false,
+      extensionRewind: false,
     });
   });
 

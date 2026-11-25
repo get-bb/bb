@@ -43,7 +43,12 @@ import { readJson } from "../helpers/json.js";
 import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 import { listEvents } from "@bb/db/testing";
 
-const MESSAGE_EDIT_PROVIDERS = ["codex", "pi", "claude-code"] as const;
+const MESSAGE_EDIT_PROVIDERS = [
+  "codex",
+  "pi",
+  "claude-code",
+  "acp-grok",
+] as const;
 const MESSAGE_EDIT_SCENARIOS = [
   {
     name: "regular edit",

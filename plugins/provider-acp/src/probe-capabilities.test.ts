@@ -41,6 +41,31 @@ describe("applyAcpAgentProbe", () => {
     });
   });
 
+  it("preserves Grok checkpoint rewind when its extension is advertised", () => {
+    expect(
+      applyAcpAgentProbe(agent("checkpoint"), {
+        reachable: true,
+        fork: false,
+        extensionFork: true,
+        extensionRewind: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps tip fork but removes rewind when only Grok tip fork works", () => {
+    expect(
+      applyAcpAgentProbe(agent("checkpoint"), {
+        reachable: true,
+        fork: false,
+        extensionFork: true,
+        extensionRewind: false,
+      }),
+    ).toEqual({
+      agent: { ...agent("checkpoint"), fork: "tip" },
+      reason: "the agent does not advertise Grok rewind",
+    });
+  });
+
   it("narrows checkpoint fork when no compatible fork is advertised", () => {
     expect(
       applyAcpAgentProbe(agent("checkpoint"), {

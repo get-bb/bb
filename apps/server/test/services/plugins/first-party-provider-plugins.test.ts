@@ -91,7 +91,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Grok Build",
     supportsThreadArchive: false,
     supportsThreadRename: false,
-    fork: "tip",
+    fork: "checkpoint",
     supportsManualCompaction: true,
     supportsUsage: false,
     visibility: "installed",
@@ -324,6 +324,8 @@ describe("first-party provider plugins", () => {
           capabilities: {
             supportsNativeUserQuestion: true,
             supportsSubagentMessaging: true,
+            supportsFork: true,
+            supportsSessionRewind: true,
           },
         });
 

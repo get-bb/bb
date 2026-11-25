@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "rewind",
+  "threadId": "grok-fork-child",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.92 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-25",
+  "description": "A checkpoint fork rewound before one child turn.",
+  "note": "Synthetic Grok checkpoint rewind with a distinct child identity and exact prompt-index checkpoints.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 3,
+    "bridge→runtime": 10,
+    "provider→bridge": 9,
+    "bridge→provider": 7
+  }
+}
