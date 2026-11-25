@@ -1,5 +1,12 @@
 import { jsonValueSchema } from "./json-value.js";
+import { pluginIdSchema } from "./plugin-id.js";
 import { z } from "zod";
+
+export const environmentHolderSchema = z.union([
+  z.literal("user"),
+  z.templateLiteral(["plugin:", pluginIdSchema]),
+]);
+export type EnvironmentHolder = z.infer<typeof environmentHolderSchema>;
 
 export const environmentMachineSelectionSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("existing"), hostId: z.string().min(1) }),
@@ -101,6 +108,7 @@ export const environmentLifecycleSchema = z.object({
     .object({
       status: z.enum(["running", "failed", "removed"]),
       attempt: z.number().int().nonnegative(),
+      needsRecovery: z.boolean(),
       message: z.string().optional(),
     })
     .nullable(),
@@ -112,6 +120,9 @@ export const environmentSchema = z.object({
   projectId: z.string(),
   hostId: z.string(),
   path: z.string().nullable(),
+  additionalPaths: z.array(
+    z.object({ path: z.string(), replaces: z.string().nullable() }),
+  ),
   isGitRepo: z.boolean(),
   isWorktree: z.boolean(),
   branchName: z.string().nullable(),
@@ -119,12 +130,14 @@ export const environmentSchema = z.object({
   defaultBranch: z.string().nullable(),
   mergeBaseBranch: z.string().nullable(),
   status: environmentStatusSchema,
+  statusMessage: z.string().nullable(),
   environmentProviderId: z.string().nullable(),
   lifecycle: environmentLifecycleSchema,
   hostLifecycle: environmentHostLifecycleSchema,
   environmentProviderSelection: environmentProviderSelectionSchema.nullable(),
   environmentProviderInstanceKey: z.string().nullable(),
   managed: z.boolean(),
+  heldBy: environmentHolderSchema.nullable(),
   workspaceProvisionType: workspaceProvisionTypeSchema.nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),

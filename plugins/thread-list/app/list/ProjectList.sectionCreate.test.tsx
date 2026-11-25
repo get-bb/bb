@@ -113,22 +113,31 @@ describe("creating a sidebar section", () => {
     });
   });
 
-  it("keeps the composer project when starting a thread in a section", async () => {
-    const { inspection } = renderCustomSections();
-    fireEvent.click(
-      await screen.findByRole("button", {
-        name: "New thread in Alpha section",
-      }),
-    );
+  it.each([
+    ["a plain click replaces the focused pane", {}, {}],
+    ["Cmd-click opens it beside", { metaKey: true }, { split: true }],
+    ["Ctrl-click opens it beside", { ctrlKey: true }, { split: true }],
+  ])(
+    "keeps the composer project when starting a thread in a section: %s",
+    async (_name, modifiers, split) => {
+      const { inspection } = renderCustomSections();
+      fireEvent.click(
+        await screen.findByRole("button", {
+          name: "New thread in Alpha section",
+        }),
+        modifiers,
+      );
 
-    expect(inspection.navigateCalls).toContainEqual({
-      method: "toCompose",
-      options: {
-        placement: { sectionId: "sec_a", pinned: false },
-        focusPrompt: true,
-      },
-    });
-  });
+      expect(inspection.navigateCalls).toContainEqual({
+        method: "toCompose",
+        options: {
+          placement: { sectionId: "sec_a", pinned: false },
+          focusPrompt: true,
+          ...split,
+        },
+      });
+    },
+  );
 
   it("shows one divider before the built-in section visibility actions", async () => {
     renderCustomSections();

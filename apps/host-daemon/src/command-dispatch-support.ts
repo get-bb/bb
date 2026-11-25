@@ -31,6 +31,7 @@ import { RuntimeManager, type RuntimeEntry } from "./runtime-manager.js";
 import type { FetchProjectAttachment } from "./project-attachments.js";
 import type { SkillTreeTransport } from "./skill-trees.js";
 import type { HostDaemonLogger } from "./logger.js";
+import type { PluginHostManager } from "./plugin-host-manager.js";
 import type { ServerMoveService } from "./server-move/service.js";
 import {
   ensureCachedPluginHostArtifact,
@@ -54,6 +55,7 @@ export interface CommandDispatchOptions {
   fetchProjectAttachment: FetchProjectAttachment;
   skillTreeTransport?: SkillTreeTransport;
   fetchPluginHostArtifact?: FetchPluginHostArtifact;
+  pluginHost?: Pick<PluginHostManager, "call" | "cancel">;
   runtimeManager: RuntimeManager;
   eventSink: Pick<EventSink, "emit" | "flush">;
   listModels: (args: {
@@ -70,11 +72,13 @@ export interface CommandDispatchOptions {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<CommandListResult>;
   providerHealth: (args: {
     providerId: string;
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderHealthResult>;
   providerUsage: (args: {
     providerId: string;
@@ -87,12 +91,14 @@ export interface CommandDispatchOptions {
     cwd?: string;
     requirement?: "thread_rewind";
     checkUpdates?: boolean;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderInstallationStatus>;
   providerInstallationRun: (args: {
     providerId: string;
     action: "install" | "update";
     bridgeLaunch: AgentRuntimeBridgeLaunch;
     cwd?: string;
+    contributedEnv: readonly HostDaemonContributedEnvEntry[];
   }) => Promise<ProviderInstallationRunResult>;
   streamProviderInstallation?: (args: {
     providerId: string;

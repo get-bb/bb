@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -8,14 +9,18 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { Provider } from "jotai";
-import type { ReactNode } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ExperimentalThreadHeaderRowProps } from "@get-bb/plugin-sdk";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
 import { getProjectComposeRoutePath } from "@/lib/route-paths";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createMemoryRouter, RouterProvider } from "react-router-dom";
-import { makeEnvironment } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeEnvironment,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
+import { holdSidebarThreads } from "@/test/fixtures/related-threads";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { resetFixedPanelTabsStateForTest } from "@/lib/fixed-panel-tabs";
 import {
@@ -23,6 +28,7 @@ import {
   createThreadInfoFixedPanelTab,
 } from "@/lib/fixed-panel-tabs-state";
 import {
+  getPluginSlotSnapshot,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
@@ -30,7 +36,16 @@ import {
   collectPluginAppRegistrations,
   definePluginApp,
 } from "@/lib/plugin-app-definition";
-import { resetFocusedAppPanelControllersForTest } from "@/lib/app-fixed-tab-navigation";
+import {
+  getFocusedAppPanelController,
+  resetFocusedAppNavigationSurfacesForTest,
+  useAppNavigationHost,
+} from "@/lib/app-navigation-host";
+import {
+  PluginActionContextProvider,
+  useBindPluginActionContext,
+} from "@/lib/plugin-action-context-provider";
+import { buildFocusedSurfacePaletteActions } from "@/lib/command-palette/palette-plugin-actions";
 import { markPluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   CONTRACT_PLUGIN_ID,
@@ -41,12 +56,19 @@ import {
   contractActionPanelTabId,
   contractTarget,
   describePanelControllerContract,
+  readContractNavigate,
   readContractPanel,
   readContractTabs,
   snapshotFromState,
   type ContractStateSink,
   type PanelContractSurface,
 } from "@/test/panel-controller-contract";
+import { makeTerminalSession } from "@/test/fixtures/terminal-sessions";
+import {
+  ThreadActionCollectors,
+  resetThreadActionRegistryForTest,
+  useThreadHeaderActionEntries,
+} from "@/lib/thread-actions/thread-action-registry";
 import { DefaultPaneContextProvider } from "./PaneContext";
 import { ThreadDetailView } from "./ThreadDetailView";
 
@@ -54,16 +76,28 @@ const appCommandHandlers = vi.hoisted(
   () => new Map<string, () => boolean | void>(),
 );
 const fixtures = vi.hoisted(() => ({
+  environmentStatus: "ready" as import("@bb/domain").EnvironmentStatus,
+  headerTargets: [] as import("@get-bb/plugin-sdk").PluginThreadActionTarget[],
   probe: {
     current: null,
   } as import("@/test/panel-controller-contract").ContractPanelRef,
-  probeHost: "prompt" as "prompt" | "headerRow",
+  probeHost: "prompt" as
+    | "prompt"
+    | "headerRow"
+    | "threadAction"
+    | "messageAction"
+    | "paletteCommand"
+    | "newTabAction",
   sink: {
     current: null,
   } as import("@/test/panel-controller-contract").ContractStateSink,
   router: null as ReturnType<
     typeof import("react-router-dom").createMemoryRouter
   > | null,
+  binder: null as {
+    bind: import("@/lib/plugin-navigation-hooks").BindPluginActionContext;
+    host: import("@/lib/app-navigation-host").ResolvedAppNavigationHostCapabilities;
+  } | null,
 }));
 
 const THREAD = makeThreadResponse({
@@ -76,6 +110,10 @@ const ENVIRONMENT = makeEnvironment({
   projectId: "proj_contract",
 });
 
+vi.mock("@/lib/bb-desktop", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/bb-desktop")>()),
+  isDesktopBrowserAvailable: () => true,
+}));
 vi.mock("@/components/commands/AppCommandProvider", async (importOriginal) => ({
   ...(await importOriginal<
     typeof import("@/components/commands/AppCommandProvider")
@@ -112,19 +150,43 @@ vi.mock("./ThreadDetailSecondaryContent", async () => {
     ),
   };
 });
-vi.mock("./ThreadDetailHeader", () => ({
-  ThreadDetailHeader: () => <header data-testid="thread-header" />,
-}));
+vi.mock("./ThreadDetailHeader", async () => {
+  const { useThreadHeaderActionEntries } =
+    await import("@/lib/thread-actions/thread-action-registry");
+  return {
+    ThreadDetailHeader: ({ thread }: { thread: { id: string } }) => {
+      useThreadHeaderActionEntries(thread);
+      return <header data-testid="thread-header" />;
+    },
+  };
+});
 vi.mock("./ThreadDetailPromptArea", async () => {
   const { PluginContext } = await import("@/components/plugin/plugin-context");
   const { ContractPanelProbe } =
     await import("@/test/panel-controller-contract");
+  const { ThreadTimelineRows } =
+    await import("@/components/thread/timeline/ThreadTimelineRows");
+  const { conversationRow } =
+    await import("@/test/fixtures/thread-timeline-rows");
   return {
     ThreadDetailPromptArea: () =>
       fixtures.probeHost === "prompt" ? (
         <PluginContext.Provider value={CONTRACT_PLUGIN_ID}>
           <ContractPanelProbe probe={fixtures.probe} />
         </PluginContext.Provider>
+      ) : fixtures.probeHost === "messageAction" ? (
+        <ThreadTimelineRows
+          threadId="thr_contract"
+          timelineRows={[
+            conversationRow({
+              id: "probe_row",
+              role: "assistant",
+              text: "Probe answer.",
+              threadId: "thr_contract",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
       ) : null,
   };
 });
@@ -146,7 +208,7 @@ vi.mock("@/hooks/queries/environment-queries", async (importOriginal) => ({
     typeof import("@/hooks/queries/environment-queries")
   >()),
   useEnvironment: () => ({
-    data: ENVIRONMENT,
+    data: { ...ENVIRONMENT, status: fixtures.environmentStatus },
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
@@ -159,6 +221,7 @@ async function mountThreadView(
   fixtures.probeHost = probeHost;
   const probe = fixtures.probe;
   probe.current = null;
+  probe.navigate = undefined;
   const sink: ContractStateSink = { current: null };
   fixtures.sink = sink;
   const router = createMemoryRouter(
@@ -166,35 +229,49 @@ async function mountThreadView(
       {
         path: "/",
         element: (
-          <DefaultPaneContextProvider
-            paneId="main"
-            onRequestClose={null}
-            navigateInPane={() => {}}
-          >
-            <ContractStateProbe
-              panelStateId={THREAD.id}
-              syncThreadId={THREAD.id}
-              sink={sink}
+          <PluginActionContextProvider>
+            <PluginActionContextBinderProbe />
+            <ThreadActionCollectors
+              coreRegistrations={[]}
+              requestRename={() => undefined}
             />
-            <ThreadDetailView
-              surface="pane"
-              projectId={THREAD.projectId}
-              threadId={THREAD.id}
-              timelineEnabled={false}
-            />
-          </DefaultPaneContextProvider>
+            <DefaultPaneContextProvider
+              paneId="main"
+              onRequestClose={null}
+              navigateInPane={() => {}}
+            >
+              <ContractStateProbe
+                panelStateId={THREAD.id}
+                syncThreadId={THREAD.id}
+                sink={sink}
+              />
+              <ThreadDetailView
+                surface="pane"
+                projectId={THREAD.projectId}
+                threadId={THREAD.id}
+                timelineEnabled={false}
+              />
+            </DefaultPaneContextProvider>
+          </PluginActionContextProvider>
         ),
       },
     ],
     { initialEntries: ["/"] },
   );
   fixtures.router = router;
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  holdSidebarThreads(queryClient, [
+    makeThreadListEntry({
+      ...THREAD,
+      environmentPath: ENVIRONMENT.path,
+      environmentStatus: fixtures.environmentStatus,
+      environmentHostLifecycle: ENVIRONMENT.hostLifecycle,
+    }),
+  ]);
   render(
-    <QueryClientProvider
-      client={
-        new QueryClient({ defaultOptions: { queries: { retry: false } } })
-      }
-    >
+    <QueryClientProvider client={queryClient}>
       <Provider>
         <RouterProvider router={router} />
       </Provider>
@@ -208,10 +285,73 @@ async function mountThreadView(
       ]),
     ),
   );
+  if (probeHost === "threadAction")
+    await waitFor(() => expect(probe.current).not.toBeNull());
+  if (probeHost === "messageAction") {
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Probe message" }),
+    );
+    await waitFor(() => expect(probe.current).not.toBeNull());
+  }
+  if (probeHost === "paletteCommand") {
+    await waitFor(() => expect(getFocusedAppPanelController()).not.toBeNull());
+    const binder = fixtures.binder;
+    if (binder === null) throw new Error("binder probe has not rendered");
+    const [command] = buildFocusedSurfacePaletteActions({
+      bind: binder.bind,
+      host: binder.host,
+      slots: getPluginSlotSnapshot().commandPaletteActions.flatMap((slot) =>
+        slot.pluginId === CONTRACT_PLUGIN_ID && slot.target === "app"
+          ? [slot]
+          : [],
+      ),
+      threadId: THREAD.id,
+      projectId: THREAD.projectId,
+    });
+    act(() => command?.run());
+    expect(probe.current).not.toBeNull();
+  }
+  if (probeHost === "newTabAction") {
+    act(() => {
+      appCommandHandlers.get("file.quickOpen")?.();
+    });
+    await waitFor(() =>
+      expect(
+        document.getElementById("plugin-action:contract:launcher"),
+      ).not.toBeNull(),
+    );
+    fireEvent.click(
+      document.getElementById("plugin-action:contract:launcher")!,
+    );
+    await waitFor(() => expect(probe.current).not.toBeNull());
+  }
   return {
     panel: () => readContractPanel(probe),
+    navigation: {
+      navigate: () => readContractNavigate(probe),
+      open: {
+        terminal: makeTerminalSession({
+          id: "term_contract",
+          threadId: THREAD.id,
+          environmentId: ENVIRONMENT.id,
+          hostId: ENVIRONMENT.hostId,
+        }),
+        file: {
+          target: {
+            kind: "thread-storage",
+            threadId: THREAD.id,
+            path: "a.md",
+          },
+          location: null,
+        },
+        url: "https://example.com/contract",
+      },
+    },
     snapshot: () => snapshotFromState(sink),
-    tabs: () => readContractTabs(probe),
+    tabs: () =>
+      probeHost === "prompt" || probeHost === "headerRow"
+        ? readContractTabs(probe)
+        : readContractPanel(probe).getTabs(),
     renderedTabVisible: () =>
       screen.queryByTestId("contract-tab-visible")?.textContent ?? null,
     renderedTarget: () =>
@@ -234,18 +374,60 @@ async function mountThreadView(
   };
 }
 
-describePanelControllerContract("thread view", { fixedTabs: true }, () =>
+const FULL_SUPPORT = {
+  fixedTabs: true,
+  actionTabs: true,
+  navigation: true,
+} as const;
+
+describePanelControllerContract("thread view", FULL_SUPPORT, () =>
   mountThreadView("prompt"),
 );
 
-describePanelControllerContract("thread header row", { fixedTabs: true }, () =>
+describePanelControllerContract("thread header row", FULL_SUPPORT, () =>
   mountThreadView("headerRow"),
 );
+
+describePanelControllerContract("thread header action", FULL_SUPPORT, () =>
+  mountThreadView("threadAction"),
+);
+
+describePanelControllerContract("thread message action", FULL_SUPPORT, () =>
+  mountThreadView("messageAction"),
+);
+
+describePanelControllerContract(
+  "command palette command on a thread",
+  FULL_SUPPORT,
+  () => mountThreadView("paletteCommand"),
+);
+
+describePanelControllerContract(
+  "thread new-tab plugin action",
+  FULL_SUPPORT,
+  () => mountThreadView("newTabAction"),
+);
+
+function PluginActionContextBinderProbe() {
+  const bind = useBindPluginActionContext();
+  const host = useAppNavigationHost();
+  useLayoutEffect(() => {
+    fixtures.binder = { bind, host };
+  });
+  return null;
+}
 
 function HeaderRowProbe() {
   return fixtures.probeHost === "headerRow" ? (
     <ContractPanelProbe probe={fixtures.probe} />
+  ) : fixtures.probeHost === "threadAction" ? (
+    <ThreadActionProbe />
   ) : null;
+}
+
+function ThreadActionProbe() {
+  useThreadHeaderActionEntries(THREAD);
+  return null;
 }
 
 const targetedTab = {
@@ -297,15 +479,85 @@ beforeEach(() => {
           id: "probe",
           component: HeaderRowProbe,
         });
+        app.slots.messageAction({
+          id: "probe-message",
+          title: "Probe message",
+          icon: "Zap",
+          run: ({ panel, navigate }) => {
+            if (fixtures.probeHost === "messageAction") {
+              fixtures.probe.current = panel;
+              fixtures.probe.navigate = navigate;
+            }
+          },
+        });
+        app.commands.register({
+          id: "probe-command",
+          title: "Probe command",
+          run: ({ panel, navigate }) => {
+            if (fixtures.probeHost === "paletteCommand") {
+              fixtures.probe.current = panel;
+              fixtures.probe.navigate = navigate;
+            }
+          },
+        });
+        app.slots.experimental_tab({
+          id: "launcher",
+          context: { kind: "thread" },
+          availability: "action",
+          title: "Launcher",
+          icon: "Zap",
+          component: ContractActionTab,
+          run: ({ panel, navigate }) => {
+            if (fixtures.probeHost === "newTabAction") {
+              fixtures.probe.current = panel;
+              fixtures.probe.navigate = navigate;
+            }
+          },
+        });
+        app.slots.experimental_threadAction({
+          id: "probe",
+          title: "Probe",
+          icon: "Info",
+          group: "probe",
+          placement: "header",
+          item: ({ thread, navigate, panel }) => {
+            fixtures.headerTargets.push(thread);
+            if (fixtures.probeHost === "threadAction") {
+              fixtures.probe.current = panel;
+              fixtures.probe.tabs = undefined;
+              fixtures.probe.navigate = navigate;
+            }
+            return null;
+          },
+        });
       }),
     ),
   );
 });
 
 afterEach(() => {
+  fixtures.environmentStatus = "ready";
+  fixtures.headerTargets.length = 0;
   cleanup();
+  vi.restoreAllMocks();
+  resetThreadActionRegistryForTest();
   resetPluginSlotStoreForTest();
-  resetFocusedAppPanelControllersForTest();
+  resetFocusedAppNavigationSurfacesForTest();
+});
+
+describe("thread action target on the thread page", () => {
+  it("gives header actions the thread's environment while it provisions, as sidebar rows get it", async () => {
+    fixtures.environmentStatus = "provisioning";
+    await mountThreadView("prompt");
+    await waitFor(() =>
+      expect(fixtures.headerTargets.at(-1)?.environment).toEqual({
+        id: ENVIRONMENT.id,
+        path: ENVIRONMENT.path,
+        status: "provisioning",
+        hostLifecycle: ENVIRONMENT.hostLifecycle,
+      }),
+    );
+  });
 });
 
 describe("experimental_threadHeaderRow", () => {

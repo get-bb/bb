@@ -103,13 +103,15 @@ const THREADS = [
   }),
 ];
 
+const scrollElement = document.createElement("div");
+
 function props(): PluginThreadListProps {
   return {
     activeThreadId: null,
     activeProjectId: null,
     isCompactViewport: false,
+    experimental_scrollElement: scrollElement,
     onNavigate: vi.fn(),
-    searchQuery: "",
   };
 }
 

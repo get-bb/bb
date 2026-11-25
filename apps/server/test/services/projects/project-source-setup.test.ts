@@ -78,8 +78,11 @@ describe("automatic project source setup", () => {
             operationId: clone.command.operationId,
             entry: {
               type: "output" as const,
+              key: "clone-output",
               text: "Receiving objects: 42%",
               status: null,
+              startedAt: null,
+              metadata: null,
             },
           };
           reportEnvironmentHookProgress(
@@ -216,7 +219,14 @@ it("does not register a checkout or dispatch a turn after private repository aut
     reportEnvironmentHookProgress(harness.deps, target.host.id, {
       type: "environment.hook.progress",
       operationId: clone.command.operationId,
-      entry: { type: "output", text: "late output", status: null },
+      entry: {
+        type: "output",
+        key: "fixture",
+        text: "late output",
+        status: null,
+        startedAt: null,
+        metadata: null,
+      },
     });
     expect(log).not.toHaveBeenCalled();
     expect(

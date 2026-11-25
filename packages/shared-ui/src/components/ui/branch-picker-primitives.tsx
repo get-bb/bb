@@ -15,6 +15,7 @@ import {
 import { Icon, type IconName } from "./icon";
 import { Input } from "./input";
 import { LIST_HOVER_TRANSITION } from "./motion";
+import { isImeComposing, isNonImeKey } from "../../lib/ime-keyboard";
 
 const BRANCH_PICKER_ROW_CLASS_NAME =
   "flex w-full min-w-0 scroll-mt-7 items-center gap-2 rounded-sm px-2 py-[0.3125rem] text-left text-xs outline-none data-[highlighted]:bg-state-hover data-[highlighted]:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground";
@@ -57,6 +58,7 @@ interface BranchPickerRowProps {
   selected: boolean;
   title: string;
   onSelect: () => void;
+  align?: "center" | "first-line";
   children: ReactNode;
 }
 
@@ -107,7 +109,7 @@ export function BranchPickerNavigation({
     setHighlightState({ resetKey, value });
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.nativeEvent.isComposing) return;
+    if (isImeComposing(event)) return;
     const rows = Array.from(
       rootRef.current?.querySelectorAll<HTMLButtonElement>(
         BRANCH_PICKER_ROW_SELECTOR,
@@ -116,7 +118,7 @@ export function BranchPickerNavigation({
     const currentIndex = rows.findIndex(
       (row) => row.dataset.value === highlighted,
     );
-    if (event.key === "Enter") {
+    if (isNonImeKey(event, "Enter")) {
       if (!(event.target instanceof HTMLInputElement)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -185,6 +187,17 @@ export function BranchPickerSectionHeader({
   );
 }
 
+function FirstLine({
+  align,
+  children,
+}: {
+  align: "center" | "first-line";
+  children: ReactNode;
+}) {
+  if (align === "center") return children;
+  return <span className="flex h-[1lh] shrink-0 items-center">{children}</span>;
+}
+
 export function BranchPickerRow({
   value,
   disabled,
@@ -192,6 +205,7 @@ export function BranchPickerRow({
   selected,
   title,
   onSelect,
+  align = "center",
   children,
 }: BranchPickerRowProps) {
   const { highlighted, setHighlighted } = useContext(
@@ -206,6 +220,7 @@ export function BranchPickerRow({
       className={cn(
         BRANCH_PICKER_ROW_CLASS_NAME,
         LIST_HOVER_TRANSITION,
+        align === "first-line" && "items-start",
         disabled && "cursor-not-allowed text-muted-foreground opacity-60",
       )}
       disabled={disabled}
@@ -215,21 +230,25 @@ export function BranchPickerRow({
         if (!disabled && highlighted !== value) setHighlighted(value);
       }}
     >
-      <Icon
-        name={icon}
-        className={cn(
-          "text-muted-foreground",
-          COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
-        )}
-      />
+      <FirstLine align={align}>
+        <Icon
+          name={icon}
+          className={cn(
+            "text-muted-foreground",
+            COARSE_POINTER_COMPACT_ICON_SIZE_SHRINK_CLASS,
+          )}
+        />
+      </FirstLine>
       {children}
-      <Icon
-        name="Check"
-        className={cn(
-          selected ? "opacity-100" : "opacity-0",
-          COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
-        )}
-      />
+      <FirstLine align={align}>
+        <Icon
+          name="Check"
+          className={cn(
+            selected ? "opacity-100" : "opacity-0",
+            COARSE_POINTER_ICON_SIZE_SHRINK_CLASS,
+          )}
+        />
+      </FirstLine>
     </button>
   );
 }

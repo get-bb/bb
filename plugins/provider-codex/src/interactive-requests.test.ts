@@ -96,13 +96,17 @@ describe("buildCodexInteractiveResult", () => {
   if (!decoded) throw new Error("Expected a decoded elicitation");
   const cancel = { action: "cancel", content: null, _meta: null };
 
-  it("cancels the elicitation when the turn stops or the runtime disconnects", () => {
+  it("cancels the elicitation and names the runtime error when bb stops waiting", () => {
     expect(
       buildCodexInteractiveResult(decoded.payload, {
         status: "rejected",
         reason: new Error("Thread interrupted"),
       }),
-    ).toEqual(cancel);
+    ).toEqual({
+      kind: "unanswered",
+      cause: { kind: "runtime-error", message: "Thread interrupted" },
+      response: cancel,
+    });
   });
 
   it.each([
@@ -110,14 +114,21 @@ describe("buildCodexInteractiveResult", () => {
     { kind: "plugin_submitted" },
     { kind: "user_answer", answers: {} },
     null,
-  ])("cancels the elicitation for a non-answer resolution %j", (value) => {
-    expect(
-      buildCodexInteractiveResult(decoded.payload, {
-        status: "fulfilled",
-        value,
-      }),
-    ).toEqual(cancel);
-  });
+  ])(
+    "cancels the elicitation as unreadable for a non-answer resolution %j",
+    (value) => {
+      expect(
+        buildCodexInteractiveResult(decoded.payload, {
+          status: "fulfilled",
+          value,
+        }),
+      ).toEqual({
+        kind: "unanswered",
+        cause: { kind: "unreadable-resolution" },
+        response: cancel,
+      });
+    },
+  );
 
   it("encodes a request answer", () => {
     expect(
@@ -128,12 +139,18 @@ describe("buildCodexInteractiveResult", () => {
           value: { action: "accept", persist: "session" },
         },
       }),
-    ).toEqual({ action: "accept", content: {}, _meta: { persist: "session" } });
+    ).toEqual({
+      kind: "answered",
+      response: {
+        action: "accept",
+        content: {},
+        _meta: { persist: "session" },
+      },
+    });
   });
 
-  it("still surfaces runtime failures for approvals", () => {
-    const error = new Error("Thread interrupted");
-    expect(() =>
+  it("answers an approval with an error, naming the cause, when bb stops waiting", () => {
+    expect(
       buildCodexInteractiveResult(
         {
           kind: "approval",
@@ -146,9 +163,13 @@ describe("buildCodexInteractiveResult", () => {
           reason: null,
           availableDecisions: ["allow_once", "deny"],
         },
-        { status: "rejected", reason: error },
+        { status: "rejected", reason: new Error("Thread interrupted") },
       ),
-    ).toThrow(error);
+    ).toEqual({
+      kind: "unanswered",
+      cause: { kind: "runtime-error", message: "Thread interrupted" },
+      response: null,
+    });
   });
 });
 

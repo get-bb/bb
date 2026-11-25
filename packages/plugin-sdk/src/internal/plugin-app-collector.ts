@@ -12,10 +12,12 @@ export {
 export {
   type CollectedPluginProviderIconRegistration,
   type CollectedPluginCommandRegistration,
+  type CollectedPluginMessageActionRegistration,
   type CollectedPluginAppRegistrations,
   type LegacyThreadPanelActionRegistration,
   type LegacyThreadHeaderActionRegistration,
   type LegacyNavPanelRegistration,
   type CollectedSidebarNavigationRegistration,
+  type CollectedThreadContextCardSectionRegistration,
   collectPluginAppRegistrations,
 } from "./plugin-app-registration-collector.js";

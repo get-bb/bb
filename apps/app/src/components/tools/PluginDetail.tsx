@@ -2,7 +2,8 @@ import { PluginNameTag } from "@/components/plugin/management/PluginNameTag";
 import { splitPluginDisplayName } from "@bb/domain/plugin-display-name";
 import { PluginCardAuthorAvatar } from "@/components/plugin/management/PluginCard";
 import { CURATED_PLUGIN_MARKETPLACE_NAME } from "@bb/server-contract";
-import { useSyncExternalStore } from "react";
+import { useState, useSyncExternalStore } from "react";
+import { RadioGroup, RadioGroupItem } from "@bb/shared-ui/radio-group";
 import {
   ResourceActionButton,
   ResourceActivitySection,
@@ -24,7 +25,6 @@ import {
 import { formatHomePathForDisplay } from "@bb/shared-ui/lib/utils";
 import { Icon } from "@bb/shared-ui/icon";
 import { useNavigate } from "react-router-dom";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import {
   pluginHasUpdateSurfaces,
   reviewableRangeUpgrade,
@@ -83,6 +83,11 @@ import {
 } from "@/lib/plugin-frontend";
 import { usePluginSlotKind } from "@/lib/plugin-slots";
 import { copyToClipboardWithToast, useClipboardCopy } from "@/lib/clipboard";
+import { getSettingsTargetPath } from "@/components/settings/settings-sections";
+import {
+  isOfficialPlugin,
+  OFFICIAL_PLUGIN_MARKETPLACE,
+} from "@/lib/official-plugins";
 
 function pluginMarketplaceUrl({
   marketplace,
@@ -124,8 +129,8 @@ export function pluginRemovalLabel(plugin: PluginListItem): string {
 
 export function pluginRemovalDescription(plugin: PluginListItem): string {
   return pluginIsLocalSource(plugin)
-    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
-    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, and schedules?`;
+    ? `Remove "${plugin.id}" from bb and delete its settings, secrets, stored files, and schedules? Its source files stay on disk. To move it to another directory, install the new path instead; that keeps its settings.`
+    : `Uninstall "${plugin.id}" and delete its managed files, settings, secrets, stored files, and schedules?`;
 }
 
 function PluginLocalSource({
@@ -198,9 +203,75 @@ function PluginLocalSource({
   );
 }
 
+function PluginListingPicker({
+  entry,
+  selectedMarketplace,
+  onSelect,
+}: {
+  entry: PluginCatalogSearchEntry;
+  selectedMarketplace: string;
+  onSelect: (marketplace: string) => void;
+}) {
+  return (
+    <ResourceDefinitionSection label="Install from">
+      <RadioGroup
+        value={selectedMarketplace}
+        onValueChange={onSelect}
+        aria-label={`Marketplace to install ${entry.displayName} from`}
+      >
+        {entry.listings.map((listing) => {
+          const id = `plugin-listing-${listing.marketplace}`;
+          return (
+            <label
+              key={listing.marketplace}
+              htmlFor={id}
+              className="flex min-w-0 cursor-pointer items-start gap-2.5"
+            >
+              <RadioGroupItem
+                id={id}
+                value={listing.marketplace}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="min-w-0 space-y-0.5">
+                <span className="block text-sm text-foreground">
+                  {listing.marketplaceDisplayName}
+                </span>
+                <span className="block break-all font-mono text-2xs text-subtle-foreground">
+                  {listing.source}
+                </span>
+              </span>
+            </label>
+          );
+        })}
+      </RadioGroup>
+    </ResourceDefinitionSection>
+  );
+}
+
+function selectedListingEntry(
+  entry: PluginCatalogSearchEntry,
+  marketplace: string,
+): PluginCatalogSearchEntry {
+  const listing = entry.listings.find(
+    (candidate) => candidate.marketplace === marketplace,
+  );
+  if (listing === undefined || listing.marketplace === entry.marketplace) {
+    return entry;
+  }
+  return {
+    ...entry,
+    entryId: listing.entryId,
+    marketplace: listing.marketplace,
+    marketplaceDisplayName: listing.marketplaceDisplayName,
+    publisherLabel: listing.publisherLabel,
+    official: listing.official,
+    source: listing.source,
+  };
+}
+
 const OFFICIAL_BYLINE_ENTRY = {
   author: null,
-  marketplace: "bb-official",
+  marketplace: OFFICIAL_PLUGIN_MARKETPLACE,
   publisherLabel: "BB Official",
 } as const;
 
@@ -220,6 +291,9 @@ export function CatalogPluginDetail({
   const installBlocker = catalogEntryInstallBlocker(entry);
   const installJob = useCatalogEntryInstallJob(entry);
   const { mutate: cancelInstall } = useCancelPluginInstallJob();
+  const [selectedMarketplace, setSelectedMarketplace] = useState(
+    entry.marketplace,
+  );
   const overflowItems = copyMarketplaceLinkItems(pluginMarketplaceUrl(entry));
   const entryTitle = splitPluginDisplayName(entry.displayName);
   return (
@@ -241,7 +315,9 @@ export function CatalogPluginDetail({
           disabled={installBlocker !== null}
           unavailableReason={installBlocker}
           count={count}
-          onInstall={() => onInstall(entry)}
+          onInstall={() =>
+            onInstall(selectedListingEntry(entry, selectedMarketplace))
+          }
           installJob={installJob}
           onCancelInstall={cancelInstall}
         />
@@ -257,6 +333,13 @@ export function CatalogPluginDetail({
     >
       <ResourceDetailStack>
         <PluginMarketplaceListingSections entry={entry} />
+        {entry.listings.length > 1 ? (
+          <PluginListingPicker
+            entry={entry}
+            selectedMarketplace={selectedMarketplace}
+            onSelect={setSelectedMarketplace}
+          />
+        ) : null}
         <PluginMoreFromAuthorSection
           entry={entry}
           catalogEntries={catalogEntries}
@@ -329,11 +412,13 @@ export function pluginFrontendDiagnosticRequiresFailureBanner(
 export function PluginDetailBanners({
   plugin,
   configurationPath,
+  catalogEntry,
   catalogEntries,
   onOpenPlugin,
 }: {
   plugin: PluginListItem;
   configurationPath?: string;
+  catalogEntry: PluginCatalogSearchEntry | null;
   catalogEntries: readonly PluginCatalogSearchEntry[];
   onOpenPlugin: (pluginId: string) => void;
 }) {
@@ -348,6 +433,12 @@ export function PluginDetailBanners({
     (entry) =>
       entry.pluginId === plugin.id && entry.conflictingInstallSource !== null,
   );
+  const otherListings =
+    catalogEntry === null
+      ? []
+      : catalogEntry.listings.filter(
+          (listing) => listing.marketplace !== catalogEntry.marketplace,
+        );
   return (
     <>
       {banner === null ? null : (
@@ -355,6 +446,15 @@ export function PluginDetailBanners({
           plugin={banner.plugin}
           configurationPath={configurationPath}
           runtimeStatus={pluginRuntimeStatusPresentation(banner.plugin)}
+        />
+      )}
+      {otherListings.length === 0 ? null : (
+        <PluginBannerBar
+          tone="muted"
+          icon="Info"
+          title={`Also listed in ${otherListings
+            .map((listing) => listing.marketplaceDisplayName)
+            .join(", ")}`}
         />
       )}
       {publishedListing === undefined ? null : (
@@ -494,10 +594,7 @@ export function PluginDetail({
   ];
   const bylineEntry =
     catalogEntry ??
-    (plugin.provenance === "builtin" ||
-    plugin.catalogMarketplaceName === "bb-official"
-      ? OFFICIAL_BYLINE_ENTRY
-      : undefined);
+    (isOfficialPlugin(plugin) ? OFFICIAL_BYLINE_ENTRY : undefined);
   return (
     <ResourceDetailPage
       maxWidthClassName="max-w-5xl"
@@ -527,9 +624,7 @@ export function PluginDetail({
                 onConfigure();
                 return;
               }
-              void navigate(
-                getPluginConfigurationRoutePath({ pluginId: plugin.id }),
-              );
+              void navigate(getSettingsTargetPath({ pluginId: plugin.id }));
             }}
           />
         ) : undefined

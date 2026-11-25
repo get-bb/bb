@@ -1,8 +1,8 @@
+import { outputJson } from "../command-result.js";
 import { Command } from "commander";
 import { createGuideArea } from "@bb/sdk/node";
 import { action, CliUsageError } from "../action.js";
 import { CORE_COMMAND_GROUPS } from "../command-groups.js";
-import { outputJson } from "./helpers.js";
 
 interface GuideCommandOptions {
   json?: boolean;

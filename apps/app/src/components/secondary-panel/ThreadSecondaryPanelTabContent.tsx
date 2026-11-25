@@ -107,7 +107,7 @@ function filePreviewQueryProps(query: UseQueryResult<FilePreview>) {
     error: query.error,
     filePreview: query.data,
     isLoading: query.isLoading,
-    isRefreshing: query.isFetching,
+    isRefreshing: query.isRefetching,
     onRefresh: () => void query.refetch(),
   };
 }

@@ -3,7 +3,7 @@ import { chmodSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { systemExecutionOptionsResponseSchema } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
-import { sendTextMessage } from "../../helpers/api.js";
+import { createHostThread, sendTextMessage } from "../../helpers/api.js";
 import {
   waitForHostConnected,
   waitForThreadOutputContaining,
@@ -14,7 +14,6 @@ import { registerConfiguredAcpProvider } from "../../../../apps/server/test/help
 import { scaleTimeoutMs } from "../../helpers/time.js";
 import {
   createProjectFixture,
-  createReadyThread,
   DEFAULT_TIMEOUT_MS,
   TURN_TIMEOUT_MS,
 } from "./shared.js";
@@ -116,7 +115,8 @@ describe.sequential("dynamic ACP integration smoke", () => {
           harness,
           "Dynamic ACP Smoke",
         );
-        const { thread: nativeThread } = await createReadyThread(harness, {
+        const nativeThread = await createHostThread(harness.api, {
+          hostId: harness.hostId,
           execution: {
             model: "bb-dynamic-acp-native-strong",
             reasoningLevel: "medium",
@@ -138,7 +138,8 @@ describe.sequential("dynamic ACP integration smoke", () => {
           TURN_TIMEOUT_MS,
         );
 
-        const { thread } = await createReadyThread(harness, {
+        const thread = await createHostThread(harness.api, {
+          hostId: harness.hostId,
           execution: {
             model: "bb-dynamic-smoke-medium",
             reasoningLevel: "medium",
@@ -157,6 +158,13 @@ describe.sequential("dynamic ACP integration smoke", () => {
           harness.api,
           thread.id,
           "dynamic-acp:model=bb-dynamic-smoke-medium:start launch spec",
+          TURN_TIMEOUT_MS,
+        );
+
+        await waitForThreadStatus(
+          harness.api,
+          thread.id,
+          "idle",
           TURN_TIMEOUT_MS,
         );
 

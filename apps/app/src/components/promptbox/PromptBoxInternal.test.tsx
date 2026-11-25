@@ -41,6 +41,7 @@ import {
 } from "@testing-library/react";
 import {
   afterEach,
+  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -63,6 +64,10 @@ import {
 } from "@bb/client-core";
 import type { ComposerSubmitOptions } from "@get-bb/plugin-sdk/app";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
+import {
+  PaneContext,
+  type PaneContextValue,
+} from "@/views/thread-detail/PaneContext";
 import {
   getComposerInputLock,
   useComposer,
@@ -1202,7 +1207,13 @@ describe("ComposerBox controlled value sync", () => {
   it("unregisters the previous composer when the prompt box switches drafts", () => {
     const draft = emptyPromptDraftState();
     const host = (queuedMessageId: string): PluginComposerHost => ({
-      scope: { kind: "queued-message", threadId: "thread-1", queuedMessageId },
+      scope: {
+        kind: "queued-message",
+        threadId: "thread-1",
+        queuedMessageId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: `queued-message:${queuedMessageId}`,
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -1250,6 +1261,8 @@ describe("ComposerBox controlled value sync", () => {
         kind: "queued-message",
         threadId: "thread-1",
         queuedMessageId,
+        projectId: "proj_test",
+        environmentId: null,
       },
       textEffectKey: `queued-message:${queuedMessageId}`,
       getCurrent: () => draft,
@@ -1399,6 +1412,57 @@ describe("ComposerBox controlled value sync", () => {
 
       await waitFor(() =>
         expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
+      );
+      expect(document.activeElement).not.toBe(getPromptEditorElement());
+    } finally {
+      restoreMatchMedia();
+    }
+  });
+
+  it("leaves the caret alone when it mounts in an unfocused split pane", async () => {
+    const restoreMatchMedia = mockPointerCoarse(false);
+    const pane = (isFocused: boolean): PaneContextValue => ({
+      paneId: "pane-2",
+      isFocused,
+      isSplitPane: true,
+      secondaryPanelHost: null,
+      reservesWindowPanelToggle: false,
+      onRequestClose: null,
+      isMaximized: false,
+      onToggleMaximize: null,
+      isBoundedPane: true,
+      isTopRow: true,
+      ownsWindowTopLeft: false,
+      navigateInPane: () => undefined,
+    });
+    const props = createPromptBoxProps();
+    try {
+      const view = render(
+        <PaneContext.Provider value={pane(false)}>
+          <ControlledComposerBox {...props} />
+        </PaneContext.Provider>,
+      );
+      await waitFor(() =>
+        expect(getPromptEditorElement()).toBeInstanceOf(HTMLElement),
+      );
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      expect(document.activeElement).not.toBe(getPromptEditorElement());
+
+      view.rerender(
+        <PaneContext.Provider value={pane(true)}>
+          <ControlledComposerBox {...props} />
+        </PaneContext.Provider>,
+      );
+      await act(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
       );
       expect(document.activeElement).not.toBe(getPromptEditorElement());
     } finally {
@@ -1762,7 +1826,12 @@ describe("ComposerBox programmatic submit", () => {
     );
     const draft = { ...emptyPromptDraftState(), text };
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "thread-1" },
+      scope: {
+        kind: "thread",
+        threadId: "thread-1",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "promptbox-submit-test",
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -2171,7 +2240,12 @@ describe("ComposerBox submit shortcuts", () => {
         );
         const draft = { ...emptyPromptDraftState(), text: "Follow up" };
         const host: PluginComposerHost = {
-          scope: { kind: "thread", threadId: "thread-1" },
+          scope: {
+            kind: "thread",
+            threadId: "thread-1",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           textEffectKey: "send-menu-test",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
@@ -2769,7 +2843,12 @@ describe("ComposerBox plugin composer actions", () => {
 
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "crashing-action-thread" },
+      scope: {
+        kind: "thread",
+        threadId: "crashing-action-thread",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "crashing-action-composer",
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -2854,7 +2933,12 @@ describe("ComposerBox plugin composer actions", () => {
     );
     const draft = emptyPromptDraftState();
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "thread-1" },
+      scope: {
+        kind: "thread",
+        threadId: "thread-1",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "promptbox-lock-test",
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -2941,7 +3025,12 @@ describe("ComposerBox plugin composer actions", () => {
     );
     const draft = emptyPromptDraftState();
     const host = (threadId: string): PluginComposerHost => ({
-      scope: { kind: "thread", threadId },
+      scope: {
+        kind: "thread",
+        threadId,
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: `scope-action:${threadId}`,
       getCurrent: () => draft,
       subscribeDraft: () => () => {},
@@ -6464,6 +6553,10 @@ describe("thread URL clipboard paste", () => {
     label: "Composer paste improvements",
   };
 
+  beforeAll(async () => {
+    await import("../../../../../plugins/composer/src/mentions/pasted-thread-links");
+  });
+
   it("keeps HTML code and authored links literal while converting repeated URLs in prose", async () => {
     const lookup = vi
       .spyOn(sdk.threads, "resolveMentions")
@@ -6486,9 +6579,13 @@ describe("thread URL clipboard paste", () => {
     }
   });
 
-  it.each(["ctrlKey", "metaKey"])(
-    "keeps %s+Shift+V literal and converts the next normal clipboard paste through the SDK",
-    async (modifier) => {
+  it.each([
+    { modifier: "ctrlKey", key: "V" },
+    { modifier: "metaKey", key: "V" },
+    { modifier: "ctrlKey", key: "\u041c" },
+  ])(
+    "keeps $modifier+Shift+V ($key) literal and converts the next normal clipboard paste through the SDK",
+    async ({ modifier, key }) => {
       const lookup = vi
         .spyOn(sdk.threads, "resolveMentions")
         .mockResolvedValue([resolved]);
@@ -6496,14 +6593,14 @@ describe("thread URL clipboard paste", () => {
         const { changes, promptBoxRef } = renderPromptBox("");
         await focusPromptEnd(promptBoxRef);
         fireEvent.keyDown(getPromptEditorElement(), {
-          key: "V",
+          key,
           code: "KeyV",
           shiftKey: true,
           [modifier]: true,
         });
         pastePlainText(url);
         fireEvent.keyUp(getPromptEditorElement(), {
-          key: "V",
+          key,
           code: "KeyV",
         });
         await act(async () => {

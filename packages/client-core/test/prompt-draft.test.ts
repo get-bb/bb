@@ -6,6 +6,7 @@ import {
   emptyPromptDraftState,
   isPromptDraftEmpty,
   getProjectStoredPromptAttachmentPaths,
+  mergeUnsentPromptDraft,
   parsePromptDraftStorage,
   promptDraftToInput,
   promptInputToDraft,
@@ -189,7 +190,11 @@ describe("prompt draft helpers", () => {
         { start: 30, end: 48, resource: removed },
       ],
       attachments: [
-        { type: "localFile", path: "Pasted-text-1.txt", name: "Pasted text.txt" },
+        {
+          type: "localFile",
+          path: "Pasted-text-1.txt",
+          name: "Pasted text.txt",
+        },
       ],
     });
 
@@ -417,5 +422,67 @@ describe("appendQuoteAndAttachmentsToDraft", () => {
     };
 
     expect(appendQuoteAndAttachmentsToDraft(base, "", [attachment])).toBe(base);
+  });
+});
+
+describe("mergeUnsentPromptDraft", () => {
+  const threadMention = {
+    start: 0,
+    end: 5,
+    resource: { kind: "thread" as const, threadId: "thr_a", label: "a.ts" },
+  };
+  const spec = {
+    type: "localFile" as const,
+    path: "uploads/spec.md",
+    name: "spec.md",
+  };
+  const log = {
+    type: "localFile" as const,
+    path: "uploads/log.txt",
+    name: "log.txt",
+  };
+
+  it("restores the unsent draft into an empty composer", () => {
+    const unsent = { text: "sent", mentions: [], attachments: [spec] };
+    expect(mergeUnsentPromptDraft(unsent, emptyPromptDraftState())).toBe(
+      unsent,
+    );
+  });
+
+  it("puts the unsent draft ahead of newer text and keeps both mention sets aligned", () => {
+    const merged = mergeUnsentPromptDraft(
+      { text: "@a.ts fix it", mentions: [threadMention], attachments: [spec] },
+      {
+        text: "@a.ts then this",
+        mentions: [threadMention],
+        attachments: [log, spec],
+      },
+    );
+
+    expect(merged).toEqual({
+      text: "@a.ts fix it\n\n@a.ts then this",
+      mentions: [threadMention, { ...threadMention, start: 14, end: 19 }],
+      attachments: [spec, log],
+    });
+    expect(merged.text.slice(14, 19)).toBe("@a.ts");
+  });
+
+  it("keeps attachment-only drafts without inserting a separator", () => {
+    expect(
+      mergeUnsentPromptDraft(
+        { text: "", mentions: [], attachments: [spec] },
+        { text: "newer", mentions: [], attachments: [] },
+      ),
+    ).toEqual({ text: "newer", mentions: [], attachments: [spec] });
+  });
+
+  it("does not duplicate a draft the composer already holds", () => {
+    const current = { text: "same", mentions: [], attachments: [] };
+    expect(
+      mergeUnsentPromptDraft(
+        { text: "same", mentions: [], attachments: [] },
+        current,
+      ),
+    ).toBe(current);
   });
 });

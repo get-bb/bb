@@ -1,13 +1,13 @@
 import type { IconName } from "@bb/shared-ui/icon";
-import { getPluginConfigurationRoutePath } from "@/lib/route-paths";
 import type { PluginSettingsEntry } from "./plugin-settings-entries";
 import {
-  getSettingsSectionRoutePath,
   type SettingsNavSection,
   type SettingsSectionId,
+  getSettingsTargetPath,
 } from "./settings-sections";
 
 export type SettingsSearchCondition =
+  | "markdownRendererChoices"
   | "cliCommand"
   | "composers"
   | "desktopBrowser"
@@ -19,6 +19,8 @@ export type SettingsSearchCondition =
   | "pluginUpdates"
   | "sidebarNavigations"
   | "sourceCodeRenderers"
+  | "threadHeaderTitles"
+  | "threadRailOutlines"
   | "threadLists";
 
 interface SettingsSearchSetting {
@@ -178,8 +180,29 @@ export const SETTINGS_SEARCH_INDEX: Record<
         when: "composers",
       },
       {
+        title: "Thread header title",
+        keywords: ["thread title", "header", "plugin"],
+        when: "threadHeaderTitles",
+      },
+      {
+        title: "Thread outline",
+        keywords: ["table of contents", "outline", "rail", "plugin"],
+        when: "threadRailOutlines",
+      },
+      {
         title: "Sidebar footer",
         keywords: ["reorder", "buttons", "navigation"],
+      },
+      {
+        title: "Markdown",
+        keywords: [
+          "code blocks",
+          "code fences",
+          "directives",
+          "renderer",
+          "plugin",
+        ],
+        when: "markdownRendererChoices",
       },
     ],
   },
@@ -318,7 +341,7 @@ export function buildSettingsSearchItems(
     ...args.sections.flatMap((section) => {
       const indexed = SETTINGS_SEARCH_INDEX[section.id];
       const icon = { kind: "section" as const, name: section.icon };
-      const to = getSettingsSectionRoutePath(section.id);
+      const to = getSettingsTargetPath({ section: section.id });
       return [
         {
           anchor: null,
@@ -351,7 +374,7 @@ export function buildSettingsSearchItems(
         icon: plugin.icon,
         pluginId: plugin.id,
       };
-      const to = getPluginConfigurationRoutePath({ pluginId: plugin.id });
+      const to = getSettingsTargetPath({ pluginId: plugin.id });
       return [
         {
           anchor: null,

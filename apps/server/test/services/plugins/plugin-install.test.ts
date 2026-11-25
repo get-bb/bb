@@ -18,7 +18,7 @@ import { tmpdir } from "node:os";
 import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
@@ -44,6 +44,7 @@ import {
 import { createAiServiceRegistry } from "../../../src/services/ai/ai-service-registry.js";
 import { createPluginService } from "../../../src/services/plugins/plugin-service.js";
 import { testLogger } from "../../helpers/test-app.js";
+import { expectCorePluginFoldersUnclaimable } from "../../helpers/core-plugin-folders.js";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
 
 const logger = testLogger as unknown as Logger;
@@ -161,6 +162,44 @@ async function commitAll(repoDir: string, message: string): Promise<string> {
   await git(repoDir, ["add", "-A"]);
   await git(repoDir, ["commit", "-qm", message]);
   return git(repoDir, ["rev-parse", "HEAD"]);
+}
+
+async function initScratchRepo(dir: string): Promise<string> {
+  await mkdir(dir, { recursive: true });
+  await git(dir, ["init", "-q"]);
+  return dir;
+}
+
+function gitConfigEnv(
+  entries: ReadonlyArray<readonly [key: string, value: string]>,
+): Record<string, string> {
+  const env: Record<string, string> = {
+    GIT_CONFIG_COUNT: String(entries.length),
+  };
+  entries.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
+}
+
+async function withProcessGitConfig<T>(
+  entries: ReadonlyArray<readonly [key: string, value: string]>,
+  body: () => Promise<T>,
+): Promise<T> {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(gitConfigEnv(entries))) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+  try {
+    return await body();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
 }
 
 function artifactMeta(args: {
@@ -840,27 +879,29 @@ describe("plugin install flows", () => {
       expect(getInstalledPluginRegistration(db, "connect")).toBeUndefined();
     });
 
-    test("installs a pinned commit sha via clone + checkout", async ({
-      fixture,
-    }) => {
-      const { workDir, service } = fixture;
+    test.for([40, 7])(
+      "installs a pinned %i-character commit sha",
+      async (shaLength, { fixture }) => {
+        const { workDir, service } = fixture;
 
-      const repoDir = join(workDir, "repo-sha");
-      await writePluginFixture(repoDir, { name: "bb-plugin-shaman" });
-      await initGitRepo(repoDir);
-      const sha = await commitAll(repoDir, "init");
-      await writePluginFixture(repoDir, {
-        name: "bb-plugin-shaman",
-        version: "9.9.9",
-      });
-      await commitAll(repoDir, "later");
+        const repoDir = join(workDir, "repo-sha");
+        await writePluginFixture(repoDir, { name: "bb-plugin-shaman" });
+        await initGitRepo(repoDir);
+        const sha = await commitAll(repoDir, "init");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-shaman",
+          version: "9.9.9",
+        });
+        await commitAll(repoDir, "later");
 
-      const entry = await service.install(`git:${repoDir}@${sha}`, {
-        kind: "root",
-      });
-      expect(entry.status).toBe("running");
-      expect(entry.version).toBe("0.1.0");
-    });
+        const entry = await service.install(
+          `git:${repoDir}@${sha.slice(0, shaLength)}`,
+          { kind: "root" },
+        );
+        expect(entry.status).toBe("running");
+        expect(entry.version).toBe("0.1.0");
+      },
+    );
 
     test("never reuses an exact-resolution artifact owned by another plugin", async ({
       fixture,
@@ -1342,6 +1383,90 @@ describe("plugin install flows", () => {
       },
     );
   });
+
+  describe.skipIf(!hasGit)(
+    "git sources configured through the server process environment",
+    { timeout: 30_000 },
+    () => {
+      test("fetches only the resolved commit instead of the whole repository", async ({
+        fixture,
+      }) => {
+        const { db, workDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-shallow");
+        await writePluginFixture(repoDir, { name: "bb-plugin-shallow" });
+        await initGitRepo(repoDir);
+        await writeFile(join(repoDir, "retired.txt"), "older release");
+        await commitAll(repoDir, "older release");
+        const retiredBlob = await git(repoDir, [
+          "rev-parse",
+          "HEAD:retired.txt",
+        ]);
+        await rm(join(repoDir, "retired.txt"));
+        const commit = await commitAll(repoDir, "selected release");
+        await rm(
+          join(
+            repoDir,
+            ".git",
+            "objects",
+            retiredBlob.slice(0, 2),
+            retiredBlob.slice(2),
+          ),
+        );
+
+        const gitConfig = [
+          [`url.${pathToFileURL(repoDir).href}.insteadOf`, repoDir],
+        ] as const;
+        await expect(
+          run("git", ["clone", "--quiet", repoDir, join(workDir, "full")], {
+            env: { ...process.env, ...gitConfigEnv(gitConfig) },
+          }),
+        ).rejects.toThrow(/unable to read/);
+
+        const entry = await withProcessGitConfig(gitConfig, () =>
+          service.install(`git:${repoDir}@main`, { kind: "root" }),
+        );
+        expect(entry.status).toBe("running");
+        expect(existsSync(join(entry.rootDir, ".git"))).toBe(false);
+        expect(getInstalledPluginRegistration(db, "shallow")).toMatchObject({
+          gitResolvedCommit: commit,
+        });
+      });
+
+      test("falls back to a full clone when the server refuses to serve the commit directly", async ({
+        fixture,
+      }) => {
+        const { db, workDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-fallback");
+        await writePluginFixture(repoDir, { name: "bb-plugin-fallback" });
+        await initGitRepo(repoDir);
+        const sha = await commitAll(repoDir, "init");
+        await writePluginFixture(repoDir, {
+          name: "bb-plugin-fallback",
+          version: "9.9.9",
+        });
+        await commitAll(repoDir, "later");
+
+        const gitConfig = [["protocol.version", "0"]] as const;
+        await expect(
+          run("git", ["fetch", "--depth", "1", repoDir, sha], {
+            cwd: await initScratchRepo(join(workDir, "scratch")),
+            env: { ...process.env, ...gitConfigEnv(gitConfig) },
+          }),
+        ).rejects.toThrow(/unadvertised object/);
+
+        const entry = await withProcessGitConfig(gitConfig, () =>
+          service.install(`git:${repoDir}@${sha}`, { kind: "root" }),
+        );
+        expect(entry.status).toBe("running");
+        expect(entry.version).toBe("0.1.0");
+        expect(getInstalledPluginRegistration(db, "fallback")).toMatchObject({
+          gitResolvedCommit: sha,
+        });
+      });
+    },
+  );
 
   describeGit("multi-plugin repositories", { timeout: 60_000 }, () => {
     async function writeCollectionRepo(repoDir: string): Promise<string> {
@@ -1898,6 +2023,7 @@ describe("plugin install flows", () => {
             rootDir: join(prefix, "node_modules", name),
           });
           await stat(prefix);
+          await expectCorePluginFoldersUnclaimable(dataDir, ["npmhero"]);
 
           expect(await service.remove("npmhero")).toBe(true);
           await expect(stat(prefix)).rejects.toMatchObject({
@@ -1975,6 +2101,33 @@ describe("plugin install flows", () => {
         kind: "root",
       }),
     ).rejects.toThrowError(/ids starting with "bb--" are reserved/);
+  });
+
+  test.for(["npm", "cache", "runtime", "snapshots"])(
+    "refuses a path plugin whose id names core's plugins/%s folder",
+    async (id, { fixture }) => {
+      const { db, dataDir, workDir, service } = fixture;
+
+      const rootDir = join(workDir, `bb-plugin-${id}`);
+      await writePluginFixture(rootDir, { name: `bb-plugin-${id}` });
+      await expect(service.installPath(rootDir)).rejects.toThrowError(
+        /reserves for its own folders under plugins\//,
+      );
+      expect(getInstalledPluginRegistration(db, id)).toBeUndefined();
+      await expect(
+        stat(join(dataDir, "plugins", id, "logs")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    },
+  );
+
+  test("refuses an npm package whose derived id names a core folder before install", async ({
+    fixture,
+  }) => {
+    const { service } = fixture;
+
+    await expect(
+      service.install("npm:@acme/bb-plugin-runtime@1.2.3", { kind: "root" }),
+    ).rejects.toThrowError(/reserves for its own folders under plugins\//);
   });
 
   test("the bb plugin new scaffold installs and loads through the plugin service", async ({

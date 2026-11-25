@@ -1,13 +1,11 @@
-import {
-  composerOwnsCommand,
-  type ComposerCommandScope,
-} from "@/lib/composer-command-ownership";
-
 type ModelPickerToggleAction = "open" | "close" | "ignore";
 
-export interface ModelPickerScope extends ComposerCommandScope {
+export interface ModelPickerScope {
   disabled: boolean;
+  isFocusedPane: boolean;
   isSplitPane: boolean;
+  isActiveComposer: boolean;
+  caretInThisComposer: boolean;
   editableOutsideComposer: boolean;
 }
 
@@ -21,7 +19,7 @@ export function ownsModelPickerToggleChord(
   if (input.disabled) return false;
   if (input.open) return input.isFocusedPane;
   if (!input.isSplitPane && !input.caretInThisComposer) return false;
-  return composerOwnsCommand(input);
+  return input.isActiveComposer;
 }
 
 export function ownsModelPickerCycleChord(

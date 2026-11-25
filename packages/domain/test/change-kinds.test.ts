@@ -49,6 +49,7 @@ const maximalThreadMetadata: ThreadChangeMetadata = {
       activeWorkflowCount: 1,
     },
     latestAttentionAt: 1_000,
+    statusChangedAt: 2_000,
     updatedAt: 2_000,
   },
 };
@@ -138,6 +139,7 @@ describe("lenient changed-message schema parity", () => {
             activeWorkflowCount: 0,
           },
           latestAttentionAt: 1_000,
+          statusChangedAt: 2_000,
           updatedAt: 2_000,
         },
       },

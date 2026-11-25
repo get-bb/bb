@@ -172,7 +172,7 @@ describe("bb command on PATH", () => {
   });
 
   posixIt(
-    "recognises the command a bb machine install added and leaves it",
+    "replaces the command a bb machine install added with the launcher",
     async () => {
       const fixture = createUnixFixture();
       const machineShim = join(fixture.localBin, "bb");
@@ -181,15 +181,21 @@ describe("bb command on PATH", () => {
         `#!/bin/sh\nprintf '%s\\n' '${MACHINE_CLI_SHIM_MARKER}' >&2\nexit 1\n`,
       );
 
+      await fixture.service.remove();
+      expect(lstatSync(machineShim).isFile()).toBe(true);
       await expect(fixture.service.getStatus()).resolves.toEqual({
         ...NOT_INSTALLED,
         shadowedBy: { path: machineShim, source: "machine" },
       });
-      await expect(fixture.service.install()).rejects.toMatchObject({
-        status: 409,
+      await expect(fixture.service.install()).resolves.toEqual({
+        ...NOT_INSTALLED,
+        installedPath: machineShim,
+        onPath: true,
       });
-      await fixture.service.remove();
-      expect(lstatSync(machineShim).isFile()).toBe(true);
+      expect(readlinkSync(machineShim)).toBe(fixture.launcherPath);
+
+      await expect(fixture.service.remove()).resolves.toEqual(NOT_INSTALLED);
+      expect(existsSync(machineShim)).toBe(false);
       expect(
         readFileSync(
           fileURLToPath(

@@ -4,6 +4,7 @@ import {
 } from "@tanstack/react-start/server";
 
 import { proxyPostHogRequest } from "./landing/posthog-proxy";
+import { finalizeDocumentResponse } from "./server/document-response";
 import {
   marketplaceHtmlCacheControl,
   marketplaceResponseStatus,
@@ -17,15 +18,12 @@ const handleRequest = createStartHandler(async (context) => {
   );
   const result = await defaultStreamHandler(context);
   const response = "response" in result ? result.response : result;
-  const responseStatus = status ?? response.status;
-  const cacheControl = marketplaceHtmlCacheControl(pathname, responseStatus);
-  if (status === null && cacheControl === null) return result;
-  const headers = new Headers(response.headers);
-  if (cacheControl !== null) headers.set("cache-control", cacheControl);
-  const updatedResponse = new Response(response.body, {
-    status: responseStatus,
-    statusText: status === null ? response.statusText : "",
-    headers,
+  const updatedResponse = finalizeDocumentResponse(response, {
+    status,
+    cacheControl: marketplaceHtmlCacheControl(
+      pathname,
+      status ?? response.status,
+    ),
   });
   return "response" in result
     ? { ...result, response: updatedResponse }

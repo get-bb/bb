@@ -29,6 +29,7 @@ function renderTabs() {
     <TooltipProvider>
       <aside>
         <SidebarSplitContainer
+          isTabListReady
           activeTabId="alpha.ts"
           isFullScreen={false}
           onActivateTab={() => {}}

@@ -22,7 +22,6 @@ interface EventProjectionState {
 
 export interface BuildEventProjectionOptions extends BuildEventProjectionMessagesOptions {
   acceptedClientRequestContext?: AcceptedClientRequestContext;
-  externalUserBoundarySeqsByTurnId?: ReadonlyMap<string, readonly number[]>;
   turnMessageDetail: EventProjectionTurnMessageDetail;
 }
 

@@ -1,14 +1,17 @@
 import { setPluginAgentContributions } from "../../src/services/plugins/plugin-agent-contributions.js";
 import type { PluginAgentToolRecord } from "../../src/services/plugins/plugin-api.js";
 import { eq } from "drizzle-orm";
-import { events } from "@bb/db";
+import { events, listQueuedThreadMessages } from "@bb/db";
 import { describe, expect, it, vi } from "vitest";
 import { internalAuthHeaders } from "../helpers/commands.js";
 import { readJson } from "../helpers/json.js";
 import {
   PLUGIN_TOOL_CALL_AWAITING_USER_RESULT_TEXT,
+  abortPluginToolCallsForPlugin,
   detachActivePluginToolCallForUserInput,
+  requirePluginToolCallRegistry,
 } from "../../src/services/plugins/plugin-tool-calls.js";
+import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { listQueuedThreadCommands } from "../helpers/commands.js";
 import {
   seedEnvironment,
@@ -95,6 +98,46 @@ function seedIdleProviderThread(harness: TestAppHarness, value: number) {
     threadId: thread.id,
   });
   return { session, thread };
+}
+
+async function startDetachedFixtureToolCall(
+  harness: TestAppHarness,
+  args: { sessionId: string; threadId: string },
+): Promise<void> {
+  const record: PluginAgentToolRecord = {
+    name: "wait_for_user",
+    description: "Wait",
+    presentation: null,
+    instructions: null,
+    inputSchema: {},
+    parse: (input) => ({ ok: true, value: input }),
+    execute: () => "unused",
+  };
+  setPluginAgentContributions({
+    listSkillRootContributions: () => [],
+    listAgentTools: () => [],
+    listInstructionContributions: () => [],
+    findAgentTool: (name) =>
+      name === record.name ? { pluginId: "fixture", record } : undefined,
+    resolveMention: async () => ({ ok: false, error: "unused" }),
+    invokeAgentTool: async () => {
+      detachActivePluginToolCallForUserInput();
+      return new Promise(() => undefined);
+    },
+  });
+  const response = await harness.app.request("/internal/session/tool-call", {
+    method: "POST",
+    headers: internalAuthHeaders(harness),
+    body: JSON.stringify({
+      sessionId: args.sessionId,
+      threadId: args.threadId,
+      providerThreadId: "provider-thread",
+      turnId: "turn",
+      callId: "call-detached",
+      tool: record.name,
+    }),
+  });
+  await response.json();
 }
 
 function installWaitingTool(
@@ -373,6 +416,89 @@ describe("plugin tool calls that outlive their round trip", () => {
           listQueuedThreadCommands(harness, "turn.submit", thread.id),
         ).toHaveLength(0);
         expect(turnRequestedEvents(harness, thread.id)).toHaveLength(1);
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+  it("wakes an idle thread with a failure when the waiting tool's plugin stops", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedIdleProviderThread(harness, 4);
+      try {
+        await startDetachedFixtureToolCall(harness, {
+          sessionId: session.id,
+          threadId: thread.id,
+        });
+
+        abortPluginToolCallsForPlugin("fixture", "plugin-disposed");
+
+        await vi.waitFor(() => {
+          expect(
+            listQueuedThreadCommands(harness, "turn.submit", thread.id),
+          ).toHaveLength(1);
+        });
+        const [command] = listQueuedThreadCommands(
+          harness,
+          "turn.submit",
+          thread.id,
+        );
+        expect(command).toMatchObject({
+          input: [
+            expect.objectContaining({
+              type: "text",
+              text: expect.stringContaining(
+                'Your earlier wait_for_user tool call failed:\n\nTool "wait_for_user" failed: the "fixture" plugin stopped before the call finished',
+              ),
+            }),
+          ],
+        });
+        expect(turnRequestedEvents(harness, thread.id).at(-1)).toMatchObject({
+          initiator: "system",
+          systemMessageKind: "tool-result-delivered",
+        });
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+
+  it("queues the failure for the next start when the plugin stops during shutdown", async () => {
+    await withTestHarness(async (harness) => {
+      const { session, thread } = seedIdleProviderThread(harness, 5);
+      try {
+        await startDetachedFixtureToolCall(harness, {
+          sessionId: session.id,
+          threadId: thread.id,
+        });
+        const registry = requirePluginToolCallRegistry();
+
+        registry.deferDeliveriesToRestart();
+        abortPluginToolCallsForPlugin("fixture", "plugin-disposed");
+        await registry.settleDeliveries();
+
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([
+          expect.objectContaining({
+            systemNotice: expect.stringContaining(
+              '"kind":"tool-result-delivered"',
+            ),
+            content: expect.stringContaining(
+              "(it was reloaded, updated or disabled, or bb restarted)",
+            ),
+          }),
+        ]);
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(0);
+
+        await runQueuedMessageDispatch(harness.deps, {
+          kind: "idle-recovery",
+          now: Date.now(),
+        });
+
+        expect(
+          listQueuedThreadCommands(harness, "turn.submit", thread.id),
+        ).toHaveLength(1);
+        expect(listQueuedThreadMessages(harness.db, thread.id)).toEqual([]);
       } finally {
         setPluginAgentContributions(undefined);
       }

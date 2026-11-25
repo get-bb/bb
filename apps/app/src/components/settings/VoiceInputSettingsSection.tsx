@@ -7,7 +7,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 import {
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section";
+} from "@bb/shared-ui/settings-section";
 import {
   useAudioInputDevices,
   type AudioInputDeviceOption,

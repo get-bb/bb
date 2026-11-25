@@ -10,6 +10,23 @@ import {
 } from "@/components/promptbox/NewThreadComposer";
 import { PluginContext } from "@/components/plugin/plugin-context";
 import { useQuickCreateProjectController } from "@/hooks/useQuickCreateProject";
+import { useRootComposeProjectId } from "@/lib/root-compose-selection";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
+import type { InitialPromptSeed } from "@/components/promptbox/mentions/initial-prompt-draft";
+
+function pluginInitialPromptSeed(
+  initialPrompt: NonNullable<PluginComposerProps["initialPrompt"]>,
+  pluginId: string | null,
+): InitialPromptSeed | null {
+  try {
+    return initialPromptSeedFromComposer(initialPrompt, pluginId);
+  } catch (error) {
+    console.warn(
+      `[plugin:${pluginId ?? "unknown"}] NewThreadComposer ignored its initialPrompt: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    return null;
+  }
+}
 
 export function PluginNewThreadComposer({
   defaultProjectId,
@@ -29,16 +46,21 @@ export function PluginNewThreadComposer({
 }: PluginComposerProps) {
   const pluginId = useContext(PluginContext);
   const quickCreateProject = useQuickCreateProjectController();
-  const [pickedProjectId, setPickedProjectId] = useState<string | null>(
-    defaultProjectId ?? null,
+  const [rememberedProjectId] = useRootComposeProjectId();
+  const [pickedProjectId, setPickedProjectId] = useState<string>(
+    defaultProjectId ?? rememberedProjectId,
   );
   const [seededDefaultProjectId, setSeededDefaultProjectId] =
     useState(defaultProjectId);
   if (seededDefaultProjectId !== defaultProjectId) {
     setSeededDefaultProjectId(defaultProjectId);
-    setPickedProjectId(defaultProjectId ?? null);
+    setPickedProjectId(defaultProjectId ?? rememberedProjectId);
   }
 
+  const initialPromptSeed =
+    initialPrompt === undefined
+      ? null
+      : pluginInitialPromptSeed(initialPrompt, pluginId);
   const seed: NewThreadComposerSeed = {
     providerId: defaultProviderId,
     model: defaultModel,
@@ -46,7 +68,7 @@ export function PluginNewThreadComposer({
     serviceTier: defaultServiceTier,
     permissionMode: defaultPermissionMode,
     environment: defaultEnvironment,
-    initialPrompt,
+    ...(initialPromptSeed !== null ? { initialPrompt: initialPromptSeed } : {}),
   };
   const composerKey = draftKey ?? pluginId ?? "default";
   const handleSubmit = async (request: NewThreadRequest) => {

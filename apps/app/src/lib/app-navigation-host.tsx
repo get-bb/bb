@@ -1,4 +1,14 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import type {
   ExperimentalFileOpenOptions,
   JsonValue,
@@ -39,7 +49,7 @@ interface AppNavigationHostCapabilities {
   openUrl?: (intent: AppUrlOpenIntent) => boolean;
 }
 
-interface ResolvedAppNavigationHostCapabilities {
+export interface ResolvedAppNavigationHostCapabilities {
   panel: AppPanelController;
   openFileExternally: (intent: ExperimentalFileOpenOptions) => boolean;
   openFilePreview: (intent: AppFilePreviewIntent) => boolean;
@@ -100,4 +110,142 @@ export function AppNavigationHostProvider({
 
 export function useAppNavigationHost() {
   return useContext(AppNavigationHostContext);
+}
+
+export type AppNavigationSurfaceId = symbol;
+
+const focusedSurfaces = new Map<
+  AppNavigationSurfaceId,
+  { current: ResolvedAppNavigationHostCapabilities }
+>();
+const focusedSurfaceListeners = new Set<() => void>();
+
+function notifyFocusedSurfaceListeners(): void {
+  for (const listener of [...focusedSurfaceListeners]) listener();
+}
+
+const AppNavigationSurfaceIdContext =
+  createContext<AppNavigationSurfaceId | null>(null);
+
+export function useAppNavigationSurfaceId(): AppNavigationSurfaceId | null {
+  return useContext(AppNavigationSurfaceIdContext);
+}
+
+function FocusedSurfaceRegistration({
+  surface,
+  isFocused,
+}: {
+  surface: AppNavigationSurfaceId;
+  isFocused: boolean;
+}) {
+  const host = useAppNavigationHost();
+  const latest = useRef(host);
+  useLayoutEffect(() => {
+    latest.current = host;
+  });
+  useEffect(() => {
+    if (!isFocused) return;
+    focusedSurfaces.set(surface, latest);
+    notifyFocusedSurfaceListeners();
+    return () => {
+      focusedSurfaces.delete(surface);
+      notifyFocusedSurfaceListeners();
+    };
+  }, [isFocused, surface]);
+  return null;
+}
+
+export function AppNavigationSurfaceProvider({
+  capabilities,
+  isFocused,
+  children,
+}: {
+  capabilities: AppNavigationHostCapabilities;
+  isFocused: boolean;
+  children: ReactNode;
+}) {
+  const [surface] = useState<AppNavigationSurfaceId>(() =>
+    Symbol("app-navigation-surface"),
+  );
+  return (
+    <AppNavigationHostProvider capabilities={capabilities}>
+      <AppNavigationSurfaceIdContext.Provider value={surface}>
+        <FocusedSurfaceRegistration surface={surface} isFocused={isFocused} />
+        {children}
+      </AppNavigationSurfaceIdContext.Provider>
+    </AppNavigationHostProvider>
+  );
+}
+
+export function useAppNavigationHostRef(): RefObject<ResolvedAppNavigationHostCapabilities> {
+  return useRef(DEFAULT_APP_NAVIGATION_HOST);
+}
+
+export function AppNavigationHostCapture({
+  hostRef,
+}: {
+  hostRef: RefObject<ResolvedAppNavigationHostCapabilities>;
+}) {
+  const host = useAppNavigationHost();
+  useLayoutEffect(() => {
+    hostRef.current = host;
+  });
+  return null;
+}
+
+export function getFocusedAppNavigationSurface(): ResolvedAppNavigationHostCapabilities | null {
+  let focused: ResolvedAppNavigationHostCapabilities | null = null;
+  for (const surface of focusedSurfaces.values()) focused = surface.current;
+  return focused;
+}
+
+export function getFocusedAppNavigationSurfaceId(): AppNavigationSurfaceId | null {
+  let focused: AppNavigationSurfaceId | null = null;
+  for (const surface of focusedSurfaces.keys()) focused = surface;
+  return focused;
+}
+
+export function subscribeFocusedAppNavigationSurface(
+  listener: () => void,
+): () => void {
+  focusedSurfaceListeners.add(listener);
+  return () => {
+    focusedSurfaceListeners.delete(listener);
+  };
+}
+
+export function getFocusedAppPanelController(): AppPanelController | null {
+  return getFocusedAppNavigationSurface()?.panel ?? null;
+}
+
+export function resetFocusedAppNavigationSurfacesForTest(): void {
+  focusedSurfaces.clear();
+}
+
+export function FocusedAppNavigationSurfaceProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  const parent = useAppNavigationHost();
+  const latestParent = useRef(parent);
+  useLayoutEffect(() => {
+    latestParent.current = parent;
+  });
+  const [capabilities] = useState(() => {
+    const host = () => getFocusedAppNavigationSurface() ?? latestParent.current;
+    return {
+      openFileExternally: (intent: ExperimentalFileOpenOptions) =>
+        host().openFileExternally(intent),
+      openFilePreview: (intent: AppFilePreviewIntent) =>
+        host().openFilePreview(intent),
+      openTerminal: (session: TerminalSession) => host().openTerminal(session),
+      openUrl: (intent: AppUrlOpenIntent) => host().openUrl(intent),
+    };
+  });
+  return (
+    <AppNavigationHostProvider capabilities={capabilities}>
+      {children}
+    </AppNavigationHostProvider>
+  );
 }

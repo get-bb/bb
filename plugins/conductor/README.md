@@ -50,8 +50,9 @@ fresh worktree on the same machine.
 
 ## Run script
 
-**Run** (also **Run workspace script** in the command palette, Mod+R by
-default) reads the run script from the workspace's checkout, the way Conductor
+**Run** (also **Run workspace script** in the command palette, Mod+Alt+R by
+default: ⌥⌘R on macOS, Ctrl+Alt+R elsewhere; bb keeps Mod+R for reloading
+the window) reads the run script from the workspace's checkout, the way Conductor
 does:
 
 ```toml
@@ -85,5 +86,5 @@ read; without either plugin those parts are simply left out. Which projects
 are expanded and the last chat opened in each workspace are kept in this
 browser's local storage.
 
-Switch back to bb's own list under Settings → Appearance → Sidebar, or disable
-the plugin.
+Switch back to bb's own list under Settings → Appearance → Sidebar thread
+list, or disable the plugin.

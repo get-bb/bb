@@ -56,6 +56,7 @@ type ThreadItemComparator = (
 export type ThreadComparator = ((
   left: SidebarThread,
   right: SidebarThread,
+  level?: "root" | "child",
 ) => number) & {
   compareItems?: ThreadItemComparator;
 };
@@ -89,22 +90,19 @@ export function compareByCreatedAtDescending(
   return compareCodepoint(left.id, right.id);
 }
 
-function compareByLatestAttentionAtDescending(
-  left: SidebarThread,
-  right: SidebarThread,
+function latestSortActivityAt(
+  thread: SidebarThread,
+  level: "root" | "child",
 ): number {
-  const latestAttentionAtDelta =
-    right.latestAttentionAt - left.latestAttentionAt;
-  if (latestAttentionAtDelta !== 0) {
-    return latestAttentionAtDelta;
-  }
-
-  return compareByCreatedAtDescending(left, right);
+  return level === "child"
+    ? Math.max(thread.latestAttentionAt, thread.experimental_statusChangedAt)
+    : thread.latestAttentionAt;
 }
 
 export function compareStandardThreads(
   left: SidebarThread,
   right: SidebarThread,
+  level: "root" | "child" = "root",
 ): number {
   const leftIsActive = left.status === "active";
   const rightIsActive = right.status === "active";
@@ -117,7 +115,9 @@ export function compareStandardThreads(
     return compareByCreatedAtDescending(left, right);
   }
 
-  return compareByLatestAttentionAtDescending(left, right);
+  const activityDelta =
+    latestSortActivityAt(right, level) - latestSortActivityAt(left, level);
+  return activityDelta || compareByCreatedAtDescending(left, right);
 }
 
 function representativeThread(item: ProjectThreadItem): SidebarThread {
@@ -386,7 +386,7 @@ function buildThreadNode({
 
   const children = buildSortedItems(
     childNodes,
-    compareThreads,
+    (left, right) => compareThreads(left, right, "child"),
     groupEnvironmentThreads,
     false,
     thread.environment?.id ?? null,

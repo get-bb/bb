@@ -13,7 +13,7 @@ declare module "ws" {
   export interface ClientOptions {
     agent?: Agent;
     headers?: Record<string, string>;
-    perMessageDeflate?: boolean;
+    perMessageDeflate?: boolean | PerMessageDeflateOptions;
   }
 
   export class WebSocket extends EventEmitter {
@@ -27,7 +27,15 @@ declare module "ws" {
     readonly readyState: number;
     readonly bufferedAmount: number;
     readonly protocol: string;
-    send(data: string | Buffer | Uint8Array): void;
+    send(
+      data: string | Buffer | Uint8Array,
+      options?: { compress?: boolean },
+      callback?: (error?: Error) => void,
+    ): void;
+    send(
+      data: string | Buffer | Uint8Array,
+      callback?: (error?: Error) => void,
+    ): void;
     close(code?: number, reason?: string): void;
     terminate(): void;
     on(event: "open", listener: () => void): this;

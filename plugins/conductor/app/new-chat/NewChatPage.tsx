@@ -4,10 +4,9 @@ import {
   experimental_useSidebarThreads as useSidebarThreads,
   ThreadTitle,
   useBbNavigate,
-  useComposers,
+  experimental_useActiveComposer as useActiveComposer,
   useSdk,
   type NewThreadRequest,
-  type PluginComposerApi,
   type PluginNavPanelProps,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
@@ -15,22 +14,7 @@ import { Icon } from "@/components/ui/icon";
 import { useLastActiveThreads } from "../sidebar/prefs.js";
 import { TabStrip } from "../tabs/WorkspaceTabs.js";
 import { findWorkspace } from "../workspace.js";
-import { useMarkNewChatEnvironment } from "./active.js";
 import { draftKeyFor, environmentIdFromSubPath } from "./route.js";
-
-function findComposer(
-  composers: readonly PluginComposerApi[],
-  draftKey: string,
-): PluginComposerApi | null {
-  const fresh = composers.filter(
-    (composer) => composer.scope.kind === "new-thread",
-  );
-  return (
-    fresh.find((composer) => composer.key.includes(draftKey)) ??
-    fresh.at(-1) ??
-    null
-  );
-}
 
 function TranscriptChip({
   chat,
@@ -53,16 +37,9 @@ function TranscriptChip({
   );
 }
 
-function TranscriptChips({
-  chats,
-  draftKey,
-}: {
-  chats: readonly PluginSidebarThread[];
-  draftKey: string;
-}) {
-  const composers = useComposers();
+function TranscriptChips({ chats }: { chats: readonly PluginSidebarThread[] }) {
+  const composer = useActiveComposer();
   const addTranscript = (chat: PluginSidebarThread) => {
-    const composer = findComposer(composers, draftKey);
     if (composer === null) return;
     composer.insert([
       {
@@ -88,7 +65,6 @@ function TranscriptChips({
 
 export function NewChatPage({ subPath }: PluginNavPanelProps) {
   const environmentId = environmentIdFromSubPath(subPath);
-  useMarkNewChatEnvironment(environmentId);
   const sdk = useSdk();
   const navigate = useBbNavigate();
   const lastActive = useLastActiveThreads();
@@ -156,10 +132,7 @@ export function NewChatPage({ subPath }: PluginNavPanelProps) {
           {workspace.chats.length === 0 ? null : (
             <div className="flex flex-col gap-2">
               <p>Add chat transcripts:</p>
-              <TranscriptChips
-                chats={workspace.chats}
-                draftKey={draftKeyFor(environmentId)}
-              />
+              <TranscriptChips chats={workspace.chats} />
             </div>
           )}
         </div>

@@ -4,13 +4,11 @@
   replace bb's source or diff renderer everywhere it draws supplied content:
   the native file preview, timeline file diffs, the environment diff panel's
   file bodies, and every plugin calling the host components. Registration:
-  `{ id, title, description?, component }`. Like `experimental_threadList`
-  each slot is **exclusive** — one renderer at a time; a plugin the user
-  installed wins over one bundled with bb, then the first in slot order, and
-  a missing, disabled, or crashing replacement falls back to bb's
-  renderer. Installing and enabling the plugin activates it, and the user can
-  pin bb's renderer or a specific provider under
-  **Settings → Appearance** ("Source code" / "Diffs"), per client. There are no
+  `{ id, title, description?, component }`. Each slot is **exclusive** (see
+  exclusive-slots.md); the picks are
+  `sourceCode.provider` and `diff.provider`, synced across the user's
+  devices, and `__builtin__` keeps bb's renderer. A crashing replacement
+  falls back to bb's renderer. There are no
   scope or extension filters on the registration, so conditional behavior
   belongs in the component. Source props:
   `{ content, path, overflow, highlightedLines, Original }`;
@@ -43,11 +41,11 @@ Original }`. `experimental_fullFileContents` is either
   sent message editors): the editor, @-mention and slash-command menus,
   attachments, voice, the `+` and send menus and the send and stop controls.
   Banners, approval cards and queued messages above the box stay bb's.
-  Registration: `{ id, title, description?, component }`. Exclusive like
-  `experimental_threadList`: a composer from a plugin the user installed wins
-  over the bundled Composer plugin; users choose under **Settings → Appearance
-  → Composer** (`composer.provider`). With no composer plugin enabled, no
-  composer is shown. bb's own composer is the bundled `plugins/composer`
+  Registration: `{ id, title, description?, component }`. Exclusive (see
+  exclusive-slots.md); the pick is `composer.provider`.
+  While your composer is crashed, bb shows the bundled one with the same draft
+  and attachments, and its toast offers Reload. With no composer plugin
+  enabled, no composer is shown. bb's own composer is the bundled `plugins/composer`
   plugin, built on this slot; copy it to make your own.
 
   Read and write the draft with `useComposer()` (`draft`, `replace`) and
@@ -70,7 +68,9 @@ Original }`. `experimental_fullFileContents` is either
   `shortcut`, and `run()`; gate each on `requiresInput` and your own
   upload and voice state. `input.compact` (`when: "always" | "narrow"`,
   `placeholder`) says when to show a one-line form; report the form you
-  show in `editor.state.layout`. Pass your menu element and open state to
+  show in `editor.state.layout`, the only state a box reports; bb fills
+  `useComposer().isRunning`, `isSubmitting` and `isSubmittingBlocked` from
+  `submission`, `attachments` and `voice`. Pass your menu element and open state to
   `experimental_ComposerRoot` (`menuRef`, `menuOpen`). Mentions, attachments and history entries
   use the same `ComposerMention`, `ComposerAttachment` and
   `ComposerDraftSnapshot` shapes as `useComposer()`, and
@@ -152,9 +152,12 @@ openWorkspaceFile }` — register a leaf
   nested agent Markdown activate directives — user messages, file previews,
   and other Markdown surfaces stay plain. Directives inside inline code or
   fenced code blocks stay literal. Incomplete streaming directives stay
-  literal until the closing syntax arrives. Unknown, disabled, malformed,
-  conflicting, or crashing directives fall back to rendering the original
-  `source` (the component ErrorBoundary still isolates a throw). Treat
+  literal until the closing syntax arrives. Unknown, disabled, malformed, or
+  crashing directives fall back to rendering the original `source` (the
+  component ErrorBoundary still isolates a throw). A name several plugins
+  claim shows a plugin picker with its `source` until the user picks one,
+  which sets `messageDirective.byName` (see
+  exclusive-slots.md). Treat
   attributes as attacker-controlled even though the model emitted them;
   load workspace data through `bb.sdk.files` with root/host confinement
   rather than trusting paths. Reference implementation:
@@ -185,9 +188,10 @@ message, Original }` — render fenced code blocks of chosen languages in
   works inside it as for `messageDirective`. **Host behavior / fallbacks:**
   activates only where `messageDirective` does (assistant and nested agent
   Markdown); user messages, file previews, and plugin Markdown keep BB's code
-  block. BB's code block also renders when two plugins claim the same
-  language (BB logs a console warning naming them), when the plugin is
-  missing or disabled, and for a fence whose component throws. A throw
+  block. A language several plugins claim follows the exclusive-slot rule
+  (`codeFence.byLanguage`; see exclusive-slots.md).
+  BB's code block renders when the user picks it, when the plugin is missing
+  or disabled, and for a fence whose component throws. A throw
   affects that fence only, and BB tries the component again when the fence's
   `code` or `status` changes, so a renderer that fails on a half-streamed
   body recovers on the next chunk. Treat `code` as attacker-controlled even
@@ -210,29 +214,34 @@ message, Original }` — render fenced code blocks of chosen languages in
   public contract and examples.
 - `messageAction` → an action on chat messages: an icon button in the
   per-message action bar (user and assistant messages) and an entry in the
-  assistant-message text-selection menu. Slot actions are limited to the main
-  timeline; embedded `ThreadChat` suppresses them on both surfaces. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, icon?, run }`. Activating it calls
-  `run(context)` with `{ threadId, message, selectedText?, experimental_panel, composer }`:
+  assistant-message text-selection menu, in bb's thread view and in embedded
+  `ThreadChat`. `experimental_surfaces` limits it to `"thread-view"` and/or
+  `"embedded-chat"` (omitted = both); an empty or unknown list fails
+  registration. Host-rendered chrome, no plugin
+  component — registration: `{ id, title, icon?, experimental_surfaces?, run }`. Activating it calls
+  `run(context)` with `{ threadId, message, selectedText?, composer }` plus the
+  [callback context](frontend-hooks-and-ui.md#callback-context)
+  `{ sdk, navigate, panel }`:
   `message` is a narrow stable reference
   `{ id, threadId, role: "user" | "assistant", text, sourceSeqEnd, experimental_messageSeq }` (never
   an internal timeline row); `experimental_messageSeq` is the recorded message
   sequence used by `?msg=`, `sdk.threads.message`, and `bb thread log --message`,
   while `sourceSeqEnd` anchors provider-history forks; `selectedText` is present only for
   selection-menu invocations and holds the exact highlighted text; and
-  `experimental_panel` is the thread view's
-  [panel controller](frontend-hooks-and-ui.md#panel-controller). Errors from `run` (sync or
+  `navigate` and `panel` act on that thread view (terminals,
+  files and URLs open in its side panel). Errors from `run` (sync or
   async) are contained and
   logged, never breaking the timeline.
 - `app.commands.register` → a row in bb's quick palette (Mod+Shift+P), listed
   under "Plugins" beside bb's own commands. Host-rendered chrome, no plugin
-  component — registration: `{ id, title, defaultShortcut?, isAvailable?, run }`. Both callbacks
-  receive `{ threadId, projectId, experimental_panel }`, where `threadId` and
-  `projectId` are null on surfaces without one and `experimental_panel` is the
-  focused surface's [panel controller](frontend-hooks-and-ui.md#panel-controller). `isAvailable` is called for palette listing and keyboard invocation — keep
+  component — registration: `{ id, title, defaultShortcut?, experimental_keyScope?, isAvailable?, run }`. Both callbacks
+  receive `{ threadId, projectId }` plus the
+  [callback context](frontend-hooks-and-ui.md#callback-context), where
+  `threadId` and `projectId` are null on surfaces without one, and
+  `navigate` and `panel` act on the focused surface. `isAvailable` is called for palette listing and keyboard invocation — keep
   it cheap and synchronous — and hides the row when it returns false; a row
   that needs a thread should use it, because the palette opens anywhere and
-  `experimental_panel` declines (returning false) when the focused surface has
+  `panel` declines (returning false) when the focused surface has
   no such tab.
   Errors from either callback are contained and logged, never breaking the
   palette. Write self-identifying titles ("Linear: open issue for this
@@ -250,6 +259,30 @@ message, Original }` — render fenced code blocks of chosen languages in
   `plugin:<plugin-id>/<command-id>`. Keyboard invocation uses the same current
   context and error handling as the palette and is suppressed while a modal
   is open. Shortcuts run only while the plugin frontend is active.
+  `experimental_keyScope: "pluginPage"` limits the binding to while one of
+  the plugin's own nav panel pages is the focused surface (the focused pane in
+  a split), and never while focus is in a field, an editor or a menu, or a
+  modal is open. Another plugin's page-scoped binding on the same key does not
+  collide with it; app-wide bindings and the plugin's own page commands do.
+  Only this scope accepts a bare-key default such as `{ key: "c" }`, and only
+  its commands can be rebound to bare keys; registering a bare default without
+  it rejects plugin setup. The palette still lists the command wherever
+  `isAvailable` allows, so a page command's `run` should work from other pages
+  too (Tasks' `new-task` opens the Tasks page first).
+  Show a command's current shortcut on the plugin's own buttons with
+  `experimental_useCommandShortcut(id)`, which returns
+  `{ label, ariaKeyshortcuts }` for the user's binding on this platform, or
+  null while the command is unbound; never hardcode a label such as "⌥⌘R".
+  In `renderSlot`, pass `experimental_commandShortcuts` (presentations by
+  command id) to set what it returns.
+  A focused terminal keeps unmodified keys and plain Control+letter for the
+  shell, so prefer a chord with Command, Alt or Shift, or a function key,
+  when the command should also run from a terminal.
+  Registered shortcuts match by physical key when the active layout types a
+  non-Latin character (Cyrillic, Greek, Hebrew, Arabic), and by the typed
+  character on Latin layouts such as Dvorak. A plugin that handles keys
+  itself compares them the same way with
+  `experimental_matchesShortcutKey(event, key)` and checks modifiers itself.
   A command that acts on the composer the user is typing in registers through
   `app.composer.experimental_registerCommand` instead; see the composer
   section of frontend-hooks-and-ui.
@@ -285,3 +318,27 @@ output }` for a tool call), `presentation` (the bridge's label, icon,
   per plugin; if two plugins claim one provider kind and id the host keeps
   the first by plugin id and warns. providers.md shows an example; the
   `experimental_ProviderIcon` resolution order is in frontend-components.md.
+
+## Active composer
+
+`context.composer` (every [callback context](frontend-hooks-and-ui.md#callback-context))
+is the composer the callback acts on: the handling composer for composer commands and
+`plusMenu`/`sendMenu` rows, the message thread's composer for `messageAction`, and the
+focused surface's active composer, or null, for everything else.
+`experimental_useActiveComposer()` returns that active composer to app-wide components
+such as overlays and plugin pages; inside a composer slot use `useComposer()`.
+
+The active composer is the one holding the caret, or the one that held it before focus
+moved into the command palette, a dialog, a popover or an overlay; otherwise the focused
+surface's main composer; otherwise null (a plugin page without a composer). The handle is
+detached like a `useComposers()` handle and names the same composer by `key`; the hook
+re-renders when the active composer or its draft changes. Experimental: see
+`docs/api_to_audit.md`.
+
+```ts
+app.commands.register({
+  id: "insert-date",
+  title: "Insert today's date",
+  run: ({ composer }) => composer?.insert(new Date().toDateString()),
+});
+```

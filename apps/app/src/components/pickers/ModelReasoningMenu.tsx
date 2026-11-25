@@ -46,6 +46,7 @@ import {
   ModelLoadErrorMessage,
 } from "./model-load-error-message";
 import type { ModelNavRow, MoreModelsOpenedBy } from "./ModelReasoningPicker";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const MENU_ROW_FOCUS_VISIBLE_CLASS =
   "focus-visible:bg-state-hover focus-visible:text-foreground";
@@ -612,7 +613,7 @@ function MoreModelsSubmenu({
             hoverProps.onKeyDown(event);
 
             if (
-              event.key === "Enter" ||
+              isNonImeKey(event, "Enter") ||
               event.key === " " ||
               event.key === "Spacebar" ||
               event.key === "ArrowRight"
@@ -622,7 +623,7 @@ function MoreModelsSubmenu({
               return;
             }
 
-            if (event.key === "Escape" || event.key === "ArrowLeft") {
+            if (isNonImeKey(event, "Escape") || event.key === "ArrowLeft") {
               event.preventDefault();
               onOpenedByChange(null);
             }
@@ -670,7 +671,7 @@ function MoreModelsSubmenu({
             return;
           }
 
-          if (event.key === "Escape" || event.key === "ArrowLeft") {
+          if (isNonImeKey(event, "Escape") || event.key === "ArrowLeft") {
             event.preventDefault();
             event.stopPropagation();
             onOpenedByChange(null);

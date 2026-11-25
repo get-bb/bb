@@ -1,3 +1,4 @@
+import { isImeComposing } from "@bb/shared-ui/lib/ime-keyboard";
 import {
   createContext,
   useCallback,
@@ -7,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -26,7 +28,9 @@ import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
   browserPlatform,
+  isAppCommandWhenSatisfied,
   isEditableKeyboardTarget,
+  isTypeaheadKeyboardTarget,
   matchesAppCommandContext,
   presentAppShortcut,
   type AppShortcutPresentation,
@@ -62,10 +66,12 @@ interface AppCommandProviderValue {
     source: symbol,
     active: boolean,
   ) => void;
+  registerFocusedPluginPage: (source: symbol, pluginId: string) => () => void;
   registerHandler: (
     command: KeyboardCommandId,
     registration: Omit<AppCommandHandlerRegistration, "sequence">,
   ) => () => void;
+  subscribeToAvailability: (listener: () => void) => () => void;
 }
 
 const AppCommandContextValue = createContext<AppCommandProviderValue | null>(
@@ -85,6 +91,8 @@ const EMPTY_CONTEXT: AppCommandContext = {
   questionOpen: false,
   questionFocus: false,
   promptAvailable: false,
+  pluginPage: false,
+  settingsPage: false,
   splitActive: false,
   webSurface: false,
   macPlatform: false,
@@ -116,6 +124,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
   );
   const shortcutHintModifierHeldRef = useRef(false);
   const keybindingsRef = useRef(keybindings);
+  const focusedPluginPagesRef = useRef(new Map<symbol, string>());
   const handlersRef = useRef(
     new Map<KeyboardCommandId, Map<symbol, AppCommandHandlerRegistration>>(),
   );
@@ -123,6 +132,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     new Map<AppCommandContextKey, Set<symbol>>(),
   );
   const sequenceRef = useRef(0);
+  const availabilityListenersRef = useRef(new Set<() => void>());
   const attemptedEventsRef = useRef(new WeakSet<KeyboardEvent>());
 
   useEffect(() => {
@@ -185,41 +195,87 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
     keybindingsRef.current = keybindings;
   }, [keybindings]);
 
-  const registerHandler = useCallback<
-    AppCommandProviderValue["registerHandler"]
-  >((command, registration) => {
-    const token = Symbol(command);
-    const registrations = handlersRef.current.get(command) ?? new Map();
-    sequenceRef.current += 1;
-    registrations.set(token, {
-      ...registration,
-      sequence: sequenceRef.current,
-    });
-    handlersRef.current.set(command, registrations);
+  const subscribeToAvailability = useCallback<
+    AppCommandProviderValue["subscribeToAvailability"]
+  >((listener) => {
+    const listeners = availabilityListenersRef.current;
+    listeners.add(listener);
     return () => {
-      registrations.delete(token);
-      if (registrations.size === 0) {
-        handlersRef.current.delete(command);
-      }
+      listeners.delete(listener);
     };
   }, []);
 
+  const notifyAvailabilityChanged = useCallback(() => {
+    for (const listener of availabilityListenersRef.current) listener();
+  }, []);
+
+  const registerHandler = useCallback<
+    AppCommandProviderValue["registerHandler"]
+  >(
+    (command, registration) => {
+      const token = Symbol(command);
+      const registrations = handlersRef.current.get(command) ?? new Map();
+      sequenceRef.current += 1;
+      registrations.set(token, {
+        ...registration,
+        sequence: sequenceRef.current,
+      });
+      handlersRef.current.set(command, registrations);
+      notifyAvailabilityChanged();
+      return () => {
+        registrations.delete(token);
+        if (registrations.size === 0) {
+          handlersRef.current.delete(command);
+        }
+        notifyAvailabilityChanged();
+      };
+    },
+    [notifyAvailabilityChanged],
+  );
+
   const registerContext = useCallback<
     AppCommandProviderValue["registerContext"]
-  >((key, source, active) => {
-    const sources = activeContextsRef.current.get(key) ?? new Set<symbol>();
-    if (active) {
-      sources.add(source);
-      activeContextsRef.current.set(key, sources);
-    } else {
-      sources.delete(source);
-      if (sources.size === 0) {
-        activeContextsRef.current.delete(key);
+  >(
+    (key, source, active) => {
+      const sources = activeContextsRef.current.get(key) ?? new Set<symbol>();
+      if (active) {
+        sources.add(source);
+        activeContextsRef.current.set(key, sources);
+      } else {
+        sources.delete(source);
+        if (sources.size === 0) {
+          activeContextsRef.current.delete(key);
+        }
       }
+      if (key === "splitActive") {
+        getBbDesktopInfo()?.setSplitNavigationEnabled?.(sources.size > 0);
+      }
+      notifyAvailabilityChanged();
+    },
+    [notifyAvailabilityChanged],
+  );
+
+  const registerFocusedPluginPage = useCallback<
+    AppCommandProviderValue["registerFocusedPluginPage"]
+  >(
+    (source, pluginId) => {
+      const pages = focusedPluginPagesRef.current;
+      pages.set(source, pluginId);
+      notifyAvailabilityChanged();
+      return () => {
+        pages.delete(source);
+        notifyAvailabilityChanged();
+      };
+    },
+    [notifyAvailabilityChanged],
+  );
+
+  const focusedPluginPageId = useCallback((): string | null => {
+    let pluginId: string | null = null;
+    for (const candidate of focusedPluginPagesRef.current.values()) {
+      pluginId = candidate;
     }
-    if (key === "splitActive") {
-      getBbDesktopInfo()?.setSplitNavigationEnabled?.(sources.size > 0);
-    }
+    return pluginId;
   }, []);
 
   const dispatch = useCallback(
@@ -244,7 +300,8 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       const next = { ...EMPTY_CONTEXT };
       next.mainSurface = true;
       next.modalOpen = hasOpenModal();
-      next.editableFocus = isEditableKeyboardTarget(target);
+      next.editableFocus =
+        isEditableKeyboardTarget(target) || isTypeaheadKeyboardTarget(target);
       next.terminalFocus =
         target instanceof HTMLElement &&
         target.closest("[data-app-terminal]") !== null;
@@ -288,10 +345,10 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       if (applicable.length === 0) return false;
       const context = currentContext(target);
       return applicable.some((binding) =>
-        binding.when.all.every((key) => context[key]),
+        isAppCommandWhenSatisfied(binding, context, focusedPluginPageId()),
       );
     },
-    [currentContext, defaultKeybindings, isDesktop],
+    [currentContext, defaultKeybindings, focusedPluginPageId, isDesktop],
   );
 
   const getShortcut = useCallback(
@@ -320,7 +377,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       event: KeyboardEvent,
       commands: readonly KeyboardCommandId[],
     ): KeyboardCommandId | null => {
-      if (event.defaultPrevented || event.isComposing || event.repeat) {
+      if (event.defaultPrevented || isImeComposing(event) || event.repeat) {
         return null;
       }
       const isMac = isMacKeyboardPlatform(browserPlatform());
@@ -345,7 +402,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
 
   const handleKeyboardEvent = useCallback(
     (event: KeyboardEvent): boolean => {
-      if (event.defaultPrevented || event.isComposing || event.repeat) {
+      if (event.defaultPrevented || isImeComposing(event) || event.repeat) {
         return false;
       }
       if (attemptedEventsRef.current.has(event)) return false;
@@ -366,7 +423,11 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
         }
         if (!matchesAppShortcut(event, binding.shortcut, isMac)) continue;
         if (context === null) context = currentContext(event.target);
-        if (!matchesAppCommandContext(binding, context)) continue;
+        if (
+          !matchesAppCommandContext(binding, context, focusedPluginPageId())
+        ) {
+          continue;
+        }
         if (!dispatch(binding.command, event.target)) return false;
         event.preventDefault();
         event.stopPropagation();
@@ -374,7 +435,7 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       }
       return false;
     },
-    [currentContext, dispatch, isDesktop],
+    [currentContext, dispatch, focusedPluginPageId, isDesktop],
   );
 
   useEffect(() => {
@@ -420,7 +481,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       handleKeyboardEvent,
       isCommandAvailable,
       registerContext,
+      registerFocusedPluginPage,
       registerHandler,
+      subscribeToAvailability,
     }),
     [
       dispatch,
@@ -429,7 +492,9 @@ export function AppCommandProvider({ children }: { children: ReactNode }) {
       handleKeyboardEvent,
       isCommandAvailable,
       registerContext,
+      registerFocusedPluginPage,
       registerHandler,
+      subscribeToAvailability,
     ],
   );
 
@@ -526,6 +591,18 @@ export function useAppCommandRunner(): AppCommandRunner {
   );
 }
 
+function subscribeToNothing(): () => void {
+  return () => {};
+}
+
+export function useIsAppCommandAvailable(command: KeyboardCommandId): boolean {
+  const value = useContext(AppCommandContextValue);
+  return useSyncExternalStore(
+    value?.subscribeToAvailability ?? subscribeToNothing,
+    () => value?.isCommandAvailable(command, null) ?? false,
+  );
+}
+
 export function useAppCommandContext(
   key: AppCommandContextKey,
   active: boolean,
@@ -538,6 +615,19 @@ export function useAppCommandContext(
     registerContext(key, source, active);
     return () => registerContext(key, source, false);
   }, [active, key, registerContext]);
+}
+
+export function useAppCommandFocusedPluginPage(
+  pluginId: string,
+  focused: boolean,
+): void {
+  const registerFocusedPluginPage = useContext(
+    AppCommandContextValue,
+  )?.registerFocusedPluginPage;
+  useEffect(() => {
+    if (!registerFocusedPluginPage || !focused) return;
+    return registerFocusedPluginPage(Symbol(pluginId), pluginId);
+  }, [focused, pluginId, registerFocusedPluginPage]);
 }
 
 export function useAppCommandShortcut(

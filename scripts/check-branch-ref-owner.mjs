@@ -16,6 +16,8 @@ export const BRANCH_REF_ALLOWLIST = {
     "Checks that a self-update fast-forwards bb's own source checkout; no branch is chosen.",
   "packages/environment-provider-host/src/branch-options.ts":
     "Pins origin's default branch to the top of the branch picker; it does not choose a base.",
+  "plugins/environment-git-worktree/host/handoff.ts":
+    "Checks that a warm worktree's commit is behind the remote base commit it will fast-forward to; both are commits, no branch is chosen.",
   "plugins/environment-project-checkout/host/checkout.ts":
     "Switching to an existing branch keeps the local branch; origin is only the fresh-clone fallback.",
 };

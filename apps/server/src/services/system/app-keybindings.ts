@@ -68,7 +68,7 @@ function unassignedBinding(
   };
 }
 
-function macArrowBindings(
+function macOnlyBindings(
   command: AppCommandId,
   key: string,
   modifiers: ShortcutModifiers,
@@ -126,6 +126,12 @@ const mainWithoutModal = {
   all: ["mainSurface"],
   none: ["modalOpen"],
 } as const;
+
+const desktopWindow: BindingOptions = {
+  all: ["mainSurface"],
+  desktopOnly: true,
+  none: ["browserFocus"],
+};
 
 const composerWithoutModal = {
   all: ["mainSurface", "promptAvailable"],
@@ -235,7 +241,7 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
       ["pane.focus.down", "ArrowDown"],
     ] as const
   ).flatMap(([command, key]) =>
-    macArrowBindings(
+    macOnlyBindings(
       command,
       key,
       { mod: true, control: true, shift: true },
@@ -252,25 +258,25 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     splitWithoutModal,
   ),
   binding("pane.close", "x", { mod: true, shift: true }, splitWithoutModal),
-  ...macArrowBindings(
+  ...macOnlyBindings(
     "panel.previousTab",
     "ArrowLeft",
     { mod: true, control: true },
     mainWithoutModal,
   ),
-  ...macArrowBindings(
+  ...macOnlyBindings(
     "panel.nextTab",
     "ArrowRight",
     { mod: true, control: true },
     mainWithoutModal,
   ),
-  ...macArrowBindings(
+  ...macOnlyBindings(
     "panel.previousNewTabItem",
     "ArrowUp",
     { mod: true, control: true },
     mainWithoutModal,
   ),
-  ...macArrowBindings(
+  ...macOnlyBindings(
     "panel.nextNewTabItem",
     "ArrowDown",
     { mod: true, control: true },
@@ -425,6 +431,15 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     },
   ),
   binding("workspace.openPreferred", "o", { mod: true }, mainWithoutModal),
+  binding(
+    "settings.search",
+    "/",
+    {},
+    {
+      all: ["mainSurface", "settingsPage"],
+      none: ["modalOpen", "editableFocus"],
+    },
+  ),
   ...QUESTION_SELECT_APP_COMMAND_IDS.map((command, index) =>
     binding(
       command,
@@ -458,11 +473,13 @@ export const DEFAULT_APP_KEYBINDINGS: AppDefaultKeybindings = [
     desktopOnly: true,
     none: ["modalOpen"],
   }),
-  unassignedBinding("window.reload", {
-    all: ["mainSurface"],
-    desktopOnly: true,
-    none: ["modalOpen"],
-  }),
+  ...macOnlyBindings("window.reload", "r", { mod: true }, desktopWindow),
+  ...macOnlyBindings(
+    "window.forceReload",
+    "r",
+    { mod: true, shift: true },
+    desktopWindow,
+  ),
   unassignedBinding("dataDirectory.open", {
     all: ["mainSurface"],
     desktopOnly: true,

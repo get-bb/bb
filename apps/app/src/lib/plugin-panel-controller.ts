@@ -60,6 +60,14 @@ export interface RetiredPanelOpenOptions {
   params?: JsonValue;
 }
 
+export function withRetiredPanelAlias<
+  Context extends { panel: ExperimentalPanelController },
+>(
+  context: Context,
+): Context & { experimental_panel: ExperimentalPanelController } {
+  return { ...context, experimental_panel: context.panel };
+}
+
 export function createRetiredOpenPanel(
   panel: ExperimentalPanelController,
   ownTab?: ExperimentalTabReference & { availability: "action" },

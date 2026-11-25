@@ -31,6 +31,7 @@ function entry(
     publisherKey: "bb-official",
     publisherLabel: "BB Official",
     official: true,
+    listings: [],
     author: null,
     installed: false,
     conflictingInstallSource: null,

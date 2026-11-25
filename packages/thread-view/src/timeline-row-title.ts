@@ -851,57 +851,20 @@ function mapWebFetchTitle(row: TimelineWebFetchWorkRow): TimelineTitle {
   }
 }
 
+const IMAGE_VIEW_PRESENTATION: TimelineRowPresentation = {
+  label: { pending: "Viewing image", completed: "Viewed image" },
+  icon: { glyph: "Eye" },
+};
+
 function mapImageViewTitle(row: TimelineImageViewWorkRow): TimelineTitle {
-  if (row.presentation) {
-    return presentedTitle({
-      presentation: row.presentation,
-      status: row.status,
-      startedAt: row.startedAt,
-      completedAt: row.completedAt,
-      content: fileNameFromPath(row.path),
-      plainContent: row.path,
-    });
-  }
-  const pathSegment = segment(fileNameFromPath(row.path), {
-    em: false,
-    plainText: row.path,
-    truncate: true,
+  return presentedTitle({
+    presentation: row.presentation ?? IMAGE_VIEW_PRESENTATION,
+    status: row.status,
+    startedAt: row.startedAt,
+    completedAt: row.completedAt,
+    content: fileNameFromPath(row.path),
+    plainContent: row.path,
   });
-  switch (row.status) {
-    case "pending":
-      return makeTitle({
-        segments: [segment("Viewing image:", { shimmer: true }), pathSegment],
-      });
-    case "completed":
-      return makeTitle({
-        segments: [segment("Viewed image:"), pathSegment],
-        decorations: filterNull([
-          durationDecoration(row.startedAt, row.completedAt),
-        ]),
-      });
-    case "error":
-      return makeTitle({
-        segments: [segment("Viewed image:"), pathSegment],
-        decorations: [
-          statusDecoration(
-            "error",
-            row.completedAt !== null ? row.completedAt - row.startedAt : null,
-          ),
-        ],
-      });
-    case "interrupted":
-      return makeTitle({
-        segments: [segment("Interrupted image view:"), pathSegment],
-        decorations: [
-          statusDecoration(
-            "interrupted",
-            row.completedAt !== null ? row.completedAt - row.startedAt : null,
-          ),
-        ],
-      });
-    default:
-      return assertNever(row.status);
-  }
 }
 
 function mapImageGenerationTitle(

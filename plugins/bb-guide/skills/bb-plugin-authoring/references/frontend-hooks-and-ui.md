@@ -7,7 +7,7 @@ Hooks:
   `projects`, `environments`, `hosts`, `files`, …), running with the
   signed-in user's session on the app origin. The first choice for reading
   and mutating bb state from a frontend: `sdk.threadSections.create({ name })`,
-  `sdk.threads.update({ id, sectionId })`, `sdk.threads.pin({ id })`,
+  `sdk.threads.update({ threadId, sectionId })`, `sdk.threads.pin({ threadId })`,
   `sdk.threads.spawn(request)`. `spawn` and `fork` stamp your plugin as the
   origin and the plugin-metadata calls default `pluginId`, exactly like the
   backend client. Thread title, section, and parent updates are optimistic in
@@ -16,14 +16,14 @@ Hooks:
   unread are optimistic too. For bb's archive and delete flows (child
   confirmation, pane cleanup, Undo) render bb's thread menu or run its
   thread actions; see "An action in every thread menu". The client is stable,
-  so it is safe in dependency lists. Test with `renderSlot({ sdk: { threads: { update: async () => ({ … }) }
-} } })` and read `inspection.sdkCalls`.
+  so it is safe in dependency lists. Test with
+  `renderSlot(registration, props, { sdk: { threads: { update: async () => ({ … }) } } })`
+  and read `inspection.sdkCalls`.
 - `useRpc<typeof rpcContract>()` → `{ call(method, input?) }` — exact method,
   input, and result inference from a type-only backend contract import.
   Reach for it when the work needs your server: secrets, host files, or your
   plugin's own storage.
-- `useRealtime(channel, handler)` — fires for this plugin's
-  `bb.realtime.publish(channel, …)` signals while mounted.
+- `useRealtime(channel, handler)` — fires for this plugin's `bb.realtime.publish(channel, …)` signals while mounted.
 - `useRealtimeConnectionState()` — returns `"connecting"`, `"connected"`, or
   `"reconnecting"` for the same shared socket used by `useRealtime`. Reconcile
   durable server state on subsequent transitions to `connected` (not the first
@@ -33,27 +33,31 @@ Hooks:
 - `experimental_useThreadExtensionState(threadId, kind)` → the latest state your provider bridge emitted for one of your declared `extensionKinds` (the local name, without your plugin id) on that thread, or null when there is none. It follows live updates while bb shows the thread; parse the value with your kind's schema before use. Only your own plugin's kinds are readable.
 - `useSettings()` → `{ values, isLoading }` — effective non-secret values
   (secret settings are excluded; read them server-side only).
-- `useBbContext()` → `{ projectId, threadId }` from the current route.
+- `useBbContext()` → `{ projectId, threadId, experimental_pluginPanel }` from
+  the current route. `experimental_pluginPanel` is `{ pluginId, path, subPath }`
+  when the route shows a plugin nav panel (any plugin's; compare `pluginId`
+  with `experimental_usePluginId()`), with `subPath` percent-encoded like the
+  panel component's prop, and null elsewhere.
 - `experimental_usePluginId()` → this plugin's id, the same value as the
   server's `bb.pluginId`. Key anything kept outside bb's plugin storage with
   it (localStorage entries, log prefixes) so a copy published under another
   package name does not share the original's state. `renderSlot` returns its
   `pluginId` option, `test-plugin` by default.
-- `experimental_useQuestionFormHost()` → `{ shortcuts, actionShortcuts,
-registerChoiceHandler, registerActionHandler }` inside a `pendingInteraction`
-  component: the host-owned answer shortcuts by zero-based option index, the
-  `submit`, `previous`, `next`, and `cancel` action shortcuts, and a way to act
-  when the person presses one. Action shortcuts also
-  fire from text fields inside an element marked `data-question-form`. The
-  registry's `question-form` item uses it. Empty outside a pending interaction
-  and in `renderSlot`.
-- `useBbNavigate()` → `{ toThread(id), toProject(id), toPluginPanel(path,
-{ subPath?, replace? }?), toCompose({ initialPrompt?, focusPrompt? }?),
-openUrl(url), experimental_openFilePreview(options),
-experimental_openFileExternally(options), experimental_openTerminal({ terminalId }) }`.
-  `toCompose` opens the root compose screen; pass `initialPrompt` to seed the
-  composer draft and `focusPrompt: true` to focus it. Open side-panel tabs
-  with the [panel controller](#panel-controller).
+- `experimental_useQuestionFormHost()` → `{ density, promptShownAbove,
+shortcuts, actionShortcuts, registerChoiceHandler, registerActionHandler }`
+  in a `pendingInteraction` component. In a parent's Active child threads
+  card: `"compact"` and the question the card shows; elsewhere `"default"`
+  and null. Then answer shortcuts by
+  option index, `submit`/`previous`/`next`/`cancel` action shortcuts (they also
+  fire in text fields inside `data-question-form`), and handlers for both.
+  bb's own and the registry's `question-form` use it.
+- `useBbNavigate()` → `{ toThread(id, options?), toProject(id), toPluginPanel(path, { subPath?, replace? }?),
+toCompose({ initialPrompt?, focusPrompt?, split? }?), openUrl(url), experimental_openFilePreview(options),
+experimental_openFileExternally(options), experimental_openTerminal({ terminalId }), experimental_toSettings(target?),
+experimental_threadHref(id, options?), experimental_settingsHref(target?) }`; see [frontend-navigation.md](frontend-navigation.md).
+  `toCompose` opens the root compose screen; pass `initialPrompt` (a string or `ComposerInsertPart[]`, as `insert()` takes)
+  to seed an empty draft (`experimental_replacePrompt: true` replaces one with text), `focusPrompt: true` to focus it, and `split: true` to open it beside the caller.
+  Open side-panel tabs with the [panel controller](#panel-controller).
   `openUrl` owns HTTP(S) only and returns false for schemes BB
   leaves to normal anchor behavior. The two file methods accept an
   `ExperimentalFileOpenOptions` live-file target; the preview also accepts
@@ -74,7 +78,7 @@ experimental_openFileExternally(options), experimental_openTerminal({ terminalId
   when they change; depend on those fields, not on the handle, in memo
   dependency lists.
   - State: `scope` (`thread`, `queued-message`, or `new-thread`, with that
-    surface's identifiers), `key` (stable identity for the composer's draft:
+    surface's ids and project; thread scopes add `environmentId`), `key` (stable identity for the composer's draft:
     the same across remounts and reloads, per editing session for queued and
     sent-message editors), `layout`
     (`"expanded" | "compact"`), `isRunning`, `isSubmitting`,
@@ -148,6 +152,7 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   `PluginComposerApi` with the same lifetime rule; `setTextEffect` and
   `setInputLock` have no effect here. Re-renders when the list or a listed
   draft or selection changes.
+- `experimental_useActiveComposer()` → see [Active composer](frontend-renderer-slots.md#active-composer).
 - `experimental_useCodeTheme()` → `{ mode, name, theme }` — the code theme bb
   is currently rendering with. `mode` is `"light" | "dark"`, `name` is the
   registered theme name for that mode, and `theme` is the resolved **VS Code
@@ -172,6 +177,7 @@ reasoningLevel?, serviceTier?, permissionMode? })` sets the pickers as if
   representation next to the plain text. Resolves true once the clipboard holds
   the content and false when every path failed; it never rejects. Show your own
   success or failure feedback. Never call `navigator.clipboard` directly.
+- `experimental_showErrorToast({ error, fallbackMessage })` — bb's own failed-request toast: title `fallbackMessage`, description the server's message for an SDK error (not `error.message`, which reads `HTTP 409: ...`), bb's own text for network failures and lifecycle errors, nothing for an `AbortError`.
 - `experimental_saveFile({ fileName, url } | { fileName, blob })` →
   `Promise<"started" | "failed">` — saves a file
   through bb's own download path. Browsers and bb Desktop start an ordinary
@@ -205,8 +211,9 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   Each item supplies `id`, `label`, optional `icon` (drawn instead of the
   plugin's branding icon), `description`, and `disabled` (a boolean or a
   function of the composer, re-evaluated when the draft or selection changes),
-  plus `run({ composer })`. `plusMenu` rows also appear in the sent-message
-  editor (scope `thread`), where the other customizations do not mount.
+  plus `run({ composer, ...[callback context](#callback-context) })`. `plusMenu` rows, their popups, and
+  composer commands also work in the sent-message editor (scope `thread`),
+  where actions, banners, `sendMenu` rows and rich text do not mount.
 - `richText.effects` rules return plain-text `{ from, to }` ranges and a class
   name from plugin CSS. Decorations are paint-only and never mutate the draft.
 - A `messageAction`'s `run` receives `context.composer`: the composer of the
@@ -215,12 +222,11 @@ sendMenu?, banners?, richText? })`. Omitted `scopes` means all thread,
   Popup ids must be unique across the plugin's composer customizations.
   Open by popup id with `composer.experimental_openPopup(id)`, from a
   `plusMenu` row's `composer`, or from a composer command (for example Ctrl+R):
-  `app.composer.experimental_registerCommand({ id, title, defaultShortcut?, run })`.
-  A composer command is listed and rebindable like any plugin command and shares
-  the `app.commands` ID namespace, but `run` receives `{ composer }` for the
-  composer that handles it, through the same path as bb's own "Focus composer"
-  command: the composer holding the caret, or with the caret outside every
-  composer, the focused pane's primary composer. Its shortcut is inactive while
+  `app.composer.experimental_registerCommand({ id, title, defaultShortcut?, scopes?, isAvailable?, run })`.
+  It is listed, rebindable and namespaced like any plugin command; `run` gets `composer` (beside the [callback context](#callback-context)),
+  the handling composer, via bb's own "Focus composer" path: the one holding the caret, else the focused pane's primary composer.
+  `scopes` (customization kinds) and `isAvailable(context)` (same context as `run`; a throw counts as false) limit
+  which composers claim it; elsewhere the key falls through to bb and the palette hides the row. Its shortcut is inactive while
   a terminal, browser tab or modal has focus, and the palette lists it only when
   some composer would run it. The host
   shares mention-menu placement and dismissal, and uses a persistent responsive
@@ -271,7 +277,7 @@ composer.
 - `toast`: `import { toast } from "sonner"` — runtime-shimmed to bb's own
   toast, so `toast.success("Saved")` looks like bb's toasts and lands in the
   notification center; `toast.custom` keeps your rendering. Never mount your
-  own `<Toaster>`.
+  own `<Toaster>`. For a failed SDK call use `experimental_showErrorToast`.
 - Never bundled (runtime-shimmed, import freely): react, the portaling
   radix families (`@radix-ui/react-dialog`, `-alert-dialog`, `-popover`,
   `-select`, `-dropdown-menu`, `-context-menu`, `-menubar`, `-hover-card`,
@@ -302,6 +308,7 @@ composer.
   after adding components (`bb plugin new` runs the first one; `shadcn add`
   installs each item's declared deps). Users of your prebuilt artifact need no
   npm. Managed source installs run bb's bundled npm.
+- `@bb/settings-section`: bb's settings cards and rows (frontend-core-slots.md).
 - `EmptyState` ships as `npx shadcn add @bb/empty-state`. There is no
   `PageBody` or `Spinner`; write your own (each is a few lines; see
   `plugins/github/components/` for reference implementations).
@@ -322,14 +329,25 @@ literals: the build's Tailwind pass emits default-theme utilities only, and
 hardcoded colors break custom palettes. `tw-animate-css` utilities also
 compile in plugin builds.
 
+## Callback context
+
+Callbacks cannot call hooks, so every callback's context extends `ExperimentalPluginActionContext`
+`{ sdk, navigate, panel, composer, threadRequests }`: your `useSdk()`, your `useBbNavigate()`, the
+[panel controller](#panel-controller) of the invoking surface, the composer it acts on (see
+[Active composer](frontend-renderer-slots.md#active-composer)), and bb's Archive and Delete flows
+(`threadRequests.requestArchive(ids)` / `requestDelete(ids)`: confirmation, child counts, Undo), also
+`experimental_useThreadRequests()` in components. That covers `app.commands`, `messageAction`, `experimental_threadAction`,
+action tabs, `experimental_newThreadPanelAction`, sidebar footer actions, composer commands and `plusMenu`/`sendMenu` rows.
+`navigate` and `panel` act on the focused surface for commands, thread and footer actions; the message's thread view for
+message actions; the launching surface for panel actions; the composer's surface for composer callbacks. Experimental: see `docs/api_to_audit.md`.
+
 ## Panel controller
 
 `experimental_useAppPanel()` returns the `ExperimentalPanelController` of the
 surface the component renders in: the thread view, the plugin page, or the New
-thread screen. Every launcher context carries the same controller as
-`experimental_panel`: plugin commands, thread actions, message actions,
-New-thread panel actions, and action tabs' `run`. Commands and thread actions
-use the focused surface's controller.
+thread screen. Every [callback context](#callback-context) carries the same
+controller as `panel`. Plugins built against `experimental_panel` keep
+working; the plugin build warns with the new name.
 
 ```tsx
 const panel = experimental_useAppPanel();
@@ -384,7 +402,7 @@ with the replacement:
 
 | Retired                                                                               | Replacement                                                                                                                         |
 | ------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`               |
+| `ctx.openPanel({ actionId?, params?, title? })`                                       | `ctx.panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })`                            |
 | `useBbNavigate().openThreadPanel({ actionId, params?, title? })`                      | `experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })` |
 | `experimental_useAppPanel().experimental_openTab({ surface, ...options })`            | `experimental_useAppPanel().openTab(options)`                                                                                       |
 | `experimental_useAppPanel().openFixedTab({ surface, tab: { panelId, id }, target? })` | `experimental_useAppPanel().openTab({ tab: { id, context: { kind: "nav-panel", panelId }, availability: "fixed" }, target })`       |

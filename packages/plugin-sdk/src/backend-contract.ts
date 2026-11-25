@@ -24,6 +24,8 @@ import type * as z from "zod";
 import type { ProviderFork } from "@bb/domain/provider-fork";
 import type {
   BbSdk,
+  EnvironmentCreateArgs,
+  EnvironmentCreateResult,
   PluginThreadMetadataListArgs,
   PluginThreadMetadataListResult,
   ThreadPluginMetadataArgs,
@@ -69,7 +71,7 @@ export interface PluginLogger {
 }
 
 // ---------------------------------------------------------------------------
-// Settings (design §4.2).
+// Settings.
 // ---------------------------------------------------------------------------
 
 export type PluginSettingDescriptor =
@@ -171,7 +173,7 @@ export interface PluginSettings {
 }
 
 // ---------------------------------------------------------------------------
-// Storage (design §4.3).
+// Storage.
 // ---------------------------------------------------------------------------
 
 export interface PluginKvStorage {
@@ -202,11 +204,42 @@ export interface PluginStorage {
    * Append-only — never reorder or edit shipped statements.
    */
   migrate(db: Database.Database, statements: string[]): void;
+  /**
+   * The plugin's own directory for files, at
+   * <dataDir>/plugins/<id>/files. Created (mode 0700) on each call if it does
+   * not exist, so call it where the path is needed. bb snapshots it with
+   * `data.db` and secrets before a git: or npm: update, restores it on
+   * rollback, and deletes it when the plugin is uninstalled; `data.db` and
+   * logs survive uninstall. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_directory(): string;
 }
 
 // ---------------------------------------------------------------------------
-// Thread lifecycle events (design §4.5).
+// Thread lifecycle events.
 // ---------------------------------------------------------------------------
+
+/**
+ * One terminal outcome of the work on a thread, in a single union so a plugin
+ * that keeps a record per run handles every way that work can end in one
+ * exhaustive `switch`. Experimental: see docs/api_to_audit.md.
+ *
+ * - `completed`: the thread went idle; `lastAssistantText` as on `thread.idle`.
+ * - `failed`: the thread landed in `error`; `error` as on `thread.failed`.
+ * - `cancelled`: a queued message was removed before it dispatched; `entry`
+ *   is that message, so `entry.originPluginId` says whose it was.
+ * - `archived` / `deleted`: the thread itself is gone.
+ */
+export type PluginThreadSettledEvent =
+  | {
+      outcome: "completed";
+      thread: ThreadResponse;
+      lastAssistantText: string | null;
+    }
+  | { outcome: "failed"; thread: ThreadResponse; error: string | null }
+  | { outcome: "cancelled"; thread: ThreadResponse; entry: ThreadQueuedMessage }
+  | { outcome: "archived"; thread: ThreadResponse }
+  | { outcome: "deleted"; thread: ThreadResponse };
 
 /**
  * Why a turn failed, assembled by core from the failed turn's own records so a
@@ -267,7 +300,7 @@ export interface PluginTurnFailedEvent {
 }
 
 /**
- * Lifecycle events a plugin can observe with `bb.events.on` (design §4.5).
+ * Lifecycle events a plugin can observe with `bb.events.on`.
  *
  * **Events are announcements core makes.** Something already happened; a
  * handler is told about it and whatever it returns is IGNORED. Handlers run
@@ -350,11 +383,13 @@ export interface PluginThreadEventPayloads {
    *
    * A re-queue fires this again with the new wait, because a row that moved
    * from one wait to another is news to whoever was waiting on the old one.
+   * A grouped dispatch that is re-queued fires it once for every row.
    */
   "message.queued": { entry: ThreadQueuedMessage };
   /**
-   * Fired after a queued row's waits all cleared and it dispatched. The turn
-   * it carried runs after this, so a handler must not assume it has started.
+   * Fired after a queued row's waits all cleared and it dispatched. Rows
+   * grouped into one dispatch each fire it, in queue order. The turn it
+   * carried runs after this, so a handler must not assume it has started.
    */
   "message.dispatched": { entry: ThreadQueuedMessage };
   /**
@@ -370,7 +405,8 @@ export interface PluginThreadEventPayloads {
   "turn.failed": PluginTurnFailedEvent;
   /**
    * Fired after a queued row is removed before it ever dispatched — the user
-   * deleted it from the queued card or `bb thread queue`. This is the only
+   * deleted it from the queued card or `bb thread queue`, or an edit of an
+   * earlier message discarded a queued retry of a turn it replaced. This is the only
    * signal for that removal: a plugin holding external resources for a
    * waiting message (a sandbox mid-provision, a reserved slot) releases them
    * here. Rows that dispatch fire `message.dispatched` instead, and rows that
@@ -378,6 +414,13 @@ export interface PluginThreadEventPayloads {
    * event, not this one.
    */
   "message.cancelled": { entry: ThreadQueuedMessage };
+  /**
+   * Fired with every `thread.idle`, `thread.failed`, `thread.archived` and
+   * `thread.deleted`, and with every `message.cancelled` whose thread still
+   * exists, as one {@link PluginThreadSettledEvent}. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  "experimental_thread.settled": PluginThreadSettledEvent;
 }
 
 export type PluginThreadEventName = keyof PluginThreadEventPayloads;
@@ -443,7 +486,9 @@ export type PluginEnvironmentProviderDeclaration<
 export interface PluginEnvironments {
   /**
    * Offer a place threads can run. Registering an id this plugin already
-   * registered replaces it. Experimental: see docs/api_to_audit.md.
+   * registered replaces it. Providers receive the environment being created,
+   * so core can also create environments before any thread exists.
+   * Experimental: see docs/api_to_audit.md.
    */
   register<
     const Requires extends PluginEnvironmentProviderRequirements,
@@ -488,10 +533,25 @@ export interface ServerAccessGrant {
   headers?: Record<string, string>;
 }
 
+export type ServerAccessRouteKind =
+  | "local-network"
+  | "private-overlay"
+  | "relay"
+  | "custom";
+
 export interface ServerAccessProviderDeclaration {
   id: string;
   displayName: string;
   description: string;
+  /**
+   * How machines and apps travel to this server over the provider's address.
+   * Core ranks enabled routes by kind (local network, private overlay such as
+   * a tailnet, relay, then custom) until the user orders them in Settings.
+   * New machines install on a `"relay"` or `"custom"` route before a
+   * `"local-network"` or `"private-overlay"` one. Plugins built against an SDK
+   * before 0.6.188 may omit it; core treats those as `"custom"`.
+   */
+  routeKind: ServerAccessRouteKind;
   availability():
     | (import("./machine-provider.js").PluginMachineProviderAvailability & {
         serverUrl?: string;
@@ -566,19 +626,21 @@ export type PluginDispatchEnvironmentIntent =
  *
  * `proceed` lets the attempt continue. `wait` QUEUES the message as a row
  * whose `waitingOn` names this plugin and carries `reason` verbatim; the
- * row stays queued until `sendAt` comes due, capacity frees, the user sends
+ * row stays queued until `recheckAt` comes due, capacity frees, the user sends
  * it now, or the orphan sweep clears it because this plugin is no longer
- * running. `sendAt` (epoch ms) sets the row's own `sendAt`, so core's due sweep
- * re-attempts at that instant without the plugin holding a timer of its own —
- * which is what a rate-limit window wants. `reject` refuses the attempt
- * outright: `message` is shown to the user verbatim.
+ * running. `recheckAt` (epoch ms) is when core's due sweep re-asks, without
+ * the plugin holding a timer of its own — which is what a rate-limit window
+ * wants. It is not the message's schedule: the row's `sendAt` stays the
+ * sender's time, and a message the sender scheduled never dispatches before
+ * that time, even when this hook proceeds earlier. `reject` refuses the attempt outright:
+ * `message` is shown to the user verbatim.
  *
  * There is deliberately no "handled it myself" answer and no amendment arm —
  * a hook is a decision, never an owner or an author of the work.
  */
 export type MessageDispatchHookDecision =
   | { action: "proceed" }
-  | { action: "wait"; reason: string; sendAt?: number | null }
+  | { action: "wait"; reason: string; recheckAt?: number | null }
   | { action: "reject"; message: string };
 
 /**
@@ -644,7 +706,9 @@ export type PluginDispatchAttemptKind = "start-turn" | "join-turn";
  * of core's own notices to a thread (a child finished, needs attention, or
  * changed owner), which arrives with `initiator: "system"`. Compaction and an
  * edited message's re-send operate on the existing conversation and do not
- * pass through it. A handler must therefore be idempotent for one logical
+ * pass through it. A send that asks to compact first is decided before the
+ * compaction runs: a `wait` holds the compaction with the message, and a
+ * `reject` leaves the context uncompacted. A handler must therefore be idempotent for one logical
  * dispatch: passes re-run on every drain, on restart, and on retry.
  */
 export interface MessageDispatchHookContext {
@@ -673,7 +737,10 @@ export interface MessageDispatchHookContext {
   environmentIntent: PluginDispatchEnvironmentIntent | null;
   input: PluginDispatchInput;
   requestedExecution: PluginDispatchExecution;
-  /** Where each execution value came from. */
+  /**
+   * Where each execution value came from. A queued re-attempt reports what
+   * its first attempt was sent with.
+   */
   executionSources: PluginDispatchExecutionSources;
   /** Whether this attempt starts a turn or joins a running one. */
   attempt: PluginDispatchAttemptKind;
@@ -734,19 +801,50 @@ export interface MessageDispatchHookContext {
  * derive from this map — and so does the server's hook registry — so a
  * half-added hook does not compile.
  *
- * One hook today: `message.dispatch`, THE admission checkpoint, run identically
- * for a thread's first message, a follow-up, a steer, a retry, and every
- * re-attempt a drain makes. It replaced the earlier `thread.create` +
- * `turn.submit` pair, whose split was an accident of where the code happened to
- * branch rather than a difference a plugin needed to see — the attempt's own
- * `attempt` kind carries what actually differs.
+ * `message.dispatch` is THE admission checkpoint, run identically for a
+ * thread's first message, a follow-up, a steer, a retry, and every re-attempt a
+ * drain makes. It replaced the earlier `thread.create` + `turn.submit` pair,
+ * whose split was an accident of where the code happened to branch rather than
+ * a difference a plugin needed to see — the attempt's own `attempt` kind
+ * carries what actually differs.
+ *
+ * `thread.delete_finalize` runs before core finishes deleting a thread by
+ * removing its rows from the database, so a plugin can copy the thread first.
  */
 export interface PluginHookSignatures {
   "message.dispatch": {
     context: MessageDispatchHookContext;
     decision: MessageDispatchHookDecision;
   };
+  "thread.delete_finalize": {
+    context: ThreadDeleteFinalizeHookContext;
+    decision: ThreadDeleteFinalizeHookDecision;
+  };
 }
+
+/**
+ * A deleted thread core is about to remove from the database. The thread is
+ * already hidden and can no longer change, and every read that works on a
+ * thread id, such as `bb.sdk.threads.experimental_export`, still works until
+ * the removal starts.
+ */
+export interface ThreadDeleteFinalizeHookContext {
+  threadId: string;
+  projectId: string;
+}
+
+/**
+ * `proceed` lets core remove the rows. `wait` keeps them: core asks again
+ * about every 10 seconds and on every restart, until every plugin answers
+ * `proceed`. Once the removal starts core never asks about that thread again.
+ *
+ * A handler that throws, times out or returns something else counts as
+ * `wait`. A plugin that is disabled or uninstalled is not asked, so its
+ * threads are removed without it.
+ */
+export type ThreadDeleteFinalizeHookDecision =
+  | { action: "proceed" }
+  | { action: "wait" };
 
 export type PluginHookName = keyof PluginHookSignatures;
 
@@ -767,6 +865,9 @@ export interface PluginHooks {
    * pre-commit and post-commit hooks, and the reason the two live in separate
    * namespaces rather than behind one `on`.
    *
+   * The rules below describe `message.dispatch`; `thread.delete_finalize`
+   * has its own, on {@link ThreadDeleteFinalizeHookDecision}.
+   *
    * Handlers for a hook run as a deterministic chain in plugin install order,
    * a `reject` short-circuits the pass, and `wait` decisions are COLLECTED
    * across the whole pass rather than short-circuiting. The attempt proceeds
@@ -778,7 +879,7 @@ export interface PluginHooks {
    *
    * Fail-closed: a handler that throws or exceeds the 10 second decision box
    * FAILS THE ATTEMPT with this plugin named. Decide in milliseconds — if the
-   * answer needs real work, return `wait` with a `sendAt` and answer again on
+   * answer needs real work, return `wait` with a `recheckAt` and answer again on
    * the re-attempt.
    *
    * The whole pass runs under one server-wide lock, so a counting handler never
@@ -798,7 +899,7 @@ export interface PluginHooks {
    *
    * **The pair to `on`.** `on` answers the question core asks; `recheck`
    * asks core to ask it again. Core owns the re-draining and the clock — the
-   * `sendAt` due sweep is still core's — and a plugin owns every other
+   * `recheckAt` due sweep is still core's — and a plugin owns every other
    * condition its own waits depend on. When that condition changes, say so
    * here and answer the hook again on the re-attempt; there is no way to
    * release a specific row, and there does not need to be.
@@ -818,12 +919,15 @@ export interface PluginHooks {
    * rows, exactly as the due sweep's do. Awaiting completion would also mean
    * awaiting a full hook pass from inside whatever called this, which for a
    * handler holding the evaluation lock could not complete. Fire and forget.
+   *
+   * `thread.delete_finalize` needs no recheck: core asks it again about every
+   * 10 seconds.
    */
   recheck(hook: PluginHookName): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
-// Wire surfaces: HTTP, rpc, realtime (design §4.6/§4.7).
+// Wire surfaces: HTTP, rpc, realtime.
 // ---------------------------------------------------------------------------
 
 export type PluginHttpAuthMode = "local" | "token" | "none";
@@ -936,7 +1040,7 @@ export interface PluginRealtime {
 }
 
 // ---------------------------------------------------------------------------
-// Background services and schedules (design §4.8).
+// Background services and schedules.
 // ---------------------------------------------------------------------------
 
 export interface PluginBackground {
@@ -956,16 +1060,26 @@ export interface PluginBackground {
   ): void;
   /**
    * Register a cron schedule (5-field expression, server-local time). The
-   * durable row keyed (pluginId, name) is upserted at load; the periodic
-   * sweep claims due rows with a CAS on next_run_at, but only while this
-   * plugin is loaded. Failures land in last_status/last_error, visible in
+   * durable row keyed (pluginId, name) is upserted at load and keeps its
+   * next due time across reloads and server restarts while the cron is
+   * unchanged; a changed cron starts from the next time it matches. The
+   * periodic sweep (every 10 s) claims due rows with a CAS on next_run_at,
+   * but only while this plugin is loaded.
+   *
+   * Missed runs are caught up once: due times that pass while the server is
+   * down, the plugin is not loaded, or this schedule's previous run is still
+   * going produce a single run at the next sweep, not one per missed time.
+   * Runs of one schedule never overlap. Runs are not awaited by the sweep,
+   * so a slow run delays neither other schedules nor core's own sweeps;
+   * there is no time limit, and a reload or disable releases a run still
+   * going. Failures land in last_status/last_error, visible in
    * `bb plugin list`.
    */
   schedule(name: string, cron: string, fn: () => void | Promise<void>): void;
 }
 
 // ---------------------------------------------------------------------------
-// Agent-facing CLI subcommands (design §4.4).
+// Agent-facing CLI subcommands.
 // ---------------------------------------------------------------------------
 
 export interface PluginCliCommandInfo {
@@ -1104,11 +1218,11 @@ export interface PluginCli {
 }
 
 // ---------------------------------------------------------------------------
-// Agent surfaces: per-turn context and native tools (design §4.4).
+// Agent surfaces: per-turn context and native tools.
 // ---------------------------------------------------------------------------
 
-/** Per-turn context handed to bb.agents context providers (design §4.4). */
-/** MCP-style content parts a native tool may return (design §4.4). */
+/** Per-turn context handed to bb.agents context providers. */
+/** MCP-style content parts a native tool may return. */
 export type PluginAgentToolContentPart =
   | { type: "text"; text: string }
   | { type: "image"; data: string; mimeType: string };
@@ -1117,7 +1231,7 @@ export type PluginAgentToolResult =
   | string
   | { content: PluginAgentToolContentPart[]; isError?: boolean };
 
-/** Per-call context handed to a native tool's execute (design §4.4). */
+/** Per-call context handed to a native tool's execute. */
 export interface PluginAgentToolContext {
   threadId: string;
   projectId: string;
@@ -1128,7 +1242,11 @@ export interface PluginAgentToolContext {
    * and request cancellation no longer aborts this signal. The tool's eventual
    * result is delivered as a system message (success steers a running turn or
    * starts a new one; an `isError` result only steers). Thread stop/delete and
-   * plugin disposal still abort the signal after detachment.
+   * plugin disposal still abort the signal after detachment. When this plugin
+   * is disposed (reloaded, updated, disabled or removed), BB ignores the
+   * tool's later result and tells the agent at once that the call failed,
+   * starting a new turn if the agent is idle, so it can call the tool again.
+   * When BB shuts down, it tells the agent the same when BB next starts.
    */
   signal: AbortSignal;
 }
@@ -1707,7 +1825,7 @@ export interface PluginAgents {
     ) => PluginAgentConfiguration,
   ): void;
   /**
-   * Register a native dynamic tool (design §4.4). `parameters` is either a
+   * Register a native dynamic tool. `parameters` is either a
    * zod schema (validated per call; execute receives the parsed value) or a
    * plain JSON-schema object (no validation; execute receives the raw
    * arguments as `unknown`). Tool-set changes apply on the NEXT session
@@ -1822,18 +1940,26 @@ export interface ExperimentalPluginProviderEnvHealth {
 }
 
 // ---------------------------------------------------------------------------
-// Host-rendered UI contributions (design §4.9).
+// Host-rendered UI contributions.
 // ---------------------------------------------------------------------------
 
 export type PluginMentionTrigger = "@" | "#" | "$" | "!" | "~";
 
-/** Search context handed to a mention provider (design §4.9). `projectId`/
+/** Search context handed to a mention provider. `projectId`/
  * `threadId` are null when the composer has not committed one yet. */
 export interface PluginMentionSearchContext {
   trigger: PluginMentionTrigger;
   query: string;
   projectId: string | null;
   threadId: string | null;
+  /**
+   * Aborts when the search is no longer wanted: the person typed past it and
+   * the composer cancelled the request, the 2s time box ran out, or this
+   * plugin instance is reloaded, disabled or removed. Pass it to `fetch` or
+   * check it between steps; the host ignores whatever a search returns after
+   * its signal aborts.
+   */
+  experimental_signal: AbortSignal;
 }
 
 /** One row a mention provider returns from `search`. `id` is the provider's
@@ -1872,7 +1998,11 @@ export interface PluginMentionProviderRegistration {
    * Runs server-side as the user types after one of this provider's triggers
    * in the composer. Each call is time-boxed (2s) and failure-isolated: a slow
    * or throwing provider contributes an empty list — it can never break the
-   * mention menu.
+   * mention menu. A provider runs one search at a time: a query typed while a
+   * search is running waits for it, and only the newest waiting query runs.
+   * A search still running after its time box keeps the provider out of
+   * results until it settles. Stop work when `ctx.experimental_signal` aborts
+   * so the next query starts sooner.
    */
   search(
     ctx: PluginMentionSearchContext,
@@ -1908,7 +2038,7 @@ export interface PluginUi {
     options?: { signal?: AbortSignal },
   ): Promise<PluginInteractionResult>;
   /**
-   * Register a mention provider for the shipped app's composer (design §4.9).
+   * Register a mention provider for the shipped app's composer.
    * Providers default to the `@` trigger and may opt into `#`, `$`, `!`, or
    * `~` with `triggers`. Items group under `label` in the mention menu; a
    * picked item becomes a `{ kind: "plugin" }` mention resource whose context
@@ -1921,7 +2051,12 @@ export interface PluginUi {
 export interface PluginEvents {
   /**
    * Add a thread lifecycle listener. Multiple listeners for the same event are
-   * additive and run independently in registration order.
+   * additive and run independently in registration order. Events for a thread
+   * that this plugin's own `bb.sdk.threads.spawn` or `bb.sdk.threads.fork`
+   * call may have created wait until that call has returned to the plugin,
+   * and keep their order. Record the returned thread before your next
+   * `await` and its `thread.idle` or `thread.failed` finds the record, even
+   * when the turn ends before the call returns.
    */
   on<E extends PluginThreadEventName>(
     event: E,
@@ -1955,46 +2090,12 @@ export interface PluginServerApi {
    * its repo root and instance id, so a plugin that guesses `~/.bb` reads the
    * production file while the dev server reads another one.
    *
-   * For reading bb-managed files a plugin is migrating away from. A plugin's
-   * OWN storage is `bb.storage`, which is scoped for it; this is deliberately
-   * not a place to write.
+   * Read-only, for migrating off files bb used to manage, or comparing paths
+   * against it. Never write under it: a plugin's own files go in
+   * `bb.storage.experimental_directory()`, and its other state in
+   * `bb.storage`.
    */
   readonly experimental_dataDir: string;
-
-  /**
-   * Internal to bb's own connect plugins. Do not use: it is not part of the
-   * plugin API and may change or disappear in any release.
-   *
-   * Open (or share) this server's tunnel ingress for `audience`, a private
-   * listener on 127.0.0.1 with an ephemeral port. For a plugin that runs a
-   * tunnel client for bb connect next: point the client at `baseUrl`.
-   *
-   * Every HTTP request and WebSocket upgrade must carry an
-   * `x-bb-gate-assertion` signed by the bb connect gate for `audience`
-   * (`server:<serverId>`), the request method and the exact path and query;
-   * anything else is answered 401. A verified request reaches the same app
-   * as `loopbackBaseUrl`, authenticated only by the gate's claims.
-   *
-   * Opening the same audience again shares the listener; it stops when every
-   * handle is closed. Handles close when the plugin is disabled or unloaded.
-   */
-  internal_DO_NOT_USE_openTunnelIngress(
-    options: InternalDoNotUsePluginTunnelIngressOptions,
-  ): Promise<InternalDoNotUsePluginTunnelIngress>;
-}
-
-/** Options for `bb.server.internal_DO_NOT_USE_openTunnelIngress`. */
-export interface InternalDoNotUsePluginTunnelIngressOptions {
-  /** The gate assertion audience this ingress accepts, e.g. `server:<id>`. */
-  audience: string;
-}
-
-/** A handle on an open tunnel ingress. */
-export interface InternalDoNotUsePluginTunnelIngress {
-  /** Base URL of the ingress listener, e.g. "http://127.0.0.1:41234". */
-  readonly baseUrl: string;
-  /** Release this handle; idempotent. */
-  close(): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -2004,7 +2105,7 @@ export interface InternalDoNotUsePluginTunnelIngress {
 /** Options for one `complete` call. */
 export interface PluginAiCompleteOptions {
   /**
-   * Aborted when bb stops waiting: the task timed out (5 seconds for titles
+   * Aborted when bb stops waiting: the task timed out (8 seconds for titles
    * and commit messages) or the request was cancelled. Pass it to `fetch`.
    */
   readonly signal: AbortSignal;
@@ -2012,7 +2113,7 @@ export interface PluginAiCompleteOptions {
 
 /** Options for one `transcribe` call. */
 export interface PluginAiTranscribeOptions {
-  /** Aborted when bb stops waiting (10 seconds) or the request was cancelled. */
+  /** Aborted when bb stops waiting (70 seconds) or the request was cancelled. */
   readonly signal: AbortSignal;
   /**
    * Vocabulary the speaker is likely to use (names, identifiers), for
@@ -2094,48 +2195,6 @@ export interface PluginSharedPortTunnelIdentity {
   baseDomain: string;
 }
 
-/** The frp server a machine's next tunnel dials. */
-export interface InternalDoNotUsePluginNextTunnelServer {
-  /** `wss` for TLS, `websocket` for plain `ws://` (local runs only). */
-  protocol: "wss" | "websocket";
-  /** Host name without a port, e.g. "tunnel.next.getbb.app". */
-  host: string;
-  port: number;
-}
-
-/** Where every eligible machine serves its port shares through bb connect next. */
-export interface InternalDoNotUsePluginNextTunnelConfig {
-  /**
-   * Next domain without a scheme, with a port only for local runs, e.g.
-   * "next.getbb.app". A share answers at `<machine-label>--<port>.<domain>`.
-   */
-  domain: string;
-  server: InternalDoNotUsePluginNextTunnelServer;
-}
-
-/** One machine's next tunnel, as its daemon last reported it. */
-export interface InternalDoNotUsePluginHostNextTunnelStatus {
-  hostId: string;
-  hostName: string;
-  /**
-   * `idle` while the machine shares no port or next is off, `refused` when
-   * the gate refused the machine credential (retried after five minutes),
-   * `offline` when the gate cannot be reached (retried with backoff),
-   * `error` when the daemon could not start frpc or refused the configuration.
-   */
-  state: "idle" | "connecting" | "connected" | "refused" | "offline" | "error";
-  /** The machine's gate label, or null before the daemon learned it. */
-  label: string | null;
-  lastError: string | null;
-  nextRetryAt: number | null;
-  since: number;
-  shares: Array<{
-    port: number;
-    state: "pending" | "active" | "refused";
-    error: string | null;
-  }>;
-}
-
 export interface PluginHosts {
   /** Create the owning plugin's typed client for its singular `bb.host` entry. */
   experimental_client<
@@ -2165,38 +2224,6 @@ export interface PluginHosts {
    * here: it is owned by the daemon's trusted enrollment.
    */
   declareSharedPorts(hostId: string, ports: readonly number[]): void;
-
-  /**
-   * Internal to bb's own connect plugins. Do not use: it is not part of the
-   * plugin API and may change or disappear in any release.
-   *
-   * Turn bb connect next machine tunnels on (a config) or off (`null`). The
-   * server sends the config to every connected daemon that holds a bb connect
-   * machine credential and speaks a protocol that knows next tunnels; each
-   * such daemon runs frpc with one proxy per port declared with
-   * `declareSharedPorts`, at `<machine-label>--<port>.<domain>`. The daemon
-   * refuses a domain or tunnel server outside its trusted enrollment's
-   * domain. One plugin owns the setting at a time; another plugin's call
-   * throws while it is set. Cleared when the owning plugin is disabled.
-   */
-  internal_DO_NOT_USE_setNextTunnels(
-    config: InternalDoNotUsePluginNextTunnelConfig | null,
-  ): void;
-
-  /** Internal to bb's own connect plugins; do not use. The last next-tunnel status of every connected daemon that reported one. */
-  internal_DO_NOT_USE_nextTunnelStatuses(): InternalDoNotUsePluginHostNextTunnelStatus[];
-
-  /**
-   * Internal to bb's own connect plugins. Do not use: it is not part of the
-   * plugin API and may change or disappear in any release.
-   *
-   * Call `listener` whenever a daemon reports a changed next-tunnel status or
-   * its session ends. Returns an unsubscribe function; plugin disposal also
-   * unsubscribes.
-   */
-  internal_DO_NOT_USE_onNextTunnelStatusChange(
-    listener: () => void,
-  ): () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -2205,11 +2232,13 @@ export interface PluginHosts {
 
 export interface PluginStatusApi {
   /**
-   * Mark this plugin `needs-configuration` (with a message shown in
-   * `bb plugin list` and the UI) instead of failing — e.g. a factory or
-   * service that finds no API key configured. Cleared on the next load;
-   * saving settings does not auto-reload in V1, so ask the user to
-   * `bb plugin reload <id>` after configuring.
+   * Mark this plugin `needs-configuration` instead of failing — e.g. a
+   * factory or service that finds no API key configured. `bb plugin list`
+   * shows the message; the plugin's page shows it only when the plugin has no
+   * settings, and otherwise links to its settings instead. Cleared on the next
+   * load. Saving settings that change a value reloads a plugin in this state,
+   * so the factory runs again with the new values; without settings, the
+   * user reloads it from the plugin's page or with `bb plugin reload <id>`.
    */
   needsConfiguration(message: string): void;
 }
@@ -2222,9 +2251,17 @@ export interface PluginStatusApi {
  * dashes) or the request fails with HTTP 400. A `pluginMetadata` seed or a
  * `set` that is over 256 KiB on its own rejects before any request is sent. A
  * patch whose merged namespace would exceed 256 KiB fails with HTTP 413 and
- * leaves the namespace unchanged.
+ * leaves the namespace unchanged. `environments.experimental_create` with
+ * `hold: "plugin"` always holds the environment for the calling plugin.
  */
-export type PluginBbSdk = Omit<BbSdk, "threads"> & {
+export type PluginBbSdk = Omit<BbSdk, "threads" | "environments"> & {
+  environments: Omit<BbSdk["environments"], "experimental_create"> & {
+    experimental_create(
+      args:
+        | Extract<EnvironmentCreateArgs, { hold: "user" }>
+        | Omit<Extract<EnvironmentCreateArgs, { hold: "plugin" }>, "pluginId">,
+    ): Promise<EnvironmentCreateResult>;
+  };
   threads: Omit<
     BbSdk["threads"],
     | "getPluginMetadata"
@@ -2248,7 +2285,7 @@ export type PluginBbSdk = Omit<BbSdk, "threads"> & {
 };
 
 /**
- * The API object handed to a plugin's factory (design §4). Implemented by
+ * The API object handed to a plugin's factory. Implemented by
  * the BB server; this contract is what plugin `server.ts` files compile
  * against.
  */
@@ -2259,28 +2296,28 @@ export interface BbPluginApi {
   readonly pluginId: string;
   /** Leveled, plugin-scoped logger. */
   readonly log: PluginLogger;
-  /** Declarative settings (design §4.2). */
+  /** Declarative settings. */
   readonly settings: PluginSettings;
-  /** Namespaced KV + per-plugin database (design §4.3). */
+  /** Namespaced KV + per-plugin database. */
   readonly storage: PluginStorage;
-  /** HTTP routes under /api/v1/plugins/<id>/http/* (design §4.6). */
+  /** HTTP routes under /api/v1/plugins/<id>/http/*. */
   readonly http: PluginHttp;
-  /** RPC methods under /api/v1/plugins/<id>/rpc/<method> (design §4.6). */
+  /** RPC methods under /api/v1/plugins/<id>/rpc/<method>. */
   readonly rpc: PluginRpc;
-  /** Ephemeral push to connected frontends (design §4.7). */
+  /** Ephemeral push to connected frontends. */
   readonly realtime: PluginRealtime;
-  /** Long-lived services + cron schedules (design §4.8). */
+  /** Long-lived services + cron schedules. */
   readonly background: PluginBackground;
-  /** Agent-facing `bb` CLI subcommand (design §4.4). */
+  /** Agent-facing `bb` CLI subcommand. */
   readonly cli: PluginCli;
-  /** Per-turn agent context contributions (design §4.4). */
+  /** Per-turn agent context contributions. */
   readonly agents: PluginAgents;
   /** Agent provider registration (docs/provider-plugin-api.md §1). */
   readonly providers: PluginProviders;
-  /** Host-rendered UI contributions (design §4.9). */
+  /** Host-rendered UI contributions. */
   readonly ui: PluginUi;
   /**
-   * Additive plugin lifecycle listeners (design §4.5). Announcements core
+   * Additive plugin lifecycle listeners. Announcements core
    * makes: a handler's return value is ignored.
    */
   readonly events: PluginEvents;
@@ -2293,7 +2330,7 @@ export interface BbPluginApi {
   readonly experimental_hooks: PluginHooks;
   /**
    * Environment targets: places a thread can run that this plugin
-   * provisions (plans/plugin-environment-providers.md). Experimental: see
+   * provisions. Experimental: see
    * docs/api_to_audit.md.
    */
   readonly experimental_environments: PluginEnvironments;
@@ -2312,7 +2349,7 @@ export interface BbPluginApi {
    */
   readonly experimental_aiServices: PluginAiServices;
   /**
-   * The full BB SDK, bound to this server over loopback (design §4.1).
+   * The full BB SDK, bound to this server over loopback.
    * Bind-gated: reading this before the host binds the SDK throws. The real
    * server binds it before loading plugins, so it is available from the
    * moment factories run there — but isolated harnesses may not, so prefer

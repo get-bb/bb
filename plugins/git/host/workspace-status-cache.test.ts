@@ -31,6 +31,10 @@ beforeAll(async () => {
     path.join(tmpdir(), "bb-squash-template-"),
   );
   await initRepo(initialRepository);
+  await fs.appendFile(
+    path.join(initialRepository, ".git", "config"),
+    "[maintenance]\n\tauto = false\n",
+  );
   initialCommit = (
     await runGit(["rev-parse", "HEAD"], { cwd: initialRepository })
   ).stdout.trim();
@@ -85,27 +89,40 @@ async function readUntilSquashChecked(repo: string) {
   return status;
 }
 
-it("reuses committed comparisons across readers while refreshing edits and moved refs", async () => {
+async function createFeatureRepo() {
   const repo = await copyInitialRepository(
     await makeTempDir("bb-status-cache-"),
   );
-  await runGit(["checkout", "-b", "feature"], { cwd: repo });
-  await fs.writeFile(path.join(repo, "feature.txt"), "feature\n");
-  await fs.writeFile(path.join(repo, "other.txt"), "other\n");
-  await runGit(["add", "."], { cwd: repo });
-  await runGit(["commit", "-m", "Feature"], { cwd: repo });
-  const read = (maxFiles = 200) =>
-    new WorkspaceReads(repo, tmpdir()).getStatus({
-      freshness: fresh(),
-      mergeBaseBranch: "main",
-      maxFiles,
-    });
+  await runGit(["fast-import", "--quiet"], {
+    cwd: repo,
+    input: commitInput(1, "feature", "Feature", initialCommit, {
+      "feature.txt": "feature\n",
+      "other.txt": "other\n",
+    }),
+  });
+  await runGit(["checkout", "--force", "feature"], { cwd: repo });
+  return repo;
+}
+
+function readStatus(repo: string, maxFiles = 200) {
+  return new WorkspaceReads(repo, tmpdir()).getStatus({
+    freshness: fresh(),
+    mergeBaseBranch: "main",
+    maxFiles,
+  });
+}
+
+it("reuses a committed comparison across readers while refreshing worktree edits", async () => {
+  const repo = await createFeatureRepo();
   const comparisons = () =>
     vi
       .mocked(runGit)
       .mock.calls.filter(([args]) => args.includes("--left-right")).length;
 
-  const [first, concurrent] = await Promise.all([read(), read()]);
+  const [first, concurrent] = await Promise.all([
+    readStatus(repo),
+    readStatus(repo),
+  ]);
   expect(first.mergeBase).toMatchObject({
     aheadCount: 1,
     behindCount: 0,
@@ -116,27 +133,32 @@ it("reuses committed comparisons across readers while refreshing edits and moved
   first.mergeBase?.files.splice(0);
 
   await fs.writeFile(path.join(repo, "feature.txt"), "edited\n");
-  const edited = await read();
+  const edited = await readStatus(repo);
   expect(edited.workingTree.hasUncommittedChanges).toBe(true);
   expect(edited.mergeBase?.files).toHaveLength(2);
   expect(comparisons()).toBe(1);
 
-  const limited = await read(1);
+  const limited = await readStatus(repo, 1);
   expect(limited.mergeBase?.fileCount).toBe(2);
   expect(limited.mergeBase?.files).toHaveLength(1);
+});
 
-  await runGit(["add", "."], { cwd: repo });
-  await runGit(["commit", "-m", "Second feature"], { cwd: repo });
-  expect((await read()).mergeBase?.aheadCount).toBe(2);
+it("recomputes the comparison when HEAD or the base branch moves", async () => {
+  const repo = await createFeatureRepo();
+  expect((await readStatus(repo)).mergeBase?.aheadCount).toBe(1);
+
+  await fs.writeFile(path.join(repo, "feature.txt"), "edited\n");
+  await runGit(["commit", "-am", "Second feature"], { cwd: repo });
+  expect((await readStatus(repo)).mergeBase?.aheadCount).toBe(2);
 
   await runGit(["branch", "-f", "main", "HEAD"], { cwd: repo });
-  expect((await read()).mergeBase).toMatchObject({
+  expect((await readStatus(repo)).mergeBase).toMatchObject({
     aheadCount: 0,
     fileCount: 0,
   });
 
   await runGit(["reset", "--hard", "HEAD~1"], { cwd: repo });
-  expect((await read()).mergeBase).toMatchObject({
+  expect((await readStatus(repo)).mergeBase).toMatchObject({
     aheadCount: 0,
     behindCount: 1,
   });

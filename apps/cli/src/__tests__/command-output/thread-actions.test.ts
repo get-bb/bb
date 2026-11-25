@@ -456,7 +456,11 @@ describe("bb thread action command output", () => {
   ])(
     "bb thread %s posts its action without reading the thread first",
     async (command, route, output) => {
-      const post = vi.fn(async () => ({ ok: true }));
+      const post = vi.fn(async () => ({
+        ok: true,
+        progress: route === "compact" ? "in-progress" : "complete",
+        status: "idle",
+      }));
       stubServerApi({ [`v1.threads.:id.${route}.$post`]: post });
 
       await runCommand(["thread", command, "thread-action"], register);
@@ -468,6 +472,46 @@ describe("bb thread action command output", () => {
       );
     },
   );
+
+  it("bb thread stop reports a stop that is still in progress and exits 0", async () => {
+    stubServerApi({
+      "v1.threads.:id.stop.$post": vi.fn(async () => ({
+        ok: true,
+        progress: "in-progress",
+        status: "stopping",
+      })),
+    });
+
+    await runCommand(["thread", "stop", "thread-action"], register);
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Thread thread-action is still stopping; check it with bb thread show thread-action",
+    ]);
+  });
+
+  it("bb thread stop fails when the server says the stop did not finish", async () => {
+    stubServerApi({
+      "v1.threads.:id.stop.$post": vi.fn(
+        async () =>
+          new Response(
+            JSON.stringify({
+              code: "thread_stop_unfinished",
+              error:
+                "Thread thread-action is still active; the stop did not finish",
+            }),
+            { status: 409, headers: { "content-type": "application/json" } },
+          ),
+      ),
+    });
+
+    await expect(
+      runCommand(["thread", "stop", "thread-action", "--json"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toMatchObject({ ok: false, error: { code: "thread_stop_unfinished" } });
+  });
 
   it("bb thread retry defaults the turn and the reason at the boundary", async () => {
     const retryPost = vi.fn(async () => ({

@@ -480,7 +480,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
             >
               <div data-scroll-footer="">
                 <InlinePendingInteractionContext.Provider
-                  value={{ promptShownAbove: "Which path?", close: () => {} }}
+                  value={{ promptShownAbove: "Which path?" }}
                 >
                   {bannerElement(question)}
                 </InlinePendingInteractionContext.Provider>
@@ -664,7 +664,7 @@ describe("ThreadPendingInteractionBanner collapsed strip", () => {
         <QueryClientProvider client={new QueryClient()}>
           <MemoryRouter>
             <InlinePendingInteractionContext.Provider
-              value={{ promptShownAbove, close: () => {} }}
+              value={{ promptShownAbove }}
             >
               {bannerElement(commandApproval)}
             </InlinePendingInteractionContext.Provider>

@@ -1,5 +1,6 @@
 import { Icon } from "@bb/shared-ui/icon";
 import { TabPill } from "@/components/ui/tab-pill";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export interface PaletteModeChipProps {
   clearLabel: string;
@@ -20,7 +21,7 @@ export function PaletteModeChip({
     <span
       data-palette-mode-chip
       onKeyDown={(event) => {
-        if (event.key !== "Escape") return;
+        if (!isNonImeKey(event, "Escape")) return;
         event.preventDefault();
         event.stopPropagation();
         onClear();

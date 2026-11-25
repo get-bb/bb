@@ -14,7 +14,6 @@ import type { HostDaemonLogger } from "../logger.js";
 import {
   buildMachineSharePublicOrigin,
   buildMachineTunnelUrl,
-  CONNECT_NEXT_ENROLLMENT_MESSAGE,
   ConnectTunnelClient,
   resolveTrustedConnectGate,
   type ConnectTunnelFetch,
@@ -164,9 +163,11 @@ describe("ConnectTunnelClient", () => {
     });
 
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Sawyer Air",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch(labelRequests),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls }),
@@ -236,9 +237,11 @@ describe("ConnectTunnelClient", () => {
     });
 
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -340,9 +343,11 @@ describe("ConnectTunnelClient", () => {
 
     const statuses: ConnectTunnelStatus[] = [];
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -387,9 +392,11 @@ describe("ConnectTunnelClient", () => {
 
     const statuses: ConnectTunnelStatus[] = [];
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -424,9 +431,11 @@ describe("ConnectTunnelClient", () => {
       );
     });
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -472,9 +481,11 @@ describe("ConnectTunnelClient", () => {
       });
     });
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => ({
+        serverUrl: "https://owner.getbb.app",
+        machineCredential: "bbcm_machine-secret",
+      }),
       hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
       fetchFn: labelFetch([], "machine-a"),
       logger,
       createWebSocket: tunnelFactory({ gatePort, requestedUrls: [] }),
@@ -507,7 +518,7 @@ describe("ConnectTunnelClient", () => {
 
   it("accepts a new low generation after an authoritative session reopen", () => {
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => null,
       hostName: "Machine A",
       logger,
     });
@@ -522,7 +533,7 @@ describe("ConnectTunnelClient", () => {
     let dialCount = 0;
     let fetchCount = 0;
     const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.getbb.app",
+      gate: () => null,
       hostName: "Machine A",
       logger,
       fetchFn: async () => {
@@ -538,36 +549,6 @@ describe("ConnectTunnelClient", () => {
     expect(fetchCount).toBe(0);
     expect(dialCount).toBe(0);
     expect(client.status()).toMatchObject({ state: "offline", ports: [3000] });
-    client.shutdown();
-  });
-  it("does not dial a Cloudflare tunnel for a machine that joined through a next address", async () => {
-    let dialCount = 0;
-    const labelRequests: LabelRequest[] = [];
-    const client = new ConnectTunnelClient({
-      serverUrl: "https://owner.next.getbb.app",
-      hostName: "Machine A",
-      machineCredential: "bbcm_machine-secret",
-      logger,
-      fetchFn: labelFetch(labelRequests, "machine-a"),
-      createWebSocket: () => {
-        dialCount += 1;
-        throw new Error("must not dial");
-      },
-    });
-    client.replaceShareSet({ generation: 1, ports: [3000] });
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    expect(dialCount).toBe(0);
-    expect(client.status()).toMatchObject({
-      state: "offline",
-      lastError: CONNECT_NEXT_ENROLLMENT_MESSAGE,
-    });
-    await expect(client.ensureTunnelIdentity()).resolves.toEqual({
-      label: "machine-a",
-      baseDomain: "next.getbb.app",
-    });
-    expect(labelRequests[0]?.url).toBe(
-      "https://owner.next.getbb.app/api/connect/machine-label",
-    );
     client.shutdown();
   });
 });

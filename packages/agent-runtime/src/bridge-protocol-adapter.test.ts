@@ -36,6 +36,7 @@ const fullModeOptions: ProviderExecutionContext = {
   approvalReviewer: null,
   permissionEscalation: null,
   providerOptions: {},
+  additionalWorkspaceWriteRoots: [],
 };
 
 describe("handshake version gate", () => {
@@ -147,11 +148,19 @@ describe("handshake gating", () => {
   it("routes declared sessionless maintenance methods with provider context", () => {
     const adapter = makeAdapter();
     expect(
-      adapter.buildCommandPlan({ type: "provider/health", cwd: "/workspace" }),
+      adapter.buildCommandPlan({
+        type: "provider/health",
+        cwd: "/workspace",
+        envVars: { CONTRIBUTED: "1" },
+      }),
     ).toEqual({
       kind: "request",
       method: "provider/health",
-      params: { providerId: "fake-bridge", cwd: "/workspace" },
+      params: {
+        providerId: "fake-bridge",
+        cwd: "/workspace",
+        envVars: { CONTRIBUTED: "1" },
+      },
     });
     expect(adapter.buildCommandPlan({ type: "provider/usage" })).toEqual({
       kind: "request",
@@ -164,6 +173,7 @@ describe("handshake gating", () => {
         checkUpdates: false,
         cwd: "/workspace",
         requirement: "thread_rewind",
+        envVars: {},
       }),
     ).toEqual({
       kind: "request",
@@ -173,17 +183,19 @@ describe("handshake gating", () => {
         cwd: "/workspace",
         requirement: "thread_rewind",
         checkUpdates: false,
+        envVars: {},
       },
     });
     expect(
       adapter.buildCommandPlan({
         type: "provider/installation/run",
         action: "update",
+        envVars: {},
       }),
     ).toEqual({
       kind: "request",
       method: "provider/installation/run",
-      params: { providerId: "fake-bridge", action: "update" },
+      params: { providerId: "fake-bridge", action: "update", envVars: {} },
     });
   });
 });
@@ -261,13 +273,17 @@ describe("options mapping", () => {
 describe("commands/list", () => {
   it("is a noop until the handshake declares commands.list", () => {
     const adapter = makeAdapter();
-    const command = { type: "commands/list" as const, cwd: "/workspace" };
+    const command = {
+      type: "commands/list" as const,
+      cwd: "/workspace",
+      envVars: { CONTRIBUTED: "1" },
+    };
     expect(adapter.buildCommandPlan(command)).toMatchObject({ kind: "noop" });
     completeHandshake(adapter, { commands: { list: true } });
     expect(adapter.buildCommandPlan(command)).toMatchObject({
       kind: "request",
       method: "commands/list",
-      params: { cwd: "/workspace" },
+      params: { cwd: "/workspace", envVars: { CONTRIBUTED: "1" } },
     });
   });
 });

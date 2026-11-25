@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { jsonValueSchema, type JsonValue } from "@bb/domain";
-import { BbHttpError } from "../response.js";
+import { BbHttpError } from "../http-error.js";
 import type { PluginsArea } from "./plugins.js";
 
 const GITHUB_PR_STATUS_PLUGIN_ID = "bb--github-pr-status";

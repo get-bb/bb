@@ -13,7 +13,7 @@ import {
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import type { HostDaemonLogger } from "./logger.js";
 import type { FetchFn } from "./server-client.js";
-import { usesSecureInternalFetchTransport } from "./server-client.js";
+import type { ServerRouteTarget } from "./server-routes.js";
 
 const execFileAsync = execHostFile;
 export const SELF_UPDATE_INITIAL_RETRY_DELAY_MS = 5_000;
@@ -60,8 +60,7 @@ interface CreateProtocolSelfUpdaterOptions {
   dataDir: string;
   enabled: boolean;
   logger: HostDaemonLogger;
-  serverHeaders: Record<string, string>;
-  serverUrl: string;
+  downloadTarget: () => ServerRouteTarget | null;
   fetchFn?: FetchFn;
   installTarball?: ProtocolSelfUpdateInstaller;
   runProcess?: SelfUpdateProcessRunner;
@@ -265,19 +264,20 @@ export function createProtocolSelfUpdater(
         );
         return "skipped";
       }
-      if (!usesSecureInternalFetchTransport(options.serverUrl)) {
+      const target = options.downloadTarget();
+      if (target === null) {
         options.logger.error(
-          { serverUrl: options.serverUrl },
+          {},
           "Refusing daemon auto-update over insecure transport; install the server's bb-app package manually. Keeping the current daemon running and retrying normally.",
         );
         return "failed";
       }
 
       try {
-        const versionUrl = new URL("/install/version", options.serverUrl);
+        const versionUrl = new URL("/install/version", target.url);
         const versionResponse = await fetchFn(versionUrl, {
           method: "GET",
-          headers: options.serverHeaders,
+          headers: target.headers,
         });
         if (!versionResponse.ok) {
           throw new Error(
@@ -342,14 +342,14 @@ export function createProtocolSelfUpdater(
         const downloadDir = join(options.dataDir, DOWNLOAD_DIR_NAME);
         await rm(downloadDir, { force: true, recursive: true });
         try {
-          const tarballUrl = new URL("/install/bb-app.tgz", options.serverUrl);
+          const tarballUrl = new URL("/install/bb-app.tgz", target.url);
           const installedDigest = await readInstalledArtifactDigest(
             installedArtifactDigestPath,
           );
           const response = await fetchFn(tarballUrl, {
             method: "GET",
             headers: {
-              ...options.serverHeaders,
+              ...target.headers,
               ...(installedDigest === null
                 ? {}
                 : { "if-none-match": `"sha256-${installedDigest}"` }),

@@ -166,6 +166,7 @@ function renderRootCompose(args: RenderRootComposeArgs) {
             isCompactHomeLayout={false}
             isSecondaryPanelOpen={renderArgs.isSecondaryPanelOpen}
             onToggleSecondaryPanel={() => undefined}
+            projectId={null}
             secondaryPanel={createSecondaryPanel(
               renderArgs.isSecondaryPanelOpen,
             )}
@@ -209,6 +210,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
           isCompactHomeLayout={isCompactViewport}
           isSecondaryPanelOpen={false}
           onToggleSecondaryPanel={noop}
+          projectId={null}
           secondaryPanel={createSecondaryPanel(false)}
         >
           <div data-testid="root-compose-content" />
@@ -345,7 +347,7 @@ describe("RootComposeSecondaryContent desktop layout", () => {
       expect(panelGroupState.setLayout).not.toHaveBeenCalled();
       expect(screen.queryByTestId("drawer-secondary-panel")).toBeNull();
       expect(
-        screen.getByTestId("drawer-panel-loading-skeleton"),
+        screen.getByTestId("thread-secondary-panel-drawer-placeholder"),
       ).not.toBeNull();
 
       await act(async () => {

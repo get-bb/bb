@@ -11,6 +11,7 @@ import {
   desktopBrowserResultSchemas,
 } from "@bb/host-daemon-contract";
 import type { DesktopBrowserBroker } from "./desktop-browser-broker.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export function isTrustedBrokerDescriptorFile(args: {
   isFile: boolean;
@@ -259,7 +260,7 @@ export function createDesktopBrowserBrokerClient(args: {
                   requestId: parsed.requestId,
                   message:
                     error instanceof Error
-                      ? error.message.slice(0, 8192)
+                      ? sliceUtf16Head(error.message, 8192)
                       : "Desktop browser operation failed",
                 }),
               );

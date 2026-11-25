@@ -4,6 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
+import { HOST_FILE_CHUNK_MAX_BYTES } from "@bb/host-daemon-contract";
 import { initRepo, makeTempDir } from "@bb/test-helpers";
 import { describe, expect, it } from "vitest";
 import {
@@ -490,9 +491,10 @@ describe("readHostFileChunk", () => {
       offset: 0,
       length: 0,
       revision: null,
+      knownRevisions: [],
     };
     const metadata = await readHostFileChunk(base);
-    expect(metadata.content).toBe("");
+    expect(metadata.content).toEqual(Buffer.alloc(0));
     expect(metadata.sizeBytes).toBe(offset + 4);
     const chunk = await readHostFileChunk({
       ...base,
@@ -500,7 +502,7 @@ describe("readHostFileChunk", () => {
       length: 2,
       revision: metadata.revision,
     });
-    expect(Buffer.from(chunk.content, "base64")).toEqual(Buffer.from([1, 2]));
+    expect(Buffer.from(chunk.content)).toEqual(Buffer.from([1, 2]));
     expect(chunk.offset).toBe(offset + 1);
     expect(chunk.revision).toBe(metadata.revision);
     const eof = await readHostFileChunk({
@@ -509,7 +511,7 @@ describe("readHostFileChunk", () => {
       length: 10,
       revision: metadata.revision,
     });
-    expect(Buffer.from(eof.content, "base64")).toEqual(Buffer.from([3]));
+    expect(Buffer.from(eof.content)).toEqual(Buffer.from([3]));
     await expect(
       readHostFile({
         type: "host.read_file",
@@ -518,6 +520,29 @@ describe("readHostFileChunk", () => {
         followRootSymlink: false,
       }),
     ).rejects.toThrow("exceeds");
+  });
+
+  it("returns the first chunk with metadata, and no bytes for a known revision", async () => {
+    const rootPath = await makeTempDir("bb-file-chunks-");
+    const filePath = path.join(rootPath, "chart.png");
+    await fs.writeFile(filePath, "png-bytes");
+    const base = {
+      type: "host.read_file_chunk" as const,
+      path: filePath,
+      rootPath,
+      offset: 0,
+      length: HOST_FILE_CHUNK_MAX_BYTES,
+      revision: null,
+      knownRevisions: ["f".repeat(64)],
+    };
+    const first = await readHostFileChunk(base);
+    expect(Buffer.from(first.content).toString()).toBe("png-bytes");
+    expect(first.sizeBytes).toBe(9);
+    const known = await readHostFileChunk({
+      ...base,
+      knownRevisions: [first.revision],
+    });
+    expect(known).toEqual({ ...first, content: Buffer.alloc(0) });
   });
 
   it.each(["overwrite", "truncate", "replace"])(
@@ -533,6 +558,7 @@ describe("readHostFileChunk", () => {
         offset: 0,
         length: 0,
         revision: null,
+        knownRevisions: [],
       };
       const metadata = await readHostFileChunk(base);
       const before = await fs.stat(filePath);
@@ -565,6 +591,7 @@ describe("readHostFileChunk", () => {
       offset: 0,
       length: 1,
       revision: null,
+      knownRevisions: [],
     };
     await expect(
       readHostFileChunk({ ...base, path: path.join(rootPath, "escape") }),

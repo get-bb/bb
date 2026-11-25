@@ -30,7 +30,7 @@
     "category": "cloud-and-remote",
     "screenshots": []
   },
-  "connect-next": {
+  "tailscale": {
     "category": "cloud-and-remote",
     "screenshots": []
   },
@@ -76,6 +76,10 @@
   },
   "github-star": {
     "category": "utilities",
+    "screenshots": []
+  },
+  "server-switcher": {
+    "category": "cloud-and-remote",
     "screenshots": []
   },
   "plugin-api-docs": {

@@ -22,16 +22,16 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   useAppCommandHandler: () => {},
   useAppCommandRunner: () => ({
     dispatch: () => {},
-    isCommandAvailable: () => true,
   }),
   useAppCommandShortcut: () => null,
   useAppCommandShortcuts: () => [],
   useIndexedAppCommandHandlers: () => {},
+  useIsAppCommandAvailable: () => true,
   useIsAppCommandModifierHeld: () => false,
 }));
 
 vi.mock("./PluginThreadList", () => ({
-  PluginThreadList: () => <div data-testid="thread-list" />,
+  SidebarThreadListContent: () => <div data-testid="thread-list" />,
 }));
 
 vi.mock("@/components/plugin/PluginSidebarFooterItems", () => ({

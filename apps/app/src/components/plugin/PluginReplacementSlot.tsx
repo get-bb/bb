@@ -4,6 +4,7 @@ import {
   type ComponentType,
   type ReactNode,
 } from "react";
+import type { ExclusiveResolution } from "@/lib/plugin-replacement-preference";
 import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import { PluginSlotMount } from "./PluginSlotMount";
 
@@ -31,10 +32,13 @@ export function PluginReplacementSlot<
   children: (registration: Registration, Original: ComponentType) => ReactNode;
   onCrash?: (pluginId: string) => void;
   original: ReactNode;
-  replacement: ResolvedReplacement<Registration>;
+  replacement:
+    | ResolvedReplacement<Registration>
+    | ExclusiveResolution<Registration>;
   slotKind: string;
 }) {
-  if (replacement.kind === "owner") return original;
+  if (replacement.kind === "loading") return null;
+  if (replacement.kind !== "plugin") return original;
 
   const registration = replacement.registration;
   return (

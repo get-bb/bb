@@ -29,6 +29,15 @@ const uiPreferenceStringSchema = z
 const uiPreferenceStringListSchema = z
   .array(uiPreferenceStringSchema)
   .max(UI_PREFERENCE_LIST_MAX_LENGTH);
+const UI_PREFERENCE_MAP_MAX_ENTRIES = 1_000;
+const pickMapSchema = z
+  .record(uiPreferenceStringSchema, uiPreferenceStringSchema)
+  .refine(
+    (value) => Object.keys(value).length <= UI_PREFERENCE_MAP_MAX_ENTRIES,
+    `At most ${UI_PREFERENCE_MAP_MAX_ENTRIES} entries`,
+  );
+const EXCLUSIVE_PICK_RULE =
+  "A pick is <pluginId>/<registrationId>; a pick whose plugin is disabled or uninstalled behaves as __automatic__ and comes back when the plugin does.";
 const sidebarHiddenGroupsSchema = z
   .array(uiPreferenceStringSchema.regex(/^(project|section|machine):\S+$/))
   .max(UI_PREFERENCE_LIST_MAX_LENGTH)
@@ -49,9 +58,19 @@ export const UI_PREFERENCE_KEYS = [
   "sidebar.visiblePluginPanels",
   "sidebar.navigationProvider",
   "sidebar.threadListProvider",
+  "sidebar.updates.providerCli",
+  "sidebar.updates.skipped",
   "composer.provider",
+  "diff.provider",
+  "sourceCode.provider",
+  "threadHeader.titleProvider",
+  "threadRail.outlineProvider",
+  "fileOpener.byExtension",
+  "codeFence.byLanguage",
+  "messageDirective.byName",
   "infoPanel.collapsedSections",
   "threadContextCard.pinned",
+  "threadContextCard.collapsedSections",
 ] as const;
 export type UiPreferenceKey = (typeof UI_PREFERENCE_KEYS)[number];
 const uiPreferenceKeySchema = z.enum(UI_PREFERENCE_KEYS);
@@ -142,24 +161,74 @@ export const uiPreferenceDefinitions = {
         : value,
     ),
     "__automatic__",
-    "Plugin that draws the sidebar navigation: navigation/rail (the bundled Navigation plugin's icon rail on the sidebar's left edge), navigation/top-list (its labeled rows above the thread list), another plugin key, or __automatic__ for the first navigation from a plugin other than the bundled one, falling back to navigation/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__.",
+    "Plugin that draws the sidebar navigation: navigation/rail (the bundled Navigation plugin's icon rail on the sidebar's left edge), navigation/top-list (its labeled rows above the thread list), another plugin key, or __automatic__ for the first navigation from a plugin other than the bundled one, falling back to navigation/rail. Legacy __builtin__ and navigation/navigation resolve to __automatic__, and so does a plugin key whose plugin is disabled or uninstalled.",
   ),
   "sidebar.threadListProvider": defineUiPreference(
     uiPreferenceStringSchema.transform((value) =>
       value === "__builtin__" ? "thread-list/thread-list" : value,
     ),
     "__automatic__",
-    "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list.",
+    "Plugin that renders the sidebar thread list, or __automatic__ for the first installed thread list plugin other than the bundled thread-list/thread-list, falling back to it. Legacy __builtin__ resolves to thread-list/thread-list. A plugin key whose plugin is disabled or uninstalled behaves as __automatic__.",
+  ),
+  "sidebar.updates.providerCli": defineUiPreference(
+    z.boolean(),
+    true,
+    "Whether agent CLI updates appear in the sidebar update button. false leaves them out of its count, card, and the card's update button; Settings → Updates and bb updates still list them.",
+  ),
+  "sidebar.updates.skipped": defineUiPreference(
+    uiPreferenceStringListSchema,
+    [],
+    "Updates skipped from the sidebar update button's card. The button stays hidden while every update it would show is in this list and reappears when a new one arrives; [] shows it again. Settings → Updates and bb updates still list skipped updates.",
   ),
   "composer.provider": defineUiPreference(
     uiPreferenceStringSchema,
     "__automatic__",
-    "Plugin that draws the composer's input box: a plugin key such as bb--composer/composer, or __automatic__ for the first composer from a plugin you installed, then the bundled Composer plugin. With no composer plugin enabled, no composer is shown.",
+    "Plugin that draws the composer's input box: a plugin key such as bb--composer/composer, or __automatic__ for the first composer from a plugin you installed, then the bundled Composer plugin. A plugin key whose plugin is disabled or uninstalled behaves as __automatic__. With no composer plugin enabled, no composer is shown.",
+  ),
+  "diff.provider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that renders file diffs: a plugin key, __builtin__ for bb's own diff, or __automatic__ for the first diff renderer from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "sourceCode.provider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that renders source files: a plugin key, __builtin__ for bb's own viewer, or __automatic__ for the first source code renderer from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "threadHeader.titleProvider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that draws the thread title in the thread header: a plugin key, __builtin__ for bb's own title, or __automatic__ for the first header title from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "threadRail.outlineProvider": defineUiPreference(
+    uiPreferenceStringSchema,
+    "__automatic__",
+    `Plugin that draws the thread outline at the top of the rail beside a thread's conversation: a plugin key, __builtin__ for bb's own outline, or __automatic__ for the first thread outline from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's built-in one. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "fileOpener.byExtension": defineUiPreference(
+    pickMapSchema,
+    {},
+    `File opener per extension, as JSON such as {"md":"simple-notes/docs"}: a plugin key or __builtin__ for bb's preview. An extension that is not listed uses Automatic: the first opener from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's preview. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "codeFence.byLanguage": defineUiPreference(
+    pickMapSchema,
+    {},
+    `Code fence renderer per language, as JSON such as {"bash":"bang-shell/run-code-block"}: a plugin key or __builtin__ for bb's code block. A language that is not listed uses Automatic: the first renderer from a plugin you installed (by plugin id), then bb's own (bundled or from bb's official marketplace), then bb's code block. ${EXCLUSIVE_PICK_RULE}`,
+  ),
+  "messageDirective.byName": defineUiPreference(
+    pickMapSchema,
+    {},
+    `Message directive renderer per directive name, as JSON such as {"task":"tasks/task"}. A directive that one plugin claims needs no entry. A directive that several plugins claim has no automatic winner: it shows a plugin picker in the message, with its text, until it is listed here. ${EXCLUSIVE_PICK_RULE}`,
   ),
   "threadContextCard.pinned": defineUiPreference(
     z.boolean(),
     true,
     "Whether a thread pane's thread context card stays open beside the transcript when the pane is wide enough; narrow panes always open it from the header.",
+  ),
+  "threadContextCard.collapsedSections": defineUiPreference(
+    uiPreferenceStringListSchema.transform((keys) => [...new Set(keys)]),
+    [],
+    "Thread context card sections that are folded, as <pluginId>/<sectionId> for plugin sections or bb--core/<sectionId> for bb's own. Sections not listed are open; the list is shared by every thread pane.",
   ),
   "infoPanel.collapsedSections": defineUiPreference(
     uiPreferenceStringListSchema.transform((ids) => [

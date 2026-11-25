@@ -21,10 +21,9 @@ import {
   type MentionItem,
   type MentionSuggestionHandle,
 } from "./extensions.js";
-
-function isImeComposing(event: KeyboardEvent): boolean {
-  return event.isComposing || event.keyCode === 229;
-}
+import { isNonImeKey } from "@/lib/ime-keyboard";
+import { handleEditorLinkClick } from "./links.js";
+import { useBbNavigate } from "@get-bb/plugin-sdk/app";
 
 const STYLE_MARKER = "data-bb-tasks-editor-styles";
 const EDITOR_CSS = `
@@ -243,6 +242,9 @@ export function TasksEditor({
   onSubmitRef.current = onSubmit;
   const readyRef = useRef(onEditorReady);
   readyRef.current = onEditorReady;
+  const navigate = useBbNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const initialValueRef = useRef(value);
   const isPointerCoarse = usePointerCoarse();
   const canSubmitWithEnterKey = Boolean(onSubmit) && !isPointerCoarse;
@@ -314,12 +316,12 @@ export function TasksEditor({
           });
           return true;
         }
-        if (event.key === "Enter" || event.key === "Tab") {
+        if (isNonImeKey(event, "Enter") || event.key === "Tab") {
           const item = state.items[state.selectedIndex];
           if (item) state.command(item);
           return true;
         }
-        if (event.key === "Escape") {
+        if (isNonImeKey(event, "Escape")) {
           setMentionRef.current(null);
           return true;
         }
@@ -336,10 +338,15 @@ export function TasksEditor({
       content: initialValueRef.current,
       autofocus: false,
       editorProps: {
+        handleDOMEvents: {
+          click: (_view, event) =>
+            handleEditorLinkClick(event, {
+              url: (href) => navigateRef.current.openUrl(href),
+            }),
+        },
         handleKeyDown(_view, event) {
           if (!onSubmitRef.current || readOnly) return false;
-          if (event.key !== "Enter") return false;
-          if (isImeComposing(event)) return false;
+          if (!isNonImeKey(event, "Enter")) return false;
           const openMention = mentionRef.current;
           if (openMention && openMention.items.length > 0) return false;
 

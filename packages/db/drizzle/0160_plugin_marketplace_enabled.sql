@@ -1,0 +1,1 @@
+ALTER TABLE `plugin_marketplaces` ADD `enabled` integer DEFAULT true NOT NULL;

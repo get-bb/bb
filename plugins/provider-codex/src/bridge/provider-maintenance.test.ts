@@ -220,6 +220,7 @@ describe("Codex credential health and usage", () => {
       });
 
       const status = await getCodexProviderInstallationStatus(
+        process.env,
         requirement,
         false,
       );
@@ -232,7 +233,7 @@ describe("Codex credential health and usage", () => {
   );
 
   it("reports unauthenticated when auth.json is missing", async () => {
-    await expect(getCodexProviderHealth()).resolves.toEqual({
+    await expect(getCodexProviderHealth(process.env)).resolves.toEqual({
       supported: true,
       health: {
         status: "unauthenticated",
@@ -248,7 +249,7 @@ describe("Codex credential health and usage", () => {
         internal_DO_NOT_USE_setupGuidePlanLabel: null,
       },
     });
-    await expect(getCodexProviderUsage()).resolves.toEqual({
+    await expect(getCodexProviderUsage(process.env)).resolves.toEqual({
       supported: true,
       usage: { status: "unauthenticated" },
     });
@@ -263,14 +264,14 @@ describe("Codex credential health and usage", () => {
       }),
     );
 
-    await expect(getCodexProviderHealth()).resolves.toMatchObject({
+    await expect(getCodexProviderHealth(process.env)).resolves.toMatchObject({
       health: {
         status: "expired",
         accountEmail: "codex@example.com",
         installedVersion: "0.150.0",
       },
     });
-    await expect(getCodexProviderUsage()).resolves.toEqual({
+    await expect(getCodexProviderUsage(process.env)).resolves.toEqual({
       supported: true,
       usage: { status: "expired" },
     });
@@ -290,7 +291,7 @@ describe("Codex credential health and usage", () => {
         }),
       );
 
-      await expect(getCodexProviderHealth()).resolves.toMatchObject({
+      await expect(getCodexProviderHealth(process.env)).resolves.toMatchObject({
         health: {
           status,
           accountEmail: "codex@example.com",
@@ -306,10 +307,10 @@ describe("Codex credential health and usage", () => {
       JSON.stringify({ auth_mode: "apikey", OPENAI_API_KEY: "sk-test" }),
     );
 
-    await expect(getCodexProviderHealth()).resolves.toMatchObject({
+    await expect(getCodexProviderHealth(process.env)).resolves.toMatchObject({
       health: { status: "ready", accountEmail: null },
     });
-    await expect(getCodexProviderUsage()).resolves.toEqual({
+    await expect(getCodexProviderUsage(process.env)).resolves.toEqual({
       supported: true,
       usage: {
         status: "error",
@@ -324,11 +325,11 @@ describe("Codex credential health and usage", () => {
   it("surfaces an auth.json that is not JSON as unknown health, not as unauthenticated", async () => {
     await writeAuthJson("{not json");
 
-    await expect(getCodexProviderHealth()).resolves.toMatchObject({
+    await expect(getCodexProviderHealth(process.env)).resolves.toMatchObject({
       supported: true,
       health: { status: "unknown", statusMessage: expect.any(String) },
     });
-    await expect(getCodexProviderUsage()).resolves.toMatchObject({
+    await expect(getCodexProviderUsage(process.env)).resolves.toMatchObject({
       supported: true,
       usage: { status: "error", message: expect.any(String) },
     });
@@ -369,7 +370,7 @@ describe("Codex credential health and usage", () => {
       );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getCodexProviderUsage()).resolves.toEqual({
+    await expect(getCodexProviderUsage(process.env)).resolves.toEqual({
       supported: true,
       usage: {
         status: "ok",

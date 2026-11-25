@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SettingsWithControl } from "@/components/ui/settings-section";
+import { SettingsWithControl } from "@bb/shared-ui/settings-section";
 import { SETTINGS_SEARCH_ANCHOR_STATE_KEY } from "./settings-search";
 import { useRevealSettingsSearchTarget } from "./useRevealSettingsSearchTarget";
 

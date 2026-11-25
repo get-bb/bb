@@ -1,4 +1,5 @@
 import path from "node:path";
+import { homedir } from "node:os";
 import { describe, expect, it } from "vitest";
 import { threadScope, turnScope, type ThreadEvent } from "@bb/domain";
 import type { ProviderRuntimeEvent } from "@bb/provider-bridge-protocol/bridge-kit";
@@ -625,6 +626,177 @@ describe("acp delta translation (moved from the legacy adapter suite)", () => {
     expect(events[0]).toMatchObject({
       item: { type: "agentMessage", text: "Compacted successfully" },
     });
+  });
+
+  function compactionUpdate(
+    compactionId: string,
+    status: string,
+    error?: string,
+  ): ProviderRuntimeEvent {
+    return updateEvent({
+      sessionUpdate: "compaction_update",
+      compactionId,
+      status,
+      ...(error === undefined ? {} : { error }),
+    });
+  }
+
+  function compactionEventTypes(events: ThreadEvent[]): string[] {
+    return events.flatMap((event) => {
+      if (event.type === "item/started" || event.type === "item/completed") {
+        return event.item.type === "contextCompaction" ? [event.type] : [];
+      }
+      return event.type === "thread/compacted" ||
+        event.type === "provider/error"
+        ? [event.type]
+        : [];
+    });
+  }
+
+  it("shows an agent's automatic compaction as one compaction item", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "Planning" },
+      }),
+    );
+
+    const started = harness.translate(compactionUpdate("cmp_1", "in_progress"));
+    expect(started.map((event) => event.type)).toEqual([
+      "item/completed",
+      "item/started",
+    ]);
+    const compactionStart = started[1];
+    if (compactionStart?.type !== "item/started") {
+      throw new Error("Expected the compaction item to start");
+    }
+    expect(started[0]).toMatchObject({ item: { type: "reasoning" } });
+    expect(compactionStart).toMatchObject({
+      item: {
+        type: "contextCompaction",
+        presentation: {
+          label: {
+            pending: "Compacting context",
+            completed: "Compacted context",
+          },
+        },
+      },
+    });
+
+    const finished = harness.translate(compactionUpdate("cmp_1", "completed"));
+    expect(finished.map((event) => event.type)).toEqual([
+      "item/completed",
+      "thread/compacted",
+    ]);
+    expect(finished[0]).toMatchObject({
+      item: { type: "contextCompaction", id: compactionStart.item.id },
+    });
+    expect(
+      harness.translate(turnCompletedEvent("end_turn")).map((e) => e.type),
+    ).toEqual(["turn/completed"]);
+  });
+
+  it("opens and closes a compaction reported only by its completion", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    expect(
+      compactionEventTypes(
+        harness.translate(compactionUpdate("cmp_1", "completed")),
+      ),
+    ).toEqual(["item/started", "item/completed", "thread/compacted"]);
+  });
+
+  it.each([
+    ["failed", "Context compaction failed", "summary model rejected"],
+    [
+      "cancelled",
+      "Context compaction interrupted",
+      "The agent cancelled context compaction",
+    ],
+  ])(
+    "reports a %s compaction as an error, not as a compacted context",
+    (status, message, detail) => {
+      const harness = createHarness();
+      harness.translate(turnStartedEvent());
+      harness.translate(compactionUpdate("cmp_1", "in_progress"));
+      const events = harness.translate(
+        compactionUpdate(
+          "cmp_1",
+          status,
+          status === "failed" ? "summary model rejected" : undefined,
+        ),
+      );
+      expect(compactionEventTypes(events)).toEqual(["provider/error"]);
+      expect(events.at(-1)).toMatchObject({ message, detail });
+    },
+  );
+
+  it("ignores updates for a compaction that already finished", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const events = [
+      ...harness.translate(compactionUpdate("cmp_1", "in_progress")),
+      ...harness.translate(compactionUpdate("cmp_1", "completed")),
+      ...harness.translate(compactionUpdate("cmp_1", "completed")),
+      ...harness.translate(compactionUpdate("cmp_2", "failed")),
+      ...harness.translate(compactionUpdate("cmp_2", "in_progress")),
+    ];
+    expect(compactionEventTypes(events)).toEqual([
+      "item/started",
+      "item/completed",
+      "thread/compacted",
+      "item/started",
+      "provider/error",
+    ]);
+  });
+
+  it("keeps an unknown compaction status pending", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(compactionUpdate("cmp_1", "in_progress"));
+    expect(harness.translate(compactionUpdate("cmp_1", "_paused"))).toEqual([]);
+  });
+
+  it("leaves an unfinished compaction to the turn status and finishes it once", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    harness.translate(compactionUpdate("cmp_1", "in_progress"));
+    expect(
+      compactionEventTypes(harness.translate(turnCompletedEvent("cancelled"))),
+    ).toEqual([]);
+    harness.translate(turnStartedEvent());
+    const deltas = harness.translator.translateAcpEvent(
+      compactionUpdate("cmp_1", "completed"),
+      { threadId: THREAD_ID },
+    );
+    expect(deltas.map((delta) => delta.kind)).toEqual([
+      "item.close",
+      "context.compacted",
+    ]);
+  });
+
+  it("keeps a compaction apart from a tool call with the same id", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const events = [
+      ...harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "shared-id",
+          title: "Run tests",
+          kind: "execute",
+          status: "in_progress",
+        }),
+      ),
+      ...harness.translate(compactionUpdate("shared-id", "in_progress")),
+    ];
+    const ids = events.flatMap((event) =>
+      event.type === "item/started" ? [event.item.id] : [],
+    );
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
   });
 
   function countChangedLines(diff: string | undefined): {
@@ -1693,6 +1865,99 @@ describe("acp delta translation (native kinds → core kinds)", () => {
     });
   });
 
+  it.each([
+    [
+      { locations: [{ path: "/workspace/capture.png" }] },
+      "/workspace/capture.png",
+    ],
+    [{ locations: [{ path: "/workspace/photo.jpg" }] }, "/workspace/photo.jpg"],
+    [
+      { rawInput: { file_path: "assets/photo.JPEG" } },
+      path.resolve(SESSION_CWD, "assets/photo.JPEG"),
+    ],
+    [
+      { locations: [{ path: "~/animation.gif" }] },
+      path.join(homedir(), "animation.gif"),
+    ],
+    [
+      { title: "Read `./assets/preview.webp`" },
+      path.resolve(SESSION_CWD, "assets/preview.webp"),
+    ],
+    [{ rawInput: { path: "/workspace/bitmap.bmp" } }, "/workspace/bitmap.bmp"],
+  ])(
+    "previews a local image read through one stable lifecycle: %j",
+    (source, imagePath) => {
+      const harness = createHarness();
+      harness.translate(turnStartedEvent());
+      const started = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call",
+          toolCallId: "local-image",
+          kind: "read",
+          status: "in_progress",
+          ...source,
+        }),
+      );
+      const completed = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "local-image",
+          status: "completed",
+        }),
+      );
+      expect(started).toHaveLength(1);
+      expect(completed).toHaveLength(1);
+      const startedEvent = started[0];
+      const completedEvent = completed[0];
+      if (
+        startedEvent?.type !== "item/started" ||
+        completedEvent?.type !== "item/completed"
+      ) {
+        throw new Error("Expected one started and one completed image item");
+      }
+      const image = { type: "imageView", path: imagePath };
+      expect(startedEvent.item).toMatchObject(image);
+      expect(completedEvent.item).toMatchObject({
+        ...image,
+        id: startedEvent.item.id,
+      });
+      expect(completedEvent.item).not.toHaveProperty("presentation");
+      expect(
+        completedItems(harness.translate(turnCompletedEvent("end_turn"))),
+      ).toEqual([]);
+    },
+  );
+
+  it.each([
+    "/workspace/notes.md",
+    "/workspace/picture.png.txt",
+    "https://images.invalid/capture.png",
+    "file:///workspace/capture.png",
+    "//images.invalid/capture.png",
+    "~another/capture.png",
+  ])("keeps non-local-image reads out of imageView: %s", (readPath) => {
+    expect(
+      openItem({
+        toolCallId: "ordinary-read",
+        kind: "read",
+        locations: [{ path: readPath }],
+      }),
+    ).toMatchObject({ type: "fileRead" });
+  });
+
+  it.each([
+    ["~/notes/plan.md", path.join(homedir(), "notes/plan.md")],
+    ["https://example.invalid/plan.md", "https://example.invalid/plan.md"],
+  ])("resolves an edit path %s like a read path", (editPath, expected) => {
+    expect(
+      openItem({
+        toolCallId: "edit-path",
+        kind: "edit",
+        locations: [{ path: editPath }],
+      }),
+    ).toMatchObject({ type: "fileChange", changes: [{ path: expected }] });
+  });
+
   it("recovers the read path from a single code-ticked title token", () => {
     expect(
       openItem({
@@ -1942,6 +2207,50 @@ describe("acp delta translation (raw payloads and real results)", () => {
     harness.translate(turnStartedEvent());
     return harness;
   }
+
+  it("settles a call from updates that send the SDK's null fields", () => {
+    const harness = startedHarness();
+    const updates = [
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "call-null",
+        title: "`pnpm test`",
+        kind: "execute",
+        status: "pending",
+        rawInput: { command: "pnpm test" },
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-null",
+        status: "in_progress",
+        title: null,
+        content: null,
+        locations: null,
+      },
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-null",
+        status: "failed",
+        title: null,
+        locations: null,
+        content: [
+          { type: "content", content: { type: "text", text: "3 failed\n" } },
+        ],
+      },
+    ];
+    const events = updates.flatMap((update) =>
+      harness.translate(updateEvent(update)),
+    );
+
+    expect(completedItems(events)).toEqual([
+      expect.objectContaining({
+        type: "commandExecution",
+        command: "pnpm test",
+        status: "failed",
+        aggregatedOutput: "3 failed\n",
+      }),
+    ]);
+  });
 
   it("reports the exit code and stderr Cursor sent, not a status guess", () => {
     const events = startedHarness().translate(

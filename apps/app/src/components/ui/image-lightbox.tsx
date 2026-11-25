@@ -22,13 +22,20 @@ import {
   type PanZoomScaleLimits,
   type PanZoomView,
 } from "./pan-zoom.js";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 type ImageLightboxKeyAction = "close" | "next" | "previous";
 
 interface ImageLightboxKeyActionInput {
   event: Pick<
     KeyboardEvent,
-    "altKey" | "ctrlKey" | "defaultPrevented" | "key" | "metaKey"
+    | "altKey"
+    | "ctrlKey"
+    | "defaultPrevented"
+    | "isComposing"
+    | "key"
+    | "keyCode"
+    | "metaKey"
   >;
   hasNavigation: boolean;
 }
@@ -67,7 +74,7 @@ export function getImageLightboxKeyAction({
     return null;
   }
 
-  if (event.key === "Escape") {
+  if (isNonImeKey(event, "Escape")) {
     return "close";
   }
 
@@ -201,7 +208,10 @@ export function ImageLightbox({
     }
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.target instanceof HTMLVideoElement && event.key !== "Escape")
+      if (
+        event.target instanceof HTMLVideoElement &&
+        !isNonImeKey(event, "Escape")
+      )
         return;
       const action = getImageLightboxKeyAction({
         event,

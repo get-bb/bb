@@ -11,9 +11,6 @@
       "@/components/ui/icon": [
         "../../packages/plugin-registry/flavors/components/ui/icon.tsx"
       ],
-      "@/components/ui/question-form-host": [
-        "../../packages/plugin-registry/flavors/components/ui/question-form-host.tsx"
-      ],
       "@/*": ["../../packages/shared-ui/src/*"]
     },
     "types": ["node"],

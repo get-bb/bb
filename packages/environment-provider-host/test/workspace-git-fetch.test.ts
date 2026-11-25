@@ -138,6 +138,7 @@ describe("background Git authentication", () => {
 
 describe("remote branch refresh", () => {
   let templateRoot: string;
+  let remoteUrl: string;
   let commit: string;
 
   beforeAll(async () => {
@@ -149,9 +150,14 @@ describe("remote branch refresh", () => {
     await fs.mkdir(repo);
     await fs.mkdir(remote);
     await initRepo(repo);
+    await fs.appendFile(
+      path.join(repo, ".git", "config"),
+      "[maintenance]\n\tauto = false\n",
+    );
     await runGit(["init", "--bare", "-q"], { cwd: remote });
     await runGit(["push", "-q", remote, "main", "main:fresh"], { cwd: repo });
     commit = (await runGit(["rev-parse", "main"], { cwd: repo })).stdout.trim();
+    remoteUrl = remote.replaceAll("\\", "/");
   });
 
   afterAll(async () => {
@@ -169,12 +175,9 @@ describe("remote branch refresh", () => {
     const repo = path.join(root, "repo");
     await fs.cp(path.join(templateRoot, "repo"), repo, { recursive: true });
     for (const name of names) {
-      await fs.cp(path.join(templateRoot, "remote"), path.join(root, name), {
-        recursive: true,
-      });
       await fs.appendFile(
         path.join(repo, ".git", "config"),
-        `[remote "${name}"]\n\turl = ../${name}\n\tfetch = +refs/heads/*:refs/remotes/${name}/*\n`,
+        `[remote "${name}"]\n\turl = ${remoteUrl}\n\tfetch = +refs/heads/*:refs/remotes/${name}/*\n`,
       );
       const trackingRefs = path.join(repo, ".git", "refs", "remotes", name);
       await fs.mkdir(trackingRefs, { recursive: true });

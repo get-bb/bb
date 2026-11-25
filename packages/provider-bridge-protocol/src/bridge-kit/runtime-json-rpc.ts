@@ -1,4 +1,5 @@
 import { isClosedProcessStdinError } from "@bb/process-utils";
+import { toWellFormedUtf16 } from "@bb/text-utils";
 import type { ChildProcess } from "node:child_process";
 import type { Writable } from "node:stream";
 import { z } from "zod";
@@ -199,13 +200,27 @@ function ensureJsonRpcStdinErrorHandler(stdin: Writable): void {
   stdin.on("error", handleJsonRpcStdinError);
 }
 
-function writeJsonRpcLine(child: ChildProcess, line: string): void {
+function wellFormedStrings(_key: string, value: unknown): unknown {
+  return typeof value === "string" ? toWellFormedUtf16(value) : value;
+}
+
+export function serializeJsonRpcLine(message: object): string {
+  const line = JSON.stringify(message);
+  return line.includes("\\ud")
+    ? JSON.stringify(message, wellFormedStrings)
+    : line;
+}
+
+function writeJsonRpcMessage(
+  child: ChildProcess,
+  message: JsonRpcObject,
+): void {
   const stdin = child.stdin;
   if (!stdin || stdin.destroyed || !stdin.writable) {
     return;
   }
   ensureJsonRpcStdinErrorHandler(stdin);
-  stdin.write(line + "\n");
+  stdin.write(`${serializeJsonRpcLine(message)}\n`);
 }
 
 export function parseJsonRpcLine(line: string): ParsedJsonRpcLine {
@@ -333,33 +348,27 @@ export function sendJsonRpcRequest<TResult>(
         reject(error);
       },
     });
-    writeJsonRpcLine(args.child, JSON.stringify(withId));
+    writeJsonRpcMessage(args.child, withId);
   });
 }
 
 export function sendJsonRpcResult(args: SendJsonRpcResultArgs): void {
-  writeJsonRpcLine(
-    args.child,
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: args.id,
-      result: args.result,
-    }),
-  );
+  writeJsonRpcMessage(args.child, {
+    jsonrpc: "2.0",
+    id: args.id,
+    result: args.result,
+  });
 }
 
 export function sendJsonRpcError(args: SendJsonRpcErrorArgs): void {
-  writeJsonRpcLine(
-    args.child,
-    JSON.stringify({
-      jsonrpc: "2.0",
-      id: args.id,
-      error: {
-        code: args.code ?? -32000,
-        message: args.message,
-      },
-    }),
-  );
+  writeJsonRpcMessage(args.child, {
+    jsonrpc: "2.0",
+    id: args.id,
+    error: {
+      code: args.code ?? -32000,
+      message: args.message,
+    },
+  });
 }
 
 export function sendProviderResponseEncodeErrorIfKnown(

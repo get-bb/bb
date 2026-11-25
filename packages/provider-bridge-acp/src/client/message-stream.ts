@@ -1,4 +1,5 @@
 import type { AnyMessage, Stream } from "@agentclientprotocol/sdk";
+import { serializeJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
 import { createInterface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 import { isJsonObject } from "../session/decode.js";
@@ -114,7 +115,7 @@ export function createAcpMessageStream(
           outstandingRequestIds.add(id);
         }
       }
-      options.output.write(`${JSON.stringify(message)}\n`);
+      options.output.write(`${serializeJsonRpcLine(message)}\n`);
     },
   });
 

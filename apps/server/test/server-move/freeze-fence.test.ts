@@ -146,6 +146,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
   const plugins = {
     handleHostSignal: vi.fn(),
     handleHostWorkerExit: vi.fn(),
+    handleHostWorkerOutput: vi.fn(),
   };
   const readTerminal = () =>
     getTerminalSession(harness.db, {
@@ -193,6 +194,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
           type: "plugin-host.worker-exited",
           pluginId: "fixture",
           generation: "generation-1",
+          reason: "host plugin worker exited (1)",
         },
         {
           type: "terminal.exited",
@@ -207,7 +209,7 @@ function seedDaemonChanges(harness: TestAppHarness, hostId: string) {
             hostId: host.id,
             sessionId: session.id,
             socket,
-            raw: JSON.stringify(raw),
+            message: raw,
           },
           plugins,
         );
@@ -483,7 +485,7 @@ describe("writes while a server move is frozen", () => {
             hostId: host.id,
             sessionId: session.id,
             socket,
-            raw: JSON.stringify(raw),
+            message: raw,
           },
           undefined,
           serverMove,
@@ -563,7 +565,7 @@ describe("writes while a server move is frozen", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "terminal.opened",
             requestId: open.requestId,
             terminalId: open.terminalId,
@@ -572,7 +574,7 @@ describe("writes while a server move is frozen", () => {
             initialCwd: "/tmp/frozen-terminal",
             cols: 100,
             rows: 30,
-          }),
+          },
         });
 
         const refused = await response;
@@ -617,13 +619,13 @@ describe("writes while a server move is frozen", () => {
           hostId: host.id,
           sessionId: session.id,
           socket,
-          raw: JSON.stringify({
+          message: {
             type: "terminal.error",
             requestId: open.requestId,
             terminalId: open.terminalId,
             code: "spawn_failed",
             message: "No shell",
-          }),
+          },
         });
 
         const failed = await response;

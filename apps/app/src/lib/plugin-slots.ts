@@ -1,7 +1,9 @@
 import { coreTabs } from "@/components/secondary-panel/thread-info-registration";
-import { coreMessageMetadata } from "@/components/thread/timeline/core-message-metadata";
+import coreMessageTime from "@/core-contributions/message-time";
+import { collectCoreContributionSlots } from "@/lib/core-contributions";
 import { setAppIcons } from "@bb/shared-ui/icon-registry";
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import type {
   ExperimentalTabRegistration,
   ComposerCustomization,
@@ -15,7 +17,6 @@ import type {
   PluginPendingInteractionRegistration,
   PluginFileOpenerRegistration,
   PluginHomepageSectionRegistration,
-  PluginMessageActionRegistration,
   ExperimentalMessageMetadataRegistration,
   PluginMessageDirectiveRegistration,
   PluginNavPanelRegistration,
@@ -30,8 +31,9 @@ import type {
   ExperimentalThreadInfoSectionRegistration,
   ExperimentalThreadHeaderRowRegistration,
   ExperimentalThreadHeaderTitleRegistration,
+  ExperimentalThreadRailRegistration,
+  ExperimentalThreadRailOutlineRegistration,
   ExperimentalThreadContextCardRowRegistration,
-  ExperimentalThreadContextCardSectionRegistration,
   PluginThreadActionRegistration,
   ExperimentalPluginBrowserToolbarActionRegistration,
   PluginThreadListRegistration,
@@ -39,6 +41,7 @@ import type {
 } from "@get-bb/plugin-sdk";
 import {
   type CollectedPluginCommandRegistration,
+  type CollectedPluginMessageActionRegistration,
   type LegacyThreadPanelActionRegistration,
   type LegacyThreadHeaderActionRegistration,
   type LegacyNavPanelRegistration,
@@ -49,7 +52,13 @@ import {
   type CollectedManagedSidebarFooterItem,
   type CollectedSidebarFooterItem,
   type CollectedSidebarNavigationRegistration,
+  type CollectedThreadContextCardSectionRegistration,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+
+const coreMessageMetadata = collectCoreContributionSlots(
+  coreMessageTime,
+  "messageMetadata",
+);
 
 export interface PluginRegistrationSet {
   homepageSections: readonly PluginHomepageSectionRegistration[];
@@ -73,8 +82,10 @@ export interface PluginRegistrationSet {
   threadInfoSections?: readonly ExperimentalThreadInfoSectionRegistration[];
   threadHeaderRows?: readonly ExperimentalThreadHeaderRowRegistration[];
   threadHeaderTitles?: readonly ExperimentalThreadHeaderTitleRegistration[];
+  threadRails?: readonly ExperimentalThreadRailRegistration[];
+  threadRailOutlines?: readonly ExperimentalThreadRailOutlineRegistration[];
   threadContextCardRows?: readonly ExperimentalThreadContextCardRowRegistration[];
-  threadContextCardSections?: readonly ExperimentalThreadContextCardSectionRegistration[];
+  threadContextCardSections?: readonly CollectedThreadContextCardSectionRegistration[];
   threadActions?: readonly PluginThreadActionRegistration<unknown>[];
   browserToolbarActions?: readonly ExperimentalPluginBrowserToolbarActionRegistration[];
   fileOpeners: readonly PluginFileOpenerRegistration[];
@@ -83,7 +94,7 @@ export interface PluginRegistrationSet {
   composers?: readonly ExperimentalComposerRegistration[];
   messageDirectives: readonly PluginMessageDirectiveRegistration[];
   codeFenceRenderers?: readonly ExperimentalCodeFenceRendererRegistration[];
-  messageActions?: readonly PluginMessageActionRegistration[];
+  messageActions?: readonly CollectedPluginMessageActionRegistration[];
   messageMetadata?: readonly ExperimentalMessageMetadataRegistration[];
   commandPaletteActions?: readonly CollectedPluginCommandRegistration[];
   providerIcons?: readonly CollectedPluginProviderIconRegistration[];
@@ -156,10 +167,14 @@ export interface PluginThreadHeaderRowSlot
   extends ExperimentalThreadHeaderRowRegistration, PluginSlotBase {}
 export interface PluginThreadHeaderTitleSlot
   extends ExperimentalThreadHeaderTitleRegistration, PluginSlotBase {}
+export interface PluginThreadRailSlot
+  extends ExperimentalThreadRailRegistration, PluginSlotBase {}
+export interface PluginThreadRailOutlineSlot
+  extends ExperimentalThreadRailOutlineRegistration, PluginSlotBase {}
 export interface PluginThreadContextCardRowSlot
   extends ExperimentalThreadContextCardRowRegistration, PluginSlotBase {}
 export interface PluginThreadContextCardSectionSlot
-  extends ExperimentalThreadContextCardSectionRegistration, PluginSlotBase {}
+  extends CollectedThreadContextCardSectionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
   extends PluginThreadActionRegistration<unknown>, PluginSlotBase {}
 export interface PluginBrowserToolbarActionSlot
@@ -176,8 +191,8 @@ export interface PluginMessageDirectiveSlot
   extends PluginMessageDirectiveRegistration, PluginSlotBase {}
 export interface PluginCodeFenceRendererSlot
   extends ExperimentalCodeFenceRendererRegistration, PluginSlotBase {}
-export interface PluginMessageActionSlot
-  extends PluginMessageActionRegistration, PluginSlotBase {}
+export type PluginMessageActionSlot = CollectedPluginMessageActionRegistration &
+  PluginSlotBase;
 export interface PluginMessageMetadataSlot
   extends ExperimentalMessageMetadataRegistration, PluginSlotBase {}
 export type PluginCommandPaletteActionSlot =
@@ -213,6 +228,8 @@ export interface PluginSlotSnapshot {
   threadInfoSections: readonly PluginThreadInfoSectionSlot[];
   threadHeaderRows: readonly PluginThreadHeaderRowSlot[];
   threadHeaderTitles: readonly PluginThreadHeaderTitleSlot[];
+  threadRails: readonly PluginThreadRailSlot[];
+  threadRailOutlines: readonly PluginThreadRailOutlineSlot[];
   threadContextCardRows: readonly PluginThreadContextCardRowSlot[];
   threadContextCardSections: readonly PluginThreadContextCardSectionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
@@ -254,6 +271,8 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadInfoSections: [],
   threadHeaderRows: [],
   threadHeaderTitles: [],
+  threadRails: [],
+  threadRailOutlines: [],
   threadContextCardRows: [],
   threadContextCardSections: [],
   threadActions: [],
@@ -303,6 +322,8 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadInfoSections",
   "threadHeaderRows",
   "threadHeaderTitles",
+  "threadRails",
+  "threadRailOutlines",
   "threadContextCardRows",
   "threadContextCardSections",
   "threadActions",
@@ -399,6 +420,8 @@ function flattenRegistrations(
     threadInfoSections: stamp(set.threadInfoSections),
     threadHeaderRows: stamp(set.threadHeaderRows),
     threadHeaderTitles: stamp(set.threadHeaderTitles),
+    threadRails: stamp(set.threadRails),
+    threadRailOutlines: stamp(set.threadRailOutlines),
     threadContextCardRows: stamp(set.threadContextCardRows),
     threadContextCardSections: stamp(set.threadContextCardSections),
     threadActions: stamp(set.threadActions),
@@ -521,6 +544,8 @@ let batchMaxHoldMs = 0;
 let snapshotStale = false;
 let notifyPending = false;
 let batchFlushTimer: ReturnType<typeof setTimeout> | null = null;
+let stagedLoadingPluginIds: ReadonlySet<string> | null = null;
+let loadingPluginIds: ReadonlySet<string> | null = null;
 
 function rebuildIfStale(): void {
   if (!snapshotStale) return;
@@ -536,6 +561,10 @@ function flushChange(): void {
     batchFlushTimer = null;
   }
   rebuildIfStale();
+  if (loadingPluginIds !== stagedLoadingPluginIds) {
+    loadingPluginIds = stagedLoadingPluginIds;
+    notifyPending = true;
+  }
   if (snapshot.icons !== appliedIcons) {
     appliedIcons = snapshot.icons;
     const icons = new Map<string, PluginIconSlot>();
@@ -568,6 +597,10 @@ function flushChange(): void {
 
 function emitChange(): void {
   snapshotStale = true;
+  scheduleFlush();
+}
+
+function scheduleFlush(): void {
   if (openBatchDepth === 0) {
     flushChange();
     return;
@@ -620,6 +653,49 @@ export function removePluginSlotRegistrations(pluginId: string): void {
   emitChange();
 }
 
+export function setLoadingPluginFrontends(pluginIds: readonly string[]): void {
+  const current = stagedLoadingPluginIds;
+  if (
+    current !== null &&
+    current.size === pluginIds.length &&
+    pluginIds.every((pluginId) => current.has(pluginId))
+  ) {
+    return;
+  }
+  stagedLoadingPluginIds = new Set(pluginIds);
+  scheduleFlush();
+}
+
+export function settleLoadingPluginFrontend(pluginId: string): void {
+  if (stagedLoadingPluginIds?.has(pluginId) !== true) return;
+  const next = new Set(stagedLoadingPluginIds);
+  next.delete(pluginId);
+  stagedLoadingPluginIds = next;
+  scheduleFlush();
+}
+
+function getLoadingPluginIds(): ReadonlySet<string> | null {
+  return loadingPluginIds;
+}
+
+export function useIsPluginFrontendSettled(): (pluginId: string) => boolean {
+  const allSettled = usePluginFrontendsSettled();
+  const loading = useSyncExternalStore(
+    subscribePluginSlots,
+    getLoadingPluginIds,
+    getLoadingPluginIds,
+  );
+  return useMemo(
+    () => (pluginId: string) =>
+      allSettled || (loading !== null && !loading.has(pluginId)),
+    [allSettled, loading],
+  );
+}
+
+export function usePluginFrontendSettled(pluginId: string): boolean {
+  return useIsPluginFrontendSettled()(pluginId);
+}
+
 export function subscribePluginSlots(listener: () => void): () => void {
   listeners.add(listener);
   return () => {
@@ -652,15 +728,31 @@ export function usePluginFrontendRegistered(pluginId: string): boolean {
 let builtinPluginIds: ReadonlySet<string> = new Set();
 const builtinPluginIdListeners = new Set<() => void>();
 
+let officialMarketplacePluginIds: ReadonlySet<string> = new Set();
+let bbPluginIds: ReadonlySet<string> = new Set();
+
+function sameIds(left: ReadonlySet<string>, right: ReadonlySet<string>) {
+  return left.size === right.size && [...left].every((id) => right.has(id));
+}
+
+function updateBbPluginIds(): void {
+  const next = new Set([...builtinPluginIds, ...officialMarketplacePluginIds]);
+  if (!sameIds(next, bbPluginIds)) bbPluginIds = next;
+}
+
 export function setBuiltinPluginIds(ids: Iterable<string>): void {
   const next = new Set(ids);
-  if (
-    next.size === builtinPluginIds.size &&
-    [...next].every((id) => builtinPluginIds.has(id))
-  ) {
-    return;
-  }
+  if (sameIds(next, builtinPluginIds)) return;
   builtinPluginIds = next;
+  updateBbPluginIds();
+  for (const listener of builtinPluginIdListeners) listener();
+}
+
+export function setOfficialMarketplacePluginIds(ids: Iterable<string>): void {
+  const next = new Set(ids);
+  if (sameIds(next, officialMarketplacePluginIds)) return;
+  officialMarketplacePluginIds = next;
+  updateBbPluginIds();
   for (const listener of builtinPluginIdListeners) listener();
 }
 
@@ -671,18 +763,29 @@ function subscribeBuiltinPluginIds(listener: () => void): () => void {
   };
 }
 
+export function useBbPluginIds(): ReadonlySet<string> {
+  return useSyncExternalStore(
+    subscribeBuiltinPluginIds,
+    () => bbPluginIds,
+    () => bbPluginIds,
+  );
+}
+
 export function useBuiltinPluginIds(): ReadonlySet<string> {
   return useSyncExternalStore(
     subscribeBuiltinPluginIds,
+    () => builtinPluginIds,
     () => builtinPluginIds,
   );
 }
 
 export function resetPluginSlotStoreForTest(): void {
   setBuiltinPluginIds([]);
+  setOfficialMarketplacePluginIds([]);
   registrationsByPluginId.clear();
   generationByPluginId.clear();
   flattenedByPluginId.clear();
+  stagedLoadingPluginIds = null;
   openBatchDepth = 0;
   emitChange();
 }

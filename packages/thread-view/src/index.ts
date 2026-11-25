@@ -92,8 +92,3 @@ export {
 export type { EventProjection } from "./event-projection.js";
 
 export { extractThreadContextWindowUsage } from "./thread-context-window-usage.js";
-export {
-  isExternalUserBoundaryForTurn,
-  type ExternalUserBoundaryMessage,
-  type ExternalUserBoundaryTurnSpan,
-} from "./external-user-boundaries.js";

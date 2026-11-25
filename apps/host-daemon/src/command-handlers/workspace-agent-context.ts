@@ -15,11 +15,17 @@ import { isFsErrorWithCode } from "../fs-errors.js";
 import { readFileForTransport } from "./file-read.js";
 import { listSharedSkills } from "./list-skills.js";
 import { findSkillFiles, resolveSkillPath } from "@bb/skill-index";
+import { skillFrontmatterBlock } from "@bb/skill-index/metadata";
+import { provisionWorkspace } from "@bb/host-workspace";
+import { WorkspaceError } from "bb-environment-provider-host/workspace-git";
 
 const PROJECT_SKILLS_RELATIVE_SEGMENTS = [".bb", "skills"] as const;
 const AGENT_INSTRUCTIONS_RELATIVE_SEGMENTS = [".bb", "AGENTS.md"] as const;
 type SkillReadPolicy =
   CommandOf<"host.read_workspace_agent_context">["projectSkillRead"];
+
+type WorkspaceFolder =
+  HostDaemonOnlineRpcResult<"host.read_workspace_agent_context">["folders"][number];
 
 interface ProjectSkillFiles {
   skills: WorkspaceProjectSkillFile[];
@@ -87,9 +93,8 @@ async function readProjectSkillFile(args: {
       kind: "budget-exceeded" as const,
       directoryName: args.directoryName,
     };
-    if (stat.size > args.maxFileBytes) return oversized;
-    if (stat.size + 2 > args.remainingBytes) return budgetExceeded;
-    const limit = Math.min(args.maxFileBytes, args.remainingBytes);
+    const limit = args.maxFileBytes;
+    if (stat.size > limit) return oversized;
     const file = await fs.open(
       realPath,
       constants.O_RDONLY | constants.O_NOFOLLOW,
@@ -115,16 +120,15 @@ async function readProjectSkillFile(args: {
         if (result.bytesRead === 0) break;
         length += result.bytesRead;
       }
-      if (length > args.maxFileBytes)
-        return { ...oversized, sizeBytes: length };
-      if (length > limit) return budgetExceeded;
+      if (length > limit) return { ...oversized, sizeBytes: length };
       content = bytes.subarray(0, length).toString("utf8");
     } finally {
       await file.close();
     }
-    if (Buffer.byteLength(JSON.stringify(content)) > args.remainingBytes)
+    const frontmatter = skillFrontmatterBlock(content);
+    if (Buffer.byteLength(JSON.stringify(frontmatter)) > args.remainingBytes)
       return budgetExceeded;
-    return { kind: "file", directoryName: args.directoryName, content };
+    return { kind: "file", directoryName: args.directoryName, frontmatter };
   } catch (error) {
     if (isMissingPathError(error)) return null;
     throw error;
@@ -160,7 +164,7 @@ async function readProjectSkillFiles(
       (name) => !name.startsWith(".") && !policy.excludeNames.includes(name),
     );
   const skills: WorkspaceProjectSkillFile[] = [];
-  let remainingBytes = policy.maxContentBytes;
+  let remainingBytes = policy.maxFrontmatterBytes;
   for (const directoryName of directoryNames.slice(0, policy.limit)) {
     const file = await readProjectSkillFile({
       directoryName,
@@ -171,7 +175,7 @@ async function readProjectSkillFiles(
     });
     if (file === null) continue;
     if (file.kind === "file")
-      remainingBytes -= Buffer.byteLength(JSON.stringify(file.content));
+      remainingBytes -= Buffer.byteLength(JSON.stringify(file.frontmatter));
     skills.push(file);
   }
   return { skills, truncated: directoryNames.length > policy.limit };
@@ -186,26 +190,49 @@ async function readAgentInstructions(rootPath: string): Promise<string | null> {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+async function inspectWorkspaceFolder(
+  folderPath: string,
+): Promise<WorkspaceFolder> {
+  if (!path.isAbsolute(folderPath)) {
+    throw new CommandDispatchError(
+      "invalid_path",
+      "folderPaths entries must be absolute",
+    );
+  }
+  try {
+    const folder = await provisionWorkspace({ path: folderPath });
+    return { path: folderPath, exists: true, isGitRepo: folder.isGitRepo };
+  } catch (error) {
+    if (error instanceof WorkspaceError && error.code === "path_not_found") {
+      return { path: folderPath, exists: false, isGitRepo: false };
+    }
+    throw error;
+  }
+}
+
 export async function readWorkspaceAgentContext(
   command: CommandOf<"host.read_workspace_agent_context">,
 ): Promise<HostDaemonOnlineRpcResult<"host.read_workspace_agent_context">> {
   if (!path.isAbsolute(command.rootPath)) {
     throw new CommandDispatchError("invalid_path", "rootPath must be absolute");
   }
-  const [projectSkills, agentInstructions, sharedSkills] = await Promise.all([
-    readProjectSkillFiles(command.rootPath, command.projectSkillRead),
-    command.includeAgentInstructions
-      ? readAgentInstructions(command.rootPath)
-      : Promise.resolve(null),
-    listSharedSkills({
-      cwd: command.rootPath,
-      roots: command.sharedSkillRoots,
-    }),
-  ]);
+  const [projectSkills, agentInstructions, sharedSkills, folders] =
+    await Promise.all([
+      readProjectSkillFiles(command.rootPath, command.projectSkillRead),
+      command.includeAgentInstructions
+        ? readAgentInstructions(command.rootPath)
+        : Promise.resolve(null),
+      listSharedSkills({
+        cwd: command.rootPath,
+        roots: command.sharedSkillRoots,
+      }),
+      Promise.all(command.folderPaths.map(inspectWorkspaceFolder)),
+    ]);
   return {
     agentInstructions,
     projectSkills: projectSkills.skills,
     projectSkillsTruncated: projectSkills.truncated,
     sharedSkills,
+    folders,
   };
 }

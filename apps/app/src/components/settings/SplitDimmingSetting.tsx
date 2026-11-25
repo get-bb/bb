@@ -1,6 +1,6 @@
 import { Switch } from "@bb/shared-ui/switch";
 import { useAtom } from "jotai";
-import { SettingsWithControl } from "@/components/ui/settings-section";
+import { SettingsWithControl } from "@bb/shared-ui/settings-section";
 import { dimInactiveSplitsAtom } from "@/lib/split-layout/atoms";
 
 const SPLIT_DIMMING_SETTING_LABEL = "Fade inactive splits";

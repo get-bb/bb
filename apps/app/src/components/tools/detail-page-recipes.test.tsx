@@ -6,6 +6,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -67,7 +68,7 @@ function renderPlugin(
       skills: options?.skills ?? [],
     });
   }
-  return render(
+  const rendered = render(
     <MemoryRouter>
       <QueryClientWrapper>
         <PluginDetail
@@ -85,6 +86,7 @@ function renderPlugin(
       </QueryClientWrapper>
     </MemoryRouter>,
   );
+  return { ...rendered, queryClient };
 }
 
 describe("Resource detail header", () => {
@@ -312,7 +314,7 @@ describe("Plugin detail recipe", () => {
             id: `skill_${"a".repeat(64)}`,
             name: "review",
             description: "Reviews pull requests.",
-            provider: null,
+            providers: [],
             scope: "plugin",
             pluginId: "github",
             filePath: "/plugins/github/skills/review/SKILL.md",
@@ -372,6 +374,54 @@ describe("Plugin detail recipe", () => {
     expect(
       screen.getByRole("link", { name: "review" }).getAttribute("href"),
     ).toBe("/skills?view=library");
+    expect(listSkills).not.toHaveBeenCalled();
+  });
+
+  it("links a plugin skill to its detail page once skills load after the page renders", async () => {
+    const listSkills = vi
+      .spyOn(sdk.skills, "list")
+      .mockResolvedValue({ skills: [] });
+    const { queryClient } = renderPlugin(
+      {
+        ...PLUGIN,
+        capabilities: [
+          {
+            kind: "skill",
+            id: "review",
+            label: "review",
+            detail: "Reviews pull requests.",
+          },
+        ],
+      },
+      { seedSkillsCache: false },
+    );
+    expect(
+      screen.getByRole("link", { name: "review" }).getAttribute("href"),
+    ).toBe("/skills?view=library");
+
+    act(() => {
+      queryClient.setQueryData(projectSkillsQueryKey(PERSONAL_PROJECT_ID), {
+        skills: [
+          {
+            id: `skill_${"b".repeat(64)}`,
+            name: "review",
+            description: "Reviews pull requests.",
+            providers: [],
+            scope: "plugin",
+            pluginId: PLUGIN.id,
+            filePath: `/plugins/${PLUGIN.id}/skills/review/SKILL.md`,
+            manageable: false,
+            registrySkillId: null,
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("link", { name: "review" }).getAttribute("href"),
+      ).toBe(`/skills/library/skill_${"b".repeat(64)}`);
+    });
     expect(listSkills).not.toHaveBeenCalled();
   });
 

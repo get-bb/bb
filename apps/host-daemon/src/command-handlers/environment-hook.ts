@@ -2,7 +2,11 @@ import type {
   CommandDispatchOptions,
   CommandOf,
 } from "../command-dispatch-support.js";
-import { ExpectedCommandDispatchError } from "../command-dispatch-support.js";
+import {
+  CommandDispatchError,
+  ExpectedCommandDispatchError,
+  getErrorCode,
+} from "../command-dispatch-support.js";
 import {
   LifecycleScriptTerminationUnverifiedError,
   runSetupScript,
@@ -53,10 +57,13 @@ export async function runEnvironmentHook(
   if (existing !== undefined) {
     if (existing.path !== command.path || existing.kind !== command.kind)
       throw new Error("Environment hook identity mismatch");
-    return existing.done;
+    if (existing.outcome.active || command.resumeOnly) return existing.done;
   }
-  if (command.resumeOnly)
-    throw new Error("Environment hook outcome is unknown after daemon restart");
+  if (existing === undefined && command.resumeOnly)
+    throw new CommandDispatchError(
+      "environment_hook_outcome_unknown",
+      "Environment hook outcome is unknown after daemon restart",
+    );
   const controller = new AbortController();
   const outcome: HookOutcome = { terminationUnverified: false, active: true };
   const done = Promise.resolve().then(
@@ -76,8 +83,11 @@ export async function runEnvironmentHook(
               operationId: command.operationId,
               entry: {
                 type: entry.type,
+                key: entry.key,
                 text: entry.text,
                 status: entry.status ?? null,
+                startedAt: entry.startedAt ?? null,
+                metadata: entry.metadata ?? null,
               },
             }),
         });
@@ -85,7 +95,10 @@ export async function runEnvironmentHook(
         if (error instanceof LifecycleScriptTerminationUnverifiedError) {
           outcome.terminationUnverified = true;
         }
-        throw new Error(error instanceof Error ? error.message : String(error));
+        throw new CommandDispatchError(
+          getErrorCode(error),
+          error instanceof Error ? error.message : String(error),
+        );
       } finally {
         outcome.active = false;
       }

@@ -15,19 +15,28 @@ export type AcpElicitationResponse =
   | { action: "decline" }
   | { action: "cancel" };
 
+export interface AcpElicitationUnmappable {
+  unmappable: string;
+}
+
 export type AcpElicitationPlan =
   | {
       kind: "questions";
       payload: UserQuestionPendingInteractionPayload;
       toResponse(
         resolution: UserQuestionPendingInteractionResolution,
-      ): AcpElicitationResponse;
+      ): AcpElicitationResponse | AcpElicitationUnmappable;
     }
   | { kind: "unsupported"; reason: string };
 
 interface AcpElicitationChoice {
   value: string;
   label: string;
+  description?: string;
+}
+
+export interface AcpElicitationPresentation {
+  descriptionIsHeading: boolean;
 }
 
 type AcpElicitationField =
@@ -73,9 +82,11 @@ function readChoices(schema: AcpJsonObject): AcpElicitationChoice[] | null {
       if (!isJsonObject(entry) || typeof entry["const"] !== "string") {
         return null;
       }
+      const description = readString(entry, "description")?.trim();
       choices.push({
         value: entry["const"],
         label: readString(entry, "title") ?? entry["const"],
+        ...(description ? { description } : {}),
       });
     }
     return choices.length > 0 ? choices : null;
@@ -184,13 +195,17 @@ function questionFor(
   required: boolean,
   other: OtherCompanion | null,
   message: string | undefined,
+  presentation: AcpElicitationPresentation,
 ): PendingInteractionUserQuestionQuestion {
   const label = readString(schema, "title")?.trim() || name;
-  const description = readString(schema, "description")?.trim();
+  const description = readString(schema, "description")?.trim() || undefined;
+  const heading = presentation.descriptionIsHeading ? description : undefined;
+  const detail = presentation.descriptionIsHeading ? undefined : description;
+  const lead = message !== undefined && message !== label ? message : undefined;
   const lines = [
-    ...(message ? [message, ""] : []),
+    ...(lead ? [lead, ""] : []),
     label,
-    ...(description ? [description] : []),
+    ...(detail ? [detail] : []),
     ...(field.kind === "typedChoice"
       ? [`One of: ${field.choices.map((choice) => choice.label).join(", ")}`]
       : []),
@@ -201,7 +216,7 @@ function questionFor(
   const base = {
     id: name,
     prompt: lines.join("\n"),
-    shortLabel: label,
+    shortLabel: heading ?? label,
     required,
   };
   switch (field.kind) {
@@ -356,15 +371,22 @@ function planConfirmation(message: string | undefined): AcpElicitationPlan {
     kind: "questions",
     payload,
     toResponse(resolution) {
-      return resolution.answers[CONFIRM_QUESTION_ID]?.selected[0] ===
-        CONFIRM_ACCEPT_VALUE
-        ? { action: "accept", content: {} }
-        : { action: "decline" };
+      const selected = resolution.answers[CONFIRM_QUESTION_ID]?.selected[0];
+      if (selected === CONFIRM_ACCEPT_VALUE) {
+        return { action: "accept", content: {} };
+      }
+      if (selected === CONFIRM_DECLINE_VALUE) {
+        return { action: "decline" };
+      }
+      return { unmappable: "the answer was neither Accept nor Decline" };
     },
   };
 }
 
-export function planAcpElicitation(params: unknown): AcpElicitationPlan {
+export function planAcpElicitation(
+  params: unknown,
+  presentation: AcpElicitationPresentation,
+): AcpElicitationPlan {
   if (!isJsonObject(params)) {
     return { kind: "unsupported", reason: "the request was malformed" };
   }
@@ -444,6 +466,7 @@ export function planAcpElicitation(params: unknown): AcpElicitationPlan {
         entry.required,
         other,
         planned.length === 0 ? message : undefined,
+        presentation,
       ),
     });
   }
@@ -463,7 +486,9 @@ export function planAcpElicitation(params: unknown): AcpElicitationPlan {
       for (const entry of planned) {
         const answered = contentFor(entry, resolution.answers[entry.name]);
         if (!answered) {
-          return { action: "decline" };
+          return {
+            unmappable: `the answer to "${entry.name}" does not fit that field`,
+          };
         }
         Object.assign(content, answered);
       }

@@ -55,6 +55,7 @@ function filesFor(path: string): GitFilesResult {
     shortstat: "",
     mergeBaseRef: null,
     initialPatches: [],
+    repos: [],
   };
 }
 

@@ -26,7 +26,7 @@ type EnvironmentProvisionCommandInitiator =
 interface SuggestedBranchNameArgs {
   branchPrefix: string;
   title: string | null;
-  threadId: string;
+  id: string;
 }
 
 export function buildSuggestedBranchName(
@@ -35,8 +35,8 @@ export function buildSuggestedBranchName(
   const branchSlug =
     args.title === null ? null : sanitizeGeneratedBranchSlug(args.title);
   return branchSlug
-    ? `${args.branchPrefix}${branchSlug}-${args.threadId}`
-    : `${args.branchPrefix}${args.threadId}`;
+    ? `${args.branchPrefix}${branchSlug}-${args.id}`
+    : `${args.branchPrefix}${args.id}`;
 }
 
 export function requirePublicProjectForThreadCreate(
@@ -71,7 +71,6 @@ interface EnvironmentProvisionCommandArgs {
   hostId: string;
   initiator: EnvironmentProvisionCommandInitiator;
   path: string;
-  setupScriptTimeoutMs: number | null;
 }
 
 export function buildEnvironmentProvisionCommand(
@@ -79,11 +78,9 @@ export function buildEnvironmentProvisionCommand(
 ): EnvironmentProvisionCommand {
   return {
     type: "environment.attach" as const,
-    contributedEnv: [],
     environmentId: args.environmentId,
     initiator: args.initiator,
     path: args.path,
-    setupScriptTimeoutMs: args.setupScriptTimeoutMs,
   };
 }
 

@@ -118,10 +118,14 @@ function toBridgeWireOptions(
     permissionScope,
     approvalReviewer,
     permissionEscalation,
+    additionalWorkspaceWriteRoots,
   } = options;
   const providerOptions = {
     ...staticProviderOptions,
     ...options.providerOptions,
+    ...(additionalWorkspaceWriteRoots.length > 0
+      ? { additionalWorkspaceWriteRoots: [...additionalWorkspaceWriteRoots] }
+      : {}),
   };
   return {
     ...(model !== undefined ? { model } : {}),
@@ -228,7 +232,10 @@ export function createBridgeProtocolAdapter(
           return {
             kind: "request",
             method: BRIDGE_REQUEST_METHODS.commandList,
-            params: cwdAndStaticProviderOptions(command.cwd),
+            params: {
+              ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
+            },
           };
         case "provider/health":
           return {
@@ -237,6 +244,7 @@ export function createBridgeProtocolAdapter(
             params: {
               providerId: options.id,
               ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
             },
           };
         case "provider/usage":
@@ -259,6 +267,7 @@ export function createBridgeProtocolAdapter(
                 ? { requirement: command.requirement }
                 : {}),
               ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
             },
           };
         case "provider/installation/run":
@@ -269,11 +278,27 @@ export function createBridgeProtocolAdapter(
               providerId: options.id,
               action: command.action,
               ...cwdAndStaticProviderOptions(command.cwd),
+              envVars: command.envVars,
             },
           };
         case "skills/configure":
           if (!handshake.skills.configure) {
             return { kind: "noop", reason: "skills.configure not advertised" };
+          }
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.skillsConfigure,
+            params: { roots: command.skillRoots },
+          };
+        case "skills/reconfigure":
+          if (
+            !handshake.skills.configure ||
+            handshake.skills.reconfigure !== true
+          ) {
+            return {
+              kind: "noop",
+              reason: "skills.reconfigure not advertised",
+            };
           }
           return {
             kind: "request",

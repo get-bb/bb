@@ -2,11 +2,9 @@ import { createContext, useContext } from "react";
 import type { KeyboardCommandId } from "@bb/domain";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 
-type OwnsCommandTarget = (target: EventTarget | null) => boolean;
+type OwnsCommand = (target: EventTarget | null) => boolean;
 
-const ComposerCommandOwnerContext = createContext<OwnsCommandTarget | null>(
-  null,
-);
+const ComposerCommandOwnerContext = createContext<OwnsCommand | null>(null);
 
 export const ComposerCommandOwnerProvider =
   ComposerCommandOwnerContext.Provider;
@@ -14,8 +12,9 @@ export const ComposerCommandOwnerProvider =
 export function useComposerCommand(
   command: KeyboardCommandId,
   run: () => void,
+  isAvailable?: () => boolean,
 ): void {
-  const ownsTarget = useContext(ComposerCommandOwnerContext);
+  const ownsCommand = useContext(ComposerCommandOwnerContext);
   useAppCommandHandler(
     command,
     () => {
@@ -23,8 +22,9 @@ export function useComposerCommand(
       return true;
     },
     0,
-    ownsTarget !== null,
-    ({ target }) => ownsTarget?.(target) ?? false,
+    ownsCommand !== null,
+    ({ target }) =>
+      (ownsCommand?.(target) ?? false) && (isAvailable?.() ?? true),
   );
 }
 

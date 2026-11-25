@@ -1,9 +1,13 @@
 import {
   cleanupEnvironment,
+  readEnvironmentRecoveryOutcome,
+  readEnvironmentRemovalProgress,
   recoverEnvironmentCleanup,
   requestEnvironmentRemoval,
 } from "../services/environments/environment-engine.js";
+import { resolveEnvironmentRepos } from "../services/environments/environment-repos.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
+import { createEnvironmentBeforeThread } from "../services/environments/environment-creation.js";
 import {
   environmentHasLiveThreads,
   listEnvironments,
@@ -97,7 +101,7 @@ export function registerEnvironmentRoutes(
       );
     if (query?.recover === "true") {
       await recoverEnvironmentCleanup(deps, environment.id);
-      return context.json({ ok: true } as const);
+      return context.json(readEnvironmentRecoveryOutcome(deps, environment.id));
     }
     if (!cleanupEnvironment(deps, environment.id))
       throw new ApiError(
@@ -105,7 +109,7 @@ export function registerEnvironmentRoutes(
         "invalid_request",
         "Environment is not provider-managed",
       );
-    return context.json({ ok: true } as const);
+    return context.json(readEnvironmentRemovalProgress(deps, environment.id));
   });
 
   get(routes.list, async (context, query) => {
@@ -122,6 +126,7 @@ export function registerEnvironmentRoutes(
           ...(query?.environmentProviderId
             ? { environmentProviderId: query.environmentProviderId }
             : {}),
+          ...(query?.heldBy ? { heldBy: query.heldBy } : {}),
           ...(query?.instanceKey ? { instanceKey: query.instanceKey } : {}),
           ...(query?.path === undefined ? {} : { path: query.path }),
           ...(limit === undefined ? {} : { limit }),
@@ -132,6 +137,23 @@ export function registerEnvironmentRoutes(
         }),
       ),
     );
+  });
+
+  post(routes.create, async (context, payload) => {
+    const environment = await createEnvironmentBeforeThread(deps, {
+      projectId: payload.projectId,
+      hostId: payload.hostId ?? null,
+      provider:
+        payload.provider === undefined
+          ? null
+          : {
+              id: payload.provider.id,
+              inputs: payload.provider.inputs ?? null,
+            },
+      name: payload.name ?? null,
+      heldBy: payload.heldBy,
+    });
+    return context.json(toEnvironmentResponse(deps.db, environment), 201);
   });
 
   del(routes.delete, (context) => {
@@ -155,7 +177,7 @@ export function registerEnvironmentRoutes(
         environmentId: environment.id,
       });
     }
-    return context.json({ ok: true } as const);
+    return context.json(readEnvironmentRemovalProgress(deps, environment.id));
   });
 
   get(routes.get, (context) =>
@@ -196,6 +218,14 @@ export function registerEnvironmentRoutes(
       ok: true,
       archivedThreadIds,
     });
+  });
+
+  get(routes.repos, async (context) => {
+    const environment = requireReadyEnvironment(
+      deps.db,
+      context.req.param("id"),
+    );
+    return context.json(await resolveEnvironmentRepos(deps, environment));
   });
 
   get(routes.paths, async (context, query) => {

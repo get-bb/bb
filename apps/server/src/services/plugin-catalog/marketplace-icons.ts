@@ -139,14 +139,12 @@ export async function fetchMarketplaceIcons(args: {
     const sourceUrl = iconSourceUrl(icon);
     const cached = cachedByEntryId.get(entryId);
     const unchangedUrl = cached?.sourceUrl === sourceUrl;
-    if (
-      args.onlyMissing &&
-      icon.kind === "remote" &&
-      cached !== undefined &&
-      unchangedUrl
-    ) {
-      resolved.set(entryId, iconInputFromRow(cached));
-      return;
+    if (args.onlyMissing) {
+      if (cached !== undefined && unchangedUrl) {
+        resolved.set(entryId, iconInputFromRow(cached));
+        return;
+      }
+      if (icon.kind === "local") return;
     }
     try {
       const refreshed =

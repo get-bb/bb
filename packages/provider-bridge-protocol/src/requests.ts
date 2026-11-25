@@ -48,7 +48,10 @@ export const modelListParamsSchema = z
   .passthrough();
 
 export const commandListParamsSchema = z
-  .object({ cwd: z.string().min(1) })
+  .object({
+    cwd: z.string().min(1),
+    envVars: z.record(z.string(), z.string()).optional(),
+  })
   .passthrough();
 
 export const commandListResultSchema = threadProviderCommandsStateSchema;

@@ -216,7 +216,7 @@ describe("MarkdownPreview", () => {
     notifyResize();
     expect(
       flushBreakout?.style.getPropertyValue("--md-table-breakout-max"),
-    ).toBe("300px");
+    ).toBe("calc(300px - 2rem)");
     flush.unmount();
 
     const roomy = renderClipped(600);
@@ -225,7 +225,7 @@ describe("MarkdownPreview", () => {
     notifyResize();
     expect(
       roomyBreakout?.style.getPropertyValue("--md-table-breakout-max"),
-    ).toBe("500px");
+    ).toBe("calc(500px - 2rem)");
     roomy.unmount();
 
     const sheet = document.createElement("style");
@@ -244,7 +244,7 @@ describe("MarkdownPreview", () => {
     notifyResize();
     expect(
       rootedBreakout?.style.getPropertyValue("--md-table-breakout-max"),
-    ).toBe("300px");
+    ).toBe("calc(300px - 2rem)");
     sheet.remove();
     rooted.unmount();
 

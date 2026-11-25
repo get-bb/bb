@@ -1,3 +1,4 @@
+import type { OperationResponse } from "@bb/server-contract";
 import {
   type PromptInput,
   type PendingInteraction,
@@ -14,6 +15,7 @@ import {
 } from "@bb/domain";
 import {
   DEFAULT_TURN_RETRY_REASON,
+  threadImportResponseSchema,
   threadTabsResponseSchema,
 } from "@bb/server-contract";
 import type {
@@ -29,6 +31,7 @@ import type {
   SendQueuedMessageResponse,
   ThreadArchiveAllResponse,
   ThreadChildSummaryResponse,
+  ThreadImportResponse,
   ThreadConversationOutlineResponse,
   ThreadCountGroupBy,
   ThreadCountQuery,
@@ -98,7 +101,12 @@ export interface ThreadListArgs {
   sectionId?: string;
   hasParent?: boolean;
   includeHidden?: boolean;
-  limit?: number;
+  /**
+   * Page size. A caller that needs every row pages with `offset` until a
+   * page comes back shorter than its `limit`.
+   */
+  limit: number;
+  /** Rows to skip, in the list's own order; defaults to 0. */
   offset?: number;
   originKind?: ThreadListQuery["originKind"];
   originPluginId?: string;
@@ -204,15 +212,16 @@ export type ThreadTimelineReadResult = ThreadTimelineReadResponse;
 export type ThreadArchiveResult = ThreadArchiveAllResponse;
 export type ThreadOpenResult = ThreadOpenResponse;
 export type ThreadPaneActionResult = ThreadPaneActionResponse;
-export type ThreadDeleteResult = { ok: true };
+export type ThreadDeleteResult = OperationResponse;
 export type ThreadSendResult = SendMessageResponse;
 export type ThreadRetryResult = RetryTurnResponse;
 export type ThreadEditMessageResult = EditMessageResponse;
-export type ThreadStopResult = { ok: true };
-export type ThreadCompactResult = { ok: true };
-export type ThreadBannerActionResult = { ok: true };
-export type ThreadUnarchiveResult = { ok: true };
+export type ThreadStopResult = OperationResponse & { status: ThreadStatus };
+export type ThreadCompactResult = OperationResponse;
+export type ThreadBannerActionResult = OperationResponse;
+export type ThreadUnarchiveResult = OperationResponse;
 export type ThreadArchiveAllResult = ThreadArchiveAllResponse;
+export type ThreadImportResult = ThreadImportResponse;
 export type ThreadReadStateResult = ThreadResponse;
 export type ThreadRestoreEnvironmentResult = ThreadResponse;
 export type ThreadPinOrderResult = ThreadListResponse;
@@ -220,9 +229,9 @@ export type ThreadPromptHistoryResult = PromptHistoryResponse;
 export type ThreadQueuedMessagesResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageCreateResult = ThreadQueuedMessage;
 export type ThreadQueuedMessageUpdateResult = ThreadQueuedMessage;
-export type ThreadQueuedMessageDeleteResult = { ok: true };
+export type ThreadQueuedMessageDeleteResult = OperationResponse;
 export type ThreadQueuedMessageEditHoldResult = QueuedMessageEditHoldResponse;
-export type ThreadQueuedMessageEditHoldReleaseResult = { ok: true };
+export type ThreadQueuedMessageEditHoldReleaseResult = OperationResponse;
 export type ThreadQueuedMessageReorderResult = ThreadQueuedMessageListResponse;
 export type ThreadQueuedMessageSendResult = SendQueuedMessageResponse;
 export type ThreadQueuedMessageGroupBoundaryResult =
@@ -337,6 +346,11 @@ export interface ThreadRetryArgs {
 export interface ThreadActionArgs {
   signal?: AbortSignal;
   threadId: string;
+}
+
+export interface ThreadImportArgs {
+  file: ArrayBuffer | Blob | Uint8Array;
+  signal?: AbortSignal;
 }
 
 export interface ThreadStatusArgs extends ThreadActionArgs {
@@ -687,12 +701,27 @@ export interface ThreadsArea {
   experimental_regenerateTitle(
     args: ThreadActionArgs,
   ): Promise<ThreadMutationResult>;
+  /**
+   * Download the thread as a thread file: zstd-compressed JSONL with a header
+   * line, then the thread's rows, every event in sequence order and its
+   * attachments. A deleted thread can still be exported until its purge
+   * starts. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_export(args: ThreadActionArgs): Promise<Uint8Array>;
+  /**
+   * Import a thread file: recreates a deleted thread in its project. A
+   * recreated archived thread counts as archived now. Rejects a thread that
+   * still exists or is still being deleted, and a file whose project is not on
+   * this server.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_import(args: ThreadImportArgs): Promise<ThreadImportResult>;
   updatePluginMetadata(
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
   queue: ThreadQueueArea;
   interactions: ThreadInteractionsArea;
-  list(args?: ThreadListArgs): Promise<ThreadListResult>;
+  list(args: ThreadListArgs): Promise<ThreadListResult>;
   listRunning(args?: { signal?: AbortSignal }): Promise<ThreadRunningResult>;
   markRead(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
   markUnread(args: ThreadActionArgs): Promise<ThreadReadStateResult>;
@@ -1165,7 +1194,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async delete(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"]["queued-messages"][
           ":queuedMessageId"
         ].$delete({
@@ -1175,7 +1204,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
         }),
       );
-      return { ok: true };
     },
     async experimental_holdForEdit(input) {
       return transport.readJson(
@@ -1190,7 +1218,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async experimental_releaseEditHold(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"]["queued-messages"][":queuedMessageId"][
           "edit-hold"
         ].$delete({
@@ -1200,7 +1228,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
         }),
       );
-      return { ok: true };
     },
     async list(input) {
       return transport.readJson(
@@ -1346,7 +1373,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async delete(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].$delete({
           param: { id: input.threadId },
           json: {
@@ -1354,7 +1381,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           },
         }),
       );
-      return { ok: true };
     },
     async editMessage(input) {
       const { threadId, ...json } = input;
@@ -1416,6 +1442,40 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           param: { id: input.threadId },
         }),
       );
+    },
+    async experimental_export(input) {
+      const response = await transport.resolve(
+        transport.api.v1.threads[":id"].export.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return new Uint8Array(await response.arrayBuffer());
+    },
+    async experimental_import(input) {
+      const form = new FormData();
+      form.set(
+        "file",
+        input.file instanceof Blob
+          ? input.file
+          : new Blob([
+              Uint8Array.from(
+                input.file instanceof Uint8Array
+                  ? input.file
+                  : new Uint8Array(input.file),
+              ),
+            ]),
+        "thread.jsonl.zst",
+      );
+      const baseUrl = transport.baseUrl.replace(/\/$/u, "");
+      const response = await transport.resolve(
+        transport.fetch(`${baseUrl}/api/v1/threads/import`, {
+          body: form,
+          method: "POST",
+          signal: input.signal,
+        }),
+      );
+      return threadImportResponseSchema.parse(await response.json());
     },
     async experimental_listPluginMetadata(input) {
       return transport.readJson(
@@ -1607,44 +1667,39 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async stop(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].stop.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async compact(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].compact.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async clearContext(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].context.clear.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async cancelPlan(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].plan.cancel.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async clearGoal(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].goal.clear.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     tabs,
     async context(input) {
@@ -1724,12 +1779,11 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async unarchive(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.threads[":id"].unarchive.$post({
           param: { id: input.threadId },
         }),
       );
-      return { ok: true };
     },
     async unpin(input) {
       return transport.readJson(

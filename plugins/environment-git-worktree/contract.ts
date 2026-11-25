@@ -26,6 +26,28 @@ export const ownedBranchSchema = z
   })
   .strict();
 
+const remoteBaseSchema = z
+  .object({
+    ref: z.string().min(1),
+    commit: z.string().min(1),
+    offline: z.boolean(),
+  })
+  .strict();
+
+export type RemoteBase = z.infer<typeof remoteBaseSchema>;
+
+export const createdFolderWorktreeSchema = z
+  .object({
+    sourcePath: z.string().min(1),
+    path: z.string().min(1),
+    baseBranch: z.string().min(1).nullable(),
+    ownsBranch: z.boolean(),
+  })
+  .strict();
+export type CreatedFolderWorktree = z.infer<typeof createdFolderWorktreeSchema>;
+
+export const MAX_POOL_SIZE = 4;
+
 export const worktreeHostContract = defineRpcContract({
   defaultBaseBranch: {
     input: z.object({ sourcePath: z.string().min(1) }).strict(),
@@ -61,7 +83,7 @@ export const worktreeHostContract = defineRpcContract({
         operationId: z.string().min(1),
         sourcePath: z.string().min(1),
         pathKey: z.string().min(1),
-        branchName: z.string().min(1),
+        branchName: z.string().min(1).nullable(),
         baseBranch: worktreeBaseBranchSchema,
         branchMode: z.enum(["reset", "reuse-existing"]),
       })
@@ -80,6 +102,142 @@ export const worktreeHostContract = defineRpcContract({
         .strict(),
     ]),
   },
+  listFolderRepositories: {
+    input: z.object({ paths: z.array(z.string().min(1)) }).strict(),
+    output: z.object({ paths: z.array(z.string().min(1)) }).strict(),
+  },
+  createFolders: {
+    input: z
+      .object({
+        operationId: z.string().min(1),
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        folders: z.array(z.string().min(1)).min(1),
+        branchName: z.string().min(1).nullable(),
+        branchMode: z.enum(["reset", "reuse-existing"]),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("created"),
+          folders: z.array(createdFolderWorktreeSchema),
+        })
+        .strict(),
+      z
+        .object({ status: z.literal("failed"), message: z.string().min(1) })
+        .strict(),
+    ]),
+  },
+  nameBranch: {
+    input: z
+      .object({
+        operationId: z.string().min(1),
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        branchName: z.string().min(1),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("named") }).strict(),
+      z
+        .object({ status: z.literal("failed"), message: z.string().min(1) })
+        .strict(),
+    ]),
+  },
+  refreshPoolBase: {
+    input: z
+      .object({
+        sourcePath: z.string().min(1),
+        memberPaths: z.array(z.string().min(1)),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z
+        .object({
+          status: z.literal("refreshed"),
+          ref: z.string().min(1).nullable(),
+          commit: z.string().min(1).nullable(),
+          members: z.array(
+            z
+              .object({
+                path: z.string().min(1),
+                head: z.string().min(1).nullable(),
+                branch: z.string().min(1).nullable(),
+                onBase: z.boolean(),
+              })
+              .strict(),
+          ),
+        })
+        .strict(),
+      z.object({ status: z.literal("no-repository") }).strict(),
+    ]),
+  },
+  claimPoolMember: {
+    input: z
+      .object({
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        placeholder: z.string().min(1),
+        base: remoteBaseSchema.nullable(),
+        checkTimeoutMs: z.number().int().positive(),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("no-base") }).strict(),
+      z.object({ status: z.literal("timed-out") }).strict(),
+      z
+        .object({
+          status: z.literal("base-unavailable"),
+          reason: z.string().min(1),
+        })
+        .strict(),
+      z
+        .object({
+          status: z.literal("usable"),
+          base: remoteBaseSchema,
+          head: z.string().min(1),
+        })
+        .strict(),
+      z
+        .object({
+          status: z.literal("refused"),
+          base: remoteBaseSchema,
+          reason: z.string().min(1),
+        })
+        .strict(),
+      z.object({ status: z.literal("busy"), base: remoteBaseSchema }).strict(),
+    ]),
+  },
+  nameHandedOffBranch: {
+    input: z
+      .object({
+        path: z.string().min(1),
+        fromBranch: z.string().min(1),
+        toBranch: z.string().min(1),
+      })
+      .strict(),
+    output: z.null(),
+  },
+  restorePoolMember: {
+    input: z
+      .object({
+        sourcePath: z.string().min(1),
+        path: z.string().min(1),
+        placeholder: z.string().min(1),
+      })
+      .strict(),
+    output: z.discriminatedUnion("status", [
+      z.object({ status: z.literal("intact") }).strict(),
+      z.object({ status: z.literal("restored") }).strict(),
+      z
+        .object({
+          status: z.literal("used"),
+          branch: z.string().min(1).nullable(),
+        })
+        .strict(),
+    ]),
+  },
   remove: {
     input: z
       .object({
@@ -87,6 +245,7 @@ export const worktreeHostContract = defineRpcContract({
         pathKey: z.string().min(1),
         path: z.string().min(1).nullable(),
         ownedBranch: ownedBranchSchema.nullable(),
+        folderBranches: z.array(ownedBranchSchema),
       })
       .strict(),
     output: z.discriminatedUnion("status", [

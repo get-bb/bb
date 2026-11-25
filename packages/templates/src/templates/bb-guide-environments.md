@@ -40,6 +40,14 @@ Making your repo work with bb:
   variable are removed, and bb does not inject BB_PROJECT_ID, BB_ENVIRONMENT_ID,
   or BB_SOURCE_PATH.
 
+  When an environment also creates folder worktrees of the project's other
+  repositories, each new folder worktree runs its own .bb-env-setup.sh first,
+  in order, then the main workspace's runs; teardown runs in the main
+  workspace first, then in each folder in reverse. Setup runs only for new
+  contents: when a thread takes a warm worktree, a folder worktree that had to
+  be moved to its repository's newer default branch runs its setup again,
+  then the main workspace's; untouched folders do not.
+
   Hooks run only in paths bb created and owns, such as new worktrees and
   checkouts bb cloned; attached project checkouts and personal workspaces never
   run hooks. A server restart does not interrupt a running hook, but a daemon
@@ -105,17 +113,36 @@ Making your repo work with bb:
   reason, or `unknown` while the background check has not answered. Listing
   never waits on a machine; results can be up to ten minutes old, and thread
   creation checks the selected provider and machine afresh.
-  bb environment list                     List environments that are not destroyed
+  bb environment create                   Create an environment before any thread. You hold it:
+                                          it is never retired for having no threads, threads can
+                                          join it with `bb thread spawn --environment <id>`, and it
+                                          stays until `bb environment delete`. Setup runs as for a
+                                          thread; follow it with `bb environment show <id>`
+    --project <id>                        Project to create it in (required)
+    --machine <id-or-name>               Machine; defaults to the project's default checkout machine
+    --host <id-or-name>                  Alias for --machine
+    --provider <id>                       Environment provider; defaults to worktree (personal
+                                          workspace for the personal project). Providers written for
+                                          the version-1 contract are refused: they need a thread
+    --inputs <json>                       Provider inputs (requires --provider); omitted means {},
+                                          so the provider's defaults apply
+    --name <name>                         Display name; a worktree branch is <prefix><name-slug>-<id>
+  bb environment list                     List environments that are not destroyed; a held
+                                          environment shows "held by user" or "held by plugin:<id>"
     --project <id>                        Only environments in this project
     --provider <id>                       Only environments this environment provider produced
     --host <id-or-name>                   Only environments on this machine
     --instance-key <key>                  Only the environment its provider named with
                                           this instance key (with --provider, the one
                                           row that provider's launch produced)
+    --held-by <holder>                    Only environments with this holder: user or
+                                          plugin:<plugin-id>. A plugin-held environment
+                                          (such as a warm worktree) refuses joining threads
     --status <status>                     Only environments in this status: provisioning,
                                           ready, error, destroyed (the only way to see
                                           destroyed rows)
-    --limit <n> / --offset <n>            Page through the rows, oldest first
+    --limit <n> / --offset <n>            Page through the rows, oldest first (default 200;
+                                          a full page notes the next --offset on stderr)
   bb environment delete <id>              Request provider cleanup; refused while threads are
                                           live or stopping. The command returns with cleanup
                                           requested; lifecycle becomes destroyed only after
@@ -125,6 +152,9 @@ Making your repo work with bb:
     --recover                             After inspection, acknowledge interrupted hooks and
                                           retry failed cleanup (Linux and macOS same-user process guard)
   bb environment show <id>                Show environment details (path, branch, status, lifecycle, retirement deadline and teardown attempts)
+  bb environment repos <id>               List the git repositories of a ready environment:
+                                          its main folder, its extra folders, and repos found
+                                          up to two levels inside a folder that is not a repo
 
   bb environment paths <id>               Search workspace paths
     --query <query>                       Fuzzy path query
@@ -156,7 +186,8 @@ Making your repo work with bb:
   worktree first if you want to keep them. Deleting the last thread, or an
   explicit environment or project deletion, skips the grace (including a
   never-retire policy). Failed teardown retries after 1, 2, 4, and 8 minutes, then stops after
-  five failed attempts with a "Needs recovery" message;
+  five failed attempts with a "Needs recovery" message and
+  `lifecycle.teardown.needsRecovery` set to true;
   `bb environment show <id>` reports the lifecycle phase, deadline, teardown
   attempt, and failure message.
 
@@ -164,11 +195,13 @@ Making your repo work with bb:
   to remove an unused provider-managed environment early. It is not a routine
   end-of-task step. It rejects live threads and unmanaged environments,
   succeeds if already removed, and completes asynchronously. It cannot bypass
-  "Needs recovery"; `bb environment list` includes the failure message.
+  "Needs recovery": it fails with `environment_needs_recovery` (HTTP 409), and
+  `bb environment list` includes the failure message.
 
   `bb environment cleanup <id> --recover [--json]` is an explicit acknowledgement
   after inspecting a failed environment. It marks interrupted hooks finished,
-  resets the retry budget, and retries removal. It also handles interrupted
+  resets the retry budget, and retries removal; it exits non-zero
+  (`environment_teardown_failed`) when that removal fails again. It also handles interrupted
   setup without a recorded hook operation. A teardown hook that never started
   still runs. A daemon reboot alone never proves a detached hook has stopped.
 

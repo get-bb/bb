@@ -1,13 +1,12 @@
 import type { Dirent } from "node:fs";
 import { readdir, readFile, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { eq } from "drizzle-orm";
 import {
   countAppliedMigrations,
   getAppSettings,
   getHost,
   getPluginKvValue,
-  hostDaemonSessions,
+  listActiveSessionHosts,
   rerootServerOwnedPluginPaths,
   setAppSettings,
   swapServerHostRoles,
@@ -15,7 +14,7 @@ import {
   type RerootServerOwnedPathsResult,
   type SwapServerHostRolesResult,
 } from "@bb/db";
-import { appSettingsSchema } from "@bb/domain";
+import { appSettingsSchema, CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import {
   readLastServerMoveFile,
   readServerImportFile,
@@ -36,7 +35,10 @@ import {
   type ManagedAddressKey,
 } from "./managed-files.js";
 
-const PLUGIN_SNAPSHOTS_RELATIVE_PATH = ["plugins", "snapshots"] as const;
+const PLUGIN_SNAPSHOTS_RELATIVE_PATH = [
+  "plugins",
+  CORE_PLUGIN_DIRECTORIES.stateSnapshots,
+] as const;
 const PREVIOUS_REGISTRATION_FILE_NAME = "previous-registration.json";
 const REGISTRATION_PATH_KEYS = ["rootDir", "sourcePath"] as const;
 const CONNECT_CREDENTIAL_KEY = "credential";
@@ -88,14 +90,6 @@ export interface ServerImportBootResult {
   importedDaemonSessions: ImportedDaemonSession[];
   manualImportPending: boolean;
   pendingMove: PendingServerMove | null;
-}
-
-function listActiveDaemonSessions(db: DbConnection): ImportedDaemonSession[] {
-  return db
-    .select({ hostId: hostDaemonSessions.hostId, id: hostDaemonSessions.id })
-    .from(hostDaemonSessions)
-    .where(eq(hostDaemonSessions.status, "active"))
-    .all();
 }
 
 export type ManualServerImportCompletion =
@@ -393,7 +387,7 @@ export async function applyServerImportAtBoot(
             targetHostId,
           })
         : null;
-    importedDaemonSessions = listActiveDaemonSessions(args.db);
+    importedDaemonSessions = listActiveSessionHosts(args.db);
     await writeServerImportFile(args.dataDir, {
       ...marker,
       fixupsAppliedAt: args.now,

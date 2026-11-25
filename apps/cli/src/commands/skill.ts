@@ -1,19 +1,23 @@
 import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
-import type { RegistryRanking, RegistrySkill } from "@bb/server-contract";
+import type {
+  RegistryRanking,
+  RegistrySkill,
+  SkillSummary,
+} from "@bb/server-contract";
 import type { SkillsRegistryArea } from "@bb/sdk";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import {
+  outputJson,
+  reportCommandResult,
+  type JsonOutputOptions,
+} from "../command-result.js";
 import { resolveMachineId, selectMachines } from "./machine.js";
 import type { ContextSnapshot } from "../context-env.js";
 import { renderBorderlessTable } from "../table.js";
-import {
-  collectOption,
-  confirmDestructiveAction,
-  outputJson,
-  type JsonOutputOptions,
-} from "./helpers.js";
+import { collectOption, confirmDestructiveAction } from "./helpers.js";
 
 interface SkillWorkspaceOptions extends JsonOutputOptions {
   environment?: string;
@@ -159,6 +163,11 @@ async function enrichRegistryEntries(
   });
 }
 
+function skillProviderLabel(providers: SkillSummary["providers"]): string {
+  if (providers.length > 1) return "shared";
+  return providers[0] ?? "bb";
+}
+
 export function registerSkillCommands(
   program: Command,
   getUrl: () => string,
@@ -188,7 +197,7 @@ export function registerSkillCommands(
               entry.id,
               entry.name,
               entry.scope,
-              entry.provider ?? "bb",
+              skillProviderLabel(entry.providers),
               entry.manageable ? "yes" : "no",
               entry.filePath,
             ]),
@@ -458,21 +467,27 @@ export function registerSkillCommands(
           throw new Error("No connected machine to install the skills onto.");
         }
         const result = await sdk.system.installCliSkills({ hostIds });
-        if (outputJson(options, result)) return;
-        for (const entry of result.results) {
-          if (!entry.ok) {
-            console.error(`${entry.hostName}: ${entry.errorMessage}`);
-            continue;
-          }
-          for (const installation of entry.installations) {
-            console.log(
-              `${entry.hostName}: installed ${installation.name} to ${installation.path}`,
-            );
-          }
-        }
-        if (result.results.some((entry) => !entry.ok)) {
-          throw new Error("The install failed on at least one machine.");
-        }
+        const failures = result.results.flatMap((entry) =>
+          entry.ok ? [] : [`${entry.hostName}: ${entry.errorMessage}`],
+        );
+        reportCommandResult(options, result, {
+          text: result.results.flatMap((entry) =>
+            entry.ok
+              ? entry.installations.map(
+                  (installation) =>
+                    `${entry.hostName}: installed ${installation.name} to ${installation.path}`,
+                )
+              : [],
+          ),
+          failure:
+            failures.length === 0
+              ? null
+              : {
+                  message: `The install failed on at least one machine.\n${failures.join("\n")}`,
+                  code: "cli_skills_install_failed",
+                  hint: null,
+                },
+        });
       }),
     );
 }

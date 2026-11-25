@@ -70,6 +70,7 @@ import type {
   StandardSchemaV1Issue,
   StandardSchemaV1Result,
 } from "../rpc-contract.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 /**
  * Shared registration policy for the real plugin host and the in-process fake.
@@ -2219,11 +2220,33 @@ export function enforcePluginCliOutputLimit(
   return jsonOutput
     ? {
         exitCode: 1,
-        stdout: JSON.stringify({ error }),
+        stdout: JSON.stringify({ ok: false, error }),
         stderr: "",
         error,
       }
     : { exitCode: 1, stdout: "", stderr: error.message, error };
+}
+
+/**
+ * The result for a plugin CLI invocation the host could not complete: the
+ * plugin is unknown, not running, registers no CLI, or its command threw.
+ * Carries the same `{ ok: false, error: { code, message } }` envelope on
+ * stdout under `--json` as core commands and `defineCli` usage errors.
+ */
+export function pluginCliFailureResult(
+  failure: { code: string; message: string },
+  jsonOutput: boolean,
+): PluginCliExecutionResult {
+  return enforcePluginCliOutputLimit(
+    {
+      exitCode: 1,
+      stdout: jsonOutput
+        ? `${JSON.stringify({ ok: false, error: failure }, null, 2)}\n`
+        : "",
+      stderr: failure.message,
+    },
+    jsonOutput,
+  );
 }
 
 /**
@@ -2471,7 +2494,7 @@ export type NormalizedPluginEnvironmentComposition = z.infer<
   typeof environmentCompositionSchema
 >;
 
-export interface NormalizedPluginEnvironmentProvider {
+interface NormalizedPluginEnvironmentProviderCommon {
   id: string;
   displayName: string;
   description: string | null;
@@ -2482,17 +2505,103 @@ export interface NormalizedPluginEnvironmentProvider {
   availability: NonNullable<
     PluginEnvironmentProviderDeclaration["availability"]
   > | null;
-  validate: NonNullable<
-    PluginEnvironmentProviderDeclaration["validate"]
-  > | null;
-  experimental_existingPath: NonNullable<
-    PluginEnvironmentProviderDeclaration["experimental_existingPath"]
-  > | null;
-  create: PluginEnvironmentProviderDeclaration["create"];
-  restore: NonNullable<PluginEnvironmentProviderDeclaration["restore"]> | null;
+  /** Version 2's own, or version 1's `experimental_existingPath` as a reusing location. */
+  locate: NonNullable<PluginEnvironmentProviderDeclaration["locate"]> | null;
   remove: PluginEnvironmentProviderDeclaration["remove"];
+}
+
+type ProviderModule =
+  import("../environment-provider.js").PluginEnvironmentProviderDefinition;
+type V2ValidateContext =
+  import("../environment-provider.js").PluginEnvironmentProviderValidateContext;
+type V2CreateContext =
+  import("../environment-provider.js").PluginEnvironmentProviderCreateContext;
+type V2RestoreContext =
+  import("../environment-provider.js").PluginEnvironmentProviderRestoreContext;
+type CreateResult =
+  import("../environment-provider.js").PluginEnvironmentProviderCreateResult;
+
+/**
+ * The contexts of a provider declared without `apiVersion` (version 1). The
+ * public types offer only version 2; core still runs version-1 providers
+ * built against earlier SDKs through this adapter.
+ */
+export type PluginEnvironmentProviderV1ValidateContext = Omit<
+  V2ValidateContext,
+  "projectCheckout"
+> & {
+  projectCheckout: { path: string; experimental_ownsPath: boolean } | null;
+};
+
+type V1OperationContext = PluginEnvironmentProviderV1ValidateContext &
+  Pick<V2CreateContext, "attempt" | "pathKey" | "report" | "signal"> & {
+    thread: import("@bb/server-contract").ThreadResponse;
+    experimental_claimPath(path: string): Promise<boolean>;
+  };
+
+export type PluginEnvironmentProviderV1CreateContext = V1OperationContext & {
+  suggestedBranchName: string;
+};
+
+export type PluginEnvironmentProviderV1RestoreContext = V1OperationContext &
+  Pick<V2RestoreContext, "previous">;
+
+export interface PluginEnvironmentProviderV1Policy {
+  retireGraceMs: number | null;
+  pathKeys: "per-thread" | "per-attempt";
+}
+
+export interface PluginEnvironmentProviderV1Declaration extends Omit<
+  ProviderModule,
+  "apiVersion" | "policy" | "validate" | "create" | "restore"
+> {
+  apiVersion?: 1;
+  policy?: Partial<PluginEnvironmentProviderV1Policy>;
+  validate?(
+    context: PluginEnvironmentProviderV1ValidateContext,
+  ):
+    | import("../backend-contract.js").PluginEnvironmentValidateDecision
+    | Promise<
+        import("../backend-contract.js").PluginEnvironmentValidateDecision
+      >;
+  experimental_existingPath?(
+    inputs: V2ValidateContext["inputs"],
+  ): string | null;
+  create(
+    context: PluginEnvironmentProviderV1CreateContext,
+  ): Promise<CreateResult>;
+  restore?(
+    context: PluginEnvironmentProviderV1RestoreContext,
+  ): Promise<CreateResult>;
+}
+
+interface NormalizedPluginEnvironmentProviderV1 {
+  apiVersion: 1;
+  validate: NonNullable<
+    PluginEnvironmentProviderV1Declaration["validate"]
+  > | null;
+  create: PluginEnvironmentProviderV1Declaration["create"];
+  restore: NonNullable<
+    PluginEnvironmentProviderV1Declaration["restore"]
+  > | null;
+  policy: PluginEnvironmentProviderV1Policy;
+}
+
+interface NormalizedPluginEnvironmentProviderV2 {
+  apiVersion: 2;
+  validate: NonNullable<ProviderModule["validate"]> | null;
+  create: ProviderModule["create"];
+  restore: NonNullable<ProviderModule["restore"]> | null;
   policy: import("../environment-provider.js").PluginEnvironmentProviderPolicy;
 }
+
+/** Normalized once at registration; `apiVersion` selects the context shape core builds for create and restore. */
+export type NormalizedPluginEnvironmentProvider =
+  NormalizedPluginEnvironmentProviderCommon &
+    (
+      | NormalizedPluginEnvironmentProviderV1
+      | NormalizedPluginEnvironmentProviderV2
+    );
 
 type ProviderNoun = "environment provider" | "machine provider";
 
@@ -2583,8 +2692,13 @@ function normalizeProviderInputs(
   return { schema: inputs, jsonSchema: jsonSchema.data };
 }
 
+/** Either context version; `apiVersion` tells them apart at runtime. */
+export type AnyPluginEnvironmentProviderDeclaration =
+  | PluginEnvironmentProviderDeclaration
+  | PluginEnvironmentProviderV1Declaration;
+
 export function validatePluginEnvironmentProviderDeclaration(
-  declaration: PluginEnvironmentProviderDeclaration,
+  declaration: AnyPluginEnvironmentProviderDeclaration,
 ): NormalizedPluginEnvironmentProvider {
   const { id, displayName } = requireProviderIdAndDisplayName(
     "environment provider",
@@ -2634,19 +2748,25 @@ export function validatePluginEnvironmentProviderDeclaration(
     declaration.availability,
     "availability",
   );
+  const existingPath =
+    declaration.apiVersion === 2
+      ? undefined
+      : declaration.experimental_existingPath;
+  const locate = declaration.locate;
   assertOptionalFunction(
     "environment provider",
     id,
-    declaration.experimental_existingPath,
+    existingPath,
     "experimental_existingPath",
   );
+  assertOptionalFunction("environment provider", id, locate, "a locate");
   assertOptionalFunction(
     "environment provider",
     id,
     declaration.restore,
     "a restore",
   );
-  return {
+  const common: NormalizedPluginEnvironmentProviderCommon = {
     id,
     displayName,
     description,
@@ -2655,18 +2775,44 @@ export function validatePluginEnvironmentProviderDeclaration(
     inputs: inputs === null ? null : inputs.schema,
     inputsJsonSchema: inputs === null ? null : inputs.jsonSchema,
     availability: declaration.availability ?? null,
+    locate:
+      locate ??
+      (existingPath === undefined
+        ? null
+        : ({ inputs }) => {
+            const path = existingPath(inputs);
+            return path === null ? null : { path, reuse: true };
+          }),
+    remove: declaration.remove,
+  };
+  if (declaration.apiVersion === 2) {
+    return {
+      ...common,
+      apiVersion: 2,
+      validate: declaration.validate ?? null,
+      create: declaration.create,
+      restore: declaration.restore ?? null,
+      policy: environmentProviderV2PolicySchema.parse(declaration.policy ?? {}),
+    };
+  }
+  if (declaration.apiVersion !== undefined && declaration.apiVersion !== 1) {
+    throw new Error(
+      `environment provider "${id}" declares apiVersion ${JSON.stringify(declaration.apiVersion)}; this bb supports 1 and 2`,
+    );
+  }
+  return {
+    ...common,
+    apiVersion: 1,
     validate: declaration.validate ?? null,
-    experimental_existingPath: declaration.experimental_existingPath ?? null,
     create: declaration.create,
     restore: declaration.restore ?? null,
-    remove: declaration.remove,
     policy: environmentProviderPolicySchema.parse(declaration.policy ?? {}),
   };
 }
 
 function normalizeEnvironmentProviderRequirements(
   id: string,
-  declaration: PluginEnvironmentProviderDeclaration,
+  declaration: Pick<PluginEnvironmentProviderDeclaration, "requires">,
 ): NormalizedPluginEnvironmentProviderRequirements {
   const requires = declaration.requires ?? {};
   if (
@@ -2706,6 +2852,15 @@ const environmentProviderPolicySchema = z
   .object({
     retireGraceMs: z.number().int().nonnegative().nullable().default(300_000),
     pathKeys: z.enum(["per-thread", "per-attempt"]).default("per-thread"),
+  })
+  .strict();
+
+const environmentProviderV2PolicySchema = z
+  .object({
+    retireGraceMs: z.number().int().nonnegative().nullable().default(300_000),
+    pathKeys: z
+      .enum(["per-environment", "per-attempt"])
+      .default("per-environment"),
   })
   .strict();
 
@@ -2798,17 +2953,30 @@ export function validatePluginMachineProviderDeclaration(
   };
 }
 
+type RegisteredServerAccessProviderDeclaration = Omit<
+  ServerAccessProviderDeclaration,
+  "routeKind"
+> & { routeKind?: ServerAccessProviderDeclaration["routeKind"] };
+
 export function validateServerAccessProviderDeclaration(
-  declaration: ServerAccessProviderDeclaration,
+  declaration: RegisteredServerAccessProviderDeclaration,
 ): ServerAccessProviderDeclaration {
   if (typeof declaration !== "object" || declaration === null)
     throw new Error("Invalid server access provider declaration");
   if (
     typeof declaration.id !== "string" ||
     !/^[a-z][a-z0-9-]*$/u.test(declaration.id) ||
-    declaration.id === "direct"
+    declaration.id === "direct" ||
+    declaration.id === "local-network"
   )
     throw new Error("Invalid or reserved server access provider id");
+  if (
+    declaration.routeKind !== undefined &&
+    !["local-network", "private-overlay", "relay", "custom"].includes(
+      declaration.routeKind,
+    )
+  )
+    throw new Error("Invalid server access route kind");
   if (
     typeof declaration.displayName !== "string" ||
     !declaration.displayName.trim() ||
@@ -2819,7 +2987,15 @@ export function validateServerAccessProviderDeclaration(
     typeof declaration.release !== "function"
   )
     throw new Error("Invalid server access provider declaration");
-  return declaration;
+  return {
+    id: declaration.id,
+    displayName: declaration.displayName,
+    description: declaration.description,
+    routeKind: declaration.routeKind ?? "custom",
+    availability: () => declaration.availability(),
+    acquire: (context) => declaration.acquire(context),
+    release: (context) => declaration.release(context),
+  };
 }
 
 const LEGACY_UNKNOWN_MIGRATION_HASH = "legacy-unknown";
@@ -2842,10 +3018,9 @@ export function runPluginStorageMigrations(
     database.exec("ALTER TABLE _bb_migrations ADD COLUMN statement_hash TEXT");
   }
   const rows = database
-    .prepare<
-      [],
-      { id: number; statement_hash: string | null }
-    >("SELECT id, statement_hash FROM _bb_migrations ORDER BY id")
+    .prepare<[], { id: number; statement_hash: string | null }>(
+      "SELECT id, statement_hash FROM _bb_migrations ORDER BY id",
+    )
     .all();
   const applied = new Map<number, string | null>();
   for (const row of rows) applied.set(row.id, row.statement_hash);
@@ -3374,22 +3549,19 @@ export function normalizeInteractionRequest(
       `ui.requestInput title must be 1-${PLUGIN_INTERACTION_MAX_TITLE_LENGTH} characters`,
     );
   }
-  let payload: JsonValue;
+  let json: string | undefined;
   try {
-    const json = JSON.stringify(request.payload);
-    if (json === undefined) throw new Error();
-    if (
-      Buffer.byteLength(json, "utf8") > PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES
-    ) {
-      throw new Error("ui.requestInput payload exceeds 64 KiB");
-    }
-    payload = JSON.parse(json) as JsonValue;
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("64 KiB")) {
-      throw error;
-    }
+    json = JSON.stringify(request.payload);
+  } catch {
     throw new Error("ui.requestInput payload must be JSON-serializable");
   }
+  if (json === undefined) {
+    throw new Error("ui.requestInput payload must be JSON-serializable");
+  }
+  if (Buffer.byteLength(json, "utf8") > PLUGIN_INTERACTION_MAX_PAYLOAD_BYTES) {
+    throw new Error("ui.requestInput payload exceeds 64 KiB");
+  }
+  const payload = JSON.parse(json) as JsonValue;
   const timeoutMs = request.timeoutMs ?? 10 * 60 * 1000;
   if (
     !Number.isInteger(timeoutMs) ||
@@ -3630,7 +3802,10 @@ export function normalizePluginAgentConfiguration(args: {
   const instructions =
     typeof output.instructions === "string" &&
     output.instructions.trim().length > 0
-      ? output.instructions.slice(0, PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS)
+      ? sliceUtf16Head(
+          output.instructions,
+          PLUGIN_DYNAMIC_INSTRUCTIONS_MAX_CHARS,
+        )
       : null;
   const toolSelections = normalizePluginAgentToolSelections({
     knownIds: args.knownToolIds,

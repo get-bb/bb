@@ -33,6 +33,7 @@ import {
 } from "../../helpers/commands.js";
 import { PluginHostArtifactRegistry } from "../../../src/services/plugins/plugin-host-artifact-registry.js";
 import { startTestServer, testLogger } from "../../helpers/test-app.js";
+import { installDefaultEnvironmentProviders } from "../../helpers/environment-provider.js";
 import { defineRpcContract } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { createNoopTelemetryService } from "../../../src/services/system/telemetry.js";
@@ -118,24 +119,7 @@ describe("plugin bb.sdk bind gate", () => {
     ),
     replaceDeclarationsForOwner: vi.fn(),
     clearDeclarationsForOwner: vi.fn(),
-    setNextTunnelConfig: vi.fn(),
-    listNextTunnelStatuses: vi.fn(() => [
-      {
-        hostId: "host-1",
-        hostName: "Sawyer Air",
-        status: {
-          state: "connected" as const,
-          label: "sawyer-air",
-          lastError: null,
-          nextRetryAt: null,
-          since: 1,
-          shares: [],
-        },
-      },
-    ]),
-    onNextTunnelStatusChange: vi.fn((_listener: () => void) => nextUnsubscribe),
   };
-  const nextUnsubscribe = vi.fn();
   const ensureSharedPortTunnel = vi.fn().mockResolvedValue({
     label: "sawyer-air",
     baseDomain: "getbb.app",
@@ -192,9 +176,6 @@ describe("plugin bb.sdk bind gate", () => {
     sharedPorts.validateSharedPortDeclaration.mockClear();
     sharedPorts.replaceDeclarationsForOwner.mockClear();
     sharedPorts.clearDeclarationsForOwner.mockClear();
-    sharedPorts.setNextTunnelConfig.mockClear();
-    sharedPorts.onNextTunnelStatusChange.mockClear();
-    nextUnsubscribe.mockClear();
     ensureSharedPortTunnel.mockClear();
     callPluginHost.mockClear();
     disposePluginHost.mockClear();
@@ -396,47 +377,6 @@ describe("plugin bb.sdk bind gate", () => {
     );
   });
 
-  it("routes next machine tunnels through the server control plane under the plugin's id", async () => {
-    const rootDir = await writePlugin(workDir, {
-      name: "bb-plugin-next",
-      serverSource: `export default function plugin() {}`,
-    });
-    await service.installPath(rootDir);
-    const api = requireApi(service, "next");
-    const config = {
-      domain: "next.getbb.app",
-      server: {
-        protocol: "wss" as const,
-        host: "tunnel.next.getbb.app",
-        port: 443,
-      },
-    };
-    api.hosts.internal_DO_NOT_USE_setNextTunnels(config);
-    expect(sharedPorts.setNextTunnelConfig).toHaveBeenCalledWith(
-      "next",
-      config,
-    );
-    expect(api.hosts.internal_DO_NOT_USE_nextTunnelStatuses()).toEqual([
-      {
-        hostId: "host-1",
-        hostName: "Sawyer Air",
-        state: "connected",
-        label: "sawyer-air",
-        lastError: null,
-        nextRetryAt: null,
-        since: 1,
-        shares: [],
-      },
-    ]);
-    const listener = vi.fn();
-    api.hosts.internal_DO_NOT_USE_onNextTunnelStatusChange(listener);
-    expect(sharedPorts.onNextTunnelStatusChange).toHaveBeenCalledWith(listener);
-
-    await service.stop();
-    expect(nextUnsubscribe).toHaveBeenCalled();
-    expect(sharedPorts.clearDeclarationsForOwner).toHaveBeenCalledWith("next");
-  });
-
   it("binds typed host calls and ignores worker exits from stale generations", async () => {
     const rootDir = await writePlugin(workDir, {
       name: "bb-plugin-host-client",
@@ -506,6 +446,7 @@ describe("plugin bb.sdk bind gate", () => {
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: "stale-generation",
+      reason: "host plugin worker exited (1)",
     });
     service.handleHostSignal({
       authenticatedHostId: "host-1",
@@ -525,6 +466,7 @@ describe("plugin bb.sdk bind gate", () => {
       authenticatedHostId: "host-1",
       pluginId: "host-client",
       generation: artifact.generation,
+      reason: "host plugin worker exited (1)",
     });
     await vi.waitFor(() => expect(workerExitHandler).toHaveBeenCalledOnce());
     expect(workerExitHandler).toHaveBeenCalledWith({ hostId: "host-1" });
@@ -1220,6 +1162,60 @@ describe("plugin bb.sdk against a running server", () => {
     }
   });
 
+  it('holds environments a plugin creates with hold "plugin" for that plugin, whatever plugin id it passes', async () => {
+    const server = await startTestServer();
+    const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-hold-"));
+    try {
+      server.pluginService.bindSdk({ baseUrl: server.baseUrl });
+      const rootDir = await writePlugin(workDir, {
+        name: "bb-plugin-holder",
+        serverSource: `export default function plugin() {}`,
+      });
+      expect((await server.pluginService.installPath(rootDir)).status).toBe(
+        "running",
+      );
+      const heldBy: string[] = [];
+      const realFetch = globalThis.fetch;
+      vi.stubGlobal(
+        "fetch",
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (
+            !String(input).endsWith("/api/v1/environments") ||
+            init?.method !== "POST"
+          )
+            return realFetch(input, init);
+          heldBy.push(
+            z
+              .object({ heldBy: z.string() })
+              .parse(JSON.parse(String(init.body))).heldBy,
+          );
+          return Response.json({ message: "refused" }, { status: 409 });
+        },
+      );
+      const { sdk } = requireApi(server.pluginService, "holder");
+      await expect(
+        sdk.environments.experimental_create({
+          projectId: PERSONAL_PROJECT_ID,
+          hold: "plugin",
+          // @ts-expect-error a plugin cannot name another plugin as the holder
+          pluginId: "other",
+        }),
+      ).rejects.toThrow();
+      await expect(
+        sdk.environments.experimental_create({
+          projectId: PERSONAL_PROJECT_ID,
+          hold: "plugin",
+        }),
+      ).rejects.toThrow();
+      expect(heldBy).toEqual(["plugin:holder", "plugin:holder"]);
+    } finally {
+      vi.unstubAllGlobals();
+      await server.pluginService.stop();
+      await rm(workDir, { recursive: true, force: true });
+      await server.close();
+    }
+  });
+
   it("keeps hidden plugin threads attributed and directly operable by id", async () => {
     const server = await startTestServer();
     const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-sdk-live-"));
@@ -1236,6 +1232,7 @@ describe("plugin bb.sdk against a running server", () => {
         path: "/tmp/plugin-sdk-live-source",
       });
 
+      installDefaultEnvironmentProviders();
       server.pluginService.bindSdk({ baseUrl: server.baseUrl });
       const rootDir = await writePlugin(workDir, {
         name: "bb-plugin-spawner",
@@ -1319,11 +1316,12 @@ describe("plugin bb.sdk against a running server", () => {
         }),
       ).resolves.toMatchObject({ matched: true, threadId: thread.id });
       await expect(
-        api.sdk.threads.list({ projectId: project.id }),
+        api.sdk.threads.list({ limit: 10, projectId: project.id }),
       ).resolves.not.toContainEqual(expect.objectContaining({ id: thread.id }));
       const allThreads = await api.sdk.threads.list({
         projectId: project.id,
         includeHidden: true,
+        limit: 10,
       });
       expect(allThreads).toContainEqual(
         expect.objectContaining({ id: thread.id }),
@@ -1397,7 +1395,11 @@ describe("plugin bb.sdk against a running server", () => {
       await reportQueuedCommandSuccess(server, stop, {
         providerCheckpointId: null,
       });
-      await expect(stopPromise).resolves.toEqual({ ok: true });
+      await expect(stopPromise).resolves.toEqual({
+        ok: true,
+        progress: "complete",
+        status: "idle",
+      });
     } finally {
       await server.pluginService.stop();
       await rm(workDir, { recursive: true, force: true });

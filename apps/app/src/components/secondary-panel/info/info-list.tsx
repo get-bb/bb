@@ -46,19 +46,25 @@ export interface InfoSectionHeadingProps {
 export const INFO_SECTION_TITLE_CLASS =
   "m-0 flex min-w-0 items-center text-xs font-medium leading-5 text-muted-foreground";
 
-function InfoSectionHeading({
+export function InfoSectionHeading({
   label,
   count,
   accessory,
   trailing,
   collapse,
   bodyId,
-}: InfoSectionHeadingProps & { bodyId: string }) {
+  className,
+}: InfoSectionHeadingProps & { bodyId: string; className?: string }) {
   const countPill =
     count === undefined ? null : <InfoCountPill count={count} />;
   const collapsed = collapse?.collapsed ?? false;
   return (
-    <div className="mb-1 flex min-h-5 min-w-0 items-center justify-between gap-3">
+    <div
+      className={cn(
+        "mb-1 flex min-h-5 min-w-0 items-center justify-between gap-3",
+        className,
+      )}
+    >
       <div className="flex min-w-0 items-center">
         {collapse ? (
           <h3 className={INFO_SECTION_TITLE_CLASS}>

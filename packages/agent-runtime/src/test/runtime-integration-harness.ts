@@ -668,7 +668,10 @@ async function resolveDefaultModelUncached(
   providerId: string,
   ctx: TestContext,
 ): Promise<string> {
-  const { models } = await ctx.runtime.listModels({ providerId });
+  const { models } = await ctx.runtime.listModels({
+    providerId,
+    contributedEnv: [],
+  });
   const model = resolvePreferredTestModel({
     models,
     providerId,

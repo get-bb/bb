@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { collectPluginAppRegistrations } from "@/lib/plugin-app-definition";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
@@ -20,7 +19,6 @@ import { ThreadPendingInteractionBanners } from "./ThreadPendingInteractionBanne
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { loadPluginAppDefinition } from "../../../../.ladle/plugin-app-module";
 
-installTestPluginRuntime();
 const secretsApp = await loadPluginAppDefinition(
   import.meta.glob<unknown>("../../../../../../plugins/secrets/app.tsx"),
 );

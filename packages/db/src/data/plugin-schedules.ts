@@ -22,7 +22,11 @@ export function upsertPluginSchedule(
     .values({ ...args, updatedAt })
     .onConflictDoUpdate({
       target: [pluginSchedules.pluginId, pluginSchedules.name],
-      set: { cron: args.cron, nextRunAt: args.nextRunAt, updatedAt },
+      set: {
+        cron: args.cron,
+        nextRunAt: sql`CASE WHEN ${pluginSchedules.cron} = excluded.cron THEN ${pluginSchedules.nextRunAt} ELSE excluded.next_run_at END`,
+        updatedAt,
+      },
     })
     .run();
 }

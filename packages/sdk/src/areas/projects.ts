@@ -1,3 +1,4 @@
+import type { OperationResponse } from "@bb/server-contract";
 import type {
   MachineEnvironmentReplace,
   MachineEnvironmentSet,
@@ -6,6 +7,8 @@ import type {
   CopyProjectAttachmentsRequest,
   CreateProjectRequest,
   CreateProjectSourceRequest,
+  CreateProjectSourceFolderRequest,
+  UpdateProjectSourceFolderRequest,
   ProjectBranchesResponse,
   ProjectBranchesQuery,
   ProjectCommandsQuery,
@@ -25,7 +28,11 @@ import type {
   WorkspaceFileListResponse,
 } from "@bb/server-contract";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
-import type { ProjectExecutionDefaults, ProjectSource } from "@bb/domain";
+import type {
+  ProjectExecutionDefaults,
+  ProjectSource,
+  ProjectSourceFolder,
+} from "@bb/domain";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export interface ProjectListArgs {
@@ -154,6 +161,29 @@ export interface ProjectSourceDeleteArgs {
   sourceId: string;
 }
 
+export interface ProjectSourceFolderListArgs {
+  projectId: string;
+  sourceId: string;
+  signal?: AbortSignal;
+}
+
+export interface ProjectSourceFolderAddArgs extends CreateProjectSourceFolderRequest {
+  projectId: string;
+  sourceId: string;
+}
+
+export interface ProjectSourceFolderUpdateArgs extends UpdateProjectSourceFolderRequest {
+  folderId: string;
+  projectId: string;
+  sourceId: string;
+}
+
+export interface ProjectSourceFolderRemoveArgs {
+  folderId: string;
+  projectId: string;
+  sourceId: string;
+}
+
 export type ProjectBranchesResult = ProjectBranchesResponse;
 export interface ProjectAttachmentReadResult {
   bytes: Uint8Array;
@@ -164,7 +194,7 @@ export type ProjectAttachmentUploadResult = UploadedPromptAttachment;
 export type ProjectCommandsResult = CommandListResponse;
 export type ProjectCreateResult = ProjectResponse;
 export type ProjectDefaultExecutionOptionsResult = ProjectExecutionDefaults | null;
-export type ProjectDeleteResult = { ok: true };
+export type ProjectDeleteResult = OperationResponse;
 export interface ProjectFileContentResult {
   content: string;
   contentEncoding: "utf8" | "base64";
@@ -181,18 +211,26 @@ export type ProjectPromptHistoryResult = PromptHistoryResponse;
 export type ProjectReorderResult = ProjectResponse[];
 export type ProjectSidebarBootstrapResult = SidebarBootstrapResponse;
 export type ProjectSourceAddResult = ProjectSource;
-export type ProjectSourceDeleteResult = { ok: true };
+export type ProjectSourceDeleteResult = OperationResponse;
 export type ProjectSourceUpdateResult = ProjectSource;
 export type ProjectUpdateResult = ProjectResponse;
 
+export interface ProjectSourceFoldersArea {
+  add(args: ProjectSourceFolderAddArgs): Promise<ProjectSourceFolder>;
+  list(args: ProjectSourceFolderListArgs): Promise<ProjectSourceFolder[]>;
+  remove(args: ProjectSourceFolderRemoveArgs): Promise<OperationResponse>;
+  update(args: ProjectSourceFolderUpdateArgs): Promise<ProjectSourceFolder>;
+}
+
 export interface ProjectSourcesArea {
   add(args: ProjectSourceAddArgs): Promise<ProjectSourceAddResult>;
+  experimental_folders: ProjectSourceFoldersArea;
   delete(args: ProjectSourceDeleteArgs): Promise<ProjectSourceDeleteResult>;
   update(args: ProjectSourceUpdateArgs): Promise<ProjectSourceUpdateResult>;
 }
 
 export interface ProjectAttachmentsArea {
-  copy(args: ProjectAttachmentCopyArgs): Promise<void>;
+  copy(args: ProjectAttachmentCopyArgs): Promise<OperationResponse>;
   read(args: ProjectAttachmentReadArgs): Promise<ProjectAttachmentReadResult>;
   upload(
     args: ProjectAttachmentUploadArgs,
@@ -372,7 +410,7 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
   const attachments: ProjectAttachmentsArea = {
     async copy(input) {
       const { projectId, ...json } = input;
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.projects[":id"].attachments.copy.$post({
           param: { id: projectId },
           json,
@@ -419,7 +457,53 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       return uploadedPromptAttachmentSchema.parse(await response.json());
     },
   };
+  const folders: ProjectSourceFoldersArea = {
+    async add(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders.$post({
+          param: { id: input.projectId, sourceId: input.sourceId },
+          json: { path: input.path },
+        }),
+      );
+    },
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders.$get(
+          { param: { id: input.projectId, sourceId: input.sourceId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async update(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders[
+          ":folderId"
+        ].$patch({
+          param: {
+            id: input.projectId,
+            sourceId: input.sourceId,
+            folderId: input.folderId,
+          },
+          json: { path: input.path },
+        }),
+      );
+    },
+    async remove(input) {
+      return transport.readJson(
+        transport.api.v1.projects[":id"].sources[":sourceId"].folders[
+          ":folderId"
+        ].$delete({
+          param: {
+            id: input.projectId,
+            sourceId: input.sourceId,
+            folderId: input.folderId,
+          },
+        }),
+      );
+    },
+  };
   const sources: ProjectSourcesArea = {
+    experimental_folders: folders,
     async add(input) {
       return transport.readJson(
         transport.api.v1.projects[":id"].sources.$post({
@@ -429,12 +513,11 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       );
     },
     async delete(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.projects[":id"].sources[":sourceId"].$delete({
           param: { id: input.projectId, sourceId: input.sourceId },
         }),
       );
-      return { ok: true };
     },
     async update(input) {
       return transport.readJson(
@@ -480,12 +563,11 @@ export function createProjectsArea(args: CreateSdkAreaArgs): ProjectsArea {
       );
     },
     async delete(input) {
-      await transport.readVoid(
+      return transport.readJson(
         transport.api.v1.projects[":id"].$delete({
           param: { id: input.projectId },
         }),
       );
-      return { ok: true };
     },
     async defaultExecutionOptions(input) {
       return transport.readJson(

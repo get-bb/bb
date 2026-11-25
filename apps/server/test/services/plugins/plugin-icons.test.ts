@@ -150,7 +150,8 @@ describe("plugin-declared icons", () => {
       });
     }
 
-    const disabled = await harness.pluginService.setEnabled("iconed", false);
+    const disabled = (await harness.pluginService.setEnabled("iconed", false))
+      ?.plugin;
     expect(disabled?.icons).toEqual(entry.icons);
     const disabledIcon = await harness.app.request(
       `${BASE}${entry.icons.receipt}`,

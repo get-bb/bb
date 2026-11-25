@@ -49,9 +49,7 @@ each; a shard with nothing selected skips setup.
   and helpers from `@/lib/*`. The plugin's `tsconfig.json` maps `@/*` onto
   `packages/shared-ui/src`, the source the registry is generated from, and
   `@/components/ui/icon` onto the registry's host-backed icon
-  (`packages/plugin-registry/flavors/components/ui/icon.tsx`); a plugin that
-  imports `@/components/ui/question-form-host` maps it onto that item's flavor
-  the same way. tsc, esbuild, and
+  (`packages/plugin-registry/flavors/components/ui/icon.tsx`). tsc, esbuild, and
   vitest follow the mapping, and `apps/app/vite-forkable-plugin-paths.ts`
   applies it when app tests and Ladle stories import the plugin.
   `@bb/shared-ui` stays in `package.json` so pnpm links it; the fork replaces

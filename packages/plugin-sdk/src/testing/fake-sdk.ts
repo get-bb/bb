@@ -138,6 +138,7 @@ function normalizeCallArgs(
 export function createFakeSdk(options: {
   pluginId: string;
   overrides?: FakeSdkOverrides;
+  trackThreadCreation?: <T>(call: () => Promise<T>) => Promise<T>;
 }): { sdk: BbSdk; harness: FakeSdkHarness } {
   const calls: FakeSdkCall[] = [];
   const stubs = new Map<string, (...args: unknown[]) => unknown>();
@@ -168,6 +169,13 @@ export function createFakeSdk(options: {
         `bb.sdk.${path} is not stubbed — pass an implementation via ` +
           `createFakePluginHost({ sdk: { ... } }) or harness.sdk.stub("${path}", fn)`,
       );
+    }
+    const track = options.trackThreadCreation;
+    if (
+      track !== undefined &&
+      (path === "threads.spawn" || path === "threads.fork")
+    ) {
+      return track(async () => stub(...args));
     }
     return stub(...args);
   }

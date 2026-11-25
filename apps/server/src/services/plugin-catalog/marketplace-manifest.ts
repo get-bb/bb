@@ -581,7 +581,6 @@ export function catalogEntryMetadata(args: {
   manifest: MarketplaceManifest;
   entry: MarketplaceEntry;
   base: MarketplaceIconBase;
-  warn?: (message: string) => void;
 }): {
   categoryId?: string;
   category?: string;
@@ -597,7 +596,7 @@ export function catalogEntryMetadata(args: {
       : category === undefined
         ? {}
         : { categoryId: category.id, category: category.displayName }),
-    screenshots: entryScreenshotUrls(entry, args.base, args.warn),
+    screenshots: entryScreenshotUrls(entry, args.base),
     ...("publishedAt" in entry && typeof entry.publishedAt === "string"
       ? { publishedAt: entry.publishedAt }
       : {}),

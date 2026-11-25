@@ -3,11 +3,13 @@ import {
   experimental_resolveThreadStatus as resolveThreadStatus,
   experimental_ThreadStatusGlyph as ThreadStatusGlyph,
   experimental_useAppPanel as useAppPanel,
+  experimental_useCommandShortcut as useCommandShortcut,
   experimental_usePanelTabs as usePanelTabs,
   experimental_useSidebarThreads as useSidebarThreads,
   experimental_useThreadActions as useThreadActions,
   ThreadTitle,
   useBbNavigate,
+  useSdk,
   type PluginSidebarThread,
 } from "@get-bb/plugin-sdk/app";
 import { toast } from "sonner";
@@ -18,11 +20,10 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { useThreadSurfaceRegistration } from "../bridge.js";
+import { NEW_CHAT_PANEL_PATH } from "../new-chat/route.js";
 import { runWorkspaceScript } from "../scripts/run.js";
 import { formatLineCount } from "../sidebar/model.js";
 import { useWorkspaceChanges } from "../sidebar/reads.js";
-import { toActionTarget } from "../thread-target.js";
 import { findDiffTabKey, tabAfterClose, workspaceChats } from "./model.js";
 import { deferCloseUntilOpen, takePendingClose } from "./pending-close.js";
 
@@ -68,7 +69,7 @@ function CloseTab({
   nextThreadId: string | null;
 }) {
   const navigate = useBbNavigate();
-  const actions = useThreadActions(toActionTarget(thread), {
+  const actions = useThreadActions(thread, {
     keys: [ARCHIVE_ACTION_KEY],
   });
   const archive = actions.find((entry) => entry.key === ARCHIVE_ACTION_KEY);
@@ -135,8 +136,6 @@ function ToolbarButton({
     </Tooltip>
   );
 }
-
-export const NEW_CHAT_PANEL_PATH = "new";
 
 export function useOpenNewChat(): (environmentId: string) => void {
   const navigate = useBbNavigate();
@@ -242,7 +241,8 @@ export function TabStrip({
 }
 
 export function WorkspaceTabs({ threadId, environment }: WorkspaceTabsProps) {
-  useThreadSurfaceRegistration(threadId);
+  const sdk = useSdk();
+  const navigate = useBbNavigate();
   const openNewChat = useOpenNewChat();
   const panel = useAppPanel();
   const panelTabs = usePanelTabs();
@@ -259,6 +259,7 @@ export function WorkspaceTabs({ threadId, environment }: WorkspaceTabsProps) {
     environmentId === null ? undefined : changes.get(environmentId);
   const diffTabKey = findDiffTabKey(panelTabs.tabs);
   const [running, setRunning] = useState(false);
+  const runShortcut = useCommandShortcut("run");
 
   if (environmentId === null || chats.length === 0) return null;
 
@@ -295,11 +296,12 @@ export function WorkspaceTabs({ threadId, environment }: WorkspaceTabsProps) {
           <ToolbarButton
             label={running ? "Starting…" : "Run"}
             icon="Play"
-            shortcut="⌘R"
+            shortcut={runShortcut?.label}
             onClick={() => {
               if (running) return;
               setRunning(true);
               void runWorkspaceScript(
+                { sdk, navigate },
                 threadId,
                 chats.map((chat) => chat.id),
               )

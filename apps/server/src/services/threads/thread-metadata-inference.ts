@@ -1,107 +1,64 @@
-import type { PromptInput, ProvisioningTranscriptEntry } from "@bb/domain";
-import type { LoggedWorkSessionDeps } from "../../types.js";
-import { appendThreadProvisioningEvent } from "./thread-events.js";
+import { getEnvironment, getThread } from "@bb/db";
+import type { PromptInput } from "@bb/domain";
+import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import {
   applyGeneratedThreadTitle,
   generateThreadMetadataWithOutcome,
-  type ThreadMetadataGenerationOutcome,
 } from "./title-generation.js";
+import { dispatchThreadRenameCommand } from "./thread-commands.js";
 import { runtimeErrorLogFields } from "../lib/error-log-fields.js";
+import { perDbRegistry } from "../lib/per-db-registry.js";
 
-interface ThreadMetadataInferenceArgs {
-  input: PromptInput[];
-  provisioningId: string;
-  threadId: string;
-  writeTranscript: boolean;
-}
+const pendingTitles = new WeakMap<object, Map<string, Promise<void>>>();
 
-interface ThreadMetadataInferenceResult {
-  titleApplied: boolean;
-  title: string | null;
-}
-
-interface MetadataCompletedEntryArgs {
-  outcome: ThreadMetadataGenerationOutcome;
-  startedAt: number;
-}
-
-function metadataCompletedEntry(
-  args: MetadataCompletedEntryArgs,
-): ProvisioningTranscriptEntry {
-  const titleGenerated = Boolean(args.outcome.metadata?.title);
-  return {
-    type: "step",
-    key: "metadata-completed",
-    text: titleGenerated ? "Generated title" : "No title generated",
-    status: "completed",
-    startedAt: args.startedAt,
-    metadata: {
-      durationMs: args.outcome.durationMs,
-      titleGenerated,
-      ...(args.outcome.reason ? { reason: args.outcome.reason } : {}),
-    },
-  };
-}
-
-export async function inferThreadMetadata(
-  deps: LoggedWorkSessionDeps,
-  args: ThreadMetadataInferenceArgs,
-): Promise<ThreadMetadataInferenceResult> {
-  const startedAt = Date.now();
-  const provisioningId = args.provisioningId;
-  if (args.writeTranscript) {
-    appendThreadProvisioningEvent(deps, {
-      threadId: args.threadId,
-      environmentId: null,
-      provisioningId,
-      status: "active",
-      entries: [
-        {
-          type: "step",
-          key: "metadata-started",
-          text: "Generating title",
-          status: "started",
-          startedAt,
-        },
-      ],
-    });
-  }
-
-  const outcome = await generateThreadMetadataWithOutcome(deps, {
-    input: args.input,
-    threadId: args.threadId,
+async function inferThreadTitle(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: { input: PromptInput[]; threadId: string },
+): Promise<void> {
+  const outcome = await generateThreadMetadataWithOutcome(deps, args);
+  const title = outcome.metadata?.title;
+  if (!title || !applyGeneratedThreadTitle(deps, { ...args, title })) return;
+  const thread = getThread(deps.db, args.threadId);
+  const environment = thread?.environmentId
+    ? getEnvironment(deps.db, thread.environmentId)
+    : null;
+  if (
+    !thread ||
+    !environment ||
+    (thread.status !== "active" && thread.status !== "idle")
+  )
+    return;
+  dispatchThreadRenameCommand(deps, {
+    environment: { id: environment.id, hostId: environment.hostId },
+    providerId: thread.providerId,
+    threadId: thread.id,
+    title,
   });
+}
 
-  if (args.writeTranscript) {
-    appendThreadProvisioningEvent(deps, {
-      threadId: args.threadId,
-      environmentId: null,
-      provisioningId,
-      status: "active",
-      entries: [metadataCompletedEntry({ outcome, startedAt })],
-    });
-  }
-
-  let titleApplied = false;
-  if (outcome.metadata?.title) {
-    try {
-      titleApplied = applyGeneratedThreadTitle(deps, {
-        threadId: args.threadId,
-        title: outcome.metadata.title,
-      });
-    } catch (error) {
+export function startThreadTitleGeneration(
+  deps: LoggedPendingInteractionWorkSessionDeps,
+  args: { input: PromptInput[]; threadId: string },
+): void {
+  const pending = perDbRegistry(pendingTitles, deps.db);
+  if (pending.has(args.threadId)) return;
+  const settled = inferThreadTitle(deps, args)
+    .catch((error) =>
       deps.logger.warn(
         {
           threadId: args.threadId,
           ...runtimeErrorLogFields(deps.config, error),
         },
-        "Failed to apply generated thread title",
-      );
-    }
-  }
+        "Failed to generate thread title",
+      ),
+    )
+    .finally(() => pending.delete(args.threadId));
+  pending.set(args.threadId, settled);
+}
 
-  return {
-    title: outcome.metadata?.title ?? null,
-    titleApplied,
-  };
+export async function threadTitleSettled(
+  deps: Pick<LoggedPendingInteractionWorkSessionDeps, "db">,
+  threadId: string,
+): Promise<void> {
+  await perDbRegistry(pendingTitles, deps.db).get(threadId);
 }

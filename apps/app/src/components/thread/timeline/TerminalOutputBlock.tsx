@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import Convert from "ansi-to-html";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { sanitizeTerminalOutput } from "@bb/text-utils";
 import { getDetailScrollMaxHeightClass } from "../../ui/detail-scroll-size.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
 
@@ -68,7 +69,9 @@ export function TerminalOutputBlock({
   const renderedOutputHtml = useMemo(
     () =>
       output.length > 0
-        ? addBackgroundContrastColors(ANSI_TO_HTML.toHtml(output))
+        ? addBackgroundContrastColors(
+            ANSI_TO_HTML.toHtml(sanitizeTerminalOutput(output)),
+          )
         : null,
     [output],
   );

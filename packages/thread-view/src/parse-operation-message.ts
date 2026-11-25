@@ -11,6 +11,7 @@ import type {
 import {
   THREAD_CONTEXT_CLEAR_OPERATION,
   THREAD_CONTEXT_CLEARED_DETAIL,
+  WORKSPACE_FOLDERS_MISSING_OPERATION,
   isApprovalInteractionLifecycle,
   isPluginInteractionLifecycle,
   isUserQuestionInteractionLifecycle,
@@ -203,6 +204,9 @@ function threadOperationTitle(
         meta.status === "completed"
       ) {
         return "Context cleared";
+      }
+      if (meta.rawOperation === WORKSPACE_FOLDERS_MISSING_OPERATION) {
+        return "Folders missing on this machine";
       }
       return `${capitalize(meta.rawOperation.replace(/_/g, " "))} ${
         meta.rawStatus

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   type FakePluginHost,
@@ -57,9 +58,11 @@ async function callAccountRpc(args: RpcArgs): Promise<unknown> {
   if (serverMoving) {
     blockedAccountReads += 1;
     return Promise.reject(
-      Object.assign(new Error("HTTP 503: Changes are paused"), {
+      new experimental_BbHttpError({
         status: 503,
         code: "server_moving",
+        message: "Changes are paused",
+        body: null,
       }),
     );
   }
@@ -69,8 +72,11 @@ async function callAccountRpc(args: RpcArgs): Promise<unknown> {
     credentialReads === failCredentialRead;
   if (args.pluginId !== "bb-account" || !accountRunning || failRead) {
     return Promise.reject(
-      Object.assign(new Error(`HTTP 503: ${args.pluginId} is not running`), {
+      new experimental_BbHttpError({
         status: 503,
+        code: "plugin_not_running",
+        message: `${args.pluginId} is not running`,
+        body: null,
       }),
     );
   }

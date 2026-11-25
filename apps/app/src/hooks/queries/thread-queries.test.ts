@@ -792,25 +792,35 @@ describe("useChildThreads", () => {
     expect(sdk.threads.list).not.toHaveBeenCalled();
   });
 
-  it("falls back to the parent-keyed list request without a sidebar cache", async () => {
+  it("falls back to the parent-keyed list request without a sidebar cache, paging past a full page", async () => {
+    const pageSize = 500;
     const { queryClient } = createQueryClientTestHarness();
-    const child = makeThreadListEntry({
-      id: "child-1",
-      parentThreadId: "parent-1",
-    });
-    vi.mocked(sdk.threads.list).mockResolvedValue([child]);
+    const children = Array.from({ length: pageSize + 1 }, (_, index) =>
+      makeThreadListEntry({
+        id: `child-${index}`,
+        parentThreadId: "parent-1",
+      }),
+    );
+    vi.mocked(sdk.threads.list)
+      .mockResolvedValueOnce(children.slice(0, pageSize))
+      .mockResolvedValueOnce(children.slice(pageSize));
 
     const readChildThreads = observeChildThreads(queryClient, "parent-1");
 
     await vi.waitFor(() => {
-      expect(readChildThreads().data).toEqual([child]);
+      expect(readChildThreads().data).toEqual(children);
     });
-    expect(sdk.threads.list).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(sdk.threads.list).mock.calls[0]?.[0]).toEqual({
-      archived: false,
-      parentThreadId: "parent-1",
-      signal: expect.any(AbortSignal),
-    });
+    expect(
+      vi.mocked(sdk.threads.list).mock.calls.map(([args]) => args),
+    ).toEqual(
+      [0, pageSize].map((offset) => ({
+        archived: false,
+        parentThreadId: "parent-1",
+        limit: pageSize,
+        offset,
+        signal: expect.any(AbortSignal),
+      })),
+    );
   });
 });
 

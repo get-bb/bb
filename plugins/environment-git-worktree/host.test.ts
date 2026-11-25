@@ -25,6 +25,7 @@ import {
   it,
   type TestContext,
 } from "vitest";
+import { withGitRefMutationLock } from "bb-environment-provider-host/locks";
 import { createWorktreeHostEntry } from "./host.js";
 
 const execFileAsync = promisify(execFile);
@@ -242,6 +243,7 @@ describe.concurrent("worktree host entry", () => {
         pathKey: "saved-state",
         path: created.path,
         ownedBranch,
+        folderBranches: [],
       });
       expect({
         status: result.status,
@@ -267,12 +269,65 @@ describe.concurrent("worktree host entry", () => {
           pathKey: "saved-state",
           path: created.path,
           ownedBranch,
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(existsSync(created.path)).toBe(false);
       expect(await branchExists(sourcePath, "bb/saved-state")).toBe(false);
     },
   );
+
+  it("removes a worktree after a conflicted rebase finishes", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } =
+      await createSourceRepository(onTestFinished);
+    const harness = createHarness(dataDir);
+    onTestFinished(() => harness.experimental_dispose());
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-rebased",
+        sourcePath,
+        pathKey: "rebased",
+        branchName: "bb/rebased",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    await writeFile(join(created.path, "conflict.txt"), "branch\n");
+    await git(created.path, "add", ".");
+    await git(created.path, "commit", "-m", "branch");
+    const upstream = (await git(created.path, "rev-parse", "HEAD~1")).trim();
+    await git(created.path, "checkout", "-q", "--detach", upstream);
+    await writeFile(join(created.path, "conflict.txt"), "upstream\n");
+    await git(created.path, "add", ".");
+    await git(created.path, "commit", "-m", "upstream");
+    const onto = (await git(created.path, "rev-parse", "HEAD")).trim();
+    await git(created.path, "checkout", "-q", "bb/rebased");
+    await expect(git(created.path, "rebase", onto)).rejects.toThrow();
+    await writeFile(join(created.path, "conflict.txt"), "resolved\n");
+    await git(created.path, "add", ".");
+    await git(created.path, "-c", "core.editor=true", "rebase", "--continue");
+    const gitDir = (
+      await git(created.path, "rev-parse", "--absolute-git-dir")
+    ).trim();
+    expect(existsSync(join(gitDir, "REBASE_HEAD"))).toBe(true);
+
+    expect(
+      await harness.experimental_call("remove", {
+        operationId: "remove-rebased",
+        pathKey: "rebased",
+        path: created.path,
+        ownedBranch: {
+          name: "bb/rebased",
+          repositoryPath: sourcePath,
+          baseBranch: created.baseBranch,
+        },
+        folderBranches: [],
+      }),
+    ).toEqual({ status: "removed" });
+    expect(existsSync(created.path)).toBe(false);
+  });
 
   it.for(["main", "release", "origin/main", "refs/heads/main"])(
     "resolves and fetches a stale named base %s",
@@ -744,6 +799,7 @@ describe.concurrent("worktree host entry", () => {
           pathKey,
           path: null,
           ownedBranch: null,
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(existsSync(join(dataDir, "worktrees", pathKey))).toBe(false);
@@ -945,6 +1001,56 @@ describe.concurrent("worktree host entry", () => {
     await restartedHarness.experimental_dispose();
   });
 
+  it("creates a detached worktree, names its branch later, and resumes either step", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, dataDir } = await createSourceRepository(
+      onTestFinished,
+      "Named Later",
+    );
+    const input = {
+      ...createInput({
+        operationId: "detached",
+        sourcePath,
+        pathKey: "thr_later",
+        branchName: "unused",
+      }),
+      branchName: null,
+    };
+    const harness = createHarness(dataDir);
+    const created = await harness.experimental_call("create", input);
+    if (created.status !== "created") throw new Error(created.message);
+    expect(created.ownsBranch).toBe(false);
+    expect(
+      (await git(created.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+    ).toBe("HEAD");
+    await writeFile(join(created.path, "setup-output.txt"), "kept\n");
+    expect(await harness.experimental_call("create", input)).toEqual(created);
+
+    const name = {
+      operationId: "name",
+      sourcePath,
+      path: created.path,
+      branchName: "bb/named-later-thr_later",
+    };
+    expect(await harness.experimental_call("nameBranch", name)).toEqual({
+      status: "named",
+    });
+    expect(await harness.experimental_call("nameBranch", name)).toEqual({
+      status: "named",
+    });
+    expect(
+      (await git(created.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+    ).toBe("bb/named-later-thr_later");
+    expect((await git(created.path, "rev-parse", "HEAD")).trim()).toBe(
+      (await git(sourcePath, "rev-parse", "main")).trim(),
+    );
+    expect(await branchConfig(sourcePath, "bb/named-later-thr_later")).toBe("");
+    expect(await harness.experimental_call("create", input)).toEqual(created);
+    expect(existsSync(join(created.path, "setup-output.txt"))).toBe(true);
+    await harness.experimental_dispose();
+  });
+
   it("completes a recovered worktree without running core setup", async ({
     onTestFinished,
   }) => {
@@ -1122,6 +1228,7 @@ describe.concurrent("worktree host entry", () => {
       pathKey: "thr_6",
       path: created.path,
       ownedBranch: null,
+      folderBranches: [],
     });
     if (lingering.exitCode === null && lingering.signalCode === null) {
       await once(lingering, "exit");
@@ -1162,6 +1269,7 @@ describe.concurrent("worktree host entry", () => {
             repositoryPath: sourcePath,
             baseBranch: storedBaseBranch ?? created.baseBranch,
           },
+          folderBranches: [],
         });
       return { harness, path: created.path, remove };
     }
@@ -1351,6 +1459,7 @@ describe.concurrent("worktree host entry", () => {
           pathKey: "legacy",
           path: created.path,
           ownedBranch: null,
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(await branchExists(sourcePath, "bb/legacy-thr_5")).toBe(true);
@@ -1373,6 +1482,7 @@ describe.concurrent("worktree host entry", () => {
             repositoryPath: join(root, "moved"),
             baseBranch: "main",
           },
+          folderBranches: [],
         }),
       ).toEqual({ status: "removed" });
       expect(await branchExists(sourcePath, "main")).toBe(true);
@@ -1457,5 +1567,496 @@ describe.concurrent("worktree host entry", () => {
       expect(restored.ownsBranch).toBe(false);
       await harness.experimental_dispose();
     });
+  });
+});
+
+describe.concurrent("folder worktrees", () => {
+  async function createProject(onTestFinished: TestContext["onTestFinished"]) {
+    const { root, sourcePath, dataDir } = await createSourceRepository(
+      onTestFinished,
+      "app",
+    );
+    const folder = async (name: string) => {
+      const folderPath = join(root, "folders", name);
+      await mkdir(folderPath, { recursive: true });
+      await cp(repositoryTemplate, folderPath, { recursive: true });
+      return folderPath;
+    };
+    const harness = createHarness(dataDir);
+    onTestFinished(() => harness.experimental_dispose());
+    const main = await harness.experimental_call("create", {
+      ...createInput({
+        operationId: "create",
+        sourcePath,
+        pathKey: "thr_folders",
+        branchName: "unused",
+      }),
+      branchName: null,
+    });
+    if (main.status !== "created") throw new Error(main.message);
+    return { root, sourcePath, dataDir, harness, main, folder };
+  }
+
+  it("makes each folder's worktree next to the main one on the same branch, and removal deletes every worktree and branch", async ({
+    onTestFinished,
+  }) => {
+    const project = await createProject(onTestFinished);
+    const api = await project.folder("api");
+    const sameName = await project.folder("app");
+    const created = await project.harness.experimental_call("createFolders", {
+      operationId: "folders",
+      sourcePath: project.sourcePath,
+      path: project.main.path,
+      folders: [api, sameName],
+      branchName: null,
+      branchMode: "reset",
+    });
+    if (created.status !== "created") throw new Error(created.message);
+    const environmentRoot = join(project.dataDir, "worktrees", "thr_folders");
+    expect(created.folders.map((folder) => folder.path)).toEqual([
+      join(environmentRoot, "api"),
+      expect.stringMatching(/[\\/]app-[0-9a-f]{16}$/u),
+    ]);
+    expect(
+      created.folders.map((folder) => folder.path.startsWith(environmentRoot)),
+    ).toEqual([true, true]);
+
+    const branchName = "bb/folders-thr_folders";
+    for (const [sourcePath, path] of [
+      [project.sourcePath, project.main.path],
+      ...created.folders.map((folder) => [folder.sourcePath, folder.path]),
+    ] as const) {
+      expect(
+        await project.harness.experimental_call("nameBranch", {
+          operationId: `name-${path}`,
+          sourcePath,
+          path,
+          branchName,
+        }),
+      ).toEqual({ status: "named" });
+    }
+    for (const folder of created.folders) {
+      expect(
+        (await git(folder.path, "rev-parse", "--abbrev-ref", "HEAD")).trim(),
+      ).toBe(branchName);
+      expect(await branchExists(folder.sourcePath, branchName)).toBe(true);
+    }
+
+    expect(
+      await project.harness.experimental_call("remove", {
+        operationId: "remove",
+        pathKey: "thr_folders",
+        path: project.main.path,
+        ownedBranch: {
+          name: branchName,
+          repositoryPath: project.sourcePath,
+          baseBranch: project.main.baseBranch,
+        },
+        folderBranches: created.folders.map((folder) => ({
+          name: branchName,
+          repositoryPath: folder.sourcePath,
+          baseBranch: folder.baseBranch,
+        })),
+      }),
+    ).toEqual({ status: "removed" });
+    expect(existsSync(environmentRoot)).toBe(false);
+    for (const repository of [project.sourcePath, api, sameName]) {
+      expect(await branchExists(repository, branchName)).toBe(false);
+      expect(
+        await git(repository, "worktree", "list", "--porcelain"),
+      ).not.toContain(environmentRoot);
+    }
+  });
+
+  it("refuses a folder that is not a repository's top folder or repeats a repository", async ({
+    onTestFinished,
+  }) => {
+    const project = await createProject(onTestFinished);
+    const api = await project.folder("api");
+    const plain = join(project.root, "folders", "notes");
+    await mkdir(join(api, "nested"), { recursive: true });
+    await mkdir(plain, { recursive: true });
+    expect(
+      await project.harness.experimental_call("listFolderRepositories", {
+        paths: [api, join(api, "nested"), plain],
+      }),
+    ).toEqual({ paths: [api] });
+    for (const [folders, message] of [
+      [[join(api, "nested")], "not the top folder of a Git repository"],
+      [[project.sourcePath], `same Git repository as ${project.sourcePath}`],
+    ] as const) {
+      expect(
+        await project.harness.experimental_call("createFolders", {
+          operationId: "folders",
+          sourcePath: project.sourcePath,
+          path: project.main.path,
+          folders: [...folders],
+          branchName: null,
+          branchMode: "reset",
+        }),
+      ).toEqual({
+        status: "failed",
+        message: expect.stringContaining(message),
+      });
+    }
+    expect(
+      await readdir(join(project.dataDir, "worktrees", "thr_folders")),
+    ).toEqual(["app", "app.completed"]);
+  });
+
+  it("removes the folder worktrees it made when another folder's worktree fails", async ({
+    onTestFinished,
+  }) => {
+    const project = await createProject(onTestFinished);
+    const api = await project.folder("api");
+    const web = await project.folder("web");
+    await writeFile(
+      join(web, ".git", "hooks", "post-checkout"),
+      "#!/bin/sh\nexit 1\n",
+      {
+        mode: 0o755,
+      },
+    );
+    const created = await project.harness.experimental_call("createFolders", {
+      operationId: "folders",
+      sourcePath: project.sourcePath,
+      path: project.main.path,
+      folders: [api, web],
+      branchName: "bb/failed-thr_folders",
+      branchMode: "reset",
+    });
+    expect(created).toEqual({
+      status: "failed",
+      message: expect.stringContaining(`Could not make a worktree of ${web}`),
+    });
+    expect(
+      await readdir(join(project.dataDir, "worktrees", "thr_folders")),
+    ).toEqual(["app", "app.completed"]);
+    for (const repository of [api, web]) {
+      expect(await branchExists(repository, "bb/failed-thr_folders")).toBe(
+        false,
+      );
+    }
+  });
+});
+
+describe("warm worktree handoff", () => {
+  async function warmWorktree(onTestFinished: TestContext["onTestFinished"]) {
+    const { sourcePath, clone, dataDir } =
+      await createClonedRepository(onTestFinished);
+    const harness = createHarness(dataDir);
+    onTestFinished(() => harness.experimental_dispose());
+    const created = await harness.experimental_call(
+      "create",
+      createInput({
+        operationId: "create-warm",
+        sourcePath: clone,
+        pathKey: "env_warm-1",
+        branchName: "bb/env_warm",
+      }),
+    );
+    if (created.status !== "created") throw new Error(created.message);
+    const head = (await git(created.path, "rev-parse", "HEAD")).trim();
+    const base = (commit: string) => ({
+      ref: "origin/main",
+      commit,
+      offline: false,
+    });
+    const claim = (
+      knownBase: ReturnType<typeof base> | null = null,
+      checkTimeoutMs = 15_000,
+    ) => ({
+      sourcePath: clone,
+      path: created.path,
+      placeholder: "bb/env_warm",
+      base: knownBase,
+      checkTimeoutMs,
+    });
+    const name = (toBranch: string) => ({
+      path: created.path,
+      fromBranch: "bb/env_warm",
+      toBranch,
+    });
+    return {
+      sourcePath,
+      clone,
+      harness,
+      path: created.path,
+      head,
+      base,
+      claim,
+      name,
+    };
+  }
+
+  it("claims a warm worktree without touching its branch, then renames the placeholder in place", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, path, head, base, claim, name } =
+      await warmWorktree(onTestFinished);
+    expect(await harness.experimental_call("claimPoolMember", claim())).toEqual(
+      { status: "usable", base: base(head), head },
+    );
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/env_warm",
+    );
+    await harness.experimental_call(
+      "nameHandedOffBranch",
+      name("bb/fix-login-thr_1"),
+    );
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/fix-login-thr_1",
+    );
+    expect((await git(path, "rev-parse", "HEAD")).trim()).toBe(head);
+    expect(await branchExists(clone, "bb/env_warm")).toBe(false);
+    expect(await readFile(`${path}.completed`, "utf8")).toBe(
+      "bb/fix-login-thr_1\n",
+    );
+  });
+
+  it("fetches a remote base commit that has not been fetched yet, accepts a warm worktree behind it, and moves it forward in the same claim", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, clone, harness, path, head, base, claim } =
+      await warmWorktree(onTestFinished);
+    const upstream = await commitIn(sourcePath, "upstream.txt");
+    expect(await harness.experimental_call("claimPoolMember", claim())).toEqual(
+      { status: "usable", base: base(upstream), head },
+    );
+    expect((await git(path, "rev-parse", "HEAD")).trim()).toBe(upstream);
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/env_warm",
+    );
+    expect((await readFile(join(path, "upstream.txt"), "utf8")).trimEnd()).toBe(
+      "upstream.txt",
+    );
+    expect(await git(path, "status", "--porcelain")).toBe("");
+    expect(
+      await harness.experimental_call("refreshPoolBase", {
+        sourcePath: clone,
+        memberPaths: [path],
+      }),
+    ).toEqual({
+      status: "refreshed",
+      ref: "origin/main",
+      commit: upstream,
+      members: [{ path, head: upstream, branch: "bb/env_warm", onBase: true }],
+    });
+  });
+
+  it("gives the fast-forward time of its own instead of the check's time limit", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, clone, harness, path, head, base, claim } =
+      await warmWorktree(onTestFinished);
+    const upstream = await commitIn(sourcePath, "upstream.txt");
+    await git(clone, "fetch", "--quiet", "origin");
+    const commonDir = (
+      await git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    ).trim();
+    await mkdir(join(commonDir, "hooks"), { recursive: true });
+    await writeFile(
+      join(commonDir, "hooks", "post-merge"),
+      "#!/bin/sh\nsleep 3\n",
+      { mode: 0o755 },
+    );
+    expect(
+      await harness.experimental_call(
+        "claimPoolMember",
+        claim(base(upstream), 1_500),
+      ),
+    ).toEqual({ status: "usable", base: base(upstream), head });
+    expect((await git(path, "rev-parse", "HEAD")).trim()).toBe(upstream);
+  });
+
+  it("gives up on a check that runs out of time and leaves the warm worktree where it was", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, harness, path, head, claim } =
+      await warmWorktree(onTestFinished);
+    await commitIn(sourcePath, "upstream.txt");
+    const commonDir = (
+      await git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    ).trim();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = withGitRefMutationLock(commonDir, () => held);
+    onTestFinished(async () => {
+      release();
+      await holding;
+    });
+    const started = Date.now();
+    expect(
+      await harness.experimental_call("claimPoolMember", claim(null, 300)),
+    ).toEqual({ status: "timed-out" });
+    expect(Date.now() - started).toBeLessThan(2_000);
+    expect((await git(path, "rev-parse", "HEAD")).trim()).toBe(head);
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/env_warm",
+    );
+  });
+
+  it("reports a project folder that is gone or is not a git repository", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    expect(
+      await harness.experimental_call("refreshPoolBase", {
+        sourcePath: `${clone}-missing`,
+        memberPaths: [path],
+      }),
+    ).toEqual({ status: "no-repository" });
+    const plain = `${clone}-plain`;
+    await mkdir(plain);
+    expect(
+      await harness.experimental_call("refreshPoolBase", {
+        sourcePath: plain,
+        memberPaths: [],
+      }),
+    ).toEqual({ status: "no-repository" });
+  });
+
+  it("refuses a warm worktree that is not on the base after the base was rewritten", async ({
+    onTestFinished,
+  }) => {
+    const { sourcePath, clone, harness, path, base, claim } =
+      await warmWorktree(onTestFinished);
+    await git(sourcePath, "checkout", "--orphan", "rewritten");
+    const rewritten = await commitIn(sourcePath, "rewritten.txt");
+    await git(sourcePath, "branch", "-f", "main", rewritten);
+    await git(sourcePath, "checkout", "main");
+    const refreshed = await harness.experimental_call("refreshPoolBase", {
+      sourcePath: clone,
+      memberPaths: [path],
+    });
+    if (refreshed.status !== "refreshed") throw new Error("Expected a refresh");
+    expect(refreshed.commit).toBe(rewritten);
+    expect(refreshed.members[0]?.onBase).toBe(false);
+    expect(
+      await harness.experimental_call(
+        "claimPoolMember",
+        claim(base(rewritten)),
+      ),
+    ).toEqual({
+      status: "refused",
+      base: base(rewritten),
+      reason: "it is not on origin/main",
+    });
+  });
+
+  it("falls back to the last fetched base when the remote cannot be reached", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, head, claim } = await warmWorktree(onTestFinished);
+    await git(clone, "remote", "set-url", "origin", `${clone}-missing`);
+    expect(await harness.experimental_call("claimPoolMember", claim())).toEqual(
+      {
+        status: "usable",
+        base: { ref: "origin/main", commit: head, offline: true },
+        head,
+      },
+    );
+  });
+
+  it("refuses a warm worktree that sits on another branch while its placeholder still exists", async ({
+    onTestFinished,
+  }) => {
+    const { harness, path, head, base, claim } =
+      await warmWorktree(onTestFinished);
+    await git(path, "switch", "-c", "someone-elses");
+    expect(
+      await harness.experimental_call("claimPoolMember", claim(base(head))),
+    ).toEqual({
+      status: "refused",
+      base: base(head),
+      reason: "it was used on someone-elses",
+    });
+  });
+
+  it("removes the branch a handoff renamed to, even when the recorded branch is still the placeholder", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, path, name } = await warmWorktree(onTestFinished);
+    await harness.experimental_call(
+      "nameHandedOffBranch",
+      name("bb/interrupted-thr_4"),
+    );
+    const removed = await harness.experimental_call("remove", {
+      operationId: "remove-interrupted",
+      pathKey: "env_warm-1",
+      path,
+      ownedBranch: {
+        name: "bb/env_warm",
+        repositoryPath: clone,
+        baseBranch: "origin/main",
+      },
+      folderBranches: [],
+    });
+    expect(removed).toEqual({ status: "removed" });
+    expect(await branchExists(clone, "bb/interrupted-thr_4")).toBe(false);
+    expect(await branchExists(clone, "bb/env_warm")).toBe(false);
+  });
+
+  it("restores an unused checkout that left its placeholder, and keeps it", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    await git(path, "branch", "-m", "bb/env_warm", "bb/orphan-thr_5");
+    expect(
+      await harness.experimental_call("restorePoolMember", {
+        sourcePath: clone,
+        path,
+        placeholder: "bb/env_warm",
+      }),
+    ).toEqual({ status: "restored" });
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/env_warm",
+    );
+    expect(await branchExists(clone, "bb/orphan-thr_5")).toBe(false);
+  });
+
+  it("puts the placeholder back on a checkout that was used, so removal owns that branch", async ({
+    onTestFinished,
+  }) => {
+    const { clone, harness, path } = await warmWorktree(onTestFinished);
+    await git(path, "branch", "-m", "bb/env_warm", "bb/used-thr_6");
+    await commitIn(path, "work.txt");
+    expect(
+      await harness.experimental_call("restorePoolMember", {
+        sourcePath: clone,
+        path,
+        placeholder: "bb/env_warm",
+      }),
+    ).toEqual({ status: "used", branch: "bb/used-thr_6" });
+    expect(await branchExists(clone, "bb/used-thr_6")).toBe(false);
+    expect((await git(path, "branch", "--show-current")).trim()).toBe(
+      "bb/env_warm",
+    );
+  });
+
+  it("answers busy quickly instead of waiting behind a git ref update", async ({
+    onTestFinished,
+  }) => {
+    const { harness, path, head, base, claim } =
+      await warmWorktree(onTestFinished);
+    const commonDir = (
+      await git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    ).trim();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = withGitRefMutationLock(commonDir, () => held);
+    onTestFinished(async () => {
+      release();
+      await holding;
+    });
+    const started = Date.now();
+    expect(
+      await harness.experimental_call("claimPoolMember", claim(base(head))),
+    ).toEqual({ status: "busy", base: base(head) });
+    expect(Date.now() - started).toBeLessThan(10_000);
   });
 });

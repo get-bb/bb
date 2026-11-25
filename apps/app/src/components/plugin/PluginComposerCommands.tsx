@@ -1,5 +1,7 @@
 import { pluginCommandId } from "@bb/domain";
-import type { PluginComposerApi } from "@get-bb/plugin-sdk";
+import type { ExperimentalComposerActionContext } from "@get-bb/plugin-sdk";
+import { useAppNavigationHost } from "@/lib/app-navigation-host";
+import { useBindPluginActionContext } from "@/lib/plugin-action-context-provider";
 import { useComposerCommand } from "@/components/promptbox/composer-commands";
 import { useComposer } from "@/lib/plugin-sdk-hooks";
 import {
@@ -30,20 +32,45 @@ export function PluginComposerCommands() {
   );
 }
 
+function describeError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 function runComposerCommand(
   command: ComposerCommandSlot,
-  composer: PluginComposerApi,
+  context: ExperimentalComposerActionContext,
 ): void {
   const warn = (error: unknown) => {
     console.warn(
-      `[plugin:${command.pluginId}] composer command "${command.id}" failed: ${error instanceof Error ? error.message : String(error)}`,
+      `[plugin:${command.pluginId}] composer command "${command.id}" failed: ${describeError(error)}`,
     );
   };
   try {
-    const result = command.run({ composer });
+    const result = command.run(context);
     if (result instanceof Promise) result.catch(warn);
   } catch (error) {
     warn(error);
+  }
+}
+
+function isComposerCommandAvailable(
+  command: ComposerCommandSlot,
+  context: ExperimentalComposerActionContext,
+): boolean {
+  if (
+    command.scopes !== undefined &&
+    !command.scopes.includes(context.composer.scope.kind)
+  ) {
+    return false;
+  }
+  if (command.isAvailable === undefined) return true;
+  try {
+    return command.isAvailable(context);
+  } catch (error) {
+    console.warn(
+      `[plugin:${command.pluginId}] composer command "${command.id}" isAvailable failed: ${describeError(error)}`,
+    );
+    return false;
   }
 }
 
@@ -53,8 +80,16 @@ function PluginComposerCommandHandler({
   command: ComposerCommandSlot;
 }) {
   const composer = useComposer();
-  useComposerCommand(pluginCommandId(command.pluginId, command.id), () =>
-    runComposerCommand(command, composer),
+  const bind = useBindPluginActionContext();
+  const host = useAppNavigationHost();
+  const context = (): ExperimentalComposerActionContext => ({
+    ...bind(command.pluginId, () => host),
+    composer,
+  });
+  useComposerCommand(
+    pluginCommandId(command.pluginId, command.id),
+    () => runComposerCommand(command, context()),
+    () => isComposerCommandAvailable(command, context()),
   );
   return null;
 }

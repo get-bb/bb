@@ -8,6 +8,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  SettingsList,
+  SettingsListItem,
+  SettingsListMessage,
+} from "@/components/ui/settings-section";
 import type { acpRegistryRpcContract } from "./src/registry-service.js";
 
 type RegistryView = StandardSchemaV1InferOutput<
@@ -91,21 +96,18 @@ function AcpRegistrySettings() {
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-sm font-medium text-foreground">
-            Agent registry
-          </h3>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Agents from the official ACP registry. Adding one makes it a
-            provider in the thread composer; it runs through npx or uvx on the
-            machine that hosts the thread.
-          </p>
-        </div>
+      <div className="flex items-center gap-2">
+        <Input
+          type="search"
+          value={query}
+          placeholder="Search agents"
+          aria-label="Search agents"
+          className="min-w-0 flex-1"
+          onChange={(event) => setQuery(event.target.value)}
+        />
         <Button
           type="button"
           variant="outline"
-          size="sm"
           disabled={busy !== null}
           onClick={() =>
             run("refresh", () => rpc.call("listRegistry", { refresh: true }))
@@ -115,68 +117,52 @@ function AcpRegistrySettings() {
         </Button>
       </div>
 
-      <Input
-        type="search"
-        value={query}
-        placeholder="Search agents"
-        aria-label="Search agents"
-        onChange={(event) => setQuery(event.target.value)}
-      />
-
-      <div className="overflow-hidden rounded-md border border-border/60">
+      <SettingsList label="Agents">
         {view === null ? (
-          <p className="px-3 py-4 text-sm text-muted-foreground">
+          <SettingsListMessage>
             {error === null ? "Loading the registry…" : "No agents to show."}
-          </p>
+          </SettingsListMessage>
         ) : agents.length === 0 ? (
-          <p className="px-3 py-4 text-sm text-muted-foreground">
+          <SettingsListMessage>
             {view.agents.length === 0
               ? "No agents to show."
               : "No agent matches that search."}
-          </p>
+          </SettingsListMessage>
         ) : (
-          <div className="divide-y divide-border/60">
-            {agents.map((agent) => {
-              const badge = STATUS_BADGES[agent.status];
-              const note = agentNote(agent);
-              const canAdd =
-                agent.status === "available" ||
-                agent.status === "update-available";
-              const canRemove =
-                agent.status === "added" || agent.status === "update-available";
-              return (
-                <div
-                  key={agent.id}
-                  className="flex items-start gap-3 px-3 py-2.5"
-                >
+          agents.map((agent) => {
+            const badge = STATUS_BADGES[agent.status];
+            const note = agentNote(agent);
+            const canAdd =
+              agent.status === "available" ||
+              agent.status === "update-available";
+            const canRemove =
+              agent.status === "added" || agent.status === "update-available";
+            return (
+              <SettingsListItem
+                key={agent.id}
+                leading={
                   <Icon
                     name={agent.icon ?? "Toolbox"}
-                    className="mt-0.5 size-4 shrink-0 text-muted-foreground"
+                    className="size-4 text-muted-foreground"
                   />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-foreground">
-                        {agent.name}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {agent.version}
-                      </span>
-                      {badge === undefined ? null : (
-                        <Badge variant="secondary">{badge}</Badge>
+                }
+                title={agent.name}
+                badge={badge}
+                meta={[agent.version]}
+                description={
+                  agent.description === "" && note === null ? undefined : (
+                    <>
+                      {agent.description === "" ? null : (
+                        <span className="block">{agent.description}</span>
                       )}
-                    </div>
-                    {agent.description === "" ? null : (
-                      <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                        {agent.description}
-                      </p>
-                    )}
-                    {note === null ? null : (
-                      <p className="mt-0.5 break-all text-xs leading-relaxed text-muted-foreground">
-                        {note}
-                      </p>
-                    )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                      {note === null ? null : (
+                        <span className="block break-all">{note}</span>
+                      )}
+                    </>
+                  )
+                }
+                control={
+                  <>
                     {canAdd ? (
                       <Button
                         type="button"
@@ -208,13 +194,13 @@ function AcpRegistrySettings() {
                         Remove
                       </Button>
                     ) : null}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  </>
+                }
+              />
+            );
+          })
         )}
-      </div>
+      </SettingsList>
 
       <div className="flex min-h-5 justify-end" aria-live="polite">
         {error !== null ? (
@@ -236,6 +222,9 @@ function AcpRegistrySettings() {
 export default definePluginApp((app) => {
   app.slots.settingsSection({
     id: "registry",
+    title: "Agent registry",
+    description:
+      "Agents from the official ACP registry. Adding one makes it a provider in the thread composer; it runs through npx or uvx on the machine that hosts the thread.",
     component: AcpRegistrySettings,
   });
 });

@@ -21,20 +21,28 @@ bb.events.on("message.queued", ({ entry }) => { ... });                    // en
 bb.events.on("message.dispatched", ({ entry }) => { ... });
 bb.events.on("turn.failed", (event) => { ... });                           // ids + failure facts
 bb.events.on("message.cancelled", ({ entry }) => { ... });                 // row deleted before dispatch
+bb.events.on("experimental_thread.settled", (event) => { ... });           // one terminal outcome, below
 ```
 
-**Events are announcements core makes.** Something already happened, your
-handler is told, and whatever it returns is ignored. Handlers run
-fire-and-forget after the change and can never block or veto it; errors are
-caught, logged, and counted in the plugin's handler stats (`bb plugin list`;
-stats survive reloads and reset on remove). The surface that asks is
-`bb.experimental_hooks`, below, where core acts on your answer.
+**Events are announcements core makes.** Handlers run fire-and-forget after
+the change, can never block or veto it, and their return value is ignored;
+errors are caught, logged, and counted in `bb plugin list` handler stats. The
+surface that asks is `bb.experimental_hooks`, below.
 
-Eighteen events. The seven `thread.*` ones are thread lifecycle.
+**Keeping a record per run? Close it from `experimental_thread.settled`.** It
+fires with every `thread.idle` (`outcome: "completed"`, `lastAssistantText`),
+`thread.failed` (`"failed"`, `error`), `thread.archived` (`"archived"`) and
+`thread.deleted` (`"deleted"`), and with every `message.cancelled` whose thread
+still exists (`"cancelled"`, `entry`; check `entry.originPluginId` to see
+whether it was your message). `switch` on `event.outcome` with no default so a
+new outcome fails your typecheck instead of leaving a run open.
+
+Nineteen events. The seven `thread.*` ones are thread lifecycle.
 `interaction.pending` fires after core commits a pending interaction row. The
-three `message.*` ones fire when a dispatch is queued behind a wait (again when
-its wait or `sendAt` is rewritten), when a queued row's waits all clear and it
-dispatches, or when the user removes a queued row before it dispatched. Every
+three `message.*` ones fire once per row: when a dispatch is queued behind a
+wait (again when its wait or `sendAt` is rewritten), when a row's waits clear
+and it dispatches (every row of a grouped dispatch), or when a row is removed
+before it dispatched (the user deletes it, or an edit discards a retry). Every
 listener sees every queued row, so a plugin that only wants its own filters on
 `entry.waitingOn?.kind === "plugin" && entry.waitingOn.pluginId === bb.pluginId`.
 `message.cancelled` is the only signal for that removal: release resources held
@@ -70,15 +78,12 @@ bb.events.on("turn.failed", async (event) => {
 });
 ```
 
-`threads.retry` re-submits the failed turn: the user's message never re-enters
-the timeline, and what the provider is sent follows `inputAccepted` — an input
-the provider never took is re-sent verbatim, while an accepted turn (already in
-the provider's conversation) is continued with a nudge rather than asked twice.
-The next failure's `attemptNumber` counts the retry. A future `sendAt` queues
-it on the clock; without one it is attempted now. Either way it is an ordinary
-dispatch attempt, so it still passes the `message.dispatch` hook. Core allows
-one live retry per original turn and enforces no ceiling beyond that — the cap
-is yours.
+`threads.retry` re-submits the failed turn without re-adding the user's
+message: an input the provider never took (`inputAccepted: false`) is re-sent
+verbatim, an accepted one is continued with a nudge. The next failure's
+`attemptNumber` counts the retry. A future `sendAt` queues it; without one it
+is attempted now, still through the `message.dispatch` hook. Core allows one
+live retry per original turn and no ceiling beyond that — the cap is yours.
 
 The seven `thread.*` events carry `thread`, the same DTO
 `GET /api/v1/threads/:id` serves, and reach every loaded plugin regardless of
@@ -91,10 +96,8 @@ provider that tore its workspace down is asked for one again when the thread
 next needs to run, so this is where to start warming one up.
 
 Events that occur while your plugin is unloaded are not replayed. Register
-handlers first, then reconcile tracked threads once at startup to catch changes
-from a restart, reload, or disabled period. Make handlers idempotent if a live
-event overlaps reconciliation. Avoid polling thread state to detect lifecycle
-changes.
+handlers first, then reconcile tracked threads once at startup, with
+idempotent handlers. Avoid polling thread state for lifecycle changes.
 
 `thread.created` fires on row creation, so the first user message is not
 always in the timeline yet. To react to a thread's content, listen on
@@ -104,11 +107,9 @@ always in the timeline yet. To react to a thread's content, listen on
 thread's turn.
 
 `experimental_thread.events` notifies that the thread event sequence advanced,
-coalesced per thread into at most one notification per second with the latest
-sequence and current thread DTO. Continuous output produces periodic updates
-and a final pending update. Reading history does not notify. The payload
-contains no event contents; read them with `bb.sdk.threads.events.list` if
-your policy needs them.
+at most once per second per thread, with the latest sequence and thread DTO
+(and a final pending update after continuous output). Reading history does not
+notify. Read contents with `bb.sdk.threads.events.list`.
 
 `experimental_terminal.input` fires after nonempty real user input is forwarded to a
 terminal. Its public terminal DTO includes hostId; keystrokes are not included. Output,
@@ -129,11 +130,11 @@ periodically.
 ### bb.experimental_hooks — the dispatch checkpoint
 
 **Hooks are questions core asks.** Core stops, hands your handler a context, and
-acts on what you return. There is one hook, `"message.dispatch"`
-(`PluginHookName`), the admission checkpoint every message passes through
-exactly once per attempt: a thread's first message, a follow-up, a steer, a
-drained queue row, a retry of a failed turn. Two members: `on` answers the
-question, and `recheck("message.dispatch")` asks core to ask it again.
+acts on what you return. `"thread.delete_finalize"` is in backend-sdk.md; this
+one, `"message.dispatch"`, is the admission checkpoint every message passes
+through exactly once per attempt: a thread's first message, a follow-up, a
+steer, a drained queue row, a retry of a failed turn. Two members: `on` answers
+the question, and `recheck("message.dispatch")` asks core to ask it again.
 
 ```ts
 bb.experimental_hooks.on("message.dispatch", (ctx) => {
@@ -182,8 +183,9 @@ composer submission; a plugin that waits can recognize later attempts through
 `ctx.queuedMessages.some(message => message.waitingOn?.kind === "plugin" &&
 message.waitingOn.pluginId === bb.pluginId)`.
 
-Decisions are `proceed`, `wait` (`reason`, optional `sendAt` epoch ms, which
-becomes the row's `sendAt` so core's due sweep re-attempts then) and `reject`
+Decisions are `proceed`, `wait` (`reason`, optional `recheckAt` epoch ms, when
+core's due sweep re-asks; the row's own `sendAt` stays the sender's scheduled
+time, and the message never dispatches before it) and `reject`
 (`message` shown to the user; the caller gets a 409 `dispatch_rejected`). A
 handler decides; it never rewrites the dispatch it is deciding about.
 
@@ -198,18 +200,19 @@ itself running. Queueing appends no thread event, so a `wait` never writes
 anything into the transcript the model or the user reads back.
 
 **How a wait clears.** You never release a row — you ask core to re-decide it.
-It clears when the row's `sendAt` comes due, when any plugin calls
-`bb.experimental_hooks.recheck("message.dispatch")`, when the user sends it now,
-or when the orphan sweep clears a wait whose plugin stopped running. Every one
-of those re-runs the full pass, including your own handler, so a message that is
-still blocked simply re-queues.
+It clears when your `recheckAt` comes due, when any plugin calls
+`bb.experimental_hooks.recheck("message.dispatch")`, or when the orphan sweep
+clears a wait whose plugin stopped running. Every one of those re-runs the full
+pass, including your own handler, so a still-blocked message re-queues. The
+user's Send now skips the hook pass and dispatches the row even while your
+handler would wait or reject.
 
 ```ts
 // The condition your waits depend on changed. Ask core to re-ask.
 await bb.experimental_hooks.recheck("message.dispatch");
 ```
 
-Core owns the re-draining and the clock — `sendAt` due, the thread's own turn
+Core owns the re-draining and the clock — `recheckAt` due, the thread's own turn
 ending, the workspace becoming ready, an interaction settling — and you own every
 other condition your waits depend on. A recheck re-attempts every plugin-queued
 row in queue order, so an unwarranted call is safe; bursts coalesce and
@@ -228,6 +231,7 @@ operation types.
 
 ```ts
 bb.experimental_environments.register({
+  apiVersion: 2,
   id: "personal-workspace",
   displayName: "Personal workspace",
   description: "Create a personal directory without a project.",
@@ -274,34 +278,29 @@ background, and core checks it again for the selected provider and machine on
 every thread creation. `validate` may accept or refuse
 (`{ action: "refuse", message }`) the same request before a thread exists,
 using the resolved project, host, checkout, remote and inputs. The optional
-`experimental_existingPath(inputs)` selects a path from parsed inputs: core
-reuses a recorded environment at that path on the selected host instead of
-calling `create`, and null requests normal creation. Create waits for startup
+`locate({ host, projectCheckout, inputs })` answers `{ path, reuse }` or null
+before create: core claims the path, `reuse: true` joins the environment
+recorded there, otherwise create runs and core folds its result into that
+environment when create returns the same path; returning another
+environment's path without locating it fails. Create waits for startup
 registrations to settle, then rejects an unknown provider id; existing threads
 wait if their registered provider disappears. `bb.experimental_environments.recheck()`
-asks core to re-ask this plugin's waiting provisioning now instead of at its
-scheduled time.
+re-asks this plugin's waiting provisioning now instead of at its scheduled time.
 
-`create` receives the resolved facts, thread, `suggestedBranchName`,
-monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds
-a fresh environment. It is one long call with no overall timeout and must be
-idempotent for `pathKey`: after a process or plugin restart, core calls it
-again with the same attempt and pathKey. Return `created` with `path`,
-explicit `ownsPath` and optional `mergeBaseBranch`, or `failed` with a
-message. When core reuses an environment row your provider already owns at
-that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
-clears it, and omitting it keeps it; a failed create is terminal, and a retry is an explicit new attempt
-on the same environment row after cleanup. `report.step` and `report.log`
-stream durable progress while the call runs.
+`create` receives the resolved facts, the `environment` and its steps,
+monotonic attempt, `pathKey`, `report`, and an abort signal, and always builds a fresh environment. It is one long call with no
+overall timeout and must be idempotent for `pathKey`: after a process or plugin
+restart, core calls it again with the same attempt and pathKey. Return `created`
+with `path`, explicit `ownsPath` and optional `mergeBaseBranch`, or `failed`
+with a message. When core reuses an environment row your provider already owns
+at that path, a reported `mergeBaseBranch` replaces the recorded one, `null`
+clears it, and omitting it keeps it; a failed create is terminal, and a retry is
+an explicit new attempt on the same environment row after cleanup. `report.step`
+and `report.log` stream durable progress while the call runs.
 
-`await context.experimental_claimPath(path)` on the create and restore
-contexts atomically reserves a directory on the selected host for this launch before
-workspace mutations. It returns false if another unattached launch holds the
-host/path, this attempt is no longer creating, or this attempt already
-reserved another path; repeating the same claim succeeds. Core keeps the claim
-through attachment or completed cancellation cleanup, including after failed
-creation, and normalizes trailing slashes. Check existing attached threads
-after claiming and before mutating a shared checkout.
+Experimental: a `created` result (also from `restore`) may list `additionalPaths`, this environment's own folders outside `path` as `{ path, replaces? }` (sibling checkouts); threads there can write each absolute `path`, core stores them as `Environment.additionalPaths` (`replaces` is `null` when absent), and omitting the field on a reused environment keeps the list. `replaces` names the project folder (`bb.sdk.projects.sources.experimental_folders`) an entry stands in for, such as the repository it made a worktree of; threads in the environment no longer get that shared folder. `setup(path, { folders })` runs each folder's setup first, in order, and its teardown after `path`'s, in reverse. See docs/api_to_audit.md.
+
+Core claims a provider's directory through `locate` or `setup(path)`.
 `bb.sdk.environments.list({ hostId, path })` compares stored paths without
 contacting hosts.
 
@@ -322,16 +321,17 @@ with nullable `environment`, `hostId` and `path`, plus `pathKey`, `resource`,
 pathKey even when create never returned a path, and returns removed or
 failed(message). Failed removal persists and retries after 60 seconds.
 
-The optional `policy` sets `retireGraceMs` (five minutes by default; null
-keeps the environment indefinitely) and `pathKeys` (`"per-thread"` by default,
-or `"per-attempt"`). Retirement starts after the last live thread archives or
-is deleted; rebuilds use fresh path keys. Environment responses expose only
-the read-only lifecycle projection: phase, retireAt, and teardown
+The optional `policy` sets `retireGraceMs` (five minutes by default; null keeps
+the environment indefinitely) and `pathKeys` (`"per-environment"` by default, or
+`"per-attempt"`). Retirement starts after the last live thread archives or is
+deleted; rebuilds use fresh path keys. Environment responses expose only the
+read-only lifecycle projection: phase, retireAt, and teardown
 status/attempt/message.
 
 Core runs `.bb-env-setup.sh` on the environment's host after `create` returns
-`ownsPath: true`, and `.bb-env-teardown.sh` before `remove`; providers never
-call these hooks, and attached paths (`ownsPath: false`) never run them. Each
+`ownsPath: true`, or earlier when a version-2 create calls `setup(path)`, and
+`.bb-env-teardown.sh` before `remove`; providers never run these hooks
+themselves, and attached paths (`ownsPath: false`) never run them. Each
 has a 15-minute timeout, and its output goes to the launch report. Setup
 failure fails the launch. Teardown failure is reported, and removal continues
 only after the script is confirmed terminated; if a daemon restart loses that
@@ -438,11 +438,11 @@ The wire envelope is `{ ok: true, result }` or `{ ok: false, error }`.
 Failures use stable codes: `invalid_json`, `invalid_input`, `handler_error`,
 `invalid_output`, `non_json_result`, and `unknown_method`; validation failures
 also carry normalized `{ message, path? }[]` issues. Unknown methods return
-404, invalid JSON/input returns 400, and handler/output/serialization failures
-return 500. Throw `new experimental_PluginRpcRefusal({ code, message, issues? })`
-from `@get-bb/plugin-sdk` for expected refusals:
-`forbidden` → 403, `not_found` → 404, `conflict` → 409, `invalid` → 422.
-Codes and optional `PluginRpcValidationIssue[]` issues reach callers in the error envelope.
+404, invalid JSON/input 400, handler/output/serialization failures 500. Before
+a handler runs: `plugin_not_found` 404, `plugin_not_running` 503, `invalid_caller` 403, `forbidden_origin` 403, `unsupported_media_type` 415.
+Throw `new experimental_PluginRpcRefusal({ code, message, issues? })` from
+`@get-bb/plugin-sdk` for expected refusals: `forbidden` → 403, `not_found` → 404,
+`conflict` → 409, `invalid` → 422. Codes and optional `PluginRpcValidationIssue[]` issues reach callers in the error envelope.
 Refusals do not increment handler error counts or change status detail.
 A refused mutation rejects and rolls back shared optimistic updates. `bb plugin rpc call` prints the code and message and exits non-zero.
 Results must be strict JSON values: cyclic objects, bigint,
@@ -478,9 +478,9 @@ bb.background.schedule("sync", "*/5 * * * *", async () => {
 - A **service** starts after the factory completes and must resolve when
   `signal` aborts (reload/disable/shutdown). A crash restarts it with
   capped exponential backoff.
-- A **schedule** is a 5-field cron (server-local time) backed by a durable
-  row keyed (pluginId, name) — it survives server restarts and fires once per
-  due time, but only while the plugin is loaded.
+- A **schedule** is a 5-field cron (server-local time) on a durable row. Due
+  times missed while bb was down, the plugin unloaded, or a run still going
+  get one catch-up run; runs never overlap or delay other schedules.
 - Semantics differ on throw: a service throwing `NeedsConfigurationError`
   transitions the whole plugin to `needs-configuration` and stops
   restarting until the next load; a schedule throw (any error) only lands

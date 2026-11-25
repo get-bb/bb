@@ -58,9 +58,10 @@ function planTurn(
       sourceSeqEnd = -Infinity;
       createdAt = Infinity;
     }
+    if (item.sourceMessages.length > 0) sourceSeqStart = Infinity;
     for (const message of item.sourceMessages) {
+      sourceSeqStart = Math.min(sourceSeqStart, message.sourceSeqStart);
       if (!useTurnBounds) {
-        sourceSeqStart = Math.min(sourceSeqStart, message.sourceSeqStart);
         sourceSeqEnd = Math.max(sourceSeqEnd, message.sourceSeqEnd);
         createdAt = Math.min(createdAt, message.createdAt);
       }

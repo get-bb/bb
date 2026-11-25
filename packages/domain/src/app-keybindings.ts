@@ -71,9 +71,11 @@ export const APP_COMMAND_IDS = [
   "window.new",
   "window.find",
   "window.reload",
+  "window.forceReload",
   "app.back",
   "settings.open",
   "settings.openServers",
+  "settings.search",
   "sidebar.toggle",
   "panel.previousTab",
   "panel.nextTab",
@@ -144,6 +146,8 @@ const APP_COMMAND_CONTEXT_KEYS = [
   "questionOpen",
   "questionFocus",
   "promptAvailable",
+  "pluginPage",
+  "settingsPage",
   "splitActive",
   "webSurface",
   "macPlatform",
@@ -200,27 +204,71 @@ const SHIFTED_KEY_BASES: Readonly<Record<string, string>> = {
   "?": "/",
 };
 
+const PUNCTUATION_KEYS_BY_CODE: Readonly<Record<string, string>> = {
+  Backquote: "`",
+  Minus: "-",
+  Equal: "=",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+  Semicolon: ";",
+  Quote: "'",
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+};
+
 function baseKeyFromCode(code: string): string | null {
   if (/^Key[A-Z]$/u.test(code)) return code.slice(3).toLowerCase();
   if (/^Digit[0-9]$/u.test(code)) return code.slice(5);
-  return null;
+  return PUNCTUATION_KEYS_BY_CODE[code] ?? null;
 }
 
 function isAsciiAlphanumeric(value: string): boolean {
   return /^[a-z0-9]$/iu.test(value);
 }
 
-export function normalizeAppShortcutInputKey(input: AppShortcutInput): string {
+function isNonLatinCharacter(value: string): boolean {
+  return /^(?![\p{Script=Latin}0-9])[\p{L}\p{N}]$/u.test(value);
+}
+
+type AppShortcutKeyInput = Pick<
+  AppShortcutInput,
+  "altKey" | "code" | "key" | "shiftKey"
+>;
+
+function layoutAppShortcutKey(input: AppShortcutKeyInput): string {
   if (input.key === " " || input.key === "Spacebar") {
     return "Space";
-  }
-  if (input.altKey && !isAsciiAlphanumeric(input.key)) {
-    const fromCode = baseKeyFromCode(input.code);
-    if (fromCode !== null) return fromCode;
   }
   return input.shiftKey
     ? (SHIFTED_KEY_BASES[input.key] ?? input.key)
     : input.key;
+}
+
+export function normalizeAppShortcutInputKey(
+  input: AppShortcutKeyInput,
+): string {
+  if (/^Digit[0-9]$/u.test(input.code)) return input.code.slice(5);
+  const usePhysicalKey = input.altKey
+    ? !isAsciiAlphanumeric(input.key)
+    : isNonLatinCharacter(input.key);
+  if (usePhysicalKey) {
+    const fromCode = baseKeyFromCode(input.code);
+    if (fromCode !== null) return fromCode;
+  }
+  return layoutAppShortcutKey(input);
+}
+
+export function matchesAppShortcutKey(
+  input: AppShortcutKeyInput,
+  key: string,
+): boolean {
+  const expected = key.toLowerCase();
+  return (
+    normalizeAppShortcutInputKey(input).toLowerCase() === expected ||
+    (!input.altKey && layoutAppShortcutKey(input).toLowerCase() === expected)
+  );
 }
 
 export const keyboardPlatformSchema = z.enum(["mac", "windows", "linux"]);
@@ -265,8 +313,7 @@ export function matchesAppShortcut(
   const expectedMeta = shortcut.meta || (shortcut.mod && useMetaForMod);
   const expectedControl = shortcut.control || (shortcut.mod && !useMetaForMod);
   return (
-    normalizeAppShortcutInputKey(input).toLowerCase() ===
-      shortcut.key.toLowerCase() &&
+    matchesAppShortcutKey(input, shortcut.key) &&
     input.metaKey === expectedMeta &&
     input.ctrlKey === expectedControl &&
     input.altKey === shortcut.alt &&

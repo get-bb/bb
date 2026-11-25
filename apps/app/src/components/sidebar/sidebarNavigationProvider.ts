@@ -6,19 +6,21 @@ import { createLastKnownCache } from "@/lib/last-known-cache";
 import {
   usePluginFrontendLoadFailed,
   usePluginFrontendsSettled,
+  usePluginFrontendsSettledOnce,
 } from "@/lib/plugin-frontend-boot-state";
 import {
   AUTOMATIC_REPLACEMENT_PROVIDER,
-  findAutomaticReplacement,
+  createPickPreferenceAtom,
+  PLUGIN_ONLY_RULE,
   replacementProviderKey,
+  resolveExclusive,
 } from "@/lib/plugin-replacement-preference";
 import {
-  useBuiltinPluginIds,
+  useBbPluginIds,
   usePluginSlotKind,
   type ExperimentalSidebarNavigationSlot,
 } from "@/lib/plugin-slots";
 import { useRememberSurfaceProvider } from "@/lib/plugin-surface-providers";
-import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
 export type ResolvedSidebarNavigation =
   | {
@@ -39,13 +41,13 @@ export type LastResolvedSidebarNavigation = z.infer<typeof lastResolvedSchema>;
 function resolvedPlugin(
   slot: ExperimentalSidebarNavigationSlot,
   slots: readonly ExperimentalSidebarNavigationSlot[],
-  builtinPluginIds: ReadonlySet<string>,
+  bbPluginIds: ReadonlySet<string>,
 ): ResolvedSidebarNavigation {
-  const fallback = builtinPluginIds.has(slot.pluginId)
+  const fallback = bbPluginIds.has(slot.pluginId)
     ? undefined
     : slots.find(
         (candidate) =>
-          builtinPluginIds.has(candidate.pluginId) &&
+          bbPluginIds.has(candidate.pluginId) &&
           candidate.placement === slot.placement,
       );
   return { kind: "plugin", slot, fallback: fallback ?? null };
@@ -54,43 +56,54 @@ function resolvedPlugin(
 export function resolveSidebarNavigation({
   preference,
   slots,
-  builtinPluginIds,
+  bbPluginIds,
   settled,
+  settledOnce,
   loadFailed,
   lastResolved,
 }: {
   preference: string;
   slots: readonly ExperimentalSidebarNavigationSlot[];
-  builtinPluginIds: ReadonlySet<string>;
+  bbPluginIds: ReadonlySet<string>;
   settled: boolean;
+  settledOnce: boolean;
   loadFailed: boolean;
   lastResolved: LastResolvedSidebarNavigation | null;
 }): ResolvedSidebarNavigation {
-  const isAutomatic = preference === AUTOMATIC_REPLACEMENT_PROVIDER;
-  const pinned = isAutomatic
-    ? undefined
-    : slots.find((slot) => replacementProviderKey(slot) === preference);
-  if (pinned) return resolvedPlugin(pinned, slots, builtinPluginIds);
-  const automatic = findAutomaticReplacement(slots, builtinPluginIds);
-  if (!settled) {
-    const awaitedKey = isAutomatic ? lastResolved?.key : preference;
-    if (
-      awaitedKey !== undefined &&
-      (automatic === undefined ||
-        replacementProviderKey(automatic) !== awaitedKey)
-    ) {
+  const resolved = resolveExclusive({
+    claimants: slots,
+    pick: preference,
+    bbPluginIds,
+    settledOnce,
+    rememberedAutomatic: lastResolved?.key ?? null,
+    rule: PLUGIN_ONLY_RULE,
+  });
+  switch (resolved.kind) {
+    case "plugin":
+      return resolvedPlugin(resolved.registration, slots, bbPluginIds);
+    case "loading": {
+      const awaitedKey =
+        preference === AUTOMATIC_REPLACEMENT_PROVIDER
+          ? lastResolved?.key
+          : preference;
       return {
         kind: "loading",
         placement:
-          lastResolved?.key === awaitedKey ? lastResolved.placement : "rail",
+          lastResolved !== null && lastResolved.key === awaitedKey
+            ? lastResolved.placement
+            : "rail",
       };
     }
+    case "builtin":
+    case "contested":
+      if (!settled) {
+        return {
+          kind: "loading",
+          placement: lastResolved?.placement ?? "rail",
+        };
+      }
+      return loadFailed ? { kind: "failed" } : { kind: "missing" };
   }
-  if (automatic) return resolvedPlugin(automatic, slots, builtinPluginIds);
-  if (!settled) {
-    return { kind: "loading", placement: lastResolved?.placement ?? "rail" };
-  }
-  return loadFailed ? { kind: "failed" } : { kind: "missing" };
 }
 
 export function sidebarNavigationPlacement(
@@ -107,20 +120,9 @@ export function sidebarNavigationPlacement(
   }
 }
 
-const lastKnownPreferenceCache = createLastKnownCache({
-  prefix: "bb.sidebar-navigation-provider",
-  version: "1",
-  schema: z.string().min(1),
-});
-const LAST_KNOWN_PREFERENCE_KEY = lastKnownPreferenceCache.key();
-
-export const sidebarNavigationProviderAtom = createSyncedPreferenceAtom(
+export const sidebarNavigationProviderAtom = createPickPreferenceAtom(
   "sidebar.navigationProvider",
-  {
-    read: () => lastKnownPreferenceCache.read(LAST_KNOWN_PREFERENCE_KEY),
-    write: (value) =>
-      lastKnownPreferenceCache.write(LAST_KNOWN_PREFERENCE_KEY, value),
-  },
+  { cachePrefix: "bb.sidebar-navigation-provider" },
 );
 
 const lastResolvedCache = createLastKnownCache({
@@ -136,16 +138,18 @@ export function useResolvedSidebarNavigation(): ResolvedSidebarNavigation {
   );
   const preference = useAtomValue(sidebarNavigationProviderAtom);
   const settled = usePluginFrontendsSettled();
+  const settledOnce = usePluginFrontendsSettledOnce();
   const loadFailed = usePluginFrontendLoadFailed();
   const [lastResolved] = useState(() =>
     lastResolvedCache.read(LAST_RESOLVED_KEY),
   );
-  const builtinPluginIds = useBuiltinPluginIds();
+  const bbPluginIds = useBbPluginIds();
   const resolved = resolveSidebarNavigation({
     preference,
     slots: experimentalSidebarNavigations,
-    builtinPluginIds,
+    bbPluginIds,
     settled,
+    settledOnce,
     loadFailed,
     lastResolved,
   });

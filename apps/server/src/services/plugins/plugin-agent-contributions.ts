@@ -83,6 +83,16 @@ export async function resolvePluginProviderEnv(args: {
   }));
 }
 
+export function resolveHostProviderEnv(
+  hostId: string,
+  providerId: string,
+): Promise<HostDaemonContributedEnvEntry[]> {
+  return resolvePluginProviderEnv({
+    providerId,
+    context: { threadId: null, projectId: null, hostId },
+  });
+}
+
 export async function resolvePluginProviderEnvHealth(args: {
   providerId: string;
   hostId: string;

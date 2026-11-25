@@ -1,4 +1,5 @@
 import { extractErrorMessage } from "@bb/core-ui";
+import { BbHttpError } from "./http-error.js";
 
 export const DEFAULT_BB_REQUEST_TIMEOUT_MS = 75_000;
 
@@ -72,27 +73,6 @@ export class BbRequestTimeoutError extends Error {
   }
 }
 
-export interface BbHttpErrorArgs {
-  body: unknown;
-  code: string | null;
-  message: string;
-  status: number;
-}
-
-export class BbHttpError extends Error {
-  readonly body: unknown;
-  readonly code: string | null;
-  readonly status: number;
-
-  constructor(args: BbHttpErrorArgs) {
-    super(`HTTP ${args.status}: ${args.message}`);
-    this.name = "BbHttpError";
-    this.body = args.body;
-    this.code = args.code;
-    this.status = args.status;
-  }
-}
-
 export function createRequestTimeoutFetch(
   options: RequestTimeoutFetchOptions,
 ): FetchImplementation {
@@ -126,12 +106,6 @@ export async function readJsonResponse<TResponse extends SdkResponseLike>(
 ): Promise<JsonBodyOf<TResponse>> {
   const resolved = await resolveResponse(response);
   return resolved.json();
-}
-
-export async function readVoidResponse<TResponse extends SdkResponseLike>(
-  response: Promise<TResponse>,
-): Promise<void> {
-  await resolveResponse(response);
 }
 
 export async function resolveResponse<TResponse extends SdkResponseLike>(

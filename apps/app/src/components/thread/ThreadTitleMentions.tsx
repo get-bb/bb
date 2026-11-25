@@ -36,8 +36,7 @@ import { PromptMentionPill } from "@/components/thread/timeline/ConversationMess
 import { useThread } from "@/hooks/queries/thread-queries";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { sdk } from "@/lib/sdk";
-import { getThreadRoutePath } from "@/lib/route-paths";
-import { getMessageLinkPath } from "@bb/client-core";
+import { getThreadLocationPath, pathMentionResource } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
 
@@ -74,13 +73,11 @@ export function useThreadRoutePath(): (
   return (threadId, projectId, messageSeq) => {
     const resolvedProjectId =
       projectId ?? threadById.get(threadId)?.projectId ?? PERSONAL_PROJECT_ID;
-    return messageSeq === null
-      ? getThreadRoutePath({ projectId: resolvedProjectId, threadId })
-      : getMessageLinkPath({
-          projectId: resolvedProjectId,
-          threadId,
-          seq: messageSeq,
-        });
+    return getThreadLocationPath({
+      projectId: resolvedProjectId,
+      threadId,
+      ...(messageSeq === null ? {} : { messageSeq }),
+    });
   };
 }
 
@@ -525,7 +522,7 @@ function isPathMentionToken(token: string): boolean {
   return !/^@(?:thread|project|section|folder):/u.test(token);
 }
 
-function pathMentionResource(token: string): PromptMentionResource {
+function pathMentionResourceFromToken(token: string): PromptMentionResource {
   const serializedPath = token.slice(1);
   const source = serializedPath.startsWith("thread-storage:")
     ? "thread-storage"
@@ -534,17 +531,11 @@ function pathMentionResource(token: string): PromptMentionResource {
     source === "thread-storage"
       ? serializedPath.slice("thread-storage:".length)
       : serializedPath;
-  const isDirectory = path.endsWith("/");
-  const normalizedPath = isDirectory ? path.slice(0, -1) : path;
-  const lastSlash = normalizedPath.lastIndexOf("/");
-
-  return {
-    kind: "path",
+  return pathMentionResource({
+    path,
     source,
-    entryKind: isDirectory ? "directory" : "file",
-    path: normalizedPath,
-    label: normalizedPath.slice(lastSlash + 1) || normalizedPath,
-  };
+    entryKind: path.endsWith("/") ? "directory" : "file",
+  });
 }
 
 function threadResourceFromThread(
@@ -620,7 +611,7 @@ function resolveTitleMentionResource(
     };
   }
 
-  return pathMentionResource(token);
+  return pathMentionResourceFromToken(token);
 }
 
 interface ThreadTitleTextSegment {

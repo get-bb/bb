@@ -1,5 +1,6 @@
 import { lstat, readdir, rm, rmdir } from "node:fs/promises";
 import { basename, dirname, join, relative, resolve, sep } from "node:path";
+import { CORE_PLUGIN_DIRECTORIES } from "@bb/domain";
 import {
   deletePluginArtifact,
   deletePluginStateSnapshot,
@@ -43,7 +44,7 @@ function pluginArtifactGitCheckoutRoot(
 }
 
 function pluginCacheRoot(dataDir: string): string {
-  return resolve(dataDir, "plugins", "cache");
+  return resolve(dataDir, "plugins", CORE_PLUGIN_DIRECTORIES.cache);
 }
 
 function isManagedCachePath(dataDir: string, path: string): boolean {

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, rm, stat } from "node:fs/promises";
 import { dirname, join, relative, sep } from "node:path";
-import { derivePluginId } from "@bb/domain";
+import { CORE_PLUGIN_DIRECTORIES, derivePluginId } from "@bb/domain";
 import {
   createPluginArtifact,
   getInstalledPlugin,
@@ -29,6 +29,7 @@ import {
   MARKETPLACE_PACKUMENT_MAX_BYTES,
 } from "../plugin-catalog/marketplace-http.js";
 import { installGitDependencies } from "./git-plugin-dependencies.js";
+import { PluginInstallCancelledError } from "./install-cancellation.js";
 import { getPluginBuildToolchain } from "./build-toolchain.js";
 import { validatePluginArtifactMeta } from "./app-bundle.js";
 import type {
@@ -51,7 +52,7 @@ import {
 } from "./install-sources.js";
 import { readPluginManifest, type PluginManifest } from "./manifest.js";
 import type { PluginServiceDeps } from "./plugin-service-internal.js";
-import { logPluginBuildWarnings } from "./plugin-log.js";
+import { logPluginBuildWarnings, type PluginEventLog } from "./plugin-log.js";
 import {
   createNpmResolverRun,
   evaluateCompatibility,
@@ -104,6 +105,7 @@ interface ActivateManagedUpdateArgs {
 
 interface ManagedPluginArtifactsContext {
   deps: PluginServiceDeps;
+  pluginLog: PluginEventLog;
   withArtifactLock: <T>(key: string, fn: () => Promise<T>) => Promise<T>;
   sourceKind: (source: string) => "path" | "git" | "npm" | "builtin";
   checkEngineRange: (manifest: PluginManifest) => string | undefined;
@@ -145,23 +147,68 @@ async function installNpmCandidate(args: {
   ]);
 }
 
+async function fetchGitCommitShallow(
+  url: string,
+  stagingDir: string,
+  commit: string,
+  notFoundHint: string | undefined,
+): Promise<boolean> {
+  await runInstallCommand("git", ["init", "--quiet", stagingDir], {
+    notFoundHint,
+  });
+  try {
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "fetch",
+      "--quiet",
+      "--depth",
+      "1",
+      "--no-tags",
+      url,
+      commit,
+    ]);
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "checkout",
+      "--quiet",
+      "--detach",
+      "FETCH_HEAD",
+    ]);
+    return true;
+  } catch (error) {
+    if (error instanceof PluginInstallCancelledError) throw error;
+    await rm(stagingDir, { recursive: true, force: true });
+    return false;
+  }
+}
+
 async function cloneGitCommit(
   url: string,
   stagingDir: string,
   commit: string,
   notFoundHint?: string,
 ): Promise<void> {
-  await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
-    notFoundHint,
-  });
-  await runInstallCommand("git", [
-    "-C",
+  const shallow = await fetchGitCommitShallow(
+    url,
     stagingDir,
-    "checkout",
-    "--quiet",
-    "--detach",
     commit,
-  ]);
+    notFoundHint,
+  );
+  if (!shallow) {
+    await runInstallCommand("git", ["clone", "--quiet", url, stagingDir], {
+      notFoundHint,
+    });
+    await runInstallCommand("git", [
+      "-C",
+      stagingDir,
+      "checkout",
+      "--quiet",
+      "--detach",
+      commit,
+    ]);
+  }
   const checkedOutCommit = await runInstallCommand("git", [
     "-C",
     stagingDir,
@@ -205,6 +252,7 @@ export function createManagedPluginArtifacts(
 ) {
   const {
     deps,
+    pluginLog,
     withArtifactLock,
     sourceKind,
     checkEngineRange,
@@ -301,8 +349,7 @@ export function createManagedPluginArtifacts(
           );
         }
         logPluginBuildWarnings({
-          dataDir: deps.dataDir,
-          logger: deps.logger,
+          pluginLog,
           pluginId: manifest.id,
           warnings: app.migrationWarnings,
         });
@@ -322,8 +369,7 @@ export function createManagedPluginArtifacts(
         );
       }
       logPluginBuildWarnings({
-        dataDir: deps.dataDir,
-        logger: deps.logger,
+        pluginLog,
         pluginId: manifest.id,
         warnings: server.migrationWarnings,
       });
@@ -446,7 +492,12 @@ export function createManagedPluginArtifacts(
     listed: string | undefined,
     packageName: string,
   ): Promise<string> {
-    const registryProbe = join(deps.dataDir, "plugins", "npm", ".registry");
+    const registryProbe = join(
+      deps.dataDir,
+      "plugins",
+      CORE_PLUGIN_DIRECTORIES.npmPackages,
+      ".registry",
+    );
     await mkdir(registryProbe, { recursive: true });
     return listed ?? (await resolveNpmRegistry(registryProbe, packageName));
   }

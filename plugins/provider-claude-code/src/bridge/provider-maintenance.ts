@@ -34,14 +34,18 @@ const CLAUDE_POWERSHELL_INSTALL_SCRIPT_URL = "https://claude.ai/install.ps1";
 
 const claudeAccountFileSchema = z.object({
   oauthAccount: z
-    .object({ accountUuid: z.string().uuid().nullish() })
+    .object({
+      accountUuid: z.string().uuid().nullish(),
+      organizationType: z.string().nullish(),
+      emailAddress: z.string().nullish(),
+    })
     .nullish(),
 });
 
-async function claudeExecutable(): Promise<string> {
-  const explicit = process.env.BB_CLAUDE_CODE_EXECUTABLE?.trim();
+async function claudeExecutable(env: NodeJS.ProcessEnv): Promise<string> {
+  const explicit = env.BB_CLAUDE_CODE_EXECUTABLE?.trim();
   if (explicit) return explicit;
-  return (await resolveExecutablePath("claude")) ?? "claude";
+  return (await resolveExecutablePath("claude", env)) ?? "claude";
 }
 
 function claudeInstallerCommand() {
@@ -116,9 +120,10 @@ function isDefaultNativeClaudePath(executablePath: string | null): boolean {
 }
 
 export async function getClaudeProviderInstallationStatus(
-  checkUpdates = true,
+  env: NodeJS.ProcessEnv,
+  checkUpdates: boolean,
 ): Promise<ProviderInstallationStatus> {
-  const command = await claudeExecutable();
+  const command = await claudeExecutable(env);
   const [
     resolvedExecutable,
     versionOutput,
@@ -126,20 +131,19 @@ export async function getClaudeProviderInstallationStatus(
     npmGlobal,
     doctorOutput,
   ] = await Promise.all([
-    resolveExecutablePath(command),
-    commandOutput(command, ["--version"]),
+    resolveExecutablePath(command, env),
+    commandOutput(command, ["--version"], env),
     checkUpdates
-      ? commandOutput(npmCommand(), [
-          "view",
-          CLAUDE_NPM_PACKAGE,
-          "dist-tags",
-          "--json",
-        ])
+      ? commandOutput(
+          npmCommand(),
+          ["view", CLAUDE_NPM_PACKAGE, "dist-tags", "--json"],
+          env,
+        )
       : null,
     checkUpdates
-      ? probeNpmGlobalPackage(CLAUDE_NPM_PACKAGE)
+      ? probeNpmGlobalPackage(CLAUDE_NPM_PACKAGE, env)
       : { npmBin: null, npmGlobalPackageVersion: null },
-    checkUpdates ? commandOutput(command, ["doctor"]) : null,
+    checkUpdates ? commandOutput(command, ["doctor"], env) : null,
   ]);
   const installed = resolvedExecutable !== null || versionOutput !== null;
   const currentVersion = versionFrom(versionOutput);
@@ -207,9 +211,10 @@ export async function getClaudeProviderInstallationStatus(
 }
 
 export async function getClaudeProviderInstallationRun(
+  env: NodeJS.ProcessEnv,
   action: "install" | "update",
 ): Promise<ProviderInstallationRunResult> {
-  const status = await getClaudeProviderInstallationStatus();
+  const status = await getClaudeProviderInstallationStatus(env, true);
   return buildClaudeProviderInstallationRun(status, action);
 }
 
@@ -239,11 +244,11 @@ function buildClaudeProviderInstallationRun(
   };
 }
 
-function probeArgs() {
-  return { env: process.env, cwd: process.cwd() };
+function probeArgs(env: NodeJS.ProcessEnv) {
+  return { env, cwd: process.cwd() };
 }
 
-async function readAccountUuid(env: NodeJS.ProcessEnv): Promise<string | null> {
+async function readAccountProfile(env: NodeJS.ProcessEnv) {
   try {
     const parsed = claudeAccountFileSchema.safeParse(
       JSON.parse(
@@ -253,11 +258,30 @@ async function readAccountUuid(env: NodeJS.ProcessEnv): Promise<string | null> {
         ),
       ),
     );
-    return parsed.success
-      ? (parsed.data.oauthAccount?.accountUuid ?? null)
-      : null;
+    return parsed.success ? (parsed.data.oauthAccount ?? null) : null;
   } catch {
     return null;
+  }
+}
+
+function profileAccount(
+  account: AccountInfo,
+  profile: Awaited<ReturnType<typeof readAccountProfile>>,
+): AccountInfo {
+  if (
+    (account.apiProvider ?? "firstParty") !== "firstParty" ||
+    !/^(?:claude\s+)?(?:pro|max)$/iu.test(account.subscriptionType ?? "") ||
+    (profile?.emailAddress &&
+      profile.emailAddress.toLowerCase() !== account.email?.toLowerCase())
+  )
+    return account;
+  switch (profile?.organizationType) {
+    case "claude_pro":
+      return { ...account, subscriptionType: "Pro" };
+    case "claude_max":
+      return { ...account, subscriptionType: "Max" };
+    default:
+      return account;
   }
 }
 
@@ -313,17 +337,21 @@ function healthResult(
   };
 }
 
-export async function getClaudeProviderHealth(): Promise<ProviderHealthResult> {
-  const command = await claudeExecutable();
-  if ((await resolveExecutablePath(command)) === null) {
+export async function getClaudeProviderHealth(
+  env: NodeJS.ProcessEnv,
+): Promise<ProviderHealthResult> {
+  const command = await claudeExecutable(env);
+  if ((await resolveExecutablePath(command, env)) === null) {
     return healthResult("not_installed");
   }
-  const version = await readCliVersion(command);
+  const version = await readCliVersion(command, env);
   try {
-    const { account } = await probeClaudeInitialization(probeArgs());
+    const { account } = await probeClaudeInitialization(probeArgs(env));
     return isSignedIn(account)
       ? healthResult("ready", {
-          ...accountFields(account),
+          ...accountFields(
+            profileAccount(account, await readAccountProfile(process.env)),
+          ),
           installedVersion: version,
         })
       : healthResult("unauthenticated", { installedVersion: version });
@@ -442,12 +470,14 @@ function normalizeUsage(raw: unknown, account: AccountInfo): ProviderUsage {
   };
 }
 
-export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
-  const command = await claudeExecutable();
-  if ((await resolveExecutablePath(command)) === null) {
+export async function getClaudeProviderUsage(
+  env: NodeJS.ProcessEnv,
+): Promise<ProviderUsageResult> {
+  const command = await claudeExecutable(env);
+  if ((await resolveExecutablePath(command, env)) === null) {
     return { supported: true, usage: { status: "not_installed" } };
   }
-  const args = probeArgs();
+  const args = probeArgs(env);
   let probe: Awaited<ReturnType<typeof probeClaudeUsage>>;
   try {
     probe = await probeClaudeUsage(args);
@@ -462,10 +492,12 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
       },
     };
   }
-  const { account, usage } = probe;
-  if (!isSignedIn(account) || !usage.rate_limits_available) {
+  const { usage } = probe;
+  if (!isSignedIn(probe.account) || !usage.rate_limits_available) {
     return { supported: true, usage: { status: "unauthenticated" } };
   }
+  const profile = await readAccountProfile(args.env);
+  const account = profileAccount(probe.account, profile);
   if (usage.rate_limits === null) {
     return {
       supported: true,
@@ -476,7 +508,7 @@ export async function getClaudeProviderUsage(): Promise<ProviderUsageResult> {
       },
     };
   }
-  const accountUuid = await readAccountUuid(args.env);
+  const accountUuid = profile?.accountUuid;
   return {
     supported: true,
     usage: {

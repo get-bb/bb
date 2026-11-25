@@ -2,7 +2,6 @@
 
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
-import type { PluginThreadActionTarget } from "@get-bb/plugin-sdk/app";
 import {
   installTestPluginRuntime,
   renderSlot,
@@ -30,23 +29,12 @@ function Selection() {
   const selected = useMultiSelectionContaining("a");
   const menu = useThreadSelectionMenu(selected);
   return (
-    <div data-sidebar="content">
+    <div>
       <a href="#a" data-sidebar-thread-id="a">
         First
       </a>
       <ThreadActionsContextMenu
-        thread={{
-          id: "b",
-          projectId: "proj_test",
-          parentThreadId: null,
-          parentNotifications: "auto",
-          archivedAt: null,
-          pinnedAt: null,
-          sectionId: null,
-          isUnread: false,
-          status: "idle",
-          environment: null,
-        }}
+        thread={{ id: "b" }}
         {...(menu === null
           ? {}
           : {
@@ -79,7 +67,7 @@ function Harness() {
 }
 
 function renderSelection() {
-  const evaluated: (readonly PluginThreadActionTarget[])[] = [];
+  const evaluated: (readonly { id: string }[])[] = [];
   const slot = renderSlot(
     { component: Harness },
     {},
@@ -110,12 +98,7 @@ it("hands the host menu the selected sidebar threads in list order", async () =>
   const { evaluated } = renderSelection();
   fireEvent.contextMenu(screen.getByText("Second"));
   await screen.findByRole("menu", { name: "Actions for 2 threads" });
-  expect(
-    evaluated.at(-1)?.map(({ id, pinnedAt }) => ({ id, pinnedAt })),
-  ).toEqual([
-    { id: "a", pinnedAt: null },
-    { id: "b", pinnedAt: 3 },
-  ]);
+  expect(evaluated.at(-1)?.map(({ id }) => id)).toEqual(["a", "b"]);
 });
 
 it("clears the multi-selection from its Clear selection item", async () => {

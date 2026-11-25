@@ -11,13 +11,18 @@ import {
 import { Button } from "@bb/shared-ui/button";
 import { useAtomValue } from "jotai";
 import type {
+  PluginBoundThreadAction,
   PluginThreadActionEntry,
-  PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
-import { SplitButton } from "@/components/ui/split-button.js";
+import {
+  SPLIT_BUTTON_DESTRUCTIVE_CLASS,
+  SplitButton,
+} from "@/components/ui/split-button.js";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
+import { ThreadActionLabel } from "@/components/thread/ThreadActionMenuItems";
 import {
   AppPageHeader,
   HEADER_ICON_BUTTON_CLASS,
@@ -40,7 +45,7 @@ import { useThreadActions } from "@/components/thread/ThreadActionsProvider";
 import { ThreadTitle } from "@/components/thread/ThreadTitleMentions";
 import {
   PluginThreadHeaderTitle,
-  usePluginThreadHeaderTitleSlot,
+  usePluginThreadHeaderTitle,
 } from "@/components/plugin/PluginThreadHeaderTitle";
 import { useThreadHeaderActionEntries } from "@/lib/thread-actions/thread-action-registry";
 import { SecondaryPanelHostLayoutContext } from "@/components/secondary-panel/SecondaryPanelHostLayoutContext";
@@ -68,6 +73,37 @@ const NARROW_SPLIT_HEADER_MAX_WIDTH = 560;
 const INTERACTIVE_TITLE_TARGET_SELECTOR =
   "a, button, input, select, textarea, label, [role='button'], [role='link'], [contenteditable='true']";
 
+function HeaderActionButtonContent({
+  action,
+}: {
+  action: PluginBoundThreadAction;
+}) {
+  return (
+    <>
+      <Icon name={action.icon} aria-hidden="true" />
+      {action.label}
+    </>
+  );
+}
+
+function HeaderActionTooltip({
+  detail,
+  children,
+}: {
+  detail: string | undefined;
+  children: ReactNode;
+}) {
+  if (detail === undefined) return children;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex">{children}</span>
+      </TooltipTrigger>
+      <TooltipContent>{detail}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function isInteractiveTitleTarget(event: ReactPointerEvent): boolean {
   if (!(event.target instanceof Element)) return false;
   const interactive = event.target.closest(INTERACTIVE_TITLE_TARGET_SELECTOR);
@@ -89,7 +125,7 @@ interface ThreadDetailHeaderProps {
   onClosePane?: () => void;
   onToggleSecondaryPanel: () => void;
   pluginActions?: ReactNode;
-  thread: PluginThreadActionTarget;
+  thread: { id: string; projectId: string };
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
 }
@@ -109,7 +145,9 @@ export function ThreadDetailHeader({
   const isCompactViewport = useIsCompactViewport();
   const threadId = thread.id;
   const headerActions = useThreadHeaderActionEntries(thread);
-  const pluginTitleSlot = usePluginThreadHeaderTitleSlot();
+  const pluginTitle = usePluginThreadHeaderTitle();
+  const pluginTitleSlot =
+    pluginTitle.kind === "plugin" ? pluginTitle.registration : null;
   const [primaryAction, ...secondaryActions] = headerActions;
   const { renameThreadAsync } = useThreadActions();
   const handleRename = useCallback(
@@ -225,6 +263,10 @@ export function ThreadDetailHeader({
         >
           {isEditing ? (
             editor
+          ) : pluginTitle.kind === "loading" ? (
+            <span aria-hidden className="invisible">
+              {coreTitle}
+            </span>
           ) : pluginTitleSlot === null ? (
             coreTitle
           ) : (
@@ -276,26 +318,44 @@ export function ThreadDetailHeader({
                 primaryAction={{
                   disabled: primaryAction.action.disabled,
                   label: primaryAction.action.label,
+                  variant: primaryAction.action.variant,
                   onSelect: () => void primaryAction.action.run(),
+                  content: (
+                    <HeaderActionButtonContent action={primaryAction.action} />
+                  ),
                 }}
+                primaryTooltip={primaryAction.action.detail}
                 secondaryActions={secondaryActions.map(({ key, action }) => ({
                   id: key,
                   disabled: action.disabled,
                   label: action.label,
+                  variant: action.variant,
                   onSelect: () => void action.run(),
+                  content: (
+                    <>
+                      <Icon name={action.icon} aria-hidden="true" />
+                      <ThreadActionLabel action={action} />
+                    </>
+                  ),
                 }))}
               />
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className={THREAD_HEADER_ACTION_BUTTON_CLASS}
-                disabled={primaryAction.action.disabled}
-                onClick={() => void primaryAction.action.run()}
-              >
-                {primaryAction.action.label}
-              </Button>
+              <HeaderActionTooltip detail={primaryAction.action.detail}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className={cn(
+                    THREAD_HEADER_ACTION_BUTTON_CLASS,
+                    primaryAction.action.variant === "destructive" &&
+                      SPLIT_BUTTON_DESTRUCTIVE_CLASS,
+                  )}
+                  disabled={primaryAction.action.disabled}
+                  onClick={() => void primaryAction.action.run()}
+                >
+                  <HeaderActionButtonContent action={primaryAction.action} />
+                </Button>
+              </HeaderActionTooltip>
             )}
           </span>
         ) : null}

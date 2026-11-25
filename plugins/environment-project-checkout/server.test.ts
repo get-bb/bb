@@ -6,7 +6,6 @@ import type {
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
@@ -85,13 +84,13 @@ async function validateWith(args: {
   const provider = harness.registrations.environmentProviders.get(
     PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
   );
-  if (provider === undefined || provider.validate === null) {
-    throw new Error("the checkout provider registered no validate");
+  if (provider?.apiVersion !== 2 || provider.validate === null) {
+    throw new Error("the checkout provider registered no version-2 validate");
   }
   return provider.validate({
     project: PROJECT,
     host: HOST,
-    projectCheckout: { experimental_ownsPath: false, path: CHECKOUT_PATH },
+    projectCheckout: { ownsPath: false, path: CHECKOUT_PATH },
     gitRemote: null,
     inputs: args.inputs,
   });
@@ -300,18 +299,19 @@ it.each([false, true])(
       const provider = harness.registrations.environmentProviders.get(
         PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
       );
-      if (!provider) throw new Error("Missing provider");
+      if (provider?.apiVersion !== 2) throw new Error("Missing provider");
       const result = await provider.create({
         project: PROJECT,
         host: HOST,
-        projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: owned },
+        projectCheckout: { path: CHECKOUT_PATH, ownsPath: owned },
         gitRemote: null,
         inputs: {},
-        thread: makeThreadResponse(),
-        suggestedBranchName: "bb/test",
+        environment: { id: "env_test", name: null, projectId: PROJECT.id },
+        branchName: async () => "bb/test",
+        setup: async () => {},
+        adopt: async () => {},
         attempt: 1,
         pathKey: "fixture",
-        experimental_claimPath: async () => true,
         report: { step() {}, log() {} },
         signal: new AbortController().signal,
       });
@@ -326,76 +326,20 @@ it.each([false, true])(
   },
 );
 
-it.each(["branch", "timeout", "abort"] as const)(
-  "ends a blocked path claim on %s without attaching",
-  async (mode) => {
-    const hostCall = vi.fn(() => {
-      throw new Error("Unexpected host call");
-    });
-    const { bb, harness } = createFakePluginHost({
-      pluginId: "environment-project-checkout",
-      experimental_callHostRpc: hostCall,
-    });
-    const controller = new AbortController();
-    const claim = vi.fn(async () => false);
-    try {
-      await plugin(bb);
-      const provider = harness.registrations.environmentProviders.get(
-        PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
-      );
-      if (!provider) throw new Error("Missing provider");
-      vi.useFakeTimers();
-      const result = provider.create({
-        project: PROJECT,
-        host: HOST,
-        projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: false },
-        gitRemote: null,
-        inputs:
-          mode === "branch"
-            ? { branch: { kind: "existing", name: "release" } }
-            : {},
-        thread: makeThreadResponse(),
-        suggestedBranchName: "bb/test",
-        attempt: 1,
-        pathKey: "blocked",
-        experimental_claimPath: claim,
-        report: { step() {}, log() {} },
-        signal: controller.signal,
-      });
-      if (mode === "abort") {
-        const assertion = expect(result).rejects.toThrow();
-        controller.abort();
-        await assertion;
-      } else {
-        if (mode === "timeout") {
-          vi.setSystemTime(Date.now() + 15 * 60 * 1000);
-          await vi.advanceTimersByTimeAsync(50);
-        }
-        await expect(result).resolves.toMatchObject({
-          status: "failed",
-          message: "Workspace is being prepared by another thread",
-        });
-      }
-      expect(hostCall).not.toHaveBeenCalled();
-      if (mode === "branch") expect(claim).toHaveBeenCalledTimes(1);
-    } finally {
-      vi.useRealTimers();
-      await harness.lifecycle.dispose();
-    }
-  },
-);
-
-describe("checkout provider existing path", () => {
+describe("checkout provider location", () => {
   it.each([
-    [{ path: CHECKOUT_PATH }, CHECKOUT_PATH],
-    [{}, null],
+    [{ path: "/other/checkout" }, { path: "/other/checkout", reuse: true }],
+    [{}, { path: CHECKOUT_PATH, reuse: true }],
     [
-      { path: CHECKOUT_PATH, branch: { kind: "new", baseBranch: "main" } },
-      null,
+      { branch: { kind: "new", baseBranch: "main" } },
+      { path: CHECKOUT_PATH, reuse: false },
     ],
-    [{ path: CHECKOUT_PATH, branch: { kind: "existing", name: "main" } }, null],
+    [
+      { path: CHECKOUT_PATH, branch: { kind: "existing", name: "main" } },
+      { path: CHECKOUT_PATH, reuse: false },
+    ],
   ] as const)(
-    "reuses the recorded environment for %j: %s",
+    "locates %j at %j",
     async (inputs, expected) => {
       const { bb, harness } = createFakePluginHost({
         pluginId: "environment-project-checkout",
@@ -404,7 +348,13 @@ describe("checkout provider existing path", () => {
       const provider = harness.registrations.environmentProviders.get(
         PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
       );
-      expect(provider?.experimental_existingPath?.(inputs)).toBe(expected);
+      expect(
+        await provider?.locate?.({
+          host: HOST,
+          projectCheckout: { path: CHECKOUT_PATH, ownsPath: false },
+          inputs,
+        }),
+      ).toEqual(expected);
     },
   );
 });
@@ -444,21 +394,22 @@ describe("checkout provider merge base", () => {
         const provider = harness.registrations.environmentProviders.get(
           PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
         );
-        if (!provider) throw new Error("Missing provider");
+        if (provider?.apiVersion !== 2) throw new Error("Missing provider");
         const result = await provider.create({
           project: PROJECT,
           host: HOST,
           projectCheckout: {
             path: CHECKOUT_PATH,
-            experimental_ownsPath: false,
+            ownsPath: false,
           },
           gitRemote: null,
           inputs,
-          thread: makeThreadResponse(),
-          suggestedBranchName: "bb/thread-branch",
+          environment: { id: "env_test", name: null, projectId: PROJECT.id },
+          branchName: async () => "bb/thread-branch",
+          setup: async () => {},
+          adopt: async () => {},
           attempt: 1,
           pathKey: "merge-base",
-          experimental_claimPath: async () => true,
           report: { step() {}, log() {} },
           signal: new AbortController().signal,
         });
@@ -501,18 +452,20 @@ describe("restoring a destroyed checkout environment", () => {
       const provider = harness.registrations.environmentProviders.get(
         PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
       );
-      const restore = provider?.restore;
+      const restore = provider?.apiVersion === 2 ? provider.restore : null;
       if (!restore) throw new Error("Missing restore");
       const result = await restore({
         project: PROJECT,
         host: HOST,
-        projectCheckout: { path: CHECKOUT_PATH, experimental_ownsPath: false },
+        projectCheckout: { path: CHECKOUT_PATH, ownsPath: false },
         gitRemote: null,
         inputs: args.inputs,
-        thread: makeThreadResponse(),
+        environment: { id: "env_test", name: null, projectId: PROJECT.id },
+        branchName: async () => "bb/unused",
+        setup: async () => {},
+        adopt: async () => {},
         attempt: 2,
         pathKey: "restored",
-        experimental_claimPath: async () => true,
         previous: {
           environment: {
             ...environmentAt(CHECKOUT_PATH),

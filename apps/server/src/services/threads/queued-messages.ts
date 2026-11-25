@@ -492,6 +492,9 @@ async function sendClaimedQueuedMessageForThread(
       ? sendModeForDeliveryMode(args.queuedMessages)
       : args.mode;
   const systemNotice = parseStoredQueuedThreadMessageSystemNotice(lead);
+  const sendAts = queuedMessages.flatMap((row) =>
+    row.sendAt === null || row.waitingOn?.kind === "time" ? [] : [row.sendAt],
+  );
   const outcome = await attemptDispatch(deps, {
     thread: args.thread,
     payload: {
@@ -503,6 +506,10 @@ async function sendClaimedQueuedMessageForThread(
           )
         : { input, mode }),
       ...(inputGroups.length > 1 ? { inputGroups } : {}),
+      ...(sendAts.length === 0 ? {} : { sendAt: Math.max(...sendAts) }),
+      ...(args.queuedMessages.some((row) => row.compactFirst)
+        ? { compactFirst: true }
+        : {}),
     },
     source: {
       kind: "drain",

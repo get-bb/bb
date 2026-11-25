@@ -1,3 +1,4 @@
+import { outputJson } from "../../command-result.js";
 import type {
   ProviderCommand,
   ThreadTimelineSessionOption,
@@ -5,7 +6,7 @@ import type {
 import { Command } from "commander";
 import { action } from "../../action.js";
 import { createCliBbSdk } from "../../client.js";
-import { outputJson, requireThreadIdOrSelf } from "../helpers.js";
+import { requireThreadIdOrSelf } from "../helpers.js";
 
 interface SessionStateCommandOptions {
   self?: boolean;

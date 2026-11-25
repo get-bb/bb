@@ -22,15 +22,17 @@ import {
 import {
   classifyAcpToolCall as classifyAcpToolCallOperation,
   extractAcpToolCallPaths,
+  isAcpLocalAbsolutePath,
   resolveAcpToolCallPath,
   type AcpToolCallOperation,
   type AcpToolCallPathOptions,
 } from "./tool-call-operation.js";
 import { extractAcpContentText, type AcpToolCallUpdateEvent } from "./wire.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 export interface AcpClassifiedToolCall {
   item: DeltaItemShape;
-  presentation: DeltaPresentation;
+  presentation: DeltaPresentation | undefined;
 }
 
 export interface AcpInjectedTool {
@@ -81,7 +83,7 @@ function truncatedPayloadText(text: string): string {
     return text;
   }
   const removed = text.length - ACP_TOOL_PAYLOAD_MAX_CHARS;
-  return `${text.slice(0, ACP_TOOL_PAYLOAD_MAX_CHARS)}\n…[${removed.toLocaleString("en-US")} more characters truncated]`;
+  return `${sliceUtf16Head(text, ACP_TOOL_PAYLOAD_MAX_CHARS)}\n…[${removed.toLocaleString("en-US")} more characters truncated]`;
 }
 
 export function boundAcpToolPayload(value: unknown): unknown {
@@ -375,21 +377,31 @@ function fileChangeItem(
   };
 }
 
+const IMAGE_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
+
 function fileReadItem(
   event: AcpToolCallUpdateEvent,
   title: string | undefined,
   options: AcpToolCallPathOptions | undefined,
 ): AcpClassifiedToolCall | null {
   const ticked = tickedTokenFromTitle(title);
-  const path =
+  const readPath =
     extractAcpToolCallPaths(event, options)[0] ??
-    (ticked !== undefined && looksLikePath(ticked) ? ticked : undefined);
-  if (path === undefined) {
+    (ticked !== undefined && looksLikePath(ticked)
+      ? resolveAcpToolCallPath(ticked, options)
+      : undefined);
+  if (readPath === undefined) {
     return null;
   }
+  if (isAcpLocalAbsolutePath(readPath) && IMAGE_PATH_PATTERN.test(readPath)) {
+    return {
+      item: { type: "imageView", path: readPath },
+      presentation: undefined,
+    };
+  }
   return {
-    item: { type: "fileRead", path },
-    presentation: fileReadPresentation(path),
+    item: { type: "fileRead", path: readPath },
+    presentation: fileReadPresentation(readPath),
   };
 }
 

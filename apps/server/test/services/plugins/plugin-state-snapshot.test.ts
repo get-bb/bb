@@ -48,7 +48,11 @@ describe("plugin activation snapshots and garbage collection", () => {
     const pluginDir = join(dataDir, "plugins", "snapshot-test");
     const databasePath = join(pluginDir, "data.db");
     const secretPath = join(pluginDir, "secrets", "token");
+    const ownFilePath = join(pluginDir, "files", "cursor.json");
+    const addedFilePath = join(pluginDir, "files", "added.json");
     await mkdir(join(pluginDir, "secrets"), { recursive: true });
+    await mkdir(join(pluginDir, "files"), { recursive: true });
+    await writeFile(ownFilePath, "original-file");
     const pluginDb = new Database(databasePath);
     pluginDb.exec("CREATE TABLE state (value TEXT NOT NULL)");
     pluginDb.prepare("INSERT INTO state VALUES (?)").run("original");
@@ -99,6 +103,8 @@ describe("plugin activation snapshots and garbage collection", () => {
         JSON.stringify("changed"),
       );
       await writeFile(secretPath, "changed-secret");
+      await writeFile(ownFilePath, "changed-file");
+      await writeFile(addedFilePath, "added-after-snapshot");
     };
     await mutate();
     await restorePluginStateSnapshot({
@@ -125,6 +131,11 @@ describe("plugin activation snapshots and garbage collection", () => {
       JSON.stringify("original"),
     );
     expect(await readFile(secretPath, "utf8")).toBe("opaque-secret");
+    if (process.platform !== "win32") {
+      expect((await stat(secretPath)).mode & 0o777).toBe(0o600);
+    }
+    expect(await readFile(ownFilePath, "utf8")).toBe("original-file");
+    await expect(stat(addedFilePath)).rejects.toThrow();
   });
 
   it("reads a registration snapshotted before enabled-default tracking as an explicit choice", async () => {

@@ -71,6 +71,8 @@ it.each(["initial connect", "reconnect", "reload notification"])(
       resetCrashedSlots: () => {},
       setRegistrations: register,
       removeRegistrations: () => {},
+      setLoadingPlugins: () => {},
+      settlePluginLoad: () => {},
       beginSlotBatch: () => () => {},
       flushSlotBatch: () => {},
       warn: () => {},

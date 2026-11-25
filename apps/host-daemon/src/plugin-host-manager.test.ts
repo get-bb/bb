@@ -47,6 +47,7 @@ export default {
     echo: { input: anySchema, output: anySchema },
     wait: { input: anySchema, output: anySchema },
     crash: { input: anySchema, output: anySchema },
+    speak: { input: anySchema, output: anySchema },
     stringEcho: { input: stringSchema, output: stringSchema },
     invalidOutput: { input: anySchema, output: stringSchema },
     large: { input: anySchema, output: anySchema },
@@ -101,6 +102,11 @@ export default {
       });
     },
     crash() { process.exit(17); },
+    async speak() {
+      await new Promise((resolve) => process.stdout.write("console line\\n", resolve));
+      await new Promise((resolve) => process.stderr.write("warning line\\n", resolve));
+      return null;
+    },
     stringEcho(input) { return input; },
     invalidOutput() { return { nope: true }; },
     large() { return "x".repeat(8 * 1024 * 1024); },
@@ -641,6 +647,29 @@ describe("PluginHostManager", () => {
     ]);
   });
 
+  it("forwards worker stdout and stderr lines with their generation", async () => {
+    const onWorkerOutput = vi.fn();
+    const manager = await createManager({ onWorkerOutput });
+    await manager.call(callCommand({ method: "speak", input: null }));
+    await vi.waitFor(() => expect(onWorkerOutput).toHaveBeenCalledTimes(2));
+    expect(onWorkerOutput.mock.calls.map(([event]) => event)).toEqual(
+      expect.arrayContaining([
+        {
+          pluginId: "fixture",
+          generation: "generation-1",
+          stream: "stdout",
+          line: "console line",
+        },
+        {
+          pluginId: "fixture",
+          generation: "generation-1",
+          stream: "stderr",
+          line: "warning line",
+        },
+      ]),
+    );
+  });
+
   it("logs artifact and worker lifecycle transitions", async () => {
     const logger = {
       debug: vi.fn(),
@@ -1105,6 +1134,7 @@ describe("PluginHostManager", () => {
     expect(onWorkerExit).toHaveBeenCalledWith({
       pluginId: "fixture",
       generation: "generation-1",
+      reason: "host plugin worker exited (17)",
     });
     expect(logger.warn).toHaveBeenCalledWith(
       expect.objectContaining({

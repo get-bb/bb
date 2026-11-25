@@ -194,7 +194,7 @@ export function SidebarNavigationMoreMenu({
         {hidden.map((item) => (
           <DropdownMenuItem
             key={item.id}
-            disabled={item.isDisabled || item.isLoading}
+            disabled={item.isDisabled}
             onSelect={() => actions.activate(item.id, { target: "current" })}
           >
             <SidebarNavigationIcon icon={item.icon} />

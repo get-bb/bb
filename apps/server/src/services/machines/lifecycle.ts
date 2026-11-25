@@ -1,11 +1,10 @@
 import { cancelPendingEnvironmentHook } from "../environments/environment-hooks.js";
-import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
-  environmentHookOperations,
-  environments,
   getHost,
-  terminalSessions,
-  threads,
+  hostHasRunningTurnThread,
+  listOpenTerminalSessionIdsOnHost,
+  listRunningTurnThreadsOnHost,
+  listUnfinishedEnvironmentHookOperationIdsOnHost,
   updateHost,
 } from "@bb/db";
 import type {
@@ -22,7 +21,6 @@ import { appendSystemErrorEvent } from "../threads/thread-events.js";
 import { threadScope } from "@bb/domain";
 import { stopThreadForCurrentState } from "../threads/thread-lifecycle.js";
 
-const RETRY_MS = 10_000;
 const preparingPauses = new WeakMap<
   WorkSessionDeps["db"],
   Map<string, { cancelled: boolean }>
@@ -74,12 +72,6 @@ export async function maintainMachine(
   const host = getHost(deps.db, hostId);
   if (host === null)
     throw new ApiError(404, "host_not_found", "Host not found");
-  if (host.suspendRetryAt !== null && host.suspendRetryAt > Date.now())
-    throw new ApiError(
-      409,
-      "machine_maintenance",
-      "Machine already has a lifecycle operation or is waiting for retry.",
-    );
   const pending = { cancelled: false };
   const pauses =
     preparingPauses.get(deps.db) ?? new Map<string, { cancelled: boolean }>();
@@ -91,42 +83,19 @@ export async function maintainMachine(
     machineOperationId: operationId,
     statusMessage:
       "Preserving this machine. Active turns will be interrupted and open terminals closed before the filesystem is saved.",
-    suspendRetryAt: null,
   });
   deps.hub.notifyHost(hostId, ["host-disconnected"]);
   try {
     const drainDeadline = { db: deps.db, timeoutMs: 5 * 60_000 };
     await boundedDrain(async () => {
-      const hooks = deps.db
-        .select({ id: environmentHookOperations.id })
-        .from(environmentHookOperations)
-        .where(
-          and(
-            eq(environmentHookOperations.hostId, hostId),
-            isNull(environmentHookOperations.finishedAt),
-          ),
-        )
-        .all();
-      await Promise.all(
-        hooks.map((hook) =>
-          cancelPendingEnvironmentHook(deps, { id: hook.id, hostId }),
-        ),
+      const hookIds = listUnfinishedEnvironmentHookOperationIdsOnHost(
+        deps.db,
+        hostId,
       );
-      const active = deps.db
-        .select({
-          id: threads.id,
-          status: threads.status,
-          environmentId: threads.environmentId,
-        })
-        .from(threads)
-        .innerJoin(environments, eq(threads.environmentId, environments.id))
-        .where(
-          and(
-            eq(environments.hostId, hostId),
-            inArray(threads.status, ["active", "stopping"]),
-          ),
-        )
-        .all();
+      await Promise.all(
+        hookIds.map((id) => cancelPendingEnvironmentHook(deps, { id, hostId })),
+      );
+      const active = listRunningTurnThreadsOnHost(deps.db, hostId);
       for (const thread of active)
         appendSystemErrorEvent(deps, {
           threadId: thread.id,
@@ -148,40 +117,15 @@ export async function maintainMachine(
           ),
         ),
       );
-      const stillActive = deps.db
-        .select({ id: threads.id })
-        .from(threads)
-        .innerJoin(environments, eq(threads.environmentId, environments.id))
-        .where(
-          and(
-            eq(environments.hostId, hostId),
-            inArray(threads.status, ["active", "stopping"]),
-          ),
-        )
-        .limit(1)
-        .get();
-      if (stillActive !== undefined)
+      if (hostHasRunningTurnThread(deps.db, hostId))
         throw new Error(
           "A turn did not stop; refusing to save or terminate live writers",
         );
-      const terminals = deps.db
-        .select({ id: terminalSessions.id })
-        .from(terminalSessions)
-        .where(
-          and(
-            eq(terminalSessions.hostId, hostId),
-            inArray(terminalSessions.status, [
-              "starting",
-              "running",
-              "disconnected",
-            ]),
-          ),
-        )
-        .all();
+      const terminalIds = listOpenTerminalSessionIdsOnHost(deps.db, hostId);
       await Promise.all(
-        terminals.map((terminal) =>
+        terminalIds.map((terminalId) =>
           deps.terminalSessions.closeTerminal({
-            terminalId: terminal.id,
+            terminalId,
             payload: { mode: "force", reason: "user" },
           }),
         ),
@@ -200,10 +144,7 @@ export async function maintainMachine(
     });
     deps.hub.notifyHost(hostId, ["host-disconnected"]);
     await save();
-    updateHost(deps.db, deps.hub, hostId, {
-      statusMessage: null,
-      suspendRetryAt: null,
-    });
+    updateHost(deps.db, deps.hub, hostId, { statusMessage: null });
   } catch (error) {
     const cancelled =
       error instanceof ApiError &&
@@ -221,7 +162,6 @@ export async function maintainMachine(
     updateHost(deps.db, deps.hub, hostId, {
       phase,
       statusMessage: cancelled ? null : `Machine suspension failed: ${message}`,
-      suspendRetryAt: cancelled ? null : Date.now() + RETRY_MS,
     });
     deps.hub.notifyHost(hostId, ["host-disconnected"]);
     throw error;

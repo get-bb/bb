@@ -99,8 +99,8 @@ export function adaptSidebarFooterAction(
     label: registration.title,
     icon: registration.icon,
     kind: "action",
-    onActivate: ({ openPluginDetails }) =>
-      registration.run({ openSettings: openPluginDetails }),
+    onActivate: ({ openPluginDetails, ...context }) =>
+      registration.run({ ...context, openSettings: openPluginDetails }),
     runtime: new SidebarFooterItemRuntime(),
   };
 }

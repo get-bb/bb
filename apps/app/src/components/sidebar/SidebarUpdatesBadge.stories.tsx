@@ -161,7 +161,6 @@ function seedScenario(queryClient: QueryClient, scenario: Scenario): void {
       experiments: {
         ...config.experiments,
         pluginUpdates: true,
-        updateWhenIdle: true,
       },
     });
   }
@@ -452,14 +451,15 @@ const SCENARIOS = {
   everything: {
     title: "bb, provider CLIs and plugins",
     description:
-      "Hover the round button at the end of the footer. bb installs itself when you're idle; Update all runs the CLIs and plugins without restarting bb.",
+      "Hover the round button at the end of the footer. bb installs itself when you're idle or restarts into the update from its own button; the button under the list runs the CLIs and plugins without restarting bb.",
     bb: "auto",
     providers: true,
     plugins: true,
   },
   clisAndPlugins: {
     title: "Only provider CLIs and plugins",
-    description: "bb is current, so the card is just the list and Update all.",
+    description:
+      "bb is current, so the card is just the list and its update button.",
     bb: null,
     providers: true,
     plugins: true,
@@ -467,7 +467,7 @@ const SCENARIOS = {
   onlyBb: {
     title: "Only bb",
     description:
-      "The button stays so you can see what is coming and restart early. Two threads are running, so Restart now asks first.",
+      "The button stays so you can see what is coming and restart early. Two threads are running, so Restart into bb 0.49.0 now asks first.",
     bb: "auto",
     providers: false,
     plugins: false,
@@ -475,7 +475,8 @@ const SCENARIOS = {
   },
   bbManual: {
     title: "bb with automatic updates off",
-    description: "bb waits for a restart; Restart now does it immediately.",
+    description:
+      "bb waits for a restart; its restart button does it immediately.",
     bb: "manual",
     providers: false,
     plugins: true,
@@ -483,7 +484,7 @@ const SCENARIOS = {
   oneFails: {
     title: "One update fails",
     description:
-      "Press Update all. Claude Code fails; the rest finish and the failure stays greyed out so it can be tried again.",
+      "Press the update button under the list. Claude Code fails; the rest finish and the failure stays greyed out so it can be tried again.",
     bb: null,
     providers: true,
     plugins: true,

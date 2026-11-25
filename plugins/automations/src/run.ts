@@ -1,4 +1,8 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  experimental_BbHttpError,
+  type BbPluginApi,
+  type PluginThreadSettledEvent,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import {
   closeAutomationRun,
@@ -39,6 +43,17 @@ type AgentThreadsSdk = {
 export type AgentRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { threads: AgentThreadsSdk };
 };
+export type ReconcileApi = Pick<BbPluginApi, "realtime" | "log"> & {
+  sdk: {
+    threads: AgentThreadsSdk & {
+      queue: {
+        list(
+          args: Parameters<BbPluginApi["sdk"]["threads"]["queue"]["list"]>[0],
+        ): Promise<unknown[]>;
+      };
+    };
+  };
+};
 export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { projects: ProjectsSdk };
   server: Pick<BbPluginApi["server"], "loopbackBaseUrl">;
@@ -61,20 +76,8 @@ const sdkThreadSchema = z
   .passthrough();
 type SdkThread = z.infer<typeof sdkThreadSchema>;
 
-const projectGoneErrorSchema = z
-  .object({
-    status: z.literal(404),
-    code: z.enum(["project_not_found", "project_unavailable"]),
-  })
-  .passthrough();
-
-const threadGoneErrorSchema = z
-  .object({ status: z.literal(404) })
-  .passthrough();
-
 function isThreadGoneError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return threadGoneErrorSchema.safeParse(error).success;
+  return error instanceof experimental_BbHttpError && error.status === 404;
 }
 
 export function errorMessage(error: unknown): string {
@@ -82,8 +85,11 @@ export function errorMessage(error: unknown): string {
 }
 
 function isProjectGoneError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false;
-  return projectGoneErrorSchema.safeParse(error).success;
+  return (
+    error instanceof experimental_BbHttpError &&
+    error.status === 404 &&
+    (error.code === "project_not_found" || error.code === "project_unavailable")
+  );
 }
 
 function renderAutomationDueMessage(args: {
@@ -335,20 +341,55 @@ async function runScript(
   }
 }
 
-export function closeAutomationRunForSettledThread(
-  bb: Pick<BbPluginApi, "realtime">,
+function settledRunOutcome(
+  pluginId: string,
+  event: PluginThreadSettledEvent,
+): ReconcileOutcome | null {
+  const threadId = event.thread.id;
+  switch (event.outcome) {
+    case "completed":
+      return { status: "succeeded" };
+    case "failed":
+      return { status: "failed", error: event.error ?? "Turn failed" };
+    case "cancelled":
+      return event.entry.originPluginId === pluginId
+        ? {
+            status: "skipped",
+            skipReason: "cancelled: its message was deleted before it ran",
+          }
+        : null;
+    case "archived":
+      return {
+        status: "skipped",
+        skipReason: `interrupted: thread ${threadId} was archived`,
+      };
+    case "deleted":
+      return {
+        status: "skipped",
+        skipReason: `interrupted: thread ${threadId} was deleted`,
+      };
+  }
+}
+
+export function settleAutomationRunsForThread(
+  bb: Pick<BbPluginApi, "realtime" | "pluginId">,
   db: Db,
-  args: { threadId: string; status: "idle" | "failed"; error?: string | null },
+  event: PluginThreadSettledEvent,
 ): void {
-  const runs = listRunningAutomationRunsByThread(db, args.threadId);
+  if (event.outcome === "deleted") {
+    disableAutomationsForDeletedThreadEvent(bb, db, event.thread.id);
+  }
+  const outcome = settledRunOutcome(bb.pluginId, event);
+  if (outcome === null) return;
+  const threadId = event.thread.id;
+  const runs = listRunningAutomationRunsByThread(db, threadId);
   const now = Date.now();
   const changedProjects = new Set<string>();
   for (const run of runs) {
     const closed = closeAutomationRun(db, {
       runId: run.id,
-      status: args.status === "idle" ? "succeeded" : "failed",
-      error: args.status === "idle" ? null : (args.error ?? "Turn failed"),
-      threadId: args.threadId,
+      ...outcome,
+      threadId,
       now,
     });
     if (!closed) continue;
@@ -369,12 +410,19 @@ type ReconcileOutcome =
   | { status: "skipped"; skipReason: string };
 
 export async function reconcileRunningAutomationRuns(
-  bb: AgentRunApi,
+  bb: ReconcileApi,
   db: Db,
-): Promise<void> {
+  runIds: ReadonlySet<string>,
+): Promise<Set<string>> {
   const changedProjects = new Set<string>();
+  const unchecked = new Set<string>();
   for (const run of listRunningAutomationRuns(db)) {
+    if (!runIds.has(run.id)) continue;
     const outcome = await reconcileOutcome(bb, run);
+    if (outcome === "unchecked") {
+      unchecked.add(run.id);
+      continue;
+    }
     if (outcome === null) continue;
     const closed = closeAutomationRun(db, {
       runId: run.id,
@@ -400,12 +448,13 @@ export async function reconcileRunningAutomationRuns(
       "automation-runs-changed",
     ]);
   }
+  return unchecked;
 }
 
 async function reconcileOutcome(
-  bb: AgentRunApi,
+  bb: ReconcileApi,
   run: AutomationRunRow,
-): Promise<ReconcileOutcome | null> {
+): Promise<ReconcileOutcome | "unchecked" | null> {
   if (run.runMode === "script") {
     return {
       status: "skipped",
@@ -433,9 +482,9 @@ async function reconcileOutcome(
       };
     }
     bb.log.warn(
-      `Could not check thread ${run.threadId} for running automation run ${run.id}; leaving it running: ${errorMessage(error)}`,
+      `Could not check thread ${run.threadId} for running automation run ${run.id}; checking again on the next sweep: ${errorMessage(error)}`,
     );
-    return null;
+    return "unchecked";
   }
   if (thread.deletedAt !== null || thread.archivedAt !== null) {
     return {
@@ -454,11 +503,33 @@ async function reconcileOutcome(
         error: "Turn failed while the automations plugin was not running",
       };
     case "pending":
+      return pendingThreadOutcome(bb, run, run.threadId);
     case "starting":
     case "active":
     case "stopping":
       return null;
   }
+}
+
+async function pendingThreadOutcome(
+  bb: ReconcileApi,
+  run: AutomationRunRow,
+  threadId: string,
+): Promise<ReconcileOutcome | "unchecked" | null> {
+  let queued: unknown[];
+  try {
+    queued = await bb.sdk.threads.queue.list({ threadId });
+  } catch (error) {
+    bb.log.warn(
+      `Could not list queued messages of thread ${threadId} for running automation run ${run.id}; checking again on the next sweep: ${errorMessage(error)}`,
+    );
+    return "unchecked";
+  }
+  if (queued.length > 0) return null;
+  return {
+    status: "skipped",
+    skipReason: `cancelled: thread ${threadId} has no message left to run`,
+  };
 }
 
 export function disableAutomationsForDeletedThreadEvent(

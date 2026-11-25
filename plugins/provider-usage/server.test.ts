@@ -6,6 +6,85 @@ import {
 import plugin from "./server.js";
 import { usageListMethod, usageFetchMethod } from "./usage-source-contract.js";
 
+it.each([{ machineIds: null }, { machineIds: ["host"] }])(
+  "resolves resource metadata without native usage support for $machineIds",
+  async ({ machineIds }) => {
+    const host = createFakePluginHost({
+      pluginId: "provider-usage",
+      sdk: {
+        system: { config: async () => ({ primaryHostId: null }) },
+        hosts: {
+          list: async () => [
+            makeHostResponse({ id: "host", status: "connected" }),
+          ],
+        },
+        providers: {
+          list: async (input) =>
+            input?.capability === "usage" ||
+            (machineIds !== null && input?.hostId !== "host")
+              ? []
+              : [
+                  {
+                    id: "external-agent",
+                    displayName: "External Agent",
+                    logoUrl: "/external-agent.svg",
+                    icon: { glyph: "external/agent" },
+                  },
+                  {
+                    id: "unused-agent",
+                    displayName: "Unused Agent",
+                    logoUrl: null,
+                  },
+                ],
+        },
+        plugins: {
+          experimental_discoverRpc: async () => [
+            {
+              pluginId: "quota",
+              displayName: "Quota",
+              method: usageListMethod,
+            },
+          ],
+          callRpc: async () => ({
+            resources: [
+              {
+                id: "account",
+                providerId: "external-agent",
+                scope: { kind: "host", hostId: "host", hostName: "Host" },
+              },
+            ],
+          }),
+        },
+      },
+    });
+    plugin(host.bb);
+    try {
+      const snapshot = await host.harness.behavior.callRpc("getUsage", {
+        force: false,
+        machineIds,
+        providerIds: [],
+        maxAgeMs: 0,
+      });
+      expect(snapshot).toMatchObject({
+        machines: [
+          {
+            providers: [
+              {
+                providerId: "external-agent",
+                displayName: "External Agent",
+                logoUrl: "/external-agent.svg",
+                icon: { glyph: "external/agent" },
+              },
+            ],
+          },
+        ],
+      });
+    } finally {
+      await host.harness.lifecycle.dispose();
+    }
+  },
+);
+
 it("lists cheaply, fetches only the selected source/provider, preserves failed measurements, and evicts removed resources", async () => {
   let enabled = true;
   let failure = false;
@@ -50,7 +129,19 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
               },
             ],
           };
-    if (failure) throw new Error("Upstream failed");
+    if (failure && input.resourceId === "claude") {
+      return {
+        observedAt: null,
+        usage: {
+          status: "error",
+          message: "Subscription required.",
+          accountEmail: null,
+          planLabel: null,
+        },
+      };
+    }
+    if (failure && input.resourceId === "work")
+      throw new Error("Upstream failed");
     return {
       observedAt: 123,
       usage: {
@@ -164,6 +255,7 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
     expect(
       await host.harness.behavior.callRpc("getUsage", {
         ...target,
+        providerIds: ["codex", "claude-code"],
         force: true,
       }),
     ).toMatchObject({
@@ -171,11 +263,14 @@ it("lists cheaply, fetches only the selected source/provider, preserves failed m
         { id: "host" },
         {
           id: "source:pool",
-          error: "Some usage could not be refreshed.",
+          error: null,
           providers: [
             { usage: { status: "ok" } },
-            { usage: { status: "ok" } },
-            { usage: null },
+            {
+              usage: { status: "ok" },
+              refreshError: "Usage could not be refreshed.",
+            },
+            { usage: { status: "error", message: "Subscription required." } },
           ],
         },
       ],

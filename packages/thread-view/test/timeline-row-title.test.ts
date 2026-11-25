@@ -17,6 +17,7 @@ import type {
 import {
   buildTimelineActivityIntentTitles,
   buildTimelineRowTitle,
+  workRowGlyph,
   type BuildTimelineRowTitleOptions,
   type TimelineViewTurnRow,
   type TimelineViewWorkRow,
@@ -1345,7 +1346,7 @@ describe("buildTimelineRowTitle", () => {
         completedAt: 3_001,
       } satisfies TimelineImageViewWorkRow,
       expectedPlain:
-        "Interrupted image view: /tmp/sightglass-quote-merge-check/dashboard-main.png (3s, interrupted)",
+        "Viewed image /tmp/sightglass-quote-merge-check/dashboard-main.png (3s, interrupted)",
     },
   ])(
     "renders interrupted $row.workKind titles with elapsed duration",
@@ -1368,7 +1369,7 @@ describe("buildTimelineRowTitle", () => {
     const title = buildTimelineRowTitle(imageViewRow(), DEFAULT_OPTIONS);
 
     expect(title.plain).toBe(
-      "Viewed image: /tmp/sightglass-quote-merge-check/dashboard-main.png",
+      "Viewed image /tmp/sightglass-quote-merge-check/dashboard-main.png",
     );
     expect(title.segments[1]).toMatchObject({
       text: "dashboard-main.png",
@@ -1377,23 +1378,55 @@ describe("buildTimelineRowTitle", () => {
     });
   });
 
-  it("renders pending image view rows with active viewing title text", () => {
-    const title = buildTimelineRowTitle(
-      {
+  it.each([
+    { status: "pending", completedAt: null },
+    { status: "completed", completedAt: 3_001 },
+    { status: "error", completedAt: 3_001 },
+    { status: "interrupted", completedAt: 3_001 },
+  ] as const)(
+    "renders a $status image view saved without a label like a labelled one",
+    ({ status, completedAt }) => {
+      const unlabelled: TimelineImageViewWorkRow = {
         ...imageViewRow(),
-        completedAt: null,
-        status: "pending",
-      },
-      DEFAULT_OPTIONS,
-    );
+        status,
+        completedAt,
+      };
+      const labelled: TimelineImageViewWorkRow = {
+        ...unlabelled,
+        presentation: {
+          label: { pending: "Viewing image", completed: "Viewed image" },
+          icon: { glyph: "Eye" },
+          title: "dashboard-main.png",
+        },
+      };
+      const isHostGlyph = (glyph: string): glyph is string => glyph.length > 0;
 
-    expect(title.plain).toBe(
-      "Viewing image: /tmp/sightglass-quote-merge-check/dashboard-main.png",
+      expect(buildTimelineRowTitle(unlabelled, DEFAULT_OPTIONS)).toEqual(
+        buildTimelineRowTitle(labelled, DEFAULT_OPTIONS),
+      );
+      expect(workRowGlyph(unlabelled, isHostGlyph)).toBe(
+        workRowGlyph(labelled, isHostGlyph),
+      );
+    },
+  );
+
+  it("keeps an integration's own image view label and icon", () => {
+    const row: TimelineImageViewWorkRow = {
+      ...imageViewRow(),
+      presentation: {
+        label: {
+          pending: "Inspecting screenshot",
+          completed: "Inspected screenshot",
+        },
+        icon: { glyph: "Camera" },
+      },
+    };
+    const isHostGlyph = (glyph: string): glyph is string => glyph.length > 0;
+
+    expect(buildTimelineRowTitle(row, DEFAULT_OPTIONS).plain).toBe(
+      "Inspected screenshot /tmp/sightglass-quote-merge-check/dashboard-main.png",
     );
-    expect(title.segments[0]).toMatchObject({
-      text: "Viewing image:",
-      shimmer: true,
-    });
+    expect(workRowGlyph(row, isHostGlyph)).toBe("Camera");
   });
 
   it("can render step summaries as bundle titles or muted background summaries", () => {

@@ -38,7 +38,12 @@ function RendererProbe() {
 function Harness({ hasHost = true }: { hasHost?: boolean }) {
   const host = useMemo<PluginComposerHost>(
     () => ({
-      scope: { kind: "thread", threadId: "thr_test" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_test",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "thread/thr_test",
       getCurrent: () => draft,
       subscribeDraft: () => () => {},

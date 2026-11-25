@@ -621,6 +621,9 @@ describe("plugin schedules", () => {
     const now = Date.now();
     await sweepSchedules(db, service, now);
     expect(globals.__tickRuns).toBe(1);
+    await vi.waitFor(() =>
+      expect(listPluginSchedules(db, "ticker")[0]?.lastStatus).toBe("ok"),
+    );
     const row = listPluginSchedules(db, "ticker")[0];
     const expectedNext = CronExpressionParser.parse("*/5 * * * *", {
       currentDate: new Date(now),
@@ -681,8 +684,10 @@ describe("plugin schedules", () => {
     setNextRunAt(db, "boomer", "boom", Date.now() - 60_000);
     const now = Date.now();
     await sweepSchedules(db, service, now);
+    await vi.waitFor(() =>
+      expect(listPluginSchedules(db, "boomer")[0]?.lastStatus).toBe("error"),
+    );
     const row = listPluginSchedules(db, "boomer")[0];
-    expect(row?.lastStatus).toBe("error");
     expect(row?.lastError).toContain("sync exploded");
     expect(row?.nextRunAt).toBeGreaterThan(now);
     const entry = service.list().find((p) => p.id === "boomer");
@@ -702,6 +707,87 @@ describe("plugin schedules", () => {
     await service.setEnabled("ticker", true);
     await service.remove("ticker");
     expect(listPluginSchedules(db, "ticker")).toHaveLength(0);
+  });
+
+  it("keeps a due time missed while unloaded across a reload, and catches it up once", async () => {
+    await installTicker();
+    const missed = Date.now() - 3 * 60 * 60_000;
+    setNextRunAt(db, "ticker", "tick", missed);
+    await service.reload("ticker");
+    expect(listPluginSchedules(db, "ticker")[0]?.nextRunAt).toBe(missed);
+
+    await sweepSchedules(db, service, Date.now());
+    await sweepSchedules(db, service, Date.now());
+    expect(globals.__tickRuns).toBe(1);
+    expect(listPluginSchedules(db, "ticker")[0]?.nextRunAt).toBeGreaterThan(
+      Date.now(),
+    );
+  });
+
+  it("recomputes the due time when a reload changes the cron", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-recron",
+      serverSource: `export default function plugin(bb: any) {
+        bb.background.schedule("job", "*/5 * * * *", async () => {});
+      }`,
+    });
+    await service.installPath(rootDir);
+    setNextRunAt(db, "recron", "job", Date.now() - 60_000);
+    await writeFile(
+      join(rootDir, "server.ts"),
+      `export default function plugin(bb: any) {
+        bb.background.schedule("job", "0 3 * * *", async () => {});
+      }`,
+    );
+    const reloadedAt = Date.now();
+    await service.reload("recron");
+    const row = listPluginSchedules(db, "recron")[0];
+    expect(row?.cron).toBe("0 3 * * *");
+    expect(row?.nextRunAt).toBeGreaterThan(reloadedAt);
+  });
+
+  it("does not hold the sweep or other schedules on a slow run, and never overlaps it", async () => {
+    const rootDir = await writePlugin(workDir, {
+      name: "bb-plugin-slowpoke",
+      serverSource: `
+        export default function plugin(bb: any) {
+          const g = globalThis as any;
+          g.__slowStarts = 0;
+          g.__fastRuns = 0;
+          bb.background.schedule("a-slow", "* * * * *", async () => {
+            g.__slowStarts += 1;
+            await new Promise((resolve) => { g.__releaseSlow = resolve; });
+          });
+          bb.background.schedule("z-fast", "* * * * *", async () => {
+            g.__fastRuns += 1;
+          });
+        }
+      `,
+    });
+    await service.installPath(rootDir);
+    const due = Date.now() - 60_000;
+    setNextRunAt(db, "slowpoke", "a-slow", due);
+    setNextRunAt(db, "slowpoke", "z-fast", due);
+
+    const finished = await Promise.race([
+      sweepSchedules(db, service, Date.now()).then(() => true),
+      new Promise<false>((resolve) => setTimeout(() => resolve(false), 2_000)),
+    ]);
+    expect(finished).toBe(true);
+    expect(globals.__slowStarts).toBe(1);
+    expect(globals.__fastRuns).toBe(1);
+
+    setNextRunAt(db, "slowpoke", "a-slow", Date.now() - 1_000);
+    await sweepSchedules(db, service, Date.now());
+    expect(globals.__slowStarts).toBe(1);
+
+    (globals.__releaseSlow as () => void)();
+    await vi.waitFor(() =>
+      expect(listPluginSchedules(db, "slowpoke")[0]?.lastStatus).toBe("ok"),
+    );
+    await sweepSchedules(db, service, Date.now());
+    expect(globals.__slowStarts).toBe(2);
+    (globals.__releaseSlow as () => void)();
   });
 
   it("prunes rows for schedule names the plugin no longer registers", async () => {

@@ -21,9 +21,6 @@ export function getCompactionKey(
     });
   }
   const turnId = getEventTurnId(decoded);
-  if (decoded.type === "item/started" || decoded.type === "item/completed") {
-    return turnId ?? decoded.item.id;
-  }
   return turnId ?? `seq-${meta.seq}`;
 }
 
@@ -32,17 +29,6 @@ export function parseCompactionLifecycleEvent(
   meta: EventMeta,
   parentToolCallId: string | undefined,
 ): CompactionLifecycleEvent | null {
-  if (
-    (decoded.type === "item/started" || decoded.type === "item/completed") &&
-    decoded.item.type === "contextCompaction"
-  ) {
-    return {
-      key: getCompactionKey(decoded, meta),
-      kind: decoded.type === "item/started" ? "begin" : "end",
-      ...(parentToolCallId ? { parentToolCallId } : {}),
-    };
-  }
-
   if (decoded.type === "thread/compacted") {
     return {
       key: getCompactionKey(decoded, meta),

@@ -21,6 +21,7 @@ import {
   getPluginSlotSnapshot,
   resetPluginSlotStoreForTest,
   setPluginSlotRegistrations,
+  useIsPluginFrontendSettled,
   type PluginRegistrationSet,
 } from "./plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
@@ -83,6 +84,7 @@ function chromeEntries() {
       renderHookStatically(usePluginFrontendsSettled),
     ),
     getPluginSlotSnapshot().navPanels,
+    renderHookStatically(useIsPluginFrontendSettled),
   );
 }
 

@@ -4,7 +4,13 @@ import {
   admitAfterPathClaimsSettle,
   assertEnvironmentPathAvailable,
 } from "../environments/path-admission.js";
-import { markThreadDeleted, getEnvironment, getThread } from "@bb/db";
+import {
+  FORK_HISTORY_COPY_MARK,
+  getEnvironment,
+  getThread,
+  listThreadIdsCopyingForkHistory,
+  markThreadDeleted,
+} from "@bb/db";
 import { threadCreateStartIssues } from "@bb/server-contract";
 import {
   describeSessionOptionConflict,
@@ -67,12 +73,9 @@ import {
   initiatorTelemetryProperty,
 } from "./telemetry-initiator.js";
 import { deriveForkTitle, deriveTitleFallback } from "./title-generation.js";
-import {
-  FORK_HISTORY_COPY_MARK,
-  listThreadIdsCopyingForkHistory,
-  type ThreadProvisionEnvironmentIntent,
-} from "./thread-startup-store.js";
+import type { ThreadProvisionEnvironmentIntent } from "./thread-startup-store.js";
 import { resolveSystemProviderModels } from "../system/execution-options.js";
+import { createGitCheckoutInspector } from "../environments/provider-availability.js";
 import {
   getEnvironmentProvider,
   listEnvironmentCompositions,
@@ -744,7 +747,9 @@ export async function createThreadFromRequest(
     sourceThreadId: _requestedSourceThreadId,
     ...requestRest
   } = requestInput;
+  const inspectGitCheckout = createGitCheckoutInspector(deps);
   const requestedEnvironment = await resolveCreateThreadEnvironment(deps, {
+    inspectGitCheckout,
     parentThread:
       forkSourceEnvironmentId !== undefined
         ? null
@@ -855,6 +860,7 @@ export async function createThreadFromRequest(
     await resolveThreadEnvironmentPlacement(deps, {
       projectId: request.projectId,
       requestedEnvironment: request.environment,
+      inspectGitCheckout,
     });
   request.input = await resolvePromptAttachmentReferences({
     db: deps.db,

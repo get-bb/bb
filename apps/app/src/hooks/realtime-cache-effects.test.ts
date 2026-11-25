@@ -68,6 +68,7 @@ const NON_PROJECT_PROMPT_HISTORY_THREAD_CHANGES = [
 ] as const;
 
 interface CachedThreadListEntryFixture {
+  environmentId?: string;
   hasPendingInteraction: boolean;
   id: string;
 }
@@ -652,12 +653,15 @@ describe("createRealtimeCacheEffects", () => {
       effects.dispose();
     });
 
-    it("refetches only the pushed host's provider CLI status", () => {
+    it("refetches the pushed host's provider CLI status, providers and models", () => {
       const { effects, queryClient } = createRealtimeEffectsTestContext();
+      const invalidatedCatalogs = seedExecutionOptions(queryClient, "host-b");
       const hostAKey = hostProviderCliStatusQueryKey("host-a");
       const hostBKey = hostProviderCliStatusQueryKey("host-b");
+      const providersKey = systemProvidersQueryKey({ hostId: "host-a" });
       queryClient.setQueryData(hostAKey, {});
       queryClient.setQueryData(hostBKey, {});
+      queryClient.setQueryData(providersKey, []);
 
       effects.handleChanged({
         type: "changed",
@@ -668,6 +672,12 @@ describe("createRealtimeCacheEffects", () => {
 
       expect(queryClient.getQueryState(hostAKey)?.isInvalidated).toBe(true);
       expect(queryClient.getQueryState(hostBKey)?.isInvalidated).toBe(false);
+      expect(queryClient.getQueryState(providersKey)?.isInvalidated).toBe(true);
+      expect(invalidatedCatalogs()).toEqual([
+        "envHostA",
+        "envUnknown",
+        "hostA",
+      ]);
       effects.dispose();
     });
   });
@@ -979,6 +989,7 @@ describe("createRealtimeCacheEffects", () => {
       metadata: {
         projectId: "project-1",
         statusChange: {
+          statusChangedAt: 200,
           activity: NO_THREAD_ACTIVITY,
           latestAttentionAt: 100,
           runtime: {
@@ -1250,6 +1261,43 @@ describe("createRealtimeCacheEffects", () => {
     vi.advanceTimersByTime(250);
 
     expect(queryClient.getQueryState(threadSearchKey)?.isInvalidated).toBe(
+      true,
+    );
+
+    effects.dispose();
+  });
+
+  it("refreshes the sidebar threads in an environment when the environment's status changes", () => {
+    vi.useFakeTimers();
+    const { effects, queryClient } = createRealtimeEffectsTestContext();
+    const sidebarNavigationKey = sidebarNavigationQueryKey();
+    queryClient.setQueryData<CachedSidebarNavigationFixture>(
+      sidebarNavigationKey,
+      {
+        projects: [
+          {
+            threads: [
+              {
+                environmentId: "env_1",
+                hasPendingInteraction: false,
+                id: "thr_1",
+              },
+            ],
+          },
+        ],
+        personalProject: { threads: [] },
+      },
+    );
+
+    effects.handleChanged({
+      type: "changed",
+      entity: "environment",
+      id: "env_1",
+      changes: ["status-changed"],
+    });
+    vi.advanceTimersByTime(250);
+
+    expect(queryClient.getQueryState(sidebarNavigationKey)?.isInvalidated).toBe(
       true,
     );
 
@@ -2055,6 +2103,7 @@ describe("createRealtimeCacheEffects", () => {
     expect(threadListQueryFn).toHaveBeenCalledTimes(1);
 
     const statusChange = {
+      statusChangedAt: 200,
       activity: { ...NO_THREAD_ACTIVITY, activePlanModeCount: 1 },
       latestAttentionAt: 100,
       runtime: {
@@ -2201,11 +2250,12 @@ describe("createRealtimeCacheEffects", () => {
       activity: NO_THREAD_ACTIVITY,
       id: "thr_1",
       latestAttentionAt: 100,
+      statusChangedAt: 100,
       runtime: { displayStatus: "idle" },
       status: "idle",
       updatedAt: 100,
     };
-    const stoppedRow = { ...idleRow, updatedAt: 300 };
+    const stoppedRow = { ...idleRow, statusChangedAt: 300, updatedAt: 300 };
     let serverRow = idleRow;
     const sidebarQueryFn = vi.fn(async () => ({
       projects: [{ threads: [serverRow] }],
@@ -2227,6 +2277,7 @@ describe("createRealtimeCacheEffects", () => {
       metadata: {
         projectId: "project-1",
         statusChange: {
+          statusChangedAt: 200,
           activity: NO_THREAD_ACTIVITY,
           latestAttentionAt: 100,
           runtime: {
@@ -2334,6 +2385,7 @@ describe("createRealtimeCacheEffects", () => {
       metadata: {
         projectId: "project-1",
         statusChange: {
+          statusChangedAt: 200,
           activity: NO_THREAD_ACTIVITY,
           latestAttentionAt: 100,
           runtime: {
@@ -2412,6 +2464,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: {
           projectId: "project-1",
           statusChange: {
+            statusChangedAt: 200,
             activity: NO_THREAD_ACTIVITY,
             latestAttentionAt: 100,
             runtime: { displayStatus: "active" },
@@ -2904,6 +2957,7 @@ describe("createRealtimeCacheEffects", () => {
         personalProject: { threads: [] },
       });
       const idleChange = {
+        statusChangedAt: 300,
         activity: NO_THREAD_ACTIVITY,
         latestAttentionAt: 300,
         runtime: { displayStatus: "idle" },
@@ -2942,6 +2996,7 @@ describe("createRealtimeCacheEffects", () => {
           projectId: "project-1",
           statusChange: {
             ...idleChange,
+            statusChangedAt: 200,
             runtime: { displayStatus: "active" },
             status: "active",
             updatedAt: 200,
@@ -2986,6 +3041,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: {
           projectId: "project-1",
           statusChange: {
+            statusChangedAt: 200,
             activity: NO_THREAD_ACTIVITY,
             latestAttentionAt: 100,
             runtime: {
@@ -3053,6 +3109,7 @@ describe("createRealtimeCacheEffects", () => {
         metadata: {
           projectId: "project-1",
           statusChange: {
+            statusChangedAt: 200,
             activity: NO_THREAD_ACTIVITY,
             latestAttentionAt: 200,
             runtime: {

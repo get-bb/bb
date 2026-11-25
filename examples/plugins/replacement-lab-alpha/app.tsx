@@ -10,7 +10,6 @@ const LABEL = "Alpha";
 function AlphaThreadList({
   activeProjectId,
   activeThreadId,
-  searchQuery,
 }: PluginThreadListProps) {
   const [shouldCrash, setShouldCrash] = useState(false);
   if (shouldCrash) throw new Error("Alpha thread-list test crash");
@@ -27,11 +26,10 @@ function AlphaThreadList({
           <dd className="truncate font-mono">{activeThreadId ?? "none"}</dd>
           <dt>Project</dt>
           <dd className="truncate font-mono">{activeProjectId ?? "none"}</dd>
-          <dt>Search</dt>
-          <dd className="truncate font-mono">{searchQuery || "empty"}</dd>
         </dl>
         <p className="text-muted-foreground">
-          Use Appearance → Sidebar to switch to Beta or Automatic.
+          Use Settings → Appearance → Sidebar thread list to switch to Beta or
+          Automatic.
         </p>
       </div>
     </section>

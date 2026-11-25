@@ -52,6 +52,7 @@ import {
   bbDesktopBrowserImportCookiesRequestSchema,
   bbDesktopThemeSchema,
   type BbDesktopInfo,
+  type BbDesktopServerList,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -267,7 +268,14 @@ import {
   BB_DESKTOP_BROWSER_OPEN_FULL_DISK_ACCESS_SETTINGS_CHANNEL,
 } from "./desktop-browser-ipc.js";
 import { parseDesktopSystemConfig } from "./desktop-system-config.js";
-import { resolveDesktopReloadShortcut } from "./desktop-reload-shortcut.js";
+import {
+  STARTUP_RELOAD_KEYBINDINGS,
+  resolveDesktopReloadShortcut,
+} from "./desktop-reload-shortcut.js";
+import {
+  type RendererCrashRecovery,
+  watchRendererCrashes,
+} from "./desktop-renderer-recovery.js";
 import {
   createLogTailer,
   createLogLineBuffer,
@@ -410,7 +418,7 @@ let desktopBrowserBroker: DesktopBrowserBroker | null = null;
 let desktopBrowserBrokerClient: ReturnType<
   typeof createDesktopBrowserBrokerClient
 > | null = null;
-let currentAppKeybindings: AppKeybindings = [];
+let currentAppKeybindings: AppKeybindings = STARTUP_RELOAD_KEYBINDINGS;
 let currentApplicationMenuAccelerators = DEFAULT_APPLICATION_MENU_ACCELERATORS;
 let desktopUpdateService: DesktopUpdateService | null = null;
 let desktopAutoUpdateService: DesktopAutoUpdateService | null = null;
@@ -424,6 +432,7 @@ let systemConfigSync: SystemConfigSync | null = null;
 let systemConfigRefreshToken = 0;
 let refreshRemoteSystemConfig: (() => void) | null = null;
 const applicationWindowWebContentsIds = new Set<number>();
+const windowCrashRecoveries = new Map<number, RendererCrashRecovery>();
 const splitNavigationEnabledWebContentsIds = new Set<number>();
 const splitNavigationCommandsByWebContentsId = new Map<
   number,
@@ -580,7 +589,11 @@ function registerApplicationRendererReloadShortcut(
   webContents: WebContents,
 ): void {
   webContents.on("before-input-event", (event, input) => {
-    const shortcut = resolveDesktopReloadShortcut(input);
+    const shortcut = resolveDesktopReloadShortcut(
+      input,
+      currentAppKeybindings,
+      process.platform,
+    );
     if (shortcut === null) {
       return;
     }
@@ -597,6 +610,11 @@ function reloadApplicationWindow(
   ignoreCache: boolean,
 ): void {
   desktopBrowserViewManager?.prepareWindowReload(browserWindow);
+  if (
+    windowCrashRecoveries.get(browserWindow.webContents.id)?.restoreCrashPage()
+  ) {
+    return;
+  }
   if (ignoreCache) {
     browserWindow.webContents.reloadIgnoringCache();
   } else {
@@ -766,6 +784,13 @@ function listServerChoices() {
   );
 }
 
+function getServerList(): BbDesktopServerList {
+  return {
+    servers: listServerChoices(),
+    connectServersSkipReason: connectServerSyncSkipReason,
+  };
+}
+
 function buildMenuServerItems(connectServers: ConnectServerRef[]) {
   return buildDesktopServerChoices(
     serverTargetStore,
@@ -816,13 +841,13 @@ function popupServerMenu(browserWindow: BrowserWindow | null): void {
 }
 
 function refreshApplicationMenu(): void {
-  const choices = listServerChoices();
+  const serverList = getServerList();
   for (const browserWindow of BrowserWindow.getAllWindows()) {
     if (applicationWindowWebContentsIds.has(browserWindow.webContents.id)) {
       sendToApplicationRenderer(
         browserWindow,
         BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
-        choices,
+        serverList,
       );
     }
   }
@@ -1046,6 +1071,7 @@ async function refreshSystemConfig(
     currentAppKeybindings = config.keybindings;
     currentApplicationMenuAccelerators = resolveApplicationMenuAccelerators(
       currentAppKeybindings,
+      process.platform,
     );
     refreshApplicationMenu();
   } catch (error) {
@@ -2157,12 +2183,14 @@ async function loadLogViewerWindow(
     lineBuffer.stop();
   });
 
-  await browserWindow.loadURL(createLogViewerViewUrl({ logDir: args.logDir }));
-  sendLogViewerSnapshot({
-    browserWindow,
-    lines: lineBuffer.lines(),
-    logDir: args.logDir,
+  browserWindow.webContents.on("did-finish-load", () => {
+    sendLogViewerSnapshot({
+      browserWindow,
+      lines: lineBuffer.lines(),
+      logDir: args.logDir,
+    });
   });
+  await browserWindow.loadURL(createLogViewerViewUrl({ logDir: args.logDir }));
   await tailer.start();
 }
 
@@ -2389,8 +2417,14 @@ function registerDesktopUpdateIpc(): void {
   registerServerChoiceIpc({
     applicationWindowWebContentsIds,
     onListRequested: () => connectServerSync?.onListRequested(),
-    list: listServerChoices,
+    list: getServerList,
     select: setActiveServerTarget,
+    addServer() {
+      void openSetServerUrlDialog(true);
+    },
+    signInToConnect() {
+      openConnectSignIn(getFocusedApplicationWindow());
+    },
     onError: (error) =>
       desktopLogger.error(`Could not switch server: ${String(error)}`),
   });
@@ -2656,7 +2690,9 @@ async function waitForWindowsInstallerToFinish(): Promise<boolean> {
   return result === "finished" && !quitting;
 }
 
-async function waitForOwnedRuntimeReady(bbProcess: BbAppProcess): Promise<void> {
+async function waitForOwnedRuntimeReady(
+  bbProcess: BbAppProcess,
+): Promise<void> {
   let timer: NodeJS.Timeout | undefined;
   const result = await Promise.race([
     bbProcess.ready.then(() => "ready" as const),
@@ -2950,6 +2986,23 @@ async function runDesktopApp(): Promise<void> {
     connectSessionRenewal?.renewIfDue();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
+    const webContentsId = browserWindow.webContents.id;
+    windowCrashRecoveries.set(
+      webContentsId,
+      watchRendererCrashes({
+        describeWindow: () => `window "${browserWindow.getTitle()}"`,
+        logger: desktopLogger,
+        onRendererGone() {
+          if (applicationWindowWebContentsIds.has(webContentsId)) {
+            desktopBrowserViewManager?.prepareWindowReload(browserWindow);
+          }
+        },
+        webContents: browserWindow.webContents,
+      }),
+    );
+    browserWindow.once("closed", () => {
+      windowCrashRecoveries.delete(webContentsId);
+    });
     if (desktopBrowserViewManager === null) {
       return;
     }
@@ -3195,6 +3248,7 @@ async function runDesktopApp(): Promise<void> {
   });
   registerDesktopUpdateIpc();
   desktopFindViewManager = createDesktopFindViewManager({
+    logger: desktopLogger,
     preloadPath: findBarPreloadPath,
   });
   ipcMain.on(BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL, (event, payload: unknown) => {

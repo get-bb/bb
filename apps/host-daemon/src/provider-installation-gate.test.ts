@@ -283,6 +283,7 @@ describe("createProviderInstallationGate", () => {
 describe("providerInstallationGateKey", () => {
   const baseKey = providerInstallationGateKey({
     providerId: "codex",
+    contributedEnv: [],
     bridgeLaunch: BRIDGE_LAUNCH,
   });
 
@@ -290,12 +291,14 @@ describe("providerInstallationGateKey", () => {
     expect(
       providerInstallationGateKey({
         providerId: "pi",
+        contributedEnv: [],
         bridgeLaunch: BRIDGE_LAUNCH,
       }),
     ).not.toBe(baseKey);
     expect(
       providerInstallationGateKey({
         providerId: "codex",
+        contributedEnv: [],
         bridgeLaunch: BRIDGE_LAUNCH,
         requirement: "thread_rewind",
       }),
@@ -303,6 +306,7 @@ describe("providerInstallationGateKey", () => {
     expect(
       providerInstallationGateKey({
         providerId: "codex",
+        contributedEnv: [],
         bridgeLaunch: {
           ...BRIDGE_LAUNCH,
           source: { ...BRIDGE_LAUNCH.source, digest: "b".repeat(64) },
@@ -312,6 +316,7 @@ describe("providerInstallationGateKey", () => {
     expect(
       providerInstallationGateKey({
         providerId: "codex",
+        contributedEnv: [],
         bridgeLaunch: {
           ...BRIDGE_LAUNCH,
           capabilities: {
@@ -324,6 +329,7 @@ describe("providerInstallationGateKey", () => {
     expect(
       providerInstallationGateKey({
         providerId: "codex",
+        contributedEnv: [],
         bridgeLaunch: {
           ...BRIDGE_LAUNCH,
           providerOptions: { launch: { command: "codex-nightly" } },
@@ -332,10 +338,28 @@ describe("providerInstallationGateKey", () => {
     ).not.toBe(baseKey);
   });
 
+  it("separates contributed env that can change which binary answers", () => {
+    expect(
+      providerInstallationGateKey({
+        providerId: "codex",
+        contributedEnv: [
+          {
+            name: "BB_CODEX_BRIDGE_APP_SERVER_COMMAND",
+            value: "/opt/codex/bin/codex",
+            source: { plugin: "managed-codex" },
+            reason: "plugin ships Codex",
+          },
+        ],
+        bridgeLaunch: BRIDGE_LAUNCH,
+      }),
+    ).not.toBe(baseKey);
+  });
+
   it("ignores launch facts that do not change which binary answers", () => {
     expect(
       providerInstallationGateKey({
         providerId: "codex",
+        contributedEnv: [],
         bridgeLaunch: {
           ...BRIDGE_LAUNCH,
           pluginId: "provider-codex-fork",

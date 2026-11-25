@@ -1,15 +1,12 @@
-import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import {
-  environments,
-  getExperiments,
+  getAppSettings,
   getThread,
   getUnfinishedCommandItemData,
   listCommandItemDataByItemIds,
   listOpenBackgroundTaskItemRowsForHost,
+  listLiveThreadStatusesOnHost,
   listOwnerStoppedBackgroundTaskRowsForHost,
-  liveThread,
-  threads,
   type DbConnection,
 } from "@bb/db";
 import {
@@ -27,6 +24,7 @@ import {
   type FailedTurnRecord,
 } from "./turn-failed.js";
 import { retryTurnAfterRestart } from "./turn-retry.js";
+import { sliceUtf16Head } from "@bb/text-utils";
 
 type RestartResumeDeps = LoggedPendingInteractionWorkSessionDeps;
 
@@ -57,7 +55,7 @@ function readCommand(data: string): string | null {
   }
   const command = parsed.data.item.command.trim();
   return command.length > MAX_NAMED_COMMAND_CHARS
-    ? `${command.slice(0, MAX_NAMED_COMMAND_CHARS)}…`
+    ? `${sliceUtf16Head(command, MAX_NAMED_COMMAND_CHARS)}…`
     : command;
 }
 
@@ -203,7 +201,7 @@ export function planRestartResumes(
   args: { hostId: string; ownerStoppedSinceMs: number },
 ): Map<string, string> {
   const continuations = new Map<string, string>();
-  if (!getExperiments(deps.db).resumeThreadsAfterRestart) {
+  if (!getAppSettings(deps.db).resumeThreadsAfterRestart) {
     return continuations;
   }
   const openRowsByThread = groupRowsByThread(
@@ -217,18 +215,10 @@ export function planRestartResumes(
       settledSinceMs: args.ownerStoppedSinceMs,
     }),
   );
-  const candidates = deps.db
-    .select({ id: threads.id, status: threads.status })
-    .from(threads)
-    .innerJoin(environments, eq(threads.environmentId, environments.id))
-    .where(
-      and(
-        eq(environments.hostId, args.hostId),
-        inArray(threads.status, ["active", "idle"]),
-        liveThread,
-      ),
-    )
-    .all();
+  const candidates = listLiveThreadStatusesOnHost(deps.db, {
+    hostId: args.hostId,
+    statuses: ["active", "idle"],
+  });
   for (const { id, status } of candidates) {
     const openRows = openRowsByThread.get(id) ?? [];
     const ownerStoppedRows = ownerStoppedRowsByThread.get(id) ?? [];

@@ -1,3 +1,4 @@
+import { unavailablePluginActionContext } from "@/lib/plugin-action-context-provider";
 import { describe, expect, it, vi } from "vitest";
 import type {
   ExperimentalSidebarFooterDisclosureController,
@@ -15,6 +16,24 @@ import {
   isPluginAppDefinition,
 } from "./plugin-app-definition";
 import { resolveFileOpenerReplacement } from "./plugin-slot-resolvers";
+
+const SETTLED_BOOT = {
+  bbPluginIds: new Set<string>(),
+  settledOnce: true,
+};
+
+function openerFor(
+  args: Omit<
+    Parameters<typeof resolveFileOpenerReplacement>[0],
+    "boot" | "picks"
+  > & { picks?: Readonly<Record<string, string>> },
+) {
+  return resolveFileOpenerReplacement({
+    picks: {},
+    boot: SETTLED_BOOT,
+    ...args,
+  });
+}
 
 function Component() {
   return null;
@@ -401,7 +420,10 @@ describe("collectPluginAppRegistrations — experimental_sidebarFooter", () => {
     expect(compatibilityItem?.kind).toBe("action");
     if (compatibilityItem?.kind !== "action")
       throw new Error("expected action");
-    await compatibilityItem.onActivate({ openPluginDetails });
+    await compatibilityItem.onActivate({
+      ...unavailablePluginActionContext("legacy-plugin"),
+      openPluginDetails,
+    });
     expect(legacyRun).toHaveBeenCalledOnce();
     expect(openPluginDetails).toHaveBeenCalledOnce();
 
@@ -492,7 +514,7 @@ describe("collectPluginAppRegistrations", () => {
         },
       ]);
       expect(
-        resolveFileOpenerReplacement({
+        openerFor({
           registrations,
           path: `project/file.${extension.toUpperCase()}`,
         }),
@@ -517,11 +539,11 @@ describe("collectPluginAppRegistrations", () => {
       generation: 1,
     }));
 
+    expect(openerFor({ registrations, path: "report.html" })).toEqual({
+      kind: "owner",
+    });
     expect(
-      resolveFileOpenerReplacement({ registrations, path: "report.html" }),
-    ).toEqual({ kind: "owner" });
-    expect(
-      resolveFileOpenerReplacement({
+      openerFor({
         registrations,
         path: "report.html",
         override: { pluginId: "pages", openerId: "page" },
@@ -658,11 +680,41 @@ describe("collectPluginAppRegistrations", () => {
         },
       });
       app.contentScripts.register({ id: "script", mount });
+      app.commands.register({
+        id: "open",
+        title: "Open",
+        defaultShortcut: { key: "k", mod: true },
+        run,
+      });
+      app.composer.experimental_registerCommand({
+        id: "compose",
+        title: "Compose",
+        scopes: ["thread"],
+        run,
+      });
     });
 
-    expect(await loadPluginApp(definition)).toEqual(
-      collectPluginAppRegistrations(definition),
-    );
+    expect(await loadPluginApp(definition)).toEqual({
+      ...collectPluginAppRegistrations(definition),
+      commands: [
+        {
+          id: "open",
+          title: "Open",
+          defaultShortcut: {
+            key: "k",
+            mod: true,
+            meta: false,
+            control: false,
+            alt: false,
+            shift: false,
+          },
+          run,
+        },
+      ],
+      composerCommands: [
+        { id: "compose", title: "Compose", scopes: ["thread"], run },
+      ],
+    });
   });
 
   it("collects every slot kind as plain data", () => {
@@ -805,7 +857,13 @@ describe("collectPluginAppRegistrations", () => {
       { id: "inline-vis", component: Component },
     ]);
     expect(registrations.messageActions).toEqual([
-      { id: "summarize", title: "Summarize", icon: "Zap", run },
+      {
+        id: "summarize",
+        title: "Summarize",
+        icon: "Zap",
+        experimental_surfaces: ["thread-view", "embedded-chat"],
+        run,
+      },
     ]);
     expect(registrations.composerCustomizations).toEqual([
       {

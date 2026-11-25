@@ -18,6 +18,21 @@ function makeThread(overrides: Partial<ThreadListEntry> = {}): ThreadListEntry {
 }
 
 describe("toPluginSidebarThread", () => {
+  it("exposes child completion activity independently of unread attention", () => {
+    const mapped = toPluginSidebarThread(
+      makeThread({
+        parentThreadId: "parent",
+        latestAttentionAt: 5,
+        lastReadAt: 10,
+        statusChangedAt: 20,
+        updatedAt: 30,
+      }),
+    );
+    expect(mapped.experimental_statusChangedAt).toBe(20);
+    expect(mapped.isUnread).toBe(false);
+    expect(mapped.indicator).toBe("none");
+  });
+
   it("resolves the display title through the same rules bb's row uses", () => {
     expect(toPluginSidebarThread(makeThread()).displayTitle).toBe("A thread");
     expect(

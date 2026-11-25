@@ -331,6 +331,30 @@ export function setPendingInteractionInterrupted(
   });
 }
 
+const interruptiblePendingInteraction = or(
+  eq(pendingInteractions.status, "pending"),
+  and(
+    eq(pendingInteractions.status, "resolving"),
+    eq(pendingInteractions.originKind, "plugin"),
+  ),
+);
+
+export function listHostThreadIdsWithInterruptiblePendingInteractions(
+  db: PendingInteractionReadConnection,
+  args: { hostId: string },
+): string[] {
+  return db
+    .selectDistinct({ threadId: pendingInteractions.threadId })
+    .from(pendingInteractions)
+    .innerJoin(threads, eq(pendingInteractions.threadId, threads.id))
+    .innerJoin(environments, eq(threads.environmentId, environments.id))
+    .where(
+      and(eq(environments.hostId, args.hostId), interruptiblePendingInteraction),
+    )
+    .all()
+    .map((row) => row.threadId);
+}
+
 function interruptPendingInteractionsBatched(
   db: PendingInteractionWriteConnection,
   args: {
@@ -360,13 +384,7 @@ function interruptPendingInteractionsBatched(
           and(
             ...args.extraConditions,
             inArray(pendingInteractions.threadId, threadIdsBatch),
-            or(
-              eq(pendingInteractions.status, "pending"),
-              and(
-                eq(pendingInteractions.status, "resolving"),
-                eq(pendingInteractions.originKind, "plugin"),
-              ),
-            ),
+            interruptiblePendingInteraction,
           ),
         )
         .returning()

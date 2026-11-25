@@ -33,6 +33,7 @@ import {
   entriesByMarketplaceAuthor,
   pluginMarketplaceAuthorKey,
 } from "./plugin-marketplace-author";
+import { isOfficialMarketplace } from "@/lib/official-plugins";
 
 export function PluginMarketplaceByline({
   entry,
@@ -50,7 +51,10 @@ export function PluginMarketplaceByline({
       {entry.category === undefined ||
       pluginCatalogCategoryIconName(entry.categoryId) === undefined ? null : (
         <span className="flex min-w-0 shrink-[100] items-center gap-1">
-          <PluginCategoryIcon categoryId={entry.categoryId} className="size-3" />
+          <PluginCategoryIcon
+            categoryId={entry.categoryId}
+            className="size-3"
+          />
           <Link
             to={{
               pathname: getPluginsRoutePath(),
@@ -65,6 +69,24 @@ export function PluginMarketplaceByline({
           </Link>
         </span>
       )}
+    </span>
+  );
+}
+
+export function PluginMarketplaceBadges({
+  entry,
+}: {
+  entry: Pick<PluginCatalogSearchEntry, "listings">;
+}) {
+  if (entry.listings.length < 2) return null;
+  return (
+    <span className="flex flex-wrap items-center gap-1">
+      {entry.listings.map((listing) => (
+        <PluginNameTag
+          key={listing.marketplace}
+          tag={{ label: listing.marketplaceDisplayName, tone: "neutral" }}
+        />
+      ))}
     </span>
   );
 }
@@ -95,7 +117,7 @@ export function PluginMarketplaceDetailMetadata({
 }) {
   return (
     <>
-      {entry.marketplace === "bb-official" ? null : (
+      {isOfficialMarketplace(entry.marketplace) ? null : (
         <PluginDetailMetadataItem label="Marketplace">
           {entry.marketplaceDisplayName}
         </PluginDetailMetadataItem>
@@ -266,7 +288,7 @@ export function PluginMarketplaceListingSections({
     <>
       <PluginMarketplaceOverview entry={entry} />
       <PluginMarketplaceSource entry={entry} />
-      {entry.marketplace === "bb-official" &&
+      {isOfficialMarketplace(entry.marketplace) &&
       entry.publishedAt === undefined ? null : (
         <ResourceDefinitionSection label="Details">
           <PluginDetailMetadata>

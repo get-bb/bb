@@ -7,7 +7,8 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { experimental_trackChildProcesses } from "@get-bb/plugin-sdk/testing";
+import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { BB_PI_EXTENSION_SOURCE } from "./bb-pi-extension.js";
 import { closeAllPiCatalogs, getPiCatalog } from "./catalog.js";
 import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
@@ -40,7 +41,7 @@ describe("pi catalog child generations", () => {
     process.env.FAKE_PI_SCOPE_BY_SPAWN = "1";
     process.env.FAKE_PI_EXIT_AFTER_FIRST_AVAILABLE = "1";
 
-    const catalog = await getPiCatalog(workspace, extensionPath);
+    const catalog = await getPiCatalog(workspace, extensionPath, {});
     const first = await catalog.listModels();
     expect(first.models.map((model) => model.id)).toEqual([
       "fake-provider/fake-model",
@@ -114,11 +115,11 @@ function readLogLines(path: string): string[] {
     : [];
 }
 
-function processIds(path: string, step: "spawn" | "exit"): string[] {
+function spawnedProcessIds(path: string): number[] {
   return readLogLines(path)
     .map((line) => line.split(":"))
-    .filter(([entry]) => entry === step)
-    .map(([, pid]) => pid ?? "");
+    .filter(([entry]) => entry === "spawn")
+    .map(([, pid]) => Number(pid));
 }
 
 function modelIds(result: { models: { id: string }[] }): string[] {
@@ -133,7 +134,11 @@ describe("pi catalog freshness", () => {
     rmSync(toolsPath);
     process.env.PI_BB_TOOLS_FILE = toolsPath;
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(
+      paths.workspace,
+      paths.extensionPath,
+      {},
+    );
 
     expect(modelIds(await catalog.listModels())).toEqual([
       "fake-provider/fake-model",
@@ -143,7 +148,11 @@ describe("pi catalog freshness", () => {
   it("serves models added after the child started without respawning it", async () => {
     const paths = setUpFakeCatalog({});
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(
+      paths.workspace,
+      paths.extensionPath,
+      {},
+    );
     expect(modelIds(await catalog.listModels())).toEqual([
       "fake-provider/fake-model",
     ]);
@@ -163,7 +172,11 @@ describe("pi catalog freshness", () => {
   it("shares one model refresh between concurrent reads", async () => {
     const paths = setUpFakeCatalog({});
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(
+      paths.workspace,
+      paths.extensionPath,
+      {},
+    );
     await catalog.listModels();
     writeFileSync(paths.modelsPath, JSON.stringify([FAKE_MODEL, ADDED_MODEL]));
 
@@ -181,7 +194,11 @@ describe("pi catalog freshness", () => {
   it("falls back to a new child when Pi exposes no model registry", async () => {
     const paths = setUpFakeCatalog({ FAKE_PI_NO_MODEL_REGISTRY: "1" });
 
-    const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+    const catalog = await getPiCatalog(
+      paths.workspace,
+      paths.extensionPath,
+      {},
+    );
     expect(modelIds(await catalog.listModels())).toEqual([
       "fake-provider/fake-model",
     ]);
@@ -203,8 +220,14 @@ describe("pi catalog freshness", () => {
     "replaces the child when the model refresh %s",
     async (_label, failure) => {
       const paths = setUpFakeCatalog({ FAKE_PI_REFRESH_FAILURE: failure });
+      const children = experimental_trackChildProcesses();
+      onTestFinished(() => children.dispose());
 
-      const catalog = await getPiCatalog(paths.workspace, paths.extensionPath);
+      const catalog = await getPiCatalog(
+        paths.workspace,
+        paths.extensionPath,
+        {},
+      );
       await catalog.listModels();
       writeFileSync(
         paths.modelsPath,
@@ -224,9 +247,11 @@ describe("pi catalog freshness", () => {
           "fake-provider/fake-model",
           "added-provider/added-model",
         ]);
-        const spawned = processIds(paths.processLogPath, "spawn");
+        const spawned = spawnedProcessIds(paths.processLogPath);
         expect(spawned).toHaveLength(2);
-        expect(processIds(paths.processLogPath, "exit")).toEqual([spawned[0]]);
+        expect(children.running().map((child) => child.pid)).toEqual([
+          spawned[1],
+        ]);
       } finally {
         vi.useRealTimers();
       }

@@ -1,5 +1,4 @@
 import { useEffect } from "react";
-import { installTestPluginRuntime } from "@get-bb/plugin-sdk/testing/app";
 import { collectPluginAppRegistrations } from "@/lib/plugin-app-definition";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import {
@@ -9,7 +8,6 @@ import {
 import { PluginPendingInteractionComposer } from "@/components/plugin/PluginPendingInteractionComposer";
 import { loadPluginAppDefinition } from "../../../../.ladle/plugin-app-module";
 
-installTestPluginRuntime();
 const questionApp = await loadPluginAppDefinition(
   import.meta.glob<unknown>(
     "../../../../../../plugins/ask-user-question/app.tsx",

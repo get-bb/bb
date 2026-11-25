@@ -5,6 +5,9 @@ on:
   pull_request:
     paths:
       - "packages/db/**"
+      - "plugins/account-pool/src/store.ts"
+      - "plugins/automations/src/data.ts"
+      - "plugins/workflows/src/data.ts"
       - ".github/workflows/query-plan-audit.yml"
   workflow_dispatch:
 permissions:
@@ -93,7 +96,7 @@ jobs:
         timeout-minutes: 5
         env:
           PNPM_CACHE_RESTORE_OUTCOME: ${{ steps.pnpm-cache.outcome }}
-        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/db...'
+        run: bash .github/actions/setup-workspace/install-dependencies.sh --ignore-scripts --filter bb --filter '@bb/db...' --filter bb-plugin-account-pool --filter bb-plugin-automations --filter bb-plugin-workflows
 
       - name: Time query functions against the fixture
         run: pnpm exec turbo run check:query-costs --filter=@bb/db --output-logs=new-only

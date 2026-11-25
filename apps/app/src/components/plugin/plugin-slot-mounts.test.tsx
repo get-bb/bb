@@ -1,5 +1,8 @@
 import { useThreadFixedTabs } from "./PluginThreadFixedTabs";
 // @vitest-environment jsdom
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 
 import {
   MemoryRouter,
@@ -8,6 +11,7 @@ import {
   useNavigate,
   useParams,
 } from "react-router-dom";
+import { useAppNavigationHostRef } from "@/lib/app-navigation-host";
 import {
   startTransition,
   useInsertionEffect,
@@ -16,13 +20,8 @@ import {
   useRef,
   useState,
 } from "react";
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-} from "@testing-library/react";
+import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { render } from "@/test/render-with-query-client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { PERSONAL_PROJECT_ID } from "@bb/domain";
 import type {
@@ -149,7 +148,7 @@ describe("PluginHomepageSections", () => {
     );
     render(
       <MemoryRouter initialEntries={["/"]}>
-        <PluginHomepageSections />
+        <PluginHomepageSections projectId={null} />
       </MemoryRouter>,
     );
     expect(screen.getByText("plugin broken crashed")).toBeDefined();
@@ -408,7 +407,12 @@ describe("useComposer", () => {
       }),
     );
     const staticView: ComposerView = {
-      scope: { kind: "thread", threadId: "thr_quiet" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_quiet",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       layout: "expanded",
       draft: { text: "", isEmpty: true, attachmentCount: 0 },
       run: { isRunning: false, isSubmitting: false },
@@ -462,7 +466,12 @@ describe("useComposer", () => {
       }),
     );
     const staticView: ComposerView = {
-      scope: { kind: "thread", threadId: "thr_navigated" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_navigated",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       layout: "expanded",
       draft: { text: "", isEmpty: true, attachmentCount: 0 },
       run: { isRunning: false, isSubmitting: false },
@@ -525,7 +534,12 @@ describe("useComposer", () => {
       }),
     );
     const staticView: ComposerView = {
-      scope: { kind: "thread", threadId: "thr_late" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_late",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       layout: "expanded",
       draft: { text: "", isEmpty: true, attachmentCount: 0 },
       run: { isRunning: false, isSubmitting: false },
@@ -577,6 +591,34 @@ describe("useComposer", () => {
     );
     expect(focusRequests).toBe(1);
     unsubscribe();
+  });
+
+  it("scopes a composer outside any composer host to the route thread's project and environment", () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(
+      threadQueryKey("thr_route"),
+      makeThreadResponse({
+        id: "thr_route",
+        projectId: "proj_route",
+        environmentId: "env_route",
+      }),
+    );
+    registerComposerProbe("route");
+    render(
+      <MemoryRouter initialEntries={["/projects/proj_route/threads/thr_route"]}>
+        <ComposerCustomizationMount />
+      </MemoryRouter>,
+      { queryClient },
+    );
+
+    expect(
+      JSON.parse(screen.getByTestId("route-scope-details").textContent ?? ""),
+    ).toEqual({
+      kind: "thread",
+      threadId: "thr_route",
+      projectId: "proj_route",
+      environmentId: "env_route",
+    });
   });
 
   it("keeps the withdrawn thread-row status method callable for prebuilt 0.4.1 bundles", () => {
@@ -727,6 +769,8 @@ describe("useComposer", () => {
             kind: "queued-message",
             threadId: "thr_queue",
             queuedMessageId,
+            projectId: "proj_test",
+            environmentId: null,
           },
           textEffectKey: `queued-message:thr_queue:${queuedMessageId}:1`,
           getCurrent: () => draftRef.current,
@@ -824,6 +868,8 @@ describe("useComposer", () => {
                   kind: "queued-message",
                   threadId: "thr_queue",
                   queuedMessageId: "qmsg_1",
+                  projectId: "proj_test",
+                  environmentId: null,
                 },
                 textEffectKey:
                   "queued-message:thr_queue:qmsg_1:sibling-surface",
@@ -1171,6 +1217,8 @@ describe("useComposer", () => {
             kind: "queued-message",
             threadId: "thr_scope_owner",
             queuedMessageId,
+            projectId: "proj_test",
+            environmentId: null,
           },
           textEffectKey: "shared-scope-effect",
           getCurrent: () => draft,
@@ -1353,7 +1401,12 @@ describe("useComposer", () => {
     function Harness() {
       const host = useMemo<PluginComposerHost>(
         () => ({
-          scope: { kind: "thread", threadId: "thr_submit", environment: null },
+          scope: {
+            kind: "thread",
+            threadId: "thr_submit",
+            projectId: "proj_test",
+            environmentId: null,
+          },
           textEffectKey: "thread:thr_submit",
           getCurrent: () => draft,
           subscribeDraft: () => () => {},
@@ -1374,7 +1427,12 @@ describe("useComposer", () => {
       closePopup: () => false,
       isPopupOpen: () => false,
       host: {
-        scope: { kind: "thread", threadId: "thr_submit" },
+        scope: {
+          kind: "thread",
+          threadId: "thr_submit",
+          projectId: "proj_test",
+          environmentId: null,
+        },
         textEffectKey: "thread:thr_submit",
         getCurrent: () => draft,
         subscribeDraft: () => () => {},
@@ -1513,7 +1571,12 @@ describe("useComposer().experimental_setSelection", () => {
       });
     });
     const host: PluginComposerHost = {
-      scope: { kind: "thread", threadId: "thr_selection" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_selection",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: "thread:thr_selection",
       getCurrent: () => emptyDraft,
       subscribeDraft: () => () => {},
@@ -1595,7 +1658,8 @@ describe("useComposer().experimental_setSelection", () => {
       scope: {
         kind: "thread",
         threadId: "thr_own_selection",
-        environment: null,
+        projectId: "proj_test",
+        environmentId: null,
       },
       textEffectKey: "thread:thr_own_selection",
       getSelection: () => selection,
@@ -1637,7 +1701,12 @@ describe("useComposer().experimental_setSelection", () => {
       <MemoryRouter initialEntries={["/threads/thr_selection"]}>
         <Harness
           host={{
-            scope: { kind: "thread", threadId: "thr_selection" },
+            scope: {
+              kind: "thread",
+              threadId: "thr_selection",
+              projectId: "proj_test",
+              environmentId: null,
+            },
             textEffectKey: "thread:thr_selection",
             setSelection,
           }}
@@ -1683,6 +1752,8 @@ describe("useComposer().experimental_setSelection", () => {
         kind: "queued-message" as const,
         threadId: "thr_selection",
         queuedMessageId: "qmsg_1",
+        projectId: "proj_test",
+        environmentId: null,
       },
     ]) {
       const view = render(
@@ -1964,13 +2035,13 @@ describe("plugin thread panel actions", () => {
     );
   }
 
-  function usePanelFor(
+  function useHostFor(
     actions: readonly Parameters<
       typeof createPanelActionDestination
     >[0]["action"][],
     openPluginPanel: (args: OpenPluginPanelArgs) => void,
   ) {
-    return useMemo(
+    const panel = useMemo(
       () =>
         createAppPanelController(() => ({
           activeTabId: null,
@@ -1981,9 +2052,26 @@ describe("plugin thread panel actions", () => {
         })),
       [actions, openPluginPanel],
     );
+    const hostRef = useAppNavigationHostRef();
+    useLayoutEffect(() => {
+      hostRef.current = { ...hostRef.current, panel };
+    });
+    return hostRef;
   }
 
-  function ActionsProbe({
+  function ActionsProbe(props: {
+    threadId: string | null;
+    openPluginPanel: (args: OpenPluginPanelArgs) => void;
+  }) {
+    const [queryClient] = useState(() => new QueryClient());
+    return (
+      <QueryClientProvider client={queryClient}>
+        <ActionsProbeBody {...props} />
+      </QueryClientProvider>
+    );
+  }
+
+  function ActionsProbeBody({
     threadId,
     openPluginPanel,
   }: {
@@ -1992,7 +2080,7 @@ describe("plugin thread panel actions", () => {
   }) {
     const { actions } = useThreadFixedTabs({ threadId, environmentId: null });
     const entries = usePluginPanelActions({
-      panel: usePanelFor(actions, openPluginPanel),
+      hostRef: useHostFor(actions, openPluginPanel),
       threadId,
       environmentId: null,
       actions,
@@ -2017,8 +2105,8 @@ describe("plugin thread panel actions", () => {
             id: "issue",
             title: "Issue",
             component: PanelProbe,
-            run: ({ threadId, experimental_panel }) => {
-              experimental_panel.openTab({
+            run: ({ threadId, panel }) => {
+              panel.openTab({
                 tab: {
                   id: "issue",
                   context: { kind: "thread" },
@@ -2086,9 +2174,9 @@ describe("plugin thread panel actions", () => {
             id: "cyclic",
             title: "Cyclic",
             component: PanelProbe,
-            run: ({ experimental_panel }) => {
+            run: ({ panel }) => {
               declines.push(
-                experimental_panel.openTab({
+                panel.openTab({
                   tab: {
                     id: "cyclic",
                     context: { kind: "thread" },
@@ -2103,9 +2191,9 @@ describe("plugin thread panel actions", () => {
             id: "coerced",
             title: "Coerced",
             component: PanelProbe,
-            run: ({ experimental_panel }) => {
+            run: ({ panel }) => {
               declines.push(
-                experimental_panel.openTab({
+                panel.openTab({
                   tab: {
                     id: "coerced",
                     context: { kind: "thread" },
@@ -2144,7 +2232,7 @@ describe("plugin thread panel actions", () => {
             component: PanelProbe,
             run: (context) => {
               accepted.push(
-                context.experimental_panel.openTab({
+                context.panel.openTab({
                   tab: {
                     id: "issue",
                     context: { kind: "thread" },
@@ -2166,7 +2254,7 @@ describe("plugin thread panel actions", () => {
             component: NewThreadPanelProbe,
             run: (context) => {
               accepted.push(
-                context.experimental_panel.openTab({
+                context.panel.openTab({
                   tab: {
                     id: "setup",
                     context: { kind: "thread" },
@@ -2196,12 +2284,12 @@ describe("plugin thread panel actions", () => {
       const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const threadEntries = usePluginPanelActions({
         actions,
-        panel: usePanelFor(actions, recordOpen),
+        hostRef: useHostFor(actions, recordOpen),
         threadId: "thr_9",
         environmentId: null,
       });
       const rootEntries = usePluginNewThreadPanelActions({
-        panel: usePanelFor(newThreadPanelActions, recordOpen),
+        hostRef: useHostFor(newThreadPanelActions, recordOpen),
         projectId: "proj_1",
       });
       return (
@@ -2215,7 +2303,11 @@ describe("plugin thread panel actions", () => {
       );
     }
 
-    render(<BothActionsHarness />);
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <BothActionsHarness />
+      </QueryClientProvider>,
+    );
     fireEvent.click(screen.getByText("Thread action"));
     fireEvent.click(screen.getByText("Root action"));
 
@@ -2254,8 +2346,8 @@ describe("plugin thread panel actions", () => {
             title: "Set up thread",
             icon: "Wand",
             component: NewThreadPanelProbe,
-            run: ({ projectId, experimental_panel }) => {
-              experimental_panel.openTab({
+            run: ({ projectId, panel }) => {
+              panel.openTab({
                 tab: {
                   id: "setup",
                   context: { kind: "thread" },
@@ -2276,7 +2368,7 @@ describe("plugin thread panel actions", () => {
       > | null>(null);
       const newThreadPanelActions = usePluginSlotKind("newThreadPanelActions");
       const entries = usePluginNewThreadPanelActions({
-        panel: usePanelFor(newThreadPanelActions, (args) =>
+        hostRef: useHostFor(newThreadPanelActions, (args) =>
           setTab(createPluginPanelFixedPanelTab(args)),
         ),
         projectId: "proj_1",

@@ -31,8 +31,12 @@ import type {
 } from "@bb/server-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import {
+  outputJson,
+  printJsonResult,
+  reportCommandResult,
+} from "../command-result.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 
 interface JsonOptions {
@@ -59,7 +63,7 @@ function describeCliCommandStatus(status: SystemCliCommandStatus): string {
     return `bb is already on your PATH at ${status.shadowedBy.path}, installed by npm.`;
   }
   if (status.shadowedBy.source === "machine") {
-    return `bb is already on your PATH at ${status.shadowedBy.path}, installed with the bb machine on this computer.`;
+    return `The bb machine on this computer added a bb at ${status.shadowedBy.path} that can run an older bb. Run bb settings cli-command install to replace it with this one.`;
   }
   return `The bb CLI is not installed for use outside bb. Another bb at ${status.shadowedBy.path} comes first on your PATH.`;
 }
@@ -372,7 +376,7 @@ function parseUiPreferenceInput<Key extends UiPreferenceKey>(
     message = parsed.message;
   }
   throw new Error(
-    `Invalid value '${value}' for '${key}': ${message}. Lists and null take JSON; plain strings may be unquoted.`,
+    `Invalid value '${value}' for '${key}': ${message}. Lists, maps and null take JSON; plain strings may be unquoted.`,
   );
 }
 
@@ -395,8 +399,7 @@ export function registerSettingsCommands(
     .action(
       action(async (opts: JsonOptions) => {
         const result = await createCliBbSdk(getUrl()).system.config();
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -468,15 +471,25 @@ export function registerSettingsCommands(
         const result = await createCliBbSdk(getUrl()).system.testAiService({
           task: task.data,
         });
-        if (outputJson(opts, result)) return;
-        if (result.ok) {
-          console.log(
-            `${result.displayName} (${result.durationMs}ms): ${result.text}`,
-          );
-          return;
-        }
-        console.log(`Failed after ${result.durationMs}ms: ${result.message}`);
-        process.exitCode = 1;
+        reportCommandResult(
+          opts,
+          result,
+          result.ok
+            ? {
+                text: [
+                  `${result.displayName} (${result.durationMs}ms): ${result.text}`,
+                ],
+                failure: null,
+              }
+            : {
+                text: [],
+                failure: {
+                  message: `Failed after ${result.durationMs}ms: ${result.message}`,
+                  code: "ai_service_test_failed",
+                  hint: null,
+                },
+              },
+        );
       }),
     );
 
@@ -605,12 +618,15 @@ export function registerSettingsCommands(
         const { preferences } =
           await createCliBbSdk(getUrl()).system.uiPreferences.list();
         const entry = preferences[key];
-        if (outputJson(opts, { key, ...entry })) return;
-        console.log(JSON.stringify(entry.value));
+        reportCommandResult(
+          opts,
+          { key, ...entry },
+          { text: [JSON.stringify(entry.value)], failure: null },
+        );
       }),
     );
   ui.command("set <key> <value>")
-    .description("Set a UI preference; lists and null take JSON")
+    .description("Set a UI preference; lists, maps and null take JSON")
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (keyInput: string, value: string, opts: JsonOptions) => {
@@ -728,8 +744,7 @@ export function registerSettingsCommands(
           bindings: config.keybindings,
           overrides: config.keybindingOverrides,
         };
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
   keyboard
@@ -827,8 +842,7 @@ export function registerSettingsCommands(
           hostId,
           refresh: opts.refresh,
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -842,8 +856,7 @@ export function registerSettingsCommands(
         const result = await createCliBbSdk(getUrl()).system.version({
           force: opts.force,
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 

@@ -58,21 +58,17 @@ export {
   getRootComposeRoutePath,
   getLegacyProjectComposeRoutePath,
   getProjectComposeRoutePath,
-  getSettingsRoutePath,
-  getSettingsMachineRoutePath,
-  getSettingsProjectRoutePath,
   getSkillsRoutePath,
   getRegistrySkillsRoutePath,
   getSkillDetailRoutePath,
   getRegistrySkillDetailRoutePath,
   getPluginsRoutePath,
   getPluginDetailRoutePath,
-  getPluginConfigurationRoutePath,
   getAutomationsRoutePath,
   getAutomationDetailRoutePath,
   getAutomationEditRoutePath,
   getPluginPanelRoutePath,
-  getThreadRoutePath,
+  getThreadLocationPath,
 } from "@bb/client-core";
 export type { ThreadRoutePathArgs } from "@bb/client-core";
 

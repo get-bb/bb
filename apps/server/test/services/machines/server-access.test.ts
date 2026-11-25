@@ -1,7 +1,16 @@
 import { createDeferredPromise } from "@bb/test-helpers";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getHost, setAppSettings, updateHost, upsertHost } from "@bb/db";
+import { eq } from "drizzle-orm";
+import {
+  getHost,
+  getHostServerAccessGrant,
+  installedPlugins,
+  setAppSettings,
+  setExperiments,
+  updateHost,
+  upsertHost,
+} from "@bb/db";
 import { defaultAppSettings } from "@bb/domain";
 import type { ServerAccessProviderDeclaration } from "@get-bb/plugin-sdk";
 import {
@@ -10,6 +19,7 @@ import {
 } from "../../../src/services/machines/server-access.js";
 import { setServerAccessBridge } from "../../../src/services/plugins/plugin-server-access-registry.js";
 import { listPublicHostsWithStatus } from "../../../src/services/lib/entity-lookup.js";
+import { createApp } from "../../../src/server.js";
 import { advanceUntilSettled } from "../../helpers/fake-timers.js";
 import { withTestHarness } from "../../helpers/test-app.js";
 
@@ -19,6 +29,17 @@ afterEach(() => {
   setServerAccessBridge(undefined);
   vi.unstubAllEnvs();
 });
+
+function grantId(
+  deps: { db: Parameters<typeof getHostServerAccessGrant>[0] },
+  hostId: string,
+): string | null | undefined {
+  const row = getHostServerAccessGrant(deps.db, {
+    hostId,
+    providerId: "relay",
+  });
+  return row === null ? undefined : row.grantId;
+}
 
 function installProvider(provider: ServerAccessProviderDeclaration) {
   setServerAccessBridge({
@@ -32,6 +53,7 @@ function provider(): ServerAccessProviderDeclaration {
     id: "relay",
     displayName: "Relay",
     description: "Use a managed relay.",
+    routeKind: "custom",
     availability: () => ({ status: "available" }),
     acquire: async ({ hostId }) => ({
       id: hostId,
@@ -67,34 +89,144 @@ describe("machine server access", () => {
     });
   });
 
-  it("prefers the first registered provider and respects an explicit direct default", async () => {
+  it("orders providers by the user's order, then route kind, and installs on the first one while serverRoutes is on", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
-      expect((await serverAccessStatus(deps)).defaultProviderId).toBe("direct");
-      installProvider(provider());
-      expect((await serverAccessStatus(deps)).defaultProviderId).toBe("relay");
-      expect((await serverAccessStatus(deps)).providers[0]).toMatchObject({
-        id: "relay",
+      setExperiments(deps.db, { serverRoutes: true });
+      installProvider({ ...provider(), routeKind: "relay" });
+      const ids = async () =>
+        (await serverAccessStatus(deps)).providers.map((entry) => entry.id);
+      expect(await ids()).toEqual(["local-network", "relay", "direct"]);
+      expect(
+        (await serverAccessStatus(deps)).providers.find(
+          (entry) => entry.id === "relay",
+        ),
+      ).toMatchObject({
         pluginId: "access-plugin",
-        description: "Use a managed relay.",
+        routeKind: "relay",
       });
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        defaultMachineAccess: "direct",
+        serverAccessOrder: ["direct"],
       });
-      expect((await serverAccessStatus(deps)).defaultProviderId).toBe("direct");
-      setAppSettings(deps.db, {
-        ...defaultAppSettings,
-        defaultMachineAccess: "missing",
-      });
+      expect(await ids()).toEqual(["direct", "local-network", "relay"]);
       const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
-      await expect(
-        serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
-      ).rejects.toThrow("unavailable");
+      expect(
+        (
+          await serverAccess.resolve(deps, {
+            key: "k",
+            hostId: host.id,
+            signal,
+          })
+        ).serverUrl,
+      ).toBe("https://direct.example.com");
     });
   });
 
-  it("requires provider setup instead of silently falling back to a configured URL", async () => {
+  it("installs a new machine on a tailnet route the user put first, ahead of a relay, while serverRoutes is on", async () => {
+    await withTestHarness(async ({ deps }) => {
+      setExperiments(deps.db, { serverRoutes: true });
+      const overlay: ServerAccessProviderDeclaration = {
+        ...provider(),
+        id: "overlay",
+        displayName: "Overlay",
+        routeKind: "private-overlay",
+        availability: () => ({
+          status: "available",
+          serverUrl: "https://mini.tail1234.ts.net",
+        }),
+        acquire: async ({ hostId }) => ({
+          id: hostId,
+          serverUrl: "https://mini.tail1234.ts.net",
+        }),
+      };
+      setServerAccessBridge({
+        list: () => [
+          { pluginId: "overlay-plugin", provider: overlay },
+          {
+            pluginId: "access-plugin",
+            provider: { ...provider(), routeKind: "relay" },
+          },
+        ],
+        invoke: async (_id, run) => run(),
+      });
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        serverAccessOrder: ["overlay", "relay"],
+      });
+      const resolveFor = async (name: string) => {
+        const host = upsertHost(deps.db, deps.hub, { name })!;
+        await serverAccess.resolve(deps, {
+          key: name,
+          hostId: host.id,
+          signal,
+        });
+        return getHost(deps.db, host.id)?.serverAccessProviderId;
+      };
+      expect(await resolveFor("tailnet")).toBe("overlay");
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        serverAccessOrder: ["relay", "overlay"],
+      });
+      expect(await resolveFor("cloud")).toBe("relay");
+    });
+  });
+
+  it("installs a new machine on the user's first route, then the first registered one, while the serverRoutes experiment is off", async () => {
+    await withTestHarness(async ({ deps }) => {
+      const overlay: ServerAccessProviderDeclaration = {
+        ...provider(),
+        id: "overlay",
+        displayName: "Overlay",
+        routeKind: "private-overlay",
+        acquire: async ({ hostId }) => ({
+          id: hostId,
+          serverUrl: "https://mini.tail1234.ts.net",
+        }),
+      };
+      setServerAccessBridge({
+        list: () => [
+          {
+            pluginId: "access-plugin",
+            provider: { ...provider(), routeKind: "relay" },
+          },
+          { pluginId: "overlay-plugin", provider: overlay },
+        ],
+        invoke: async (_id, run) => run(),
+      });
+      const resolveFor = async (name: string) => {
+        const host = upsertHost(deps.db, deps.hub, { name })!;
+        await serverAccess.resolve(deps, {
+          key: name,
+          hostId: host.id,
+          signal,
+        });
+        return getHost(deps.db, host.id)?.serverAccessProviderId;
+      };
+      setAppSettings(deps.db, {
+        ...defaultAppSettings,
+        serverAccessOrder: ["overlay"],
+      });
+      expect(
+        (await serverAccessStatus(deps)).providers.map((entry) => entry.id),
+      ).toEqual(["overlay", "relay", "direct"]);
+      expect(await resolveFor("tailnet")).toBe("overlay");
+      setServerAccessBridge({
+        list: () => [
+          { pluginId: "overlay-plugin", provider: overlay },
+          {
+            pluginId: "access-plugin",
+            provider: { ...provider(), routeKind: "relay" },
+          },
+        ],
+        invoke: async (_id, run) => run(),
+      });
+      setAppSettings(deps.db, defaultAppSettings);
+      expect(await resolveFor("first-registered")).toBe("overlay");
+    });
+  });
+
+  it("falls back to the next route when the first needs setup, and reports the first failure when none works", async () => {
     await withTestHarness(async ({ deps }) => {
       vi.stubEnv("BB_EXTERNAL_URL", "https://direct.example.com");
       const availability = vi.fn(() => ({
@@ -105,17 +237,7 @@ describe("machine server access", () => {
         ...provider(),
         availability,
       });
-      expect((await serverAccessStatus(deps)).defaultProviderId).toBe("relay");
-      availability.mockClear();
       const host = upsertHost(deps.db, deps.hub, { name: "test" })!;
-      await expect(
-        serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
-      ).rejects.toThrow("Set up the relay");
-      expect(availability).toHaveBeenCalledOnce();
-      setAppSettings(deps.db, {
-        ...defaultAppSettings,
-        defaultMachineAccess: "direct",
-      });
       expect(
         (
           await serverAccess.resolve(deps, {
@@ -125,6 +247,11 @@ describe("machine server access", () => {
           })
         ).serverUrl,
       ).toBe("https://direct.example.com");
+      vi.stubEnv("BB_EXTERNAL_URL", "");
+      const other = upsertHost(deps.db, deps.hub, { name: "other" })!;
+      await expect(
+        serverAccess.resolve(deps, { key: "k", hostId: other.id, signal }),
+      ).rejects.toThrow("Set up the relay");
     });
   });
 
@@ -155,18 +282,18 @@ describe("machine server access", () => {
       expect(grant.headers).toEqual({ "x-access-token": "secret-header" });
       const row = getHost(deps.db, host.id)!;
       expect(row.serverAccessProviderId).toBe("relay");
-      expect(row.serverAccessGrantId).toBe(host.id);
+      expect(grantId(deps, host.id)).toBe(host.id);
       expect(JSON.stringify(row)).not.toContain("secret-header");
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        defaultMachineAccess: "direct",
+        serverAccessOrder: ["direct"],
         machineServerUrl: "https://other.example.com",
       });
       expect(
         await serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
       ).toEqual(grant);
       await serverAccess.release(deps, { key: "k", hostId: host.id });
-      expect(getHost(deps.db, host.id)?.serverAccessGrantId).toBeNull();
+      expect(grantId(deps, host.id)).toBeUndefined();
     });
   });
 
@@ -180,7 +307,7 @@ describe("machine server access", () => {
       await serverAccess.resolve(deps, args);
       setAppSettings(deps.db, {
         ...defaultAppSettings,
-        defaultMachineAccess: "direct",
+        serverAccessOrder: ["direct"],
       });
       acquire.mockImplementationOnce(async () => {
         expect(release).toHaveBeenCalledWith({
@@ -197,10 +324,8 @@ describe("machine server access", () => {
       await expect(serverAccess.repair(deps, args)).resolves.toMatchObject({
         id: "replacement",
       });
-      expect(getHost(deps.db, host.id)).toMatchObject({
-        serverAccessProviderId: "relay",
-        serverAccessGrantId: "replacement",
-      });
+      expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBe("relay");
+      expect(grantId(deps, host.id)).toBe("replacement");
     });
   });
 
@@ -215,10 +340,8 @@ describe("machine server access", () => {
       await expect(serverAccess.repair(deps, args)).rejects.toThrow(
         "unavailable",
       );
-      expect(getHost(deps.db, host.id)).toMatchObject({
-        serverAccessProviderId: "relay",
-        serverAccessGrantId: null,
-      });
+      expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBe("relay");
+      expect(grantId(deps, host.id)).toBeNull();
       await expect(serverAccess.repair(deps, args)).resolves.toMatchObject({
         id: host.id,
       });
@@ -241,10 +364,8 @@ describe("machine server access", () => {
       await expect(serverAccess.repair(deps, args)).rejects.toThrow(
         "provider is unavailable",
       );
-      expect(getHost(deps.db, host.id)).toMatchObject({
-        serverAccessProviderId: "relay",
-        serverAccessGrantId: host.id,
-      });
+      expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBe("relay");
+      expect(grantId(deps, host.id)).toBe(host.id);
     });
   });
 
@@ -257,7 +378,7 @@ describe("machine server access", () => {
       await expect(
         serverAccess.release(deps, { key: "k", hostId: host.id }),
       ).rejects.toThrow("retry");
-      expect(getHost(deps.db, host.id)?.serverAccessGrantId).toBe(host.id);
+      expect(grantId(deps, host.id)).toBe(host.id);
       installProvider({
         ...provider(),
         acquire: async () => ({
@@ -315,11 +436,8 @@ it("keeps interrupted access visible and releases the acquisition without a retu
     await expect(
       serverAccess.resolve(deps, { key: "k", hostId: host.id, signal }),
     ).rejects.toThrow(message);
-    expect(getHost(deps.db, host.id)).toMatchObject({
-      serverAccessProviderId: "relay",
-      serverAccessGrantId: null,
-      statusMessage: message,
-    });
+    expect(getHost(deps.db, host.id)).toMatchObject({ statusMessage: message });
+    expect(grantId(deps, host.id)).toBeNull();
     expect(
       listPublicHostsWithStatus(deps, { includeCreating: true }).find(
         (entry) => entry.id === host.id,
@@ -328,14 +446,14 @@ it("keeps interrupted access visible and releases the acquisition without a retu
     await expect(
       serverAccess.release(deps, { key: "k", hostId: host.id }),
     ).rejects.toThrow(message);
-    expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBe("relay");
+    expect(grantId(deps, host.id)).toBeNull();
     await serverAccess.release(deps, { key: "k", hostId: host.id });
     expect(release).toHaveBeenLastCalledWith({
       key: "k",
       hostId: host.id,
       grantId: null,
     });
-    expect(getHost(deps.db, host.id)?.serverAccessProviderId).toBeNull();
+    expect(grantId(deps, host.id)).toBeUndefined();
   });
 });
 
@@ -352,10 +470,6 @@ it("refreshes access status through the real recheck notification and configurat
       ...provider(),
       availability: () => availability,
       acquire,
-    });
-    setAppSettings(h.db, {
-      ...defaultAppSettings,
-      defaultMachineAccess: "relay",
     });
     const notify = vi.spyOn(h.hub, "notifySystem");
     for (const next of [
@@ -395,7 +509,10 @@ it.each([
       installProvider({ ...provider(), availability });
       const status = await serverAccessStatus(deps);
       expect(availability).toHaveBeenCalledOnce();
-      expect(status.providers[0]?.availability?.status).toBe("unavailable");
+      expect(
+        status.providers.find((entry) => entry.id === "relay")?.availability
+          .status,
+      ).toBe("unavailable");
       expect(JSON.stringify(status)).not.toMatch(
         /secret|password|private diagnostics/,
       );
@@ -410,14 +527,15 @@ it("bounds a stalled availability check and recovers on the next read", async ()
     vi.useFakeTimers();
     try {
       const result = serverAccessStatus(deps);
-      expect(
-        (await advanceUntilSettled(result, 5_000)).providers[0]?.availability
-          ?.status,
-      ).toBe("unavailable");
+      const relay = (status: Awaited<typeof result>) =>
+        status.providers.find((entry) => entry.id === "relay")?.availability;
+      expect(relay(await advanceUntilSettled(result, 5_000))?.status).toBe(
+        "unavailable",
+      );
       pending.resolve({ status: "available" });
-      expect(
-        (await serverAccessStatus(deps)).providers[0]?.availability,
-      ).toEqual({ status: "available" });
+      expect(relay(await serverAccessStatus(deps))).toEqual({
+        status: "available",
+      });
     } finally {
       vi.useRealTimers();
     }
@@ -426,6 +544,7 @@ it("bounds a stalled availability check and recovers on the next read", async ()
 
 it.each([
   { id: "direct" },
+  { id: "local-network" },
   { id: "Invalid ID" },
   { displayName: " " },
   { description: " " },
@@ -468,5 +587,204 @@ it("rejects duplicate server-access registrations in real and fake hosts", async
     } finally {
       await fake.harness.lifecycle.dispose();
     }
+  });
+});
+
+it("ranks a provider from a plugin built before routeKind existed as custom in real and fake hosts", async () => {
+  await withTestHarness(async (h) => {
+    await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+    const real = h.pluginService.getApi("keep-awake");
+    if (!real) throw new Error("Test plugin did not load");
+    const fake = createFakePluginHost();
+    const { routeKind: _omitted, ...legacy } = provider();
+    try {
+      real.experimental_serverAccess.register(
+        legacy as ServerAccessProviderDeclaration,
+      );
+      fake.bb.experimental_serverAccess.register(
+        legacy as ServerAccessProviderDeclaration,
+      );
+      expect(
+        (await serverAccessStatus(h.deps)).providers.find(
+          (entry) => entry.id === "relay",
+        )?.routeKind,
+      ).toBe("custom");
+      expect(
+        fake.harness.registrations.serverAccessProviders.get("relay")
+          ?.routeKind,
+      ).toBe("custom");
+    } finally {
+      await fake.harness.lifecycle.dispose();
+    }
+  });
+});
+
+it("admits an available provider's address in the Host and Origin guards until it is lost", async () => {
+  await withTestHarness(async (h) => {
+    await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+    const api = h.pluginService.getApi("keep-awake");
+    if (!api) throw new Error("Test plugin did not load");
+    const address = "https://mini.tail1234.ts.net:8443";
+    let availability: Awaited<
+      ReturnType<ServerAccessProviderDeclaration["availability"]>
+    > = { status: "setup-required", message: "Set up Serve" };
+    api.experimental_serverAccess.register({
+      ...provider(),
+      availability: () => availability,
+    });
+    const status = async () =>
+      (
+        await h.app.request("http://localhost/api/v1/threads", {
+          headers: { host: "mini.tail1234.ts.net:8443", origin: address },
+        })
+      ).status;
+
+    api.experimental_serverAccess.recheck();
+    await vi.waitFor(async () => expect(await status()).toBe(403));
+
+    availability = { status: "available", serverUrl: address };
+    api.experimental_serverAccess.recheck();
+    await vi.waitFor(async () => expect(await status()).toBe(200));
+    expect(
+      (
+        await h.app.request("http://localhost/api/v1/threads", {
+          headers: {
+            host: "mini.tail1234.ts.net:8443",
+            origin: "https://mini.tail1234.ts.net",
+          },
+        })
+      ).status,
+    ).toBe(403);
+
+    availability = { status: "unavailable", message: "Tailscale is stopped" };
+    api.experimental_serverAccess.recheck();
+    await vi.waitFor(async () => expect(await status()).toBe(403));
+  });
+});
+
+it("ranks providers of one route kind by the earliest-installed plugin, not load order", async () => {
+  await withTestHarness(async (h) => {
+    for (const name of ["keep-awake", "automations"]) {
+      await h.pluginService.install(`builtin:${name}`, { kind: "root" });
+      const api = h.pluginService.getApi(name);
+      if (!api) throw new Error(`${name} did not load`);
+      api.experimental_serverAccess.register({ ...provider(), id: name });
+    }
+    const ids = async () =>
+      (await serverAccessStatus(h.deps)).providers.map((entry) => entry.id);
+    expect(await ids()).toEqual(["keep-awake", "automations", "direct"]);
+
+    h.db
+      .update(installedPlugins)
+      .set({ installedAt: 1 })
+      .where(eq(installedPlugins.id, "automations"))
+      .run();
+
+    expect(await ids()).toEqual(["automations", "keep-awake", "direct"]);
+    const host = upsertHost(h.db, h.hub, { name: "test" })!;
+    await serverAccess.resolve(h.deps, { key: "k", hostId: host.id, signal });
+    expect(getHost(h.db, host.id)?.serverAccessProviderId).toBe("automations");
+  });
+});
+
+describe("server access addresses across restarts and failures", () => {
+  const address = "https://mini.tail1234.ts.net:8443";
+  const tailnetRequest = {
+    headers: { host: "mini.tail1234.ts.net:8443", origin: address },
+  };
+
+  it("admits the last available address from the first request after a restart, before plugins load", async () => {
+    await withTestHarness(async (h) => {
+      await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+      const api = h.pluginService.getApi("keep-awake");
+      if (!api) throw new Error("Test plugin did not load");
+      api.experimental_serverAccess.register({
+        ...provider(),
+        availability: () => ({ status: "available", serverUrl: address }),
+      });
+      api.experimental_serverAccess.recheck();
+      await vi.waitFor(async () =>
+        expect(
+          (await h.app.request("http://localhost/health", tailnetRequest))
+            .status,
+        ).toBe(200),
+      );
+
+      const restarted = createApp(h.deps);
+      try {
+        expect(restarted.pluginService.getApi("keep-awake")).toBeUndefined();
+        for (const path of ["/health", "/api/v1/threads"]) {
+          expect(
+            (
+              await restarted.app.request(
+                `http://localhost${path}`,
+                tailnetRequest,
+              )
+            ).status,
+          ).toBe(200);
+        }
+        expect(
+          (
+            await restarted.app.request("http://localhost/health", {
+              headers: { host: "other.tail1234.ts.net" },
+            })
+          ).status,
+        ).toBe(403);
+      } finally {
+        await restarted.pluginService.stop();
+      }
+    });
+  });
+
+  it("keeps an address through a failed availability check and drops it on a real answer", async () => {
+    await withTestHarness(async (h) => {
+      await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+      const api = h.pluginService.getApi("keep-awake");
+      if (!api) throw new Error("Test plugin did not load");
+      let availability: () => Awaited<
+        ReturnType<ServerAccessProviderDeclaration["availability"]>
+      > = () => ({ status: "available", serverUrl: address });
+      api.experimental_serverAccess.register({
+        ...provider(),
+        availability: () => availability(),
+      });
+      const status = async () =>
+        (await h.app.request("http://localhost/health", tailnetRequest)).status;
+      api.experimental_serverAccess.recheck();
+      await vi.waitFor(async () => expect(await status()).toBe(200));
+
+      availability = () => {
+        throw new Error("tailscale status timed out");
+      };
+      await serverAccessStatus(h.deps);
+      expect(await status()).toBe(200);
+
+      availability = () => ({
+        status: "unavailable",
+        message: "Tailscale is stopped",
+      });
+      await serverAccessStatus(h.deps);
+      expect(await status()).toBe(403);
+    });
+  });
+
+  it("drops the address when its plugin is disabled", async () => {
+    await withTestHarness(async (h) => {
+      await h.pluginService.install("builtin:keep-awake", { kind: "root" });
+      const api = h.pluginService.getApi("keep-awake");
+      if (!api) throw new Error("Test plugin did not load");
+      api.experimental_serverAccess.register({
+        ...provider(),
+        availability: () => ({ status: "available", serverUrl: address }),
+      });
+      const status = async () =>
+        (await h.app.request("http://localhost/health", tailnetRequest)).status;
+      api.experimental_serverAccess.recheck();
+      await vi.waitFor(async () => expect(await status()).toBe(200));
+
+      await h.pluginService.setEnabled("keep-awake", false);
+
+      await vi.waitFor(async () => expect(await status()).toBe(403));
+    });
   });
 });

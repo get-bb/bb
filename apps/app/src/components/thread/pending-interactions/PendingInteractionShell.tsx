@@ -14,10 +14,10 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ExpandableLine } from "@/components/ui/expandable-line.js";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export const InlinePendingInteractionContext = createContext<{
   promptShownAbove: string;
-  close: () => void;
 } | null>(null);
 
 interface PendingInteractionShellProps {
@@ -60,7 +60,7 @@ export function PendingInteractionShell({
   const contentId = useId();
   const errorId = useId();
   const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (event.key === "Escape" && isExpanded && !event.defaultPrevented) {
+    if (isNonImeKey(event, "Escape") && isExpanded && !event.defaultPrevented) {
       event.preventDefault();
       event.stopPropagation();
       setIsExpanded(false);
@@ -117,7 +117,6 @@ export function PendingInteractionShell({
         <ThreadQuestionFormHost
           density="compact"
           promptShownAbove={inline.promptShownAbove}
-          closeInline={inline.close}
         >
           <div className="-m-1 max-h-[40dvh] min-h-0 touch-pan-y overflow-y-auto overscroll-contain p-1">
             {inlineTitle ? (
@@ -187,11 +186,7 @@ export function PendingInteractionShell({
         {toggle}
       </div>
       <Activity mode={isExpanded ? "visible" : "hidden"}>
-        <ThreadQuestionFormHost
-          density="default"
-          promptShownAbove={null}
-          closeInline={null}
-        >
+        <ThreadQuestionFormHost density="default" promptShownAbove={null}>
           <div
             id={contentId}
             hidden={!isExpanded}

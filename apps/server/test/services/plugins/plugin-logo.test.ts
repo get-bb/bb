@@ -138,7 +138,8 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     expectUntrustedImageHeaders(icon);
     expect(await icon.text()).toBe(SVG_LOGO);
 
-    const disabled = await harness.pluginService.setEnabled("mark", false);
+    const disabled = (await harness.pluginService.setEnabled("mark", false))
+      ?.plugin;
     expect(disabled?.iconUrl).toBe(entry.iconUrl);
     const disabledIcon = await harness.app.request(
       `${BASE}${disabled?.iconUrl}`,
@@ -324,7 +325,8 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     expect(logoUrl).not.toBeNull();
     expect(logoDarkUrl).not.toBeNull();
 
-    const disabled = await harness.pluginService.setEnabled("logog", false);
+    const disabled = (await harness.pluginService.setEnabled("logog", false))
+      ?.plugin;
     expect(disabled?.enabled).toBe(false);
     expect(disabled?.logoUrl).toBe(logoUrl);
     expect(disabled?.logoDarkUrl).toBe(logoDarkUrl);
@@ -335,7 +337,8 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     expect(dark.status).toBe(200);
     expect(await dark.text()).toBe(DARK_SVG_LOGO);
 
-    const enabled = await harness.pluginService.setEnabled("logog", true);
+    const enabled = (await harness.pluginService.setEnabled("logog", true))
+      ?.plugin;
     expect(enabled?.logoUrl).toBe(logoUrl);
     expect(enabled?.logoDarkUrl).toBe(logoDarkUrl);
   });
@@ -352,7 +355,8 @@ describe("plugin branding assets (manifest, asset route, inventory)", () => {
     expect(entry.icon).toBe("Brain");
     expect(entry.iconUrl).toBeNull();
 
-    const disabled = await harness.pluginService.setEnabled("ident", false);
+    const disabled = (await harness.pluginService.setEnabled("ident", false))
+      ?.plugin;
     expect(disabled?.enabled).toBe(false);
     expect(disabled?.name).toBe("Identity Demo");
     expect(disabled?.icon).toBe("Brain");

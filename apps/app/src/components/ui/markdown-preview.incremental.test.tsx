@@ -87,14 +87,21 @@ function countingDirective(leg: PreviewLeg) {
 
 function legMessageDirectives(leg: PreviewLeg) {
   return {
-    registry: buildMessageDirectiveRegistry([
+    registry: buildMessageDirectiveRegistry(
+      [
+        {
+          id: "inline-vis",
+          pluginId: "demo",
+          generation: 1,
+          component: countingDirective(leg),
+        },
+      ],
       {
-        id: "inline-vis",
-        pluginId: "demo",
-        generation: 1,
-        component: countingDirective(leg),
+        unclaimed: "literal",
+        picks: {},
+        boot: { bbPluginIds: new Set(), settledOnce: true },
       },
-    ]),
+    ),
     message: {
       id: "msg_stream",
       threadId: "thr_stream",

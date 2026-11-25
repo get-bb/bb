@@ -4,7 +4,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import {
   SettingsSection,
   SettingsWithControl,
-} from "@/components/ui/settings-section.js";
+} from "@bb/shared-ui/settings-section";
 import { openUrlInExternalBrowser } from "@/lib/url-open-routing";
 
 const DISCORD_INVITE_URL = "https://discord.gg/kvBU6tJhcJ";

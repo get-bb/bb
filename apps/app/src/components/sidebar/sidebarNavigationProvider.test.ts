@@ -107,6 +107,15 @@ describe("resolveSidebarNavigation", () => {
       expected: "loading:rail",
     },
     {
+      name: "falls back like Automatic for a missing pinned provider while plugins reload after boot",
+      preference: "compact/nav",
+      slots: [RAIL, TOP_LIST, SECTIONS],
+      settled: false,
+      settledOnce: true,
+      lastResolved: { key: "sections/nav", placement: "list" },
+      expected: "sections/nav over navigation/rail",
+    },
+    {
       name: "falls back like Automatic once a pinned provider never registers",
       preference: "compact/nav",
       slots: [RAIL, TOP_LIST, SECTIONS],
@@ -152,8 +161,9 @@ describe("resolveSidebarNavigation", () => {
       describeResolved(
         resolveSidebarNavigation({
           loadFailed: false,
+          settledOnce: input.settled,
           ...input,
-          builtinPluginIds: new Set(["navigation"]),
+          bbPluginIds: new Set(["navigation"]),
         }),
       ),
     ).toBe(expected);

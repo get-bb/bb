@@ -19,6 +19,7 @@ export {
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "./thread-info-groups.js";
+export { BbHttpError as experimental_BbHttpError } from "@bb/sdk/http-error";
 export type {
   ExperimentalDesktopBrowsersArea,
   ExperimentalDesktopBrowserScope,
@@ -39,3 +40,10 @@ export {
   getRelativeHostPath as experimental_getRelativeHostPath,
   getHostPathComparisonKey as experimental_getHostPathComparisonKey,
 } from "@bb/domain";
+
+/**
+ * Cuts `value` to at most `maxChars` UTF-16 code units without splitting a
+ * surrogate pair, so an emoji at the cut is dropped whole instead of leaving
+ * half of it. Experimental: see docs/api_to_audit.md.
+ */
+export { sliceUtf16Head as experimental_sliceUtf16Head } from "@bb/text-utils";

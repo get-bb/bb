@@ -572,6 +572,35 @@ describe("incremental conversation outlines", () => {
     });
   });
 
+  describe("keeps checkpointed items when the thread's status or title changes, because the checkpoint holds only finished turns", () => {
+    it.each([
+      {
+        change: "status",
+        why: "turn/completed has frozen every streamed text in those turns and user messages render under every status",
+        thread: { status: "idle" },
+      },
+      {
+        change: "title",
+        why: "the title names only operation rows, which the outline drops",
+        thread: { title: "Renamed thread" },
+      },
+    ] as const)(
+      "reads only the tail after a $change change: $why",
+      ({ thread }) =>
+        withTestThread((testThread) => {
+          seed(testThread, 100);
+          expectMatchesFull(testThread);
+          testThread.thread = { ...testThread.thread, ...thread };
+          const count = countSelectedEventRows(testThread, () => {
+            load(testThread);
+          });
+          expect(count).toBeGreaterThan(0);
+          expect(count).toBeLessThan(20);
+          expectMatchesFull(testThread);
+        }),
+    );
+  });
+
   it.each([
     "rewind",
     "clear",

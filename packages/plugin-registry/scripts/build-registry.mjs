@@ -7,9 +7,6 @@
 // Inputs:
 // - registry.json — the item list (uiItems).
 // - packages/shared-ui/src/components/ui/*.tsx — component source, verbatim.
-//   @bb/shared-ui is itself the plugin/registry flavor: its portal-scope and
-//   useBrowserDimmingModal leaves are already the no-op/plugin variants (the
-//   app injects its own flavors at build time).
 //
 // Every file in an item's transitive @/-import closure becomes its own
 // registry item (named from its basename), referenced via

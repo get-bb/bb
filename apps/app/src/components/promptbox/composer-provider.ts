@@ -1,25 +1,27 @@
 import { useAtomValue } from "jotai";
 import {
-  AUTOMATIC_REPLACEMENT_PROVIDER,
-  BUILT_IN_REPLACEMENT_PROVIDER,
-  usePreferredReplacement,
+  createPickPreferenceAtom,
+  createRememberedAutomatic,
+  PLUGIN_ONLY_RULE,
+  useExclusiveResolution,
+  type ExclusiveResolution,
 } from "@/lib/plugin-replacement-preference";
-import type { ResolvedReplacement } from "@/lib/plugin-slot-resolvers";
 import { usePluginSlotKind, type PluginComposerSlot } from "@/lib/plugin-slots";
 import { useRememberSurfaceProvider } from "@/lib/plugin-surface-providers";
-import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
 
 export const composerRendererProviderAtom =
-  createSyncedPreferenceAtom("composer.provider");
+  createPickPreferenceAtom("composer.provider");
 
-export function useComposerReplacement(): ResolvedReplacement<PluginComposerSlot> {
+const rememberedComposer = createRememberedAutomatic("bb.composer-resolved");
+
+export function useComposerReplacement(): ExclusiveResolution<PluginComposerSlot> {
   const composers = usePluginSlotKind("composers");
   const preference = useAtomValue(composerRendererProviderAtom);
-  const resolved = usePreferredReplacement(
+  const resolved = useExclusiveResolution(
     composers,
-    preference === BUILT_IN_REPLACEMENT_PROVIDER
-      ? AUTOMATIC_REPLACEMENT_PROVIDER
-      : preference,
+    preference,
+    PLUGIN_ONLY_RULE,
+    rememberedComposer,
   );
   useRememberSurfaceProvider(
     "composer",

@@ -33,7 +33,10 @@ for (const providerId of providers) {
     it("lists models", async () => {
       const ctx = createTestRuntime(providerId);
       try {
-        const { models } = await ctx.runtime.listModels({ providerId });
+        const { models } = await ctx.runtime.listModels({
+          providerId,
+          contributedEnv: [],
+        });
         expect(models.length).toBeGreaterThan(0);
         for (const model of models) {
           expect(model.id).toBeTruthy();
@@ -66,6 +69,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId,
           clientRequestId: "creq_23456789ab",
           input: [promptTextInput({ text: "Say hello in one word." })],
@@ -81,6 +85,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId,
           clientRequestId: "creq_23456789ac",
           input: [promptTextInput({ text: "Now say goodbye in one word." })],
@@ -126,6 +131,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId,
           clientRequestId: "creq_23456789ab",
           input: [
@@ -155,6 +161,7 @@ for (const providerId of providers) {
         });
         const steerText = `STEER_${providerId}_${randomUUID()}`;
         await ctx.runtime.steerTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId,
           expectedTurnId: activeTurnId,
           clientRequestId: "creq_23456789ac",
@@ -212,6 +219,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId,
           clientRequestId: "creq_23456789ab",
           input: [
@@ -259,6 +267,7 @@ for (const providerId of providers) {
           threadId,
         );
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           threadId,
           clientRequestId: "creq_23456789ac",
           input: [
@@ -318,6 +327,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224d",
           threadId,
           input: [promptTextInput({ text: "What is 2+2?" })],
@@ -388,6 +398,7 @@ for (const providerId of providers) {
         });
 
         await ctx.runtime.runTurn({
+          additionalWorkspaceWriteRoots: [],
           clientRequestId: "creq_222222224h",
           threadId,
           input: [

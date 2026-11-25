@@ -34,7 +34,12 @@ export function usePluginCommandBindings() {
                 all: ["mainSurface", "promptAvailable"],
                 none: ["modalOpen", "terminalFocus", "browserFocus"],
               }
-            : { all: ["mainSurface"], none: ["modalOpen"] },
+            : command.experimental_keyScope === "pluginPage"
+              ? {
+                  all: ["mainSurface", "pluginPage"],
+                  none: ["modalOpen", "editableFocus"],
+                }
+              : { all: ["mainSurface"], none: ["modalOpen"] },
       }),
     );
     const bundledCommands = new Set(

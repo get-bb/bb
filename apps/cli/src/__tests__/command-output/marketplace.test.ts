@@ -13,6 +13,8 @@ const acme = {
   displayName: "Acme Plugins",
   description: "Plugins the Acme team maintains.",
   official: false,
+  enabled: true,
+  canDisable: true,
   sourceKind: "https" as const,
   source: "https://acme.test/marketplace.json",
   resolvedCommit: null,
@@ -35,6 +37,7 @@ const bundled = {
   ...official,
   name: "bb-official",
   displayName: "BB Official",
+  canDisable: false,
   sourceKind: "path" as const,
   source: "/app/builtin-plugins",
   entryCount: 25,
@@ -195,6 +198,21 @@ describe("bb marketplace", () => {
     expect(output).toContain("keeping the last catalog");
   });
 
+  it("exits non-zero for a failed refresh under --json too", async () => {
+    const results = [
+      { name: "acme-plugins", ok: false, error: "HTTP 503", marketplace: acme },
+    ];
+    vi.mocked(fetch).mockResolvedValueOnce(json({ results }));
+
+    await expect(
+      runCommand(["marketplace", "refresh", "--json"], register),
+    ).rejects.toThrow("process.exit:1");
+
+    expect(
+      JSON.parse(String(vi.mocked(console.log).mock.calls[0]?.[0])),
+    ).toMatchObject([{ name: "acme-plugins", ok: false, error: "HTTP 503" }]);
+  });
+
   it("names the plugins a removal kept as direct installs", async () => {
     vi.mocked(fetch).mockResolvedValueOnce(
       json({ ok: true, convertedPluginIds: ["notes", "status"] }),
@@ -209,5 +227,29 @@ describe("bb marketplace", () => {
     const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
     expect(output).toContain("Removed marketplace acme-plugins.");
     expect(output).toContain("Kept as direct installs: notes, status");
+  });
+
+  it("disables a marketplace with a PATCH and lists it as disabled", async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        json({ ok: true, marketplace: { ...official, enabled: false } }),
+      )
+      .mockResolvedValueOnce(
+        json({ marketplaces: [{ ...official, enabled: false }] }),
+      );
+
+    await runCommand(["marketplace", "disable", "bb-community"], register);
+    await runCommand(["marketplace", "list"], register);
+
+    expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe(
+      "http://server/api/v1/marketplaces/bb-community",
+    );
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]?.method).toBe("PATCH");
+    expect(
+      JSON.parse(String(vi.mocked(fetch).mock.calls[0]?.[1]?.body)),
+    ).toEqual({ enabled: false });
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Disabled marketplace bb-community.");
+    expect(output).toMatch(/bb-community \(official\).*disabled/u);
   });
 });

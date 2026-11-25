@@ -8,17 +8,16 @@ import {
   type PluginThreadListProps,
 } from "@get-bb/plugin-sdk/app";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { AppBridgeOverlay } from "./app/bridge.js";
 import { forkToNewWorkspace } from "./app/fork.js";
 import { WorkspaceBreadcrumb } from "./app/header/WorkspaceBreadcrumb.js";
 import { NewChatPage } from "./app/new-chat/NewChatPage.js";
-import { environmentIdFromSubPath } from "./app/new-chat/route.js";
+import {
+  environmentIdFromSubPath,
+  NEW_CHAT_PANEL_PATH,
+} from "./app/new-chat/route.js";
 import { runWorkspaceScript } from "./app/scripts/run.js";
 import { WorkspaceSidebar } from "./app/sidebar/WorkspaceSidebar.js";
-import {
-  NEW_CHAT_PANEL_PATH,
-  WorkspaceTabs,
-} from "./app/tabs/WorkspaceTabs.js";
+import { WorkspaceTabs } from "./app/tabs/WorkspaceTabs.js";
 import { findWorkspace } from "./app/workspace.js";
 
 function ConductorThreadList(props: PluginThreadListProps) {
@@ -124,10 +123,6 @@ export default definePluginApp((app) => {
     experimental_hideFromNavigation: true,
     experimental_usePageTitle: useNewChatPageTitle,
   });
-  app.slots.experimental_appOverlay({
-    id: "bridge",
-    component: AppBridgeOverlay,
-  });
   app.slots.messageAction({
     id: "fork-to-new-workspace",
     title: "Fork to new workspace",
@@ -141,12 +136,13 @@ export default definePluginApp((app) => {
   app.commands.register({
     id: "run",
     title: "Run workspace script",
-    defaultShortcut: { key: "r", mod: true },
+    defaultShortcut: { key: "r", mod: true, alt: true },
     isAvailable: (context) => context.threadId !== null,
     async run(context) {
       if (context.threadId === null) return;
-      await runWorkspaceScript(context.threadId).catch((error: unknown) =>
-        reportFailure("Could not run the workspace script", error),
+      await runWorkspaceScript(context, context.threadId).catch(
+        (error: unknown) =>
+          reportFailure("Could not run the workspace script", error),
       );
     },
   });

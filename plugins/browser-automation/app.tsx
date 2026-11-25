@@ -35,6 +35,7 @@ import {
   type LightboxTarget,
 } from "./lightbox-store.js";
 import { PREVIEW_DIRECTIVE_ID } from "./preview-directive.js";
+import { experimental_sliceUtf16Head as sliceUtf16Head } from "@get-bb/plugin-sdk/app";
 
 const MIN_POLL_INTERVAL_MS = 400;
 const MAX_RETRY_INTERVAL_MS = 15_000;
@@ -97,7 +98,7 @@ function pageLocation(url: string): string {
     if (parsed.protocol === "file:") return decodeURIComponent(parsed.pathname);
     return parsed.protocol;
   } catch {
-    return url.slice(0, 80);
+    return sliceUtf16Head(url, 80);
   }
 }
 

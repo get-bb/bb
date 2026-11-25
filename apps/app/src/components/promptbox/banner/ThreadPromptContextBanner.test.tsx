@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -12,8 +13,15 @@ import {
   type ThreadPromptArchivedSection,
   type ThreadPromptChildThreadsSection,
   type ThreadPromptEnvironmentGoneSection,
-  type ThreadPromptParentThreadSection,
 } from "./ThreadPromptContextBanner";
+import {
+  addSidebarThreads,
+  seedRelatedThread,
+} from "@/test/fixtures/related-threads";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
+import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import type { ThreadResponse } from "@bb/server-contract";
+import { sdk } from "@/lib/sdk";
 import { removePluginSlotRegistrations } from "@/lib/plugin-slots";
 import {
   GIT_SEGMENT_FIXTURE_PLUGIN_ID,
@@ -30,7 +38,8 @@ function Banner({
   gitSectionPending,
   archivedSection,
   environmentGoneSection,
-  parentThreadSection,
+  parentThread = false,
+  queryClient = new QueryClient(),
   childThreadsSection,
   expandedSection,
   onToggleSection,
@@ -39,29 +48,42 @@ function Banner({
   gitSectionPending: boolean;
   archivedSection: ThreadPromptArchivedSection | null;
   environmentGoneSection: ThreadPromptEnvironmentGoneSection | null;
-  parentThreadSection: ThreadPromptParentThreadSection | null;
+  parentThread?: boolean;
+  queryClient?: QueryClient;
   childThreadsSection: ThreadPromptChildThreadsSection | null;
   expandedSection: string | null;
   onToggleSection: (key: string) => void;
 }) {
   const isReadOnly =
     archivedSection !== null || environmentGoneSection !== null;
+  if (parentThread) {
+    seedRelatedThread(queryClient, {
+      threadId: "thr_1",
+      projectId: "proj_1",
+      related: {
+        id: "thr_parent",
+        title: "Parent thread",
+        relationship: "parent",
+      },
+    });
+  }
   return (
-    <GitSegmentFixtureProvider value={gitSectionPending ? null : gitSection}>
-      <ThreadChildThreadsBanner
-        childThreads={isReadOnly ? null : childThreadsSection}
-        isExpanded={expandedSection === CHILD_THREADS}
-        onExpandedChange={() => onToggleSection(CHILD_THREADS)}
-      />
-      <ThreadPromptContextBanner
-        input={{ threadId: "thr_1", projectId: "proj_1", environment: null }}
-        core={{ parentThread: parentThreadSection }}
-        archivedSection={archivedSection}
-        environmentGoneSection={environmentGoneSection}
-        expandedSegment={expandedSection}
-        onToggleSegment={onToggleSection}
-      />
-    </GitSegmentFixtureProvider>
+    <QueryClientProvider client={queryClient}>
+      <GitSegmentFixtureProvider value={gitSectionPending ? null : gitSection}>
+        <ThreadChildThreadsBanner
+          childThreads={isReadOnly ? null : childThreadsSection}
+          isExpanded={expandedSection === CHILD_THREADS}
+          onExpandedChange={() => onToggleSection(CHILD_THREADS)}
+        />
+        <ThreadPromptContextBanner
+          input={{ threadId: "thr_1", projectId: "proj_1", environment: null }}
+          archivedSection={archivedSection}
+          environmentGoneSection={environmentGoneSection}
+          expandedSegment={expandedSection}
+          onToggleSegment={onToggleSection}
+        />
+      </GitSegmentFixtureProvider>
+    </QueryClientProvider>
   );
 }
 
@@ -103,6 +125,111 @@ function makeGitSection(
 afterEach(() => {
   cleanup();
   removePluginSlotRegistrations(GIT_SEGMENT_FIXTURE_PLUGIN_ID);
+  vi.restoreAllMocks();
+});
+
+function parentLabels(): string[] {
+  return [...document.querySelectorAll("[title], [aria-label]")]
+    .map(
+      (element) =>
+        element.getAttribute("aria-label") ??
+        element.getAttribute("title") ??
+        "",
+    )
+    .filter((label) => label.startsWith("Parent "));
+}
+
+describe("parent thread segment data", () => {
+  it("shows nothing while a parent the sidebar lacks loads, and hides it once it reads as archived", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    addSidebarThreads(queryClient, "proj_1", [
+      makeThreadListEntry({
+        id: "thr_1",
+        projectId: "proj_1",
+        parentThreadId: "thr_parent",
+      }),
+    ]);
+    let resolveParent: (thread: ThreadResponse) => void = () => {};
+    vi.spyOn(sdk.threads, "get").mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveParent = resolve;
+        }),
+    );
+    render(
+      <MemoryRouter>
+        <Banner
+          queryClient={queryClient}
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={null}
+          environmentGoneSection={null}
+          childThreadsSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+    expect(sdk.threads.get).toHaveBeenCalledWith(
+      expect.objectContaining({ threadId: "thr_parent" }),
+    );
+    expect(parentLabels()).toEqual([]);
+
+    await act(async () => {
+      resolveParent(
+        makeThreadResponse({
+          id: "thr_parent",
+          projectId: "proj_1",
+          title: "Parent thread",
+          archivedAt: 1,
+        }),
+      );
+    });
+    expect(parentLabels()).toEqual([]);
+  });
+
+  it("reads an archived thread's parent when the sidebar holds neither", async () => {
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const threads: Record<string, ThreadResponse> = {
+      thr_1: makeThreadResponse({
+        id: "thr_1",
+        projectId: "proj_1",
+        parentThreadId: "thr_parent",
+        archivedAt: 1,
+      }),
+      thr_parent: makeThreadResponse({
+        id: "thr_parent",
+        projectId: "proj_1",
+        title: "Parent thread",
+      }),
+    };
+    vi.spyOn(sdk.threads, "get").mockImplementation(async ({ threadId }) => {
+      const thread = threads[threadId];
+      if (thread === undefined) throw new Error(`unknown ${threadId}`);
+      return thread;
+    });
+    render(
+      <MemoryRouter>
+        <Banner
+          queryClient={queryClient}
+          gitSection={null}
+          gitSectionPending={false}
+          archivedSection={{ archivedAt: 1 }}
+          environmentGoneSection={null}
+          childThreadsSection={null}
+          expandedSection={null}
+          onToggleSection={noop}
+        />
+      </MemoryRouter>,
+    );
+    expect(
+      await screen.findByRole("button", { name: "Parent Parent thread" }),
+    ).toBeTruthy();
+  });
 });
 
 function childThreadItem(
@@ -159,7 +286,6 @@ describe("ThreadPromptContextBanner", () => {
         gitSectionPending={false}
         archivedSection={{ archivedAt: 1_731_456_000_000 }}
         environmentGoneSection={null}
-        parentThreadSection={null}
         childThreadsSection={null}
         expandedSection={null}
         onToggleSection={noop}
@@ -186,7 +312,6 @@ describe("ThreadPromptContextBanner", () => {
           gitSectionPending={false}
           archivedSection={null}
           environmentGoneSection={{ status }}
-          parentThreadSection={null}
           childThreadsSection={null}
           expandedSection={null}
           onToggleSection={(section) => toggled.push(section)}
@@ -208,7 +333,6 @@ describe("ThreadPromptContextBanner", () => {
         gitSectionPending={false}
         archivedSection={null}
         environmentGoneSection={{ status: "cleanup-failed" }}
-        parentThreadSection={null}
         childThreadsSection={null}
         expandedSection="bb--core/status"
         onToggleSection={noop}
@@ -249,11 +373,7 @@ describe("ThreadPromptContextBanner", () => {
             gitSectionPending={false}
             archivedSection={archivedSection}
             environmentGoneSection={environmentGoneSection}
-            parentThreadSection={{
-              parentThreadTitle: "Parent thread",
-              href: "/threads/thr_parent",
-              relationship: "parent",
-            }}
+            parentThread
             childThreadsSection={null}
             expandedSection={null}
             onToggleSection={noop}
@@ -278,7 +398,6 @@ describe("ThreadPromptContextBanner", () => {
           onUnarchive: noop,
         }}
         environmentGoneSection={{ status: "destroyed", onRestore: noop }}
-        parentThreadSection={null}
         childThreadsSection={null}
         expandedSection={null}
         onToggleSection={noop}
@@ -298,7 +417,6 @@ describe("ThreadPromptContextBanner", () => {
         gitSectionPending={false}
         archivedSection={null}
         environmentGoneSection={{ status: "destroyed", onRestore: noop }}
-        parentThreadSection={null}
         childThreadsSection={null}
         expandedSection={null}
         onToggleSection={noop}
@@ -320,7 +438,6 @@ describe("ThreadPromptContextBanner", () => {
           onRestore: noop,
           restorePending: true,
         }}
-        parentThreadSection={null}
         childThreadsSection={null}
         expandedSection={null}
         onToggleSection={noop}
@@ -340,7 +457,6 @@ describe("ThreadPromptContextBanner", () => {
           gitSectionPending={false}
           archivedSection={null}
           environmentGoneSection={null}
-          parentThreadSection={null}
           childThreadsSection={{
             items: [childThreadItem("thr_child", "Investigate failing checks")],
             pendingInteractions: [],
@@ -372,7 +488,6 @@ describe("ThreadPromptContextBanner", () => {
           gitSectionPending={false}
           archivedSection={null}
           environmentGoneSection={null}
-          parentThreadSection={null}
           childThreadsSection={{
             items: [
               childThreadItem("thr_a", "Review the release notes", {
@@ -407,7 +522,6 @@ describe("ThreadPromptContextBanner", () => {
           gitSectionPending={false}
           archivedSection={null}
           environmentGoneSection={null}
-          parentThreadSection={null}
           childThreadsSection={{
             items: [
               childThreadItem("thr_blocked", "Install workspace tools", {
@@ -459,7 +573,6 @@ describe("ThreadPromptContextBanner", () => {
           gitSectionPending={gitSectionPending}
           archivedSection={null}
           environmentGoneSection={null}
-          parentThreadSection={null}
           childThreadsSection={{ items, pendingInteractions: [] }}
           expandedSection={null}
           onToggleSection={onToggleSection}
@@ -517,7 +630,6 @@ describe("ThreadPromptContextBanner", () => {
           environmentGoneSection={
             environmentGone ? { status: "destroyed" } : null
           }
-          parentThreadSection={null}
           childThreadsSection={{
             items: [
               childThreadItem("thr_blocked", "Install workspace tools", {
@@ -565,7 +677,6 @@ describe("ThreadPromptContextBanner", () => {
           gitSectionPending={false}
           archivedSection={null}
           environmentGoneSection={null}
-          parentThreadSection={null}
           childThreadsSection={{
             items,
             pendingInteractions: [],
@@ -601,7 +712,6 @@ describe("ThreadPromptContextBanner git section body", () => {
           gitSectionPending={false}
           archivedSection={null}
           environmentGoneSection={null}
-          parentThreadSection={null}
           childThreadsSection={null}
           expandedSection={expandedSection}
           onToggleSection={noop}

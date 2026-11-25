@@ -45,7 +45,12 @@ function publishEditor(
     closePopup: () => false,
     isPopupOpen: () => false,
     host: {
-      scope: { kind: "thread", threadId: "thr_1" },
+      scope: {
+        kind: "thread",
+        threadId: "thr_1",
+        projectId: "proj_test",
+        environmentId: null,
+      },
       textEffectKey: KEY,
       getCurrent: () => ({ text: "", mentions: [], attachments: [] }),
       subscribeDraft: () => () => {},
@@ -133,7 +138,12 @@ function makeTarget(
   let draft = initial;
   const target: ComposerSource = {
     textEffectKey: KEY,
-    scope: { kind: "thread", threadId: "thr_1" },
+    scope: {
+      kind: "thread",
+      threadId: "thr_1",
+      projectId: "proj_test",
+      environmentId: null,
+    },
     getCurrent: () => draft,
     setDraft: (next) => {
       draft = next;
@@ -225,6 +235,12 @@ describe("composer handle", () => {
     expect(() =>
       handle.insert({ provider: "bad:id", id: "x", label: "x" }, { at: "end" }),
     ).toThrow(/Invalid mention provider/);
+    expect(() =>
+      handle.insert(
+        { provider: "notes", id: "", label: "Note" },
+        { at: "end" },
+      ),
+    ).toThrow('Mention "Note" has an empty id.');
   });
 
   it("appends a cursor insert while the mounted editor is still initializing", () => {

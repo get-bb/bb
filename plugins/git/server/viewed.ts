@@ -1,4 +1,5 @@
 import {
+  experimental_BbHttpError,
   experimental_PluginRpcRefusal,
   type BbPluginApi,
 } from "@get-bb/plugin-sdk";
@@ -96,6 +97,18 @@ export function createGitViewed(
     await bb.storage.kv.delete(VIEWED_MARKS_FROM_CORE_KEY);
   }
 
+  async function environmentExists(environmentId: string): Promise<boolean> {
+    try {
+      await bb.sdk.environments.get({ environmentId });
+      return true;
+    } catch (error) {
+      if (error instanceof experimental_BbHttpError && error.status === 404) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
   async function forgetDeletedEnvironments(): Promise<void> {
     const marked = z
       .array(z.string())
@@ -105,18 +118,12 @@ export function createGitViewed(
           .pluck()
           .all(),
       );
-    if (marked.length === 0) return;
-    const [listed, destroyed] = await Promise.all([
-      bb.sdk.environments.list(),
-      bb.sdk.environments.list({ status: "destroyed" }),
-    ]);
-    const existing = new Set(
-      [...listed, ...destroyed].map((environment) => environment.id),
-    );
     const remove = db.prepare(
       "DELETE FROM viewed_files WHERE environment_id = ?",
     );
-    for (const id of marked) if (!existing.has(id)) remove.run(id);
+    for (const id of marked) {
+      if (!(await environmentExists(id))) remove.run(id);
+    }
   }
 
   const ready = importCoreMarks().catch((error: unknown) =>
@@ -125,7 +132,9 @@ export function createGitViewed(
   void ready
     .then(forgetDeletedEnvironments)
     .catch((error: unknown) =>
-      bb.log.warn(`Could not forget deleted environments' Viewed marks: ${String(error)}`),
+      bb.log.warn(
+        `Could not forget deleted environments' Viewed marks: ${String(error)}`,
+      ),
     );
 
   async function scopeKey(

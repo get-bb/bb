@@ -42,8 +42,7 @@ import {
   NO_THREADS_MESSAGE,
   ThreadListEmptyState,
 } from "@bb/shared-ui/thread-list-empty-state";
-import { getThreadRoutePath } from "@/lib/route-paths";
-import { openThreadInSplit } from "@/lib/split-layout/openThreadInSplit";
+import { openThread } from "@/lib/split-layout/openThread";
 import { splitLayoutAtom } from "@/lib/split-layout/atoms";
 import { countPanes, findPaneByContent, MAX_PANES } from "@/lib/split-layout";
 import {
@@ -62,6 +61,7 @@ import {
   PaletteShell,
   PaletteShortcut,
 } from "./PaletteShell";
+import { isImeComposing, isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 const GROUP_LIMIT = 6;
 const ARCHIVED_BESIDE_ACTIVE_LIMIT = 3;
@@ -313,24 +313,13 @@ export function ThreadSearchPaletteMode({
                 searchMessageSeq: row.messageSeq,
                 searchThreadId: row.threadId,
               };
-        if (split) {
-          openThreadInSplit({
-            store,
-            navigate,
-            projectId: row.projectId,
-            threadId: row.threadId,
-            isCompact,
-            state,
-          });
-          return;
-        }
-        navigate(
-          getThreadRoutePath({
-            projectId: row.projectId,
-            threadId: row.threadId,
-          }),
-          { state },
-        );
+        openThread({
+          navigate,
+          projectId: row.projectId,
+          threadId: row.threadId,
+          ...(split ? { split: { zone: "right", store, isCompact } } : {}),
+          ...(state === undefined ? {} : { state }),
+        });
       });
     },
     [isCompact, navigate, runAfterClose, store],
@@ -338,14 +327,14 @@ export function ThreadSearchPaletteMode({
 
   const handleInputKeyDown = useCallback(
     (event: ReactKeyboardEvent<HTMLInputElement>) => {
-      if (event.nativeEvent.isComposing) return;
+      if (isImeComposing(event)) return;
       if (event.key === "Backspace" && query.length === 0) {
         event.preventDefault();
         event.stopPropagation();
         onExit();
         return;
       }
-      if (event.key === "Escape") {
+      if (isNonImeKey(event, "Escape")) {
         event.preventDefault();
         event.stopPropagation();
         onExit();
@@ -370,7 +359,7 @@ export function ThreadSearchPaletteMode({
         highlightOption(event.key === "Home" ? 0 : options.length - 1);
         return;
       }
-      if (event.key === "Enter") {
+      if (isNonImeKey(event, "Enter")) {
         const option = options[activeIndex];
         if (option === undefined) return;
         event.preventDefault();

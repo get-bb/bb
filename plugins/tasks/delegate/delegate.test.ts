@@ -1,9 +1,11 @@
+import { experimental_BbHttpError } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it } from "vitest";
 import { createStore } from "../api";
+import { registerLifecycle } from "../lifecycle";
 import type { Comment, Project, Task } from "../db";
 import { delegationRpcContract } from "./contract";
 import { buildSeedPrompt, registerDelegation } from ".";
@@ -43,8 +45,6 @@ describe("task delegation", () => {
       sdk: {
         threads: {
           spawn: async () => ({ id: "thr_delegated" }),
-          get: async () =>
-            makeThreadResponse({ id: "thr_delegated", status: "starting" }),
         },
       },
     });
@@ -129,14 +129,21 @@ describe("task delegation", () => {
     await harness.dispose();
   });
 
-  it("corrects the attached row when a delegated thread becomes active immediately", async () => {
+  it("applies a delegated thread's transition that fires before spawn returns", async () => {
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",
       sdk: {
         threads: {
-          spawn: async () => ({ id: "thr_fast" }),
-          get: async () =>
-            makeThreadResponse({ id: "thr_fast", status: "active" }),
+          spawn: async () => {
+            const thread = makeThreadResponse({
+              id: "thr_fast",
+              status: "active",
+              createdAt: Date.now(),
+            });
+            void harness.emitThreadEvent("thread.active", { thread });
+            await new Promise((resolve) => setImmediate(resolve));
+            return thread;
+          },
         },
       },
     });
@@ -152,6 +159,7 @@ describe("task delegation", () => {
       title: "Transition during spawn",
     });
     registerDelegation(bb, store);
+    await registerLifecycle(bb, store);
     const preset = createTestPreset(store);
 
     await harness.callRpc("delegate", {
@@ -159,15 +167,14 @@ describe("task delegation", () => {
       presetId: preset.id,
     });
 
-    expect(harness.sdk.callsTo("threads.get")).toEqual([
-      [{ threadId: "thr_fast" }],
-    ]);
-    expect(store.tasks.listTaskThreads(task.id)).toEqual([
-      expect.objectContaining({
-        threadId: "thr_fast",
-        liveStatus: "working",
-      }),
-    ]);
+    await expect
+      .poll(() => store.tasks.listTaskThreads(task.id))
+      .toEqual([
+        expect.objectContaining({
+          threadId: "thr_fast",
+          liveStatus: "working",
+        }),
+      ]);
 
     await harness.dispose();
   });
@@ -178,8 +185,6 @@ describe("task delegation", () => {
       sdk: {
         threads: {
           spawn: async () => ({ id: "thr_wide_title" }),
-          get: async () =>
-            makeThreadResponse({ id: "thr_wide_title", status: "starting" }),
         },
       },
     });
@@ -216,8 +221,6 @@ describe("task delegation", () => {
       sdk: {
         threads: {
           spawn: async () => ({ id: "thr_worktree" }),
-          get: async () =>
-            makeThreadResponse({ id: "thr_worktree", status: "starting" }),
         },
       },
     });
@@ -272,11 +275,6 @@ describe("task delegation", () => {
         },
         threads: {
           spawn: async () => ({ id: "thr_default_worktree" }),
-          get: async () =>
-            makeThreadResponse({
-              id: "thr_default_worktree",
-              status: "starting",
-            }),
         },
       },
     });
@@ -321,9 +319,11 @@ describe("task delegation", () => {
   });
 
   it("maps a rejected worktree target to a friendly typed delegation error", async () => {
-    const spawnError = Object.assign(new Error("HTTP 404: Host not found"), {
-      code: "host_not_found",
+    const spawnError = new experimental_BbHttpError({
       status: 404,
+      code: "host_not_found",
+      message: "Host not found",
+      body: null,
     });
     const { bb, harness } = createFakePluginHost({
       pluginId: "tasks",

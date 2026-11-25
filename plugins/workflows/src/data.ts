@@ -248,6 +248,11 @@ export const migrations = [
   `CREATE INDEX workflow_runs_expiry_idx
      ON workflow_runs(finished_at + json_extract(settings_json, '$.retentionDays') * 86400000)
      WHERE status IN ('succeeded', 'failed', 'cancelled') AND notification_sent = 1;`,
+  `CREATE INDEX workflow_runs_resumed_from_idx ON workflow_runs(resumed_from_run_id)
+     WHERE resumed_from_run_id IS NOT NULL;
+   CREATE INDEX workflow_calls_replayed_from_idx ON workflow_calls(replayed_from_call_id)
+     WHERE replayed_from_call_id IS NOT NULL;
+   CREATE INDEX workflow_workers_run_idx ON workflow_workers(run_id);`,
 ];
 
 export function createRun(
@@ -676,6 +681,27 @@ export function attachCallThread(
   );
 }
 
+export function reopenFailedCallOnWorker(
+  db: Db,
+  callId: string,
+): WorkflowCallRow | null {
+  const changed = statement(
+    db,
+    `UPDATE workflow_calls SET status = 'running', error = NULL,
+       finished_at = NULL, last_activity_at = ?
+       WHERE id = ? AND status = 'failed' AND result_json IS NULL
+         AND child_thread_id IS NOT NULL
+         AND EXISTS (
+           SELECT 1 FROM workflow_runs
+           WHERE workflow_runs.id = workflow_calls.run_id
+             AND workflow_runs.status = 'running'
+         )`,
+  ).run(Date.now(), callId).changes;
+  return changed === 0
+    ? null
+    : optionalCall(statement(db, `${CALL_SELECT} WHERE id = ?`).get(callId));
+}
+
 export function queueCallProviderRetry(
   db: Db,
   callId: string,
@@ -832,6 +858,7 @@ export function listPendingNotificationRuns(
 const EXPIRED_TERMINAL_RUN_IDS_SQL = `WITH RECURSIVE retained(id, resumed_from_run_id) AS (
          SELECT id, resumed_from_run_id FROM workflow_runs
          WHERE status IN ('queued', 'running')
+           OR notification_sent = 0
            OR finished_at + json_extract(settings_json, '$.retentionDays') * 86400000 > ?
          UNION
          SELECT parent.id, parent.resumed_from_run_id

@@ -36,9 +36,14 @@ function Directive(props: PluginMessageDirectiveProps) {
   );
 }
 
-const registry = buildMessageDirectiveRegistry([
-  { id: "inline-vis", pluginId: "test", generation: 1, component: Directive },
-]);
+const registry = buildMessageDirectiveRegistry(
+  [{ id: "inline-vis", pluginId: "test", generation: 1, component: Directive }],
+  {
+    unclaimed: "literal",
+    picks: {},
+    boot: { bbPluginIds: new Set(), settledOnce: true },
+  },
+);
 
 function assistant(
   text: string,

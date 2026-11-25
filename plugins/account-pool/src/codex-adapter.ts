@@ -257,6 +257,7 @@ const usageResponseSchema = z
     rate_limit_reached_type: z.object({ type: z.string().min(1) }).nullish(),
     rate_limit: z
       .object({
+        allowed: z.boolean().nullish(),
         primary_window: usageWindowSchema.nullish(),
         secondary_window: usageWindowSchema.nullish(),
       })
@@ -268,6 +269,7 @@ const usageResponseSchema = z
 function windowFromUsage(
   slot: LimitWindowSlot,
   value: z.infer<typeof usageWindowSchema> | null | undefined,
+  allowed: boolean | null | undefined,
   now: number,
 ): LimitWindow | null {
   if (value === null || value === undefined) return null;
@@ -287,7 +289,7 @@ function windowFromUsage(
     windowMinutes: windowMinutesFromSeconds(value.limit_window_seconds),
     utilization,
     resetAt: reset,
-    status: utilization >= 1 ? "rejected" : "allowed",
+    status: allowed === false || utilization >= 1 ? "rejected" : "allowed",
     observedAt: now,
     source: "usage",
   };
@@ -332,8 +334,10 @@ export function codexQuotaFromUsage(
       reasonRestriction = null;
   }
   const restriction =
-    control?.reached === true ||
-    (individual != null && individual.remaining_percent <= 0)
+    (reasonRestriction === null ||
+      reasonRestriction.reason === "spend_control_reached") &&
+    (control?.reached === true ||
+      (individual != null && individual.remaining_percent <= 0))
       ? {
           reason: "spend_control_reached",
           resetAt:
@@ -361,10 +365,16 @@ export function codexQuotaFromUsage(
       data.rate_limit === undefined
         ? previous.limitWindows
         : orderedWindows([
-            windowFromUsage("primary", data.rate_limit?.primary_window, now),
+            windowFromUsage(
+              "primary",
+              data.rate_limit?.primary_window,
+              data.rate_limit?.allowed,
+              now,
+            ),
             windowFromUsage(
               "secondary",
               data.rate_limit?.secondary_window,
+              data.rate_limit?.allowed,
               now,
             ),
           ]),

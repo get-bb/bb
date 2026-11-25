@@ -28,7 +28,7 @@ thread-context action tab resolves against `experimental_newThreadPanelAction`
 with the same id. `toggleTab(options)` closes the panel when that tab is
 showing and otherwise opens it, and `close()` closes the panel. Commands,
 thread actions, message actions and panel actions receive the same controller
-as `experimental_panel`.
+as `panel`.
 
 Use `UrlLink` for a real anchor that applies BB's current
 in-app/external-browser preference on ordinary HTTP(S) activation, or
@@ -199,7 +199,9 @@ await scripts.lifecycle.dispose();
 ```
 
 `loadPluginApp` installs the runtime and validates all registrations; pass the
-imported module or a thunk. `@get-bb/plugin-sdk/app` exports look the runtime
+imported module or a thunk, and `{ hasServers: true }` to define the app as bb
+Desktop or the mobile app would (`experimental_hasServers()` is false
+otherwise). `@get-bb/plugin-sdk/app` exports look the runtime
 up when they are called or rendered, so a static import of `app.tsx` or of
 components works too. `mountPluginContentScripts` mirrors the host's ordered mount,
 rollback, independent per-window signal, and exact-once disposal. `renderSlot` supplies

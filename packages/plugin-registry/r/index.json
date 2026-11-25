@@ -138,6 +138,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "ime-keyboard",
+      "type": "registry:lib"
+    },
+    {
       "name": "inline-rename",
       "type": "registry:ui"
     },
@@ -167,6 +171,10 @@
     },
     {
       "name": "menubar",
+      "type": "registry:ui"
+    },
+    {
+      "name": "message-time",
       "type": "registry:ui"
     },
     {
@@ -314,6 +322,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "settings-section",
+      "type": "registry:ui"
+    },
+    {
       "name": "shared-resize-observer",
       "type": "registry:lib"
     },
@@ -419,6 +431,10 @@
     },
     {
       "name": "use-reorder-dnd",
+      "type": "registry:ui"
+    },
+    {
+      "name": "use-scroll-overflow-state",
       "type": "registry:ui"
     },
     {

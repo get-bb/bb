@@ -11,9 +11,8 @@ const base: ModelPickerToggleInput = {
   disabled: false,
   isFocusedPane: true,
   isSplitPane: true,
-  isPrimaryComposer: true,
+  isActiveComposer: true,
   caretInThisComposer: true,
-  caretInOtherComposer: false,
   editableOutsideComposer: false,
 };
 
@@ -29,9 +28,13 @@ describe("resolveModelPickerToggle", () => {
   });
 
   it("ignores panes that are not focused", () => {
-    expect(resolveModelPickerToggle({ ...base, isFocusedPane: false })).toBe(
-      "ignore",
-    );
+    expect(
+      resolveModelPickerToggle({
+        ...base,
+        isFocusedPane: false,
+        isActiveComposer: false,
+      }),
+    ).toBe("ignore");
   });
 
   it("closes only the focused pane's open picker", () => {
@@ -41,14 +44,10 @@ describe("resolveModelPickerToggle", () => {
     ).toBe("ignore");
   });
 
-  it("opens the composer under the caret regardless of split or primary", () => {
-    expect(
-      resolveModelPickerToggle({
-        ...base,
-        isPrimaryComposer: false,
-        isSplitPane: false,
-      }),
-    ).toBe("open");
+  it("opens the composer under the caret on a lone surface", () => {
+    expect(resolveModelPickerToggle({ ...base, isSplitPane: false })).toBe(
+      "open",
+    );
   });
 
   it("defers to a sibling composer the caret is actually in", () => {
@@ -56,7 +55,7 @@ describe("resolveModelPickerToggle", () => {
       resolveModelPickerToggle({
         ...base,
         caretInThisComposer: false,
-        caretInOtherComposer: true,
+        isActiveComposer: false,
       }),
     ).toBe("ignore");
   });
@@ -72,7 +71,7 @@ describe("resolveModelPickerToggle", () => {
       resolveModelPickerToggle({
         ...base,
         caretInThisComposer: false,
-        isPrimaryComposer: false,
+        isActiveComposer: false,
       }),
     ).toBe("ignore");
   });
@@ -94,11 +93,10 @@ describe("ownsModelPickerCycleChord", () => {
       for (const overrides of [
         {},
         { disabled: true },
-        { isFocusedPane: false },
+        { isFocusedPane: false, isActiveComposer: false },
         { caretInThisComposer: false },
         { caretInThisComposer: false, isSplitPane: false },
-        { caretInThisComposer: false, isPrimaryComposer: false },
-        { caretInThisComposer: false, caretInOtherComposer: true },
+        { caretInThisComposer: false, isActiveComposer: false },
       ]) {
         const input = { ...base, ...overrides, open };
         expect(ownsModelPickerCycleChord(input)).toBe(
@@ -133,6 +131,7 @@ describe("ownsModelPickerCycleChord", () => {
         ...base,
         open: true,
         isFocusedPane: false,
+        isActiveComposer: false,
       }),
     ).toBe(false);
   });

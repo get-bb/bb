@@ -17,14 +17,15 @@ const SKILL_ROOT_LABELS: Record<
 };
 
 export function skillScopeLabel(
-  skill: Pick<SkillSummary, "scope" | "provider">,
+  skill: Pick<SkillSummary, "scope" | "providers">,
   providerDisplayName?: string,
 ): string {
   if (skill.scope === "provider-user" || skill.scope === "provider-project") {
     const root = skill.scope === "provider-user" ? "user" : "project";
-    const provider = skill.provider;
+    const [provider, ...others] = skill.providers;
     const providerLabel =
-      providerDisplayName ?? (provider === null ? "Provider" : provider);
+      providerDisplayName ??
+      (provider === undefined || others.length > 0 ? "Shared" : provider);
     return `${providerLabel} · ${root}`;
   }
   return SKILL_ROOT_LABELS[skill.scope];

@@ -1,46 +1,58 @@
-import { resolveHostEnvironment } from "../hosts/host-environment.js";
-import { environmentHookOperations } from "@bb/db";
-import { eq } from "drizzle-orm";
+import {
+  finishEnvironmentHookOperation,
+  getEnvironmentHookOperation,
+  insertEnvironmentHookOperation,
+  restartEnvironmentHookOperation,
+} from "@bb/db";
+import type { ProvisioningTranscriptEntry } from "@bb/domain";
 import type { EnvironmentHookProgressMessage } from "@bb/host-daemon-contract";
 import type { PluginEnvironmentProviderProgress } from "@get-bb/plugin-sdk/environment-provider";
 import type { WorkSessionDeps } from "../../types.js";
+import { ApiError } from "../../errors.js";
+import { resolveHostEnvironment } from "../hosts/host-environment.js";
 import {
   callHostOnlineRpc,
   callHostOnlineRpcForWork,
 } from "../hosts/online-rpc.js";
+import { ENVIRONMENT_HOOK_TIMEOUT_MS } from "./environment-hook-timeout.js";
 
-export const ENVIRONMENT_HOOK_TIMEOUT_MS = 15 * 60 * 1000;
 const TRANSPORT_GRACE_MS = 6_000;
-const reports = new WeakMap<
+
+export type EnvironmentHookProgressSink = (
+  entry: ProvisioningTranscriptEntry,
+) => void;
+
+const sinks = new WeakMap<
   object,
-  Map<
-    string,
-    {
-      hostId: string;
-      report: PluginEnvironmentProviderProgress;
-    }
-  >
+  Map<string, { hostId: string; onProgress: EnvironmentHookProgressSink }>
 >();
+
+export function progressSinkForReport(
+  report: PluginEnvironmentProviderProgress,
+): EnvironmentHookProgressSink {
+  return (entry) => {
+    if (entry.type === "output") report.log(entry.text + "\n");
+    else if (entry.status !== "failed") report.step(entry.text);
+  };
+}
 
 export function registerEnvironmentProgressReport(
   deps: Pick<WorkSessionDeps, "db">,
   args: {
     hostId: string;
     operationId: string;
-    report: PluginEnvironmentProviderProgress;
+    onProgress: EnvironmentHookProgressSink;
   },
 ): () => void {
-  let active = reports.get(deps.db);
+  let active = sinks.get(deps.db);
   if (active === undefined) {
     active = new Map();
-    reports.set(deps.db, active);
+    sinks.set(deps.db, active);
   }
-  active.set(args.operationId, {
-    hostId: args.hostId,
-    report: args.report,
-  });
+  const registration = { hostId: args.hostId, onProgress: args.onProgress };
+  active.set(args.operationId, registration);
   return () => {
-    if (active.get(args.operationId)?.report === args.report)
+    if (active.get(args.operationId) === registration)
       active.delete(args.operationId);
   };
 }
@@ -50,12 +62,28 @@ export function reportEnvironmentHookProgress(
   hostId: string,
   progress: EnvironmentHookProgressMessage,
 ): void {
-  const active = reports.get(deps.db)?.get(progress.operationId);
+  const active = sinks.get(deps.db)?.get(progress.operationId);
   if (active === undefined || active.hostId !== hostId) return;
-  if (progress.entry.type === "output")
-    active.report.log(progress.entry.text + "\n");
-  else if (progress.entry.status !== "failed")
-    active.report.step(progress.entry.text);
+  const { entry } = progress;
+  active.onProgress({
+    type: entry.type,
+    key: entry.key,
+    text: entry.text,
+    ...(entry.status === null ? {} : { status: entry.status }),
+    ...(entry.startedAt === null ? {} : { startedAt: entry.startedAt }),
+    ...(entry.metadata === null ? {} : { metadata: entry.metadata }),
+  });
+}
+
+function isEnvironmentSetupScriptFailure(error: unknown): boolean {
+  return error instanceof ApiError && error.body.code === "setup_script_failed";
+}
+
+export function isEnvironmentHookOutcomeUnknown(error: unknown): boolean {
+  return (
+    error instanceof ApiError &&
+    error.body.code === "environment_hook_outcome_unknown"
+  );
 }
 
 export async function runEnvironmentHook(
@@ -65,45 +93,42 @@ export async function runEnvironmentHook(
     projectId: string;
     hostId: string;
     path: string;
-    kind: "teardown";
+    kind: "setup" | "teardown";
     resumeOnly: boolean;
-    report: PluginEnvironmentProviderProgress;
+    onProgress: EnvironmentHookProgressSink;
     signal: AbortSignal;
   },
 ): Promise<void> {
   args.signal.throwIfAborted();
-  const existing = deps.db
-    .select()
-    .from(environmentHookOperations)
-    .where(eq(environmentHookOperations.id, args.id))
-    .get();
-  if (existing?.finishedAt != null) return;
-  const operationId = args.id;
-  if (existing === undefined)
-    deps.db
-      .insert(environmentHookOperations)
-      .values({
-        id: args.id,
-        operationId,
-        hostId: args.hostId,
-        path: args.path,
-        kind: args.kind,
-        startedAt: Date.now(),
-      })
-      .run();
-  const unregister = registerEnvironmentProgressReport(deps, {
-    operationId,
+  const existing = getEnvironmentHookOperation(deps.db, args.id);
+  if (existing?.finishedAt != null && args.kind === "teardown") return;
+  const resuming = existing !== null && existing.finishedAt === null;
+  const contributedEnv = await resolveHostEnvironment(deps, {
     hostId: args.hostId,
-    report: args.report,
+    projectId: args.projectId,
+  });
+  if (existing === null)
+    insertEnvironmentHookOperation(deps.db, {
+      id: args.id,
+      hostId: args.hostId,
+      path: args.path,
+      kind: args.kind,
+      startedAt: Date.now(),
+    });
+  else if (!resuming)
+    restartEnvironmentHookOperation(deps.db, args.id, Date.now());
+  const unregister = registerEnvironmentProgressReport(deps, {
+    operationId: args.id,
+    hostId: args.hostId,
+    onProgress: args.onProgress,
   });
   const abort = (): void => {
-    void callHostOnlineRpc(deps, {
+    void cancelPendingEnvironmentHook(deps, {
+      id: args.id,
       hostId: args.hostId,
-      timeoutMs: TRANSPORT_GRACE_MS,
-      command: { type: "environment.hook.cancel", operationId },
     }).catch((error) =>
       deps.logger.warn(
-        { error, operationId },
+        { error, operationId: args.id },
         "Environment hook cancellation failed",
       ),
     );
@@ -116,23 +141,55 @@ export async function runEnvironmentHook(
       timeoutMs: ENVIRONMENT_HOOK_TIMEOUT_MS + TRANSPORT_GRACE_MS,
       command: {
         type: "environment.hook.run",
-        contributedEnv: await resolveHostEnvironment(deps, {
-          hostId: args.hostId,
-          projectId: args.projectId,
-        }),
-        resumeOnly: args.resumeOnly || existing !== undefined,
-        operationId,
+        contributedEnv,
+        resumeOnly: args.resumeOnly || resuming,
+        operationId: args.id,
         path: args.path,
         kind: args.kind,
         timeoutMs: ENVIRONMENT_HOOK_TIMEOUT_MS,
       },
     });
-    deps.db
-      .update(environmentHookOperations)
-      .set({ finishedAt: Date.now() })
-      .where(eq(environmentHookOperations.id, args.id))
-      .run();
+    finishEnvironmentHookOperation(deps.db, args.id, {
+      finishedAt: Date.now(),
+      error: null,
+    });
     args.signal.throwIfAborted();
+  } catch (error) {
+    if (isEnvironmentSetupScriptFailure(error))
+      finishEnvironmentHookOperation(deps.db, args.id, {
+        finishedAt: Date.now(),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    throw error;
+  } finally {
+    args.signal.removeEventListener("abort", abort);
+    unregister();
+  }
+}
+
+export async function runEnvironmentTeardownHook(
+  deps: WorkSessionDeps,
+  args: {
+    id: string;
+    projectId: string;
+    hostId: string;
+    path: string;
+    resumeOnly: boolean;
+    report: PluginEnvironmentProviderProgress;
+    signal: AbortSignal;
+  },
+): Promise<void> {
+  try {
+    await runEnvironmentHook(deps, {
+      id: args.id,
+      projectId: args.projectId,
+      hostId: args.hostId,
+      path: args.path,
+      kind: "teardown",
+      resumeOnly: args.resumeOnly,
+      onProgress: progressSinkForReport(args.report),
+      signal: args.signal,
+    });
   } catch (error) {
     await cancelPendingEnvironmentHook(deps, {
       id: args.id,
@@ -144,9 +201,6 @@ export async function runEnvironmentHook(
       { hostId: args.hostId, path: args.path, error: text },
       "Environment teardown hook failed; continuing removal",
     );
-  } finally {
-    args.signal.removeEventListener("abort", abort);
-    unregister();
   }
 }
 
@@ -155,11 +209,7 @@ export async function cancelPendingEnvironmentHook(
   args: { id: string; hostId: string },
 ): Promise<void> {
   const id = args.id;
-  const operation = deps.db
-    .select()
-    .from(environmentHookOperations)
-    .where(eq(environmentHookOperations.id, id))
-    .get();
+  const operation = getEnvironmentHookOperation(deps.db, id);
   if (operation?.finishedAt != null) return;
   const result = await callHostOnlineRpc(deps, {
     hostId: args.hostId,
@@ -173,12 +223,8 @@ export async function cancelPendingEnvironmentHook(
     throw new Error(
       "Environment hook outcome is unknown after interruption. Automatic cleanup is blocked; inspect the workspace before recovering it.",
     );
-  deps.db
-    .update(environmentHookOperations)
-    .set({
-      finishedAt: Date.now(),
-      error: "Environment hook cancelled",
-    })
-    .where(eq(environmentHookOperations.id, id))
-    .run();
+  finishEnvironmentHookOperation(deps.db, id, {
+    finishedAt: Date.now(),
+    error: "Environment hook cancelled",
+  });
 }

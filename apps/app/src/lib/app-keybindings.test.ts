@@ -40,6 +40,8 @@ const CONTEXT: AppCommandContext = {
   questionOpen: false,
   questionFocus: false,
   promptAvailable: false,
+  pluginPage: false,
+  settingsPage: false,
   splitActive: false,
   webSurface: false,
   macPlatform: false,
@@ -228,12 +230,50 @@ describe("app keybindings", () => {
         none: ["editableFocus", "terminalFocus"],
       },
     };
-    expect(matchesAppCommandContext(binding, CONTEXT)).toBe(true);
+    expect(matchesAppCommandContext(binding, CONTEXT, null)).toBe(true);
     expect(
-      matchesAppCommandContext(binding, { ...CONTEXT, editableFocus: true }),
+      matchesAppCommandContext(
+        binding,
+        { ...CONTEXT, editableFocus: true },
+        null,
+      ),
     ).toBe(false);
     expect(
-      matchesAppCommandContext(binding, { ...CONTEXT, mainSurface: false }),
+      matchesAppCommandContext(
+        binding,
+        { ...CONTEXT, mainSurface: false },
+        null,
+      ),
+    ).toBe(false);
+  });
+
+  it("scopes a plugin page binding to the focused page of the command's own plugin", () => {
+    const binding: AppKeybinding = {
+      command: "plugin:tasks/new-task",
+      desktopOnly: false,
+      shortcut: { ...MOD_N, key: "c", mod: false },
+      when: {
+        all: ["mainSurface", "pluginPage"],
+        none: ["modalOpen", "editableFocus"],
+      },
+    };
+    expect(matchesAppCommandContext(binding, CONTEXT, "tasks")).toBe(true);
+    expect(matchesAppCommandContext(binding, CONTEXT, null)).toBe(false);
+    expect(matchesAppCommandContext(binding, CONTEXT, "docs")).toBe(false);
+    expect(matchesAppCommandContext(binding, CONTEXT, "task")).toBe(false);
+    expect(
+      matchesAppCommandContext(
+        binding,
+        { ...CONTEXT, editableFocus: true },
+        "tasks",
+      ),
+    ).toBe(false);
+    expect(
+      matchesAppCommandContext(
+        binding,
+        { ...CONTEXT, modalOpen: true },
+        "tasks",
+      ),
     ).toBe(false);
   });
 

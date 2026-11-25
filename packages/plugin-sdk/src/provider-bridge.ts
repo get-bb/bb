@@ -183,6 +183,7 @@ export {
   bridgeRequestEnvelopeSchema,
   buildBridgeToolCallContent as experimental_buildBridgeToolCallContent,
   buildShellEnvOverrides,
+  buildProviderCliEnv as experimental_buildProviderCliEnv,
   createBridgeIo,
   createBridgeLineHandler,
   createPendingToolCallTracker,
@@ -227,6 +228,8 @@ export {
   toOptionalRecord,
   toOptionalString,
   toolPresentation as experimental_toolPresentation,
+  unansweredInteractionErrorMessage as experimental_unansweredInteractionErrorMessage,
+  unansweredInteractionWarning as experimental_unansweredInteractionWarning,
   versionFrom as experimental_versionFrom,
   webFetchPresentation as experimental_webFetchPresentation,
   webSearchPresentation as experimental_webSearchPresentation,
@@ -251,6 +254,9 @@ export type {
   ProviderRawEventDescription,
   ProviderRuntimeEvent,
   ProviderVisibilityMetadata,
+  UnansweredInteractionAnswer,
+  UnansweredInteractionCause,
+  UnansweredInteractionWarningArgs,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 
 /**
@@ -274,6 +280,14 @@ export { spawnPortableProcess as experimental_spawnPortableProcess } from "@bb/p
  * sends `signal` to the child. Use it in place of `child.kill(signal)`.
  */
 export { killPortableProcess as experimental_killPortableProcess } from "@bb/process-utils";
+
+/**
+ * Serializes one JSON-RPC message for a provider's stdin the way bb's runtime
+ * does, replacing any lone surrogate in a string with U+FFFD so strict JSON
+ * parsers such as Codex's accept the line. Experimental: see
+ * docs/api_to_audit.md.
+ */
+export { serializeJsonRpcLine as experimental_serializeJsonRpcLine } from "@bb/provider-bridge-protocol/bridge-kit";
 
 // ---------------------------------------------------------------------------
 // 4. The domain vocabulary the protocol's payloads reference

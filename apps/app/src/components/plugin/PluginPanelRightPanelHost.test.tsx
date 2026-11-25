@@ -222,6 +222,7 @@ vi.mock("@/components/commands/AppCommandProvider", () => ({
   ) => {
     appCommandHandlers.set(command, handler);
   },
+  useAppCommandFocusedPluginPage: () => undefined,
   useAppCommandShortcut: () => null,
 }));
 
@@ -255,7 +256,8 @@ function mockPluginSlotSnapshot() {
   };
 }
 
-vi.mock("@/lib/plugin-slots", () => ({
+vi.mock("@/lib/plugin-slots", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/plugin-slots")>()),
   usePluginSlotKind: (kind: string) =>
     Reflect.get(mockPluginSlotSnapshot(), kind),
 }));

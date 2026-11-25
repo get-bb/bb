@@ -350,52 +350,46 @@ class MemoryStore {
       createdAt: now,
       updatedAt: now,
     };
-    try {
-      this.db.transaction(() => {
-        this.db
-          .prepare(
-            `INSERT INTO memories (
-               id, scope, scope_key, project_id, name, summary, details, kind,
-               tags_json, importance, pinned, source_thread_id, write_reason,
-               version, created_at, updated_at, deleted_at
-             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
-          )
-          .run(
-            record.id,
-            record.scope,
-            scopeKey(record.scope, record.projectId),
-            record.projectId,
-            record.name,
-            record.summary,
-            record.details,
-            record.kind,
-            JSON.stringify(record.tags),
-            record.importance,
-            record.pinned ? 1 : 0,
-            record.sourceThreadId,
-            record.writeReason,
-            record.version,
-            record.createdAt,
-            record.updatedAt,
-          );
-        this.insertHistory(
-          record,
-          "create",
+    this.db.transaction(() => {
+      const inserted = this.db
+        .prepare(
+          `INSERT INTO memories (
+             id, scope, scope_key, project_id, name, summary, details, kind,
+             tags_json, importance, pinned, source_thread_id, write_reason,
+             version, created_at, updated_at, deleted_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+           ON CONFLICT(scope_key, name) WHERE deleted_at IS NULL DO NOTHING`,
+        )
+        .run(
+          record.id,
+          record.scope,
+          scopeKey(record.scope, record.projectId),
+          record.projectId,
+          record.name,
+          record.summary,
+          record.details,
+          record.kind,
+          JSON.stringify(record.tags),
+          record.importance,
+          record.pinned ? 1 : 0,
           record.sourceThreadId,
           record.writeReason,
+          record.version,
+          record.createdAt,
+          record.updatedAt,
         );
-      })();
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("UNIQUE constraint failed")
-      ) {
+      if (inserted.changes === 0) {
         throw new CliError(
           `an active ${record.scope} memory named "${record.name}" already exists`,
         );
       }
-      throw error;
-    }
+      this.insertHistory(
+        record,
+        "create",
+        record.sourceThreadId,
+        record.writeReason,
+      );
+    })();
     return record;
   }
 

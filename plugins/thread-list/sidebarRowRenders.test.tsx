@@ -76,13 +76,15 @@ const THREADS = [
 
 const onNavigate = (): void => undefined;
 
+const scrollElement = document.createElement("div");
+
 function props(activeThreadId: string): PluginThreadListProps {
   return {
     activeThreadId,
     activeProjectId: PERSONAL_PROJECT_ID,
     isCompactViewport: false,
+    experimental_scrollElement: scrollElement,
     onNavigate,
-    searchQuery: "",
   };
 }
 

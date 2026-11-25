@@ -18,6 +18,7 @@ import {
 import { connectPublicProtocol } from "@bb/connect-client";
 import type { HostDaemonLogger } from "../logger.js";
 import { webSocketAgent } from "../websocket-constructor.js";
+import type { ConnectGateTarget } from "../server-routes.js";
 
 const MACHINE_TUNNEL_HANDSHAKE_TIMEOUT_MS = 10_000;
 
@@ -42,9 +43,8 @@ export type ConnectTunnelFetch = (
 ) => Promise<Response>;
 
 interface ConnectTunnelClientOptions {
-  serverUrl: string;
+  gate: () => ConnectGateTarget | null;
   hostName: string;
-  machineCredential?: string;
   logger: HostDaemonLogger;
   onIdentity?: (identity: HostDaemonConnectTunnelIdentity) => void;
   onStatusChange?: (status: ConnectTunnelStatus) => void;
@@ -91,23 +91,6 @@ export function resolveTrustedConnectGate(
   };
 }
 
-export function isConnectNextBaseDomain(baseDomain: string): boolean {
-  return new URL(`https://${baseDomain}`).hostname.startsWith("next.");
-}
-
-function enrolledThroughConnectNext(serverUrl: string): boolean {
-  try {
-    return isConnectNextBaseDomain(
-      resolveTrustedConnectGate(serverUrl).baseDomain,
-    );
-  } catch {
-    return false;
-  }
-}
-
-export const CONNECT_NEXT_ENROLLMENT_MESSAGE =
-  "this machine joined through a connect next address, which has no bb connect machine tunnel; its shared ports answer through connect next";
-
 export function buildMachineTunnelUrl(
   identity: HostDaemonConnectTunnelIdentity,
 ): string {
@@ -132,8 +115,6 @@ export class ConnectTunnelClient {
   private readonly fetchFn: ConnectTunnelFetch;
   private readonly backoff: ReconnectBackoff;
   private readonly handshakeTimeoutMs: number;
-  private readonly machineCredential: string | undefined;
-  private readonly servedByNext: boolean;
   private generation = -1;
   private ports = new Set<number>();
   private identity: HostDaemonConnectTunnelIdentity | undefined;
@@ -160,20 +141,19 @@ export class ConnectTunnelClient {
     this.backoff = new ReconnectBackoff(options.reconnectBackoff);
     this.handshakeTimeoutMs =
       options.handshakeTimeoutMs ?? MACHINE_TUNNEL_HANDSHAKE_TIMEOUT_MS;
-    this.machineCredential =
-      options.machineCredential?.trim().length === 0
-        ? undefined
-        : options.machineCredential;
-    this.servedByNext = enrolledThroughConnectNext(options.serverUrl);
+  }
+
+  private machineCredential(): string | undefined {
+    const credential = this.options.gate()?.machineCredential;
+    return credential === undefined || credential.trim().length === 0
+      ? undefined
+      : credential;
   }
 
   status(): ConnectTunnelStatus {
     return {
       state: this.state,
-      lastError:
-        this.servedByNext && this.ports.size > 0
-          ? CONNECT_NEXT_ENROLLMENT_MESSAGE
-          : this.lastError,
+      lastError: this.lastError,
       credentialRejected: this.credentialRejected,
       generation: Math.max(this.generation, 0),
       ports: [...this.ports].sort((a, b) => a - b),
@@ -200,8 +180,9 @@ export class ConnectTunnelClient {
     if (this.identityPromise) {
       return this.identityPromise;
     }
-    const credential = this.machineCredential;
-    if (!credential) {
+    const gateTarget = this.options.gate();
+    const credential = gateTarget?.machineCredential;
+    if (gateTarget === null || !credential) {
       return Promise.reject(
         new Error(
           "this host has no trusted bb connect machine enrollment; remove and re-add it from Settings > Machines",
@@ -210,7 +191,7 @@ export class ConnectTunnelClient {
     }
     let gate: TrustedConnectGate;
     try {
-      gate = resolveTrustedConnectGate(this.options.serverUrl);
+      gate = resolveTrustedConnectGate(gateTarget.serverUrl);
     } catch (error) {
       return Promise.reject(error);
     }
@@ -300,9 +281,8 @@ export class ConnectTunnelClient {
   private hasConnectIntent(): boolean {
     return (
       !this.stopped &&
-      !this.servedByNext &&
       this.ports.size > 0 &&
-      this.machineCredential !== undefined &&
+      this.machineCredential() !== undefined &&
       !this.credentialRejected
     );
   }
@@ -350,7 +330,7 @@ export class ConnectTunnelClient {
   }
 
   private openTunnel(identity: HostDaemonConnectTunnelIdentity): void {
-    const credential = this.machineCredential;
+    const credential = this.machineCredential();
     if (!this.hasConnectIntent() || !credential) {
       return;
     }

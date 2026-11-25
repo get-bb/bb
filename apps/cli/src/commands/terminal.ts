@@ -14,10 +14,14 @@ import {
 } from "@bb/server-contract";
 import { action, CliExitError, CliUsageError } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import {
+  outputJson,
+  printJsonResult,
+  reportCommandResult,
+} from "../command-result.js";
 import { terminalScopeHint } from "../context-hints.js";
 import { durationHelp, parseDurationMs } from "../duration.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { outputJson } from "./helpers.js";
 import { resolveMachineHostId, resolveMachineTargetOption } from "./machine.js";
 import {
   DEFAULT_TERMINAL_WAIT_MAX_OUTPUT_BYTES,
@@ -265,8 +269,7 @@ export function registerTerminalCommands(
         const session = await createCliBbSdk(getUrl()).terminals.get({
           terminalId,
         });
-        if (outputJson(opts, session)) return;
-        console.log(JSON.stringify(session, null, 2));
+        printJsonResult(session);
       }),
     );
 
@@ -477,8 +480,24 @@ export function registerTerminalCommands(
           terminalId,
           mode: opts.ifClean ? "if-clean" : "force",
         });
-        if (outputJson(opts, session)) return;
-        console.log(`Closed terminal ${terminalId}`);
+        reportCommandResult(
+          opts,
+          session,
+          session.status === "exited"
+            ? { text: [`Closed terminal ${terminalId}`], failure: null }
+            : {
+                text: [],
+                failure: {
+                  message: opts.ifClean
+                    ? `Terminal ${terminalId} was left open because it received user input`
+                    : `Terminal ${terminalId} is still ${session.status}`,
+                  code: "terminal_not_closed",
+                  hint: opts.ifClean
+                    ? `Close it anyway with bb terminal close ${terminalId}.`
+                    : null,
+                },
+              },
+        );
       }),
     );
 

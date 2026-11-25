@@ -20,6 +20,8 @@ import {
   createThread,
   deleteThread,
   searchThreadsWithPendingInteractionState,
+  THREAD_SEARCH_COUNTED_MATCHES_MAX,
+  THREAD_SEARCH_RARE_SEGMENT_MAX,
   updateThread,
   upsertThreadSearchSegments,
 } from "../../src/data/threads.js";
@@ -644,7 +646,7 @@ describe("thread search data", () => {
     }
   });
 
-  it("limits and counts each group from one partitioned scan", () => {
+  it("limits and counts each group separately", () => {
     const { db, project } = setup();
     try {
       const activeIds: string[] = [];
@@ -670,8 +672,8 @@ describe("thread search data", () => {
         limitPerGroup: 2,
       });
 
-      expect(results.active.total).toBe(4);
-      expect(results.archived.total).toBe(4);
+      expect(results.active).toMatchObject({ total: 4, totalCapped: false });
+      expect(results.archived).toMatchObject({ total: 4, totalCapped: false });
       expect(results.active.results).toHaveLength(2);
       expect(results.archived.results).toHaveLength(2);
       for (const result of results.active.results) {
@@ -682,6 +684,140 @@ describe("thread search data", () => {
         expect(archivedIds).toContain(result.thread.id);
         expect(result.thread.archivedAt).not.toBeNull();
       }
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("stops counting a group's matches past the counted maximum", () => {
+    const { db, project } = setup();
+    try {
+      const threadIds = Array.from(
+        { length: THREAD_SEARCH_COUNTED_MATCHES_MAX + 1 },
+        (_, index) =>
+          createThread(db, noopNotifier, {
+            projectId: project.id,
+            providerId: "codex",
+            title: `capneedle ${index}`,
+          }).id,
+      );
+
+      const capped = searchThreadsWithPendingInteractionState(db, {
+        query: "capneedle",
+        limitPerGroup: 3,
+      });
+      expect(capped.active).toMatchObject({
+        total: THREAD_SEARCH_COUNTED_MATCHES_MAX,
+        totalCapped: true,
+      });
+      expect(capped.active.results).toHaveLength(3);
+      expect(capped.archived).toEqual({
+        total: 0,
+        totalCapped: false,
+        results: [],
+      });
+
+      deleteThread(db, noopNotifier, threadIds[0]!);
+      const exact = searchThreadsWithPendingInteractionState(db, {
+        query: "capneedle",
+        limitPerGroup: 3,
+      });
+      expect(exact.active).toMatchObject({
+        total: THREAD_SEARCH_COUNTED_MATCHES_MAX,
+        totalCapped: false,
+      });
+    } finally {
+      closeConnection(db);
+    }
+  });
+
+  it("matches the same threads whichever word is rare or common", () => {
+    const { db, project } = setup();
+    try {
+      const createTitledThread = (title: string) =>
+        createThread(db, noopNotifier, {
+          projectId: project.id,
+          providerId: "codex",
+          title,
+        });
+      const commonThreads = Array.from({ length: 8 }, (_, index) =>
+        createTitledThread(`busy ${index}`),
+      );
+      const bothThread = createTitledThread("both words");
+      const rareOnlyThread = createTitledThread("rare only");
+      const commonSegmentCount = THREAD_SEARCH_RARE_SEGMENT_MAX + 1;
+      upsertThreadSearchSegments(db, {
+        segments: Array.from({ length: commonSegmentCount }, (_, index) => {
+          const thread = commonThreads[index % commonThreads.length]!;
+          return {
+            threadId: thread.id,
+            sourceKind: "assistant_message" as const,
+            sourceKey: `event:${index + 1}`,
+            sourceSeq: index + 1,
+            text: `commonword reply ${index}`,
+          };
+        }),
+      });
+      upsertThreadSearchSegments(db, {
+        segments: [
+          {
+            threadId: bothThread.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "commonword in the request",
+          },
+          {
+            threadId: bothThread.id,
+            sourceKind: "assistant_message",
+            sourceKey: "event:2",
+            sourceSeq: 2,
+            text: "rareword in the reply",
+          },
+          {
+            threadId: rareOnlyThread.id,
+            sourceKind: "user_message",
+            sourceKey: "event:1",
+            sourceSeq: 1,
+            text: "rareword alone",
+          },
+        ],
+      });
+
+      for (const query of ["commonword rareword", "rareword commonword"]) {
+        const results = searchThreadsWithPendingInteractionState(db, {
+          query,
+          limitPerGroup: 20,
+        });
+        expect(results.active).toMatchObject({ total: 1, totalCapped: false });
+        expect(
+          results.active.results.map((result) => [
+            result.thread.id,
+            result.matches.map((match) => match.text),
+          ]),
+        ).toEqual([[bothThread.id, ["commonword in the request"]]]);
+      }
+
+      upsertThreadSearchSegments(db, {
+        segments: Array.from({ length: commonSegmentCount }, (_, index) => {
+          const thread = commonThreads[index % commonThreads.length]!;
+          return {
+            threadId: thread.id,
+            sourceKind: "user_message" as const,
+            sourceKey: `event:${commonSegmentCount + index + 1}`,
+            sourceSeq: commonSegmentCount + index + 1,
+            text: `rareword request ${index}`,
+          };
+        }),
+      });
+      const common = searchThreadsWithPendingInteractionState(db, {
+        query: "commonword rareword",
+        limitPerGroup: 20,
+      });
+      expect(common.active.total).toBe(commonThreads.length + 1);
+      expect(
+        new Set(common.active.results.map((result) => result.thread.id)),
+      ).toEqual(new Set([...commonThreads, bothThread].map((thread) => thread.id)));
     } finally {
       closeConnection(db);
     }

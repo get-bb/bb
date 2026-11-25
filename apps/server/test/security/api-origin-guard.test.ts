@@ -81,7 +81,7 @@ describe("/api/v1 browser origin guard", () => {
     ).not.toBe(415);
 
     const sdk = createNodeBbSdk({ baseUrl: server.baseUrl });
-    await expect(sdk.threads.list()).resolves.toBeDefined();
+    await expect(sdk.threads.list({ limit: 1 })).resolves.toBeDefined();
   });
 
   it("rejects rebinding hosts before API, internal, asset, and preflight handling", async () => {

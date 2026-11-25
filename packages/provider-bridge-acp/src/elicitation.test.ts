@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { planAcpElicitation } from "./elicitation.js";
 
+function planGeneric(params: unknown) {
+  return planAcpElicitation(params, { descriptionIsHeading: false });
+}
+
+function planOmp(params: unknown) {
+  return planAcpElicitation(params, { descriptionIsHeading: true });
+}
+
 function form(
   properties: Record<string, unknown>,
   message = "Pick a plan",
@@ -63,7 +71,7 @@ function questions(plan: ReturnType<typeof planAcpElicitation>) {
 describe("planAcpElicitation", () => {
   it("turns each field kind into a question and decodes the answers back to typed content", () => {
     const plan = questions(
-      planAcpElicitation(
+      planGeneric(
         form({
           strategy: {
             type: "string",
@@ -155,26 +163,27 @@ describe("planAcpElicitation", () => {
     });
   });
 
-  it("declines when an answer does not fit its field", () => {
-    const plan = questions(
-      planAcpElicitation(form({ retries: { type: "integer" } })),
-    );
+  it("reports an answer that does not fit its field instead of declining for the user", () => {
+    const plan = questions(planGeneric(form({ retries: { type: "integer" } })));
+    const unmappable = {
+      unmappable: 'the answer to "retries" does not fit that field',
+    };
     for (const freeText of ["many", "2.5"]) {
       expect(
         plan.toResponse({
           kind: "user_answer",
           answers: { retries: { selected: [], freeText } },
         }),
-      ).toEqual({ action: "decline" });
+      ).toEqual(unmappable);
     }
-    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
-      action: "decline",
-    });
+    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual(
+      unmappable,
+    );
   });
 
   it("asks for a typed answer when a choice has more options than the card can list, and matches it by value or label", () => {
     const plan = questions(
-      planAcpElicitation(
+      planGeneric(
         form({
           branch: {
             type: "string",
@@ -201,11 +210,11 @@ describe("planAcpElicitation", () => {
         kind: "user_answer",
         answers: { branch: { selected: [], freeText: "staging" } },
       }),
-    ).toEqual({ action: "decline" });
+    ).toEqual({ unmappable: 'the answer to "branch" does not fit that field' });
   });
 
   it("shows a form without fields as accept or decline", () => {
-    const plan = questions(planAcpElicitation(form({}, "Deploy now?")));
+    const plan = questions(planGeneric(form({}, "Deploy now?")));
     expect(plan.payload.questions).toMatchObject([
       {
         prompt: "Deploy now?",
@@ -224,11 +233,14 @@ describe("planAcpElicitation", () => {
         answers: { confirm: { selected: ["decline"] } },
       }),
     ).toEqual({ action: "decline" });
+    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
+      unmappable: "the answer was neither Accept nor Decline",
+    });
   });
 
   it("folds an omp choice and its optional __other text field into one question (#6031)", () => {
     const plan = questions(
-      planAcpElicitation({
+      planGeneric({
         sessionId: "s1",
         mode: "form",
         message: "Answer 1 question",
@@ -267,9 +279,93 @@ describe("planAcpElicitation", () => {
     });
   });
 
+  it("shows omp's lone question once when it is both the message and the field title", () => {
+    const plan = questions(
+      planGeneric({
+        sessionId: "s1",
+        mode: "form",
+        message: "What goes into this change?",
+        requestedSchema: {
+          type: "object",
+          properties: {
+            q0: {
+              type: "array",
+              title: "What goes into this change?",
+              description: "Search fixes",
+              items: {
+                anyOf: [
+                  { const: "Quick fixes", title: "Quick fixes" },
+                  { const: "Big indexes", title: "Big indexes" },
+                ],
+              },
+            },
+            q0__other: { type: "string", title: "Other (type your own)" },
+          },
+        },
+      }),
+    );
+    expect(plan.payload.questions[0]?.prompt).toBe(
+      "What goes into this change?\nSearch fixes",
+    );
+  });
+
+  it("heads omp's question with its field description and keeps each option's description (#7111)", () => {
+    const question = "Which color theme should this demo use?";
+    const plan = questions(
+      planOmp({
+        sessionId: "s1",
+        mode: "form",
+        message: question,
+        requestedSchema: {
+          type: "object",
+          properties: {
+            q0: {
+              type: "string",
+              title: question,
+              description: "Theme",
+              oneOf: [
+                {
+                  const: "Light",
+                  title: "Light",
+                  description: "Use a light background and dark text.",
+                },
+                { const: "Dark", title: "Dark", description: "  " },
+              ],
+            },
+            q0__other: { type: "string", title: "Other (type your own)" },
+          },
+        },
+      }),
+    );
+    expect(plan.payload.questions).toEqual([
+      {
+        id: "q0",
+        prompt: question,
+        shortLabel: "Theme",
+        multiSelect: false,
+        options: [
+          {
+            value: "Light",
+            label: "Light",
+            description: "Use a light background and dark text.",
+          },
+          { value: "Dark", label: "Dark" },
+        ],
+        allowFreeText: true,
+        required: false,
+      },
+    ]);
+    expect(
+      plan.toResponse({
+        kind: "user_answer",
+        answers: { q0: { selected: [], freeText: "Sepia" } },
+      }),
+    ).toEqual({ action: "accept", content: { q0__other: "Sepia" } });
+  });
+
   it("folds a multi-select and its __other field, returning both the picks and the typed text", () => {
     const plan = questions(
-      planAcpElicitation(
+      planGeneric(
         form(
           {
             q0: {
@@ -299,7 +395,7 @@ describe("planAcpElicitation", () => {
 
   it("folds a Droid choice and its _other field, hiding the other option and keeping the choice required (#6131)", () => {
     const plan = questions(
-      planAcpElicitation({
+      planGeneric({
         sessionId: "s1",
         mode: "form",
         message: "Droid needs your answers to continue.",
@@ -344,7 +440,7 @@ describe("planAcpElicitation", () => {
 
   it("shows a four-question Droid form as four questions (#6131)", () => {
     const plan = questions(
-      planAcpElicitation({
+      planGeneric({
         sessionId: "s1",
         mode: "form",
         message: "Droid needs your answers to continue.",
@@ -370,7 +466,7 @@ describe("planAcpElicitation", () => {
 
   it("lists every option when hiding the other value brings a choice within the card's limit", () => {
     const plan = questions(
-      planAcpElicitation(
+      planGeneric(
         form(
           {
             pick: {
@@ -427,7 +523,7 @@ describe("planAcpElicitation", () => {
     "keeps the companion separate when $reason",
     ({ choice, companion, required }) => {
       const plan = questions(
-        planAcpElicitation(
+        planGeneric(
           form({ choice, choice_other: companion }, "Pick a plan", required),
         ),
       );
@@ -440,7 +536,7 @@ describe("planAcpElicitation", () => {
 
   it("does not treat an option labelled Other as the other value", () => {
     const plan = questions(
-      planAcpElicitation(
+      planGeneric(
         form(
           {
             choice: {
@@ -477,7 +573,7 @@ describe("planAcpElicitation", () => {
 
   it("lets fields missing from requestedSchema.required be left blank and leaves them out of the content (#6131)", () => {
     const plan = questions(
-      planAcpElicitation(
+      planGeneric(
         form(
           {
             strategy: { type: "string", enum: ["fast", "safe"] },
@@ -509,24 +605,22 @@ describe("planAcpElicitation", () => {
 
   it("counts questions after folding against the limit (#6266, #6508)", () => {
     expect(
-      questions(planAcpElicitation(form(ompQuestions(10), "Pick", []))).payload
+      questions(planGeneric(form(ompQuestions(10), "Pick", []))).payload
         .questions,
     ).toHaveLength(10);
-    expect(planAcpElicitation(form(ompQuestions(11), "Pick", []))).toEqual({
+    expect(planGeneric(form(ompQuestions(11), "Pick", []))).toEqual({
       kind: "unsupported",
       reason: "bb shows at most 10 questions and this form has 11",
     });
   });
 
   it("refuses forms it cannot show, with the reason", () => {
-    expect(
-      planAcpElicitation({ mode: "url", url: "https://example.com" }),
-    ).toEqual({
+    expect(planGeneric({ mode: "url", url: "https://example.com" })).toEqual({
       kind: "unsupported",
       reason: 'bb does not offer the "url" elicitation mode',
     });
     expect(
-      planAcpElicitation(
+      planGeneric(
         form(
           Object.fromEntries(
             Array.from({ length: 11 }, (_, index) => [
@@ -540,7 +634,7 @@ describe("planAcpElicitation", () => {
       kind: "unsupported",
       reason: "bb shows at most 10 questions and this form has 11",
     });
-    expect(planAcpElicitation(form({ nested: { type: "object" } }))).toEqual({
+    expect(planGeneric(form({ nested: { type: "object" } }))).toEqual({
       kind: "unsupported",
       reason: 'bb cannot show the field "nested"',
     });

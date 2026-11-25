@@ -246,7 +246,14 @@ class Machine {
   readonly failures: string[] = [];
   readonly hostEntries = new Map<string, HostHarness>();
   private readonly holds: Hold[] = [];
-  private readonly pendingSetups = new Map<string, () => void>();
+  private readonly pendingAttaches = new Map<string, () => void>();
+  private readonly setupHooks = new Map<
+    string,
+    {
+      cancel: () => void;
+      done: Promise<"ok" | "cancelled" | { failed: string }>;
+    }
+  >();
   private readonly unresolvedSetups = new Map<string, string>();
   private turnCount = 0;
 
@@ -380,7 +387,27 @@ class Machine {
         const command = hostDaemonRpcCommandSchema.parse(message.command);
         const requestId = message.requestId;
         if (command.type === "environment.attach") {
-          void this.runSetup(sessionId, requestId, command);
+          void this.runAttach(sessionId, requestId, command);
+          return;
+        }
+        if (
+          command.type === "environment.hook.run" &&
+          command.kind === "setup"
+        ) {
+          void this.runSetupHook(sessionId, requestId, command);
+          return;
+        }
+        if (
+          command.type === "environment.hook.cancel" &&
+          command.operationId.endsWith(":setup")
+        ) {
+          const hook = this.setupHooks.get(command.operationId);
+          hook?.cancel();
+          void (hook?.done ?? Promise.resolve()).then(() =>
+            this.respond(sessionId, requestId, command, {
+              status: hook === undefined ? "unknown" : "terminated",
+            }),
+          );
           return;
         }
         if (command.type === "thread.start") {
@@ -394,7 +421,7 @@ class Machine {
           return;
         }
         if (command.type === "environment.attach.cancel") {
-          const cancel = this.pendingSetups.get(command.environmentId);
+          const cancel = this.pendingAttaches.get(command.environmentId);
           cancel?.();
           this.respond(sessionId, requestId, command, {
             aborted: cancel !== undefined,
@@ -453,7 +480,77 @@ class Machine {
     });
   }
 
-  private async runSetup(
+  private async runSetupHook(
+    sessionId: string,
+    requestId: string,
+    command: Extract<HostDaemonRpcCommand, { type: "environment.hook.run" }>,
+  ): Promise<void> {
+    let hook = this.setupHooks.get(command.operationId);
+    if (hook === undefined) {
+      if (command.resumeOnly) {
+        this.reject(
+          sessionId,
+          requestId,
+          command,
+          "environment_hook_outcome_unknown",
+          "Environment hook outcome is unknown after daemon restart",
+        );
+        return;
+      }
+      const environmentId = command.operationId.split(":")[1]!;
+      const startedBy = this.unresolvedSetups.get(environmentId);
+      if (startedBy !== undefined && startedBy !== this.instanceId)
+        this.world.reportSetupRerun(environmentId);
+      this.unresolvedSetups.set(environmentId, this.instanceId);
+      const interrupted = deferred();
+      let cancelled = false;
+      const instanceId = this.instanceId;
+      const done = this.track(
+        "setup",
+        async () => (cancelled ? ("cancelled" as const) : ("ok" as const)),
+        interrupted.promise,
+      )
+        .then(
+          (outcome) => (cancelled ? ("cancelled" as const) : outcome),
+          (error: unknown) => ({
+            failed: error instanceof Error ? error.message : String(error),
+          }),
+        )
+        .finally(() => {
+          if (this.instanceId === instanceId)
+            this.unresolvedSetups.delete(environmentId);
+        });
+      hook = {
+        cancel: () => {
+          cancelled = true;
+          interrupted.resolve();
+        },
+        done,
+      };
+      this.setupHooks.set(command.operationId, hook);
+    }
+    const outcome = await hook.done;
+    if (sessionId !== this.sessionId) return;
+    if (outcome === "ok") this.respond(sessionId, requestId, command, {});
+    else if (outcome === "cancelled")
+      this.reject(
+        sessionId,
+        requestId,
+        command,
+        "provision_cancelled",
+        ".bb-env-setup.sh cancelled",
+      );
+    else
+      this.reject(
+        sessionId,
+        requestId,
+        command,
+        "setup_script_failed",
+        outcome.failed,
+      );
+  }
+
+  private async runAttach(
     sessionId: string,
     requestId: string,
     command: Extract<HostDaemonRpcCommand, { type: "environment.attach" }>,
@@ -464,15 +561,9 @@ class Machine {
       cancelled = true;
       interrupted.resolve();
     };
-    this.pendingSetups.set(command.environmentId, cancel);
-    if (command.setupScriptTimeoutMs !== null) {
-      const startedBy = this.unresolvedSetups.get(command.environmentId);
-      if (startedBy !== undefined && startedBy !== this.instanceId)
-        this.world.reportSetupRerun(command.environmentId);
-      this.unresolvedSetups.set(command.environmentId, this.instanceId);
-    }
+    this.pendingAttaches.set(command.environmentId, cancel);
     const outcome = await this.track(
-      "setup",
+      "attach",
       async () => {
         if (sessionId !== this.sessionId) return null;
         if (cancelled) return "cancelled" as const;
@@ -523,11 +614,10 @@ class Machine {
         error instanceof Error ? error.message : String(error),
       )
       .finally(() => {
-        if (this.pendingSetups.get(command.environmentId) === cancel)
-          this.pendingSetups.delete(command.environmentId);
+        if (this.pendingAttaches.get(command.environmentId) === cancel)
+          this.pendingAttaches.delete(command.environmentId);
       });
     if (outcome === null || sessionId !== this.sessionId) return;
-    this.unresolvedSetups.delete(command.environmentId);
     if (outcome === "cancelled") {
       this.reject(
         sessionId,
@@ -539,13 +629,7 @@ class Machine {
       return;
     }
     if (typeof outcome === "string") {
-      this.reject(
-        sessionId,
-        requestId,
-        command,
-        "setup_script_failed",
-        outcome,
-      );
+      this.reject(sessionId, requestId, command, "command_failed", outcome);
       return;
     }
     this.respond(sessionId, requestId, command, outcome);
@@ -607,7 +691,11 @@ class Machine {
   }
 
   async reconnect(args: { restarted: boolean }): Promise<void> {
-    if (args.restarted) this.instanceId = `${this.instanceId}-restarted`;
+    if (args.restarted) {
+      this.instanceId = `${this.instanceId}-restarted`;
+      for (const hook of this.setupHooks.values()) hook.cancel();
+      this.setupHooks.clear();
+    }
     const harness = this.world.harness;
     const response = await harness.app.request("/internal/session/open", {
       method: "POST",
@@ -1079,17 +1167,12 @@ class World {
           this.createThread(first, this.checkoutRequest("a", "path")),
         ];
         await firstAttach.reached;
-        const secondAttach = this.machine().hold(attach);
         creating.push(
           this.createThread(second, this.checkoutRequest("a", "path")),
-        );
-        firstAttach.release();
-        await secondAttach.reached;
-        creating.push(
           this.createThread(third, this.checkoutRequest("a", "path")),
         );
         await delay(100);
-        secondAttach.release();
+        firstAttach.release();
         await Promise.all(creating);
       },
     );

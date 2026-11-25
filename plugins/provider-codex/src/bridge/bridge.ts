@@ -9,7 +9,6 @@ import {
   type PromptInput,
   type ThreadDelta,
   type ProviderRateLimitState,
-  sanitizeInheritedChildProcessEnv,
   BRIDGE_INBOUND_REQUEST_METHODS,
   BRIDGE_JSON_RPC_ERRORS,
   BRIDGE_NOTIFICATION_METHODS,
@@ -40,17 +39,21 @@ import {
   createBridgeLineHandler,
   decodeBridgeJsonRpcResponse,
   runBridgeRequest,
-  withoutBridgeRuntimeEnv,
+  experimental_buildProviderCliEnv as buildProviderCliEnv,
   type BridgeJsonRpcResponse,
   type DecodedInteractiveRequest,
   type PreparedProviderCommandDispatch,
   type ProviderRuntimeEvent,
   experimental_defineProviderBridge,
+  experimental_unansweredInteractionErrorMessage,
+  experimental_unansweredInteractionWarning,
   experimental_compareVersions as compareVersions,
+  type UnansweredInteractionCause,
   experimental_versionFrom as versionFrom,
   type ProviderRecoveryHint,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { z } from "zod";
+import { resumeWithProviderMigration } from "./provider-migration.js";
 import {
   CODEX_GOAL_EXTENSION_KIND,
   CODEX_MACOS_PERMISSION_EXTENSION_KIND,
@@ -63,6 +66,8 @@ import {
   buildCodexInteractiveResult,
   decodeCodexInteractiveRequest,
   extractCodexMacOsPermissionRequest,
+  isCodexQuestionRequestMethod,
+  type CodexInteractiveResponse,
   type CodexMacOsPermissionRequest,
 } from "../interactive-requests.js";
 import {
@@ -267,12 +272,23 @@ let runtimeRequestIdCounter = 0;
 function sendRuntimeRequest(
   method: string,
   params: Record<string, unknown>,
+  signal: AbortSignal,
 ): Promise<unknown> {
+  signal.throwIfAborted();
   runtimeRequestIdCounter += 1;
   const requestId = runtimeRequestIdCounter;
   const responsePromise = new Promise<unknown>(
     (resolveResponse, rejectResponse) => {
+      const abort = (): void => {
+        if (!pendingRuntimeRequests.delete(requestId)) return;
+        sendNotification(BRIDGE_NOTIFICATION_METHODS.requestCancelled, {
+          requestId,
+        });
+        rejectResponse(new Error("codex withdrew the request"));
+      };
+      signal.addEventListener("abort", abort, { once: true });
       pendingRuntimeRequests.set(requestId, (response) => {
+        signal.removeEventListener("abort", abort);
         if ("error" in response) {
           rejectResponse(
             new Error(response.error.message ?? "Runtime request failed"),
@@ -291,12 +307,6 @@ const CODEX_APP_SERVER_COMMAND_ENV = "BB_CODEX_BRIDGE_APP_SERVER_COMMAND";
 const CODEX_APP_SERVER_ARGS_ENV = "BB_CODEX_BRIDGE_APP_SERVER_ARGS";
 const CODEX_POOL_BASE_URL_ENV = "CODEX_OPENAI_BASE_URL";
 const CODEX_POOL_AUTH_TOKEN_ENV = "CODEX_POOL_AUTH_TOKEN";
-const CODEX_HOME_ENV = "CODEX_HOME";
-const APP_SERVER_LAUNCH_ENV_NAMES = [
-  CODEX_POOL_BASE_URL_ENV,
-  CODEX_POOL_AUTH_TOKEN_ENV,
-  CODEX_HOME_ENV,
-] as const;
 
 const CODEX_INITIALIZE_PARAMS = {
   clientInfo: { name: "bb", version: "1.0.0", title: null },
@@ -361,7 +371,7 @@ async function delay(ms: number): Promise<void> {
 const MISSING_CODEX_CLI_GUIDANCE =
   "bb could not find the Codex CLI on this machine. Install Codex (https://developers.openai.com/codex/cli) or put `codex` on PATH, then retry.";
 
-export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
+export function resolveAppServerLaunch(env: NodeJS.ProcessEnv): {
   command: string;
   args: string[];
 } {
@@ -380,8 +390,6 @@ export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
     args: [
       ...args,
       "-c",
-      `openai_base_url=${JSON.stringify(poolBaseUrl)}`,
-      "-c",
       'model_provider="bb-account-pool"',
       "-c",
       'model_providers.bb-account-pool.name="OpenAI"',
@@ -397,27 +405,6 @@ export function resolveAppServerLaunch(env: NodeJS.ProcessEnv = process.env): {
       'model_providers.bb-account-pool.env_http_headers.x-bb-account-pool-token="CODEX_POOL_AUTH_TOKEN"',
     ],
   };
-}
-
-function appServerLaunchEnv(
-  envVars: Readonly<Record<string, string>> | undefined,
-): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...process.env };
-  for (const name of APP_SERVER_LAUNCH_ENV_NAMES) {
-    const value = envVars?.[name];
-    if (value !== undefined) env[name] = value;
-  }
-  return env;
-}
-
-function buildAppServerEnv(
-  envVars: Readonly<Record<string, string>> | undefined,
-): NodeJS.ProcessEnv {
-  return withoutBridgeRuntimeEnv(
-    sanitizeInheritedChildProcessEnv({
-      env: appServerLaunchEnv(envVars),
-    }),
-  );
 }
 
 function isCodexSpawnFailure(error: unknown): boolean {
@@ -478,6 +465,7 @@ interface CodexBridgeSession {
   translator: CodexEventTranslator;
   construction: CodexSessionConstruction;
   constructionSignature: string;
+  grantedWriteRoots: string[];
   environmentHash: string;
   turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
   openCodexTurnIds: Set<string>;
@@ -498,6 +486,8 @@ interface CodexBridgeSession {
   previousChildExit: Promise<void> | null;
   releasePromise: Promise<void> | null;
   goalStatus: CodexGoalStatus | null;
+  stopsRequested: number;
+  pendingChildRequests: Map<string | number, AbortController>;
 }
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
@@ -531,6 +521,7 @@ function releaseSession(session: CodexBridgeSession): Promise<void> {
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
+  withdrawChildRequests(session, session.pendingChildRequests.keys());
   const previousChildExit = session.previousChildExit;
   session.previousChildExit = null;
   const currentChildExit = session.connection?.kill() ?? Promise.resolve();
@@ -713,6 +704,10 @@ function toProviderRuntimeEvent(
   } as ProviderRuntimeEvent;
 }
 
+const codexServerRequestResolvedSchema = z
+  .object({ requestId: z.union([z.string(), z.number()]) })
+  .passthrough();
+
 async function handleChildNotification(
   bbThreadId: string,
   serial: number,
@@ -731,6 +726,12 @@ async function handleChildNotification(
   }
   if (method === "thread/status/changed") {
     settleCompactionDispatchesWhenCodexIsNotRunning(session, params);
+  }
+  if (method === "serverRequest/resolved") {
+    const parsed = codexServerRequestResolvedSchema.safeParse(params);
+    if (parsed.success) {
+      withdrawChildRequests(session, [parsed.data.requestId]);
+    }
   }
   if (method === "turn/started") {
     const parsed = codexTurnNotificationPeekSchema.safeParse(params);
@@ -844,23 +845,30 @@ function handleChildRequest(
       );
       return;
     }
-    void sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.toolCall, {
-      providerThreadId: session.codexThreadId ?? parsed.data.threadId,
-      threadId: session.bbThreadId,
-      turnId: parsed.data.turnId,
-      callId: parsed.data.callId,
-      tool: parsed.data.tool,
-      arguments: parsed.data.arguments ?? {},
-    })
+    const signal = trackChildRequest(session, responder.requestId);
+    void sendRuntimeRequest(
+      BRIDGE_INBOUND_REQUEST_METHODS.toolCall,
+      {
+        providerThreadId: session.codexThreadId ?? parsed.data.threadId,
+        threadId: session.bbThreadId,
+        turnId: parsed.data.turnId,
+        callId: parsed.data.callId,
+        tool: parsed.data.tool,
+        arguments: parsed.data.arguments ?? {},
+      },
+      signal,
+    )
       .then((result) => {
         responder.result(result);
       })
       .catch((error: unknown) => {
+        if (signal.aborted) return;
         responder.error(
           BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
           error instanceof Error ? error.message : String(error),
         );
-      });
+      })
+      .finally(() => untrackChildRequest(session, responder.requestId, signal));
     return;
   }
 
@@ -873,46 +881,143 @@ function handleChildRequest(
     sendThreadDeltas(session, [buildMacOsPermissionItemDelta(macOsPermission)]);
   }
 
+  const stopsAtRequest = session.stopsRequested;
+  const answerWithoutUser = (
+    cause: UnansweredInteractionCause,
+    response: CodexInteractiveResponse | null,
+    errorCode: number = BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+  ): void => {
+    if (
+      currentSession(bbThreadId, serial) === session &&
+      session.stopsRequested === stopsAtRequest
+    ) {
+      sendThreadDeltas(session, [
+        experimental_unansweredInteractionWarning({
+          cause,
+          answer:
+            response === null
+              ? { kind: "error" }
+              : { kind: "value", value: "cancel" },
+        }),
+      ]);
+    }
+    if (response === null) {
+      responder.error(
+        errorCode,
+        experimental_unansweredInteractionErrorMessage(cause),
+      );
+      return;
+    }
+    responder.result(response);
+  };
+
   let decoded: DecodedInteractiveRequest | null;
   try {
     decoded = decodeCodexInteractiveRequest({ id: 0, method, params });
   } catch (error) {
-    responder.error(
+    answerWithoutUser(
+      {
+        kind: "unshowable-request",
+        detail: error instanceof Error ? error.message : String(error),
+      },
+      null,
       BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
-      error instanceof Error ? error.message : String(error),
     );
     return;
   }
   if (decoded === null) {
+    if (isCodexQuestionRequestMethod(method)) {
+      answerWithoutUser(
+        {
+          kind: "unshowable-request",
+          detail: `bb could not read the ${method} request`,
+        },
+        null,
+        BRIDGE_JSON_RPC_ERRORS.INVALID_PARAMS,
+      );
+      return;
+    }
     responder.error(
       BRIDGE_JSON_RPC_ERRORS.METHOD_NOT_FOUND,
       `Unhandled codex request "${method}"`,
     );
     return;
   }
+  const signal = trackChildRequest(session, responder.requestId);
   void resolveCodexMcpElicitationAppIcon(decoded)
     .then(async (request) => {
       if (currentSession(bbThreadId, serial) !== session) {
-        throw new Error("codex session is no longer current");
+        responder.error(
+          BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+          "codex session is no longer current",
+        );
+        return;
       }
       const [runtimeResult] = await Promise.allSettled([
-        sendRuntimeRequest(BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest, {
-          providerThreadId: session.codexThreadId ?? request.providerThreadId,
-          threadId: session.bbThreadId,
-          turnId: request.turnId,
-          payload: request.payload,
-        }),
+        sendRuntimeRequest(
+          BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+          {
+            providerThreadId: session.codexThreadId ?? request.providerThreadId,
+            threadId: session.bbThreadId,
+            turnId: request.turnId,
+            payload: request.payload,
+          },
+          signal,
+        ),
       ]);
-      responder.result(
-        buildCodexInteractiveResult(request.payload, runtimeResult),
+      if (signal.aborted) return;
+      const result = buildCodexInteractiveResult(
+        request.payload,
+        runtimeResult,
       );
+      if (result.kind === "unanswered") {
+        answerWithoutUser(result.cause, result.response);
+        return;
+      }
+      responder.result(result.response);
     })
     .catch((error: unknown) => {
-      responder.error(
-        BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
-        error instanceof Error ? error.message : String(error),
+      if (signal.aborted) return;
+      answerWithoutUser(
+        {
+          kind: "runtime-error",
+          message: error instanceof Error ? error.message : String(error),
+        },
+        null,
       );
-    });
+    })
+    .finally(() => untrackChildRequest(session, responder.requestId, signal));
+}
+
+function trackChildRequest(
+  session: CodexBridgeSession,
+  requestId: string | number,
+): AbortSignal {
+  const controller = new AbortController();
+  session.pendingChildRequests.set(requestId, controller);
+  return controller.signal;
+}
+
+function untrackChildRequest(
+  session: CodexBridgeSession,
+  requestId: string | number,
+  signal: AbortSignal,
+): void {
+  if (session.pendingChildRequests.get(requestId)?.signal === signal) {
+    session.pendingChildRequests.delete(requestId);
+  }
+}
+
+function withdrawChildRequests(
+  session: CodexBridgeSession,
+  requestIds: Iterable<string | number>,
+): void {
+  for (const requestId of [...requestIds]) {
+    const controller = session.pendingChildRequests.get(requestId);
+    if (!controller) continue;
+    session.pendingChildRequests.delete(requestId);
+    controller.abort();
+  }
 }
 
 function buildMacOsPermissionItemDelta(
@@ -946,6 +1051,7 @@ function handleChildExit(
     return;
   }
   session.connection = null;
+  withdrawChildRequests(session, session.pendingChildRequests.keys());
 
   const openTurnIds = [...session.openCodexTurnIds];
   const message = `codex app-server exited unexpectedly (code ${info.code ?? "null"}, signal ${info.signal ?? "null"})${info.stderrTail ? `: ${info.stderrTail}` : ""}`;
@@ -999,8 +1105,8 @@ function spawnChildConnection(callbacks: {
   ) => void;
   onExit: (info: CodexAppServerExitInfo) => void;
 }): CodexAppServerConnection {
-  const env = buildAppServerEnv(callbacks.envVars);
-  const launch = resolveAppServerLaunch(appServerLaunchEnv(callbacks.envVars));
+  const env = buildProviderCliEnv(callbacks.envVars);
+  const launch = resolveAppServerLaunch(env);
   const { envVars: _envVars, ...connectionCallbacks } = callbacks;
   return createCodexAppServerConnection({
     command: launch.command,
@@ -1041,10 +1147,16 @@ async function initializeChild(
 
 const codexThreadIdentityResultSchema = z
   .object({
+    modelProvider: z.string().optional(),
+    sandbox: z
+      .object({ writableRoots: z.array(z.string()).optional() })
+      .passthrough()
+      .nullish(),
     thread: z
       .object({
         id: z.string().min(1),
         daybreakEnabled: z.boolean().nullish().catch(null),
+        modelProvider: z.string().optional(),
       })
       .passthrough(),
   })
@@ -1243,7 +1355,10 @@ async function constructThreadSession(
         : { presentation: tool.presentation }),
     })),
   );
-  const launchEnv = appServerLaunchEnv(decoded.sessionOptions.envVars);
+  const launchEnv = buildProviderCliEnv(decoded.sessionOptions.envVars);
+  const poolSelected = Boolean(
+    launchEnv[CODEX_POOL_BASE_URL_ENV] && launchEnv[CODEX_POOL_AUTH_TOKEN_ENV],
+  );
   const envHash = environmentHash(decoded.sessionOptions.envVars);
   const session: CodexBridgeSession = {
     bbThreadId: args.threadId,
@@ -1262,6 +1377,7 @@ async function constructThreadSession(
       decoded.sessionOptions,
       envHash,
     ),
+    grantedWriteRoots: decoded.additionalWorkspaceWriteRoots,
     environmentHash: envHash,
     turnPermissionSettings: toCodexPermissionSettings({
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
@@ -1269,6 +1385,7 @@ async function constructThreadSession(
       options: decoded.sessionOptions,
     }),
     openCodexTurnIds: new Set(),
+    pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
@@ -1277,9 +1394,7 @@ async function constructThreadSession(
     pendingPreIdentityDeltas: [],
     turnRateLimits: null,
     quotaRecoveryAttempted: false,
-    quotaRecoveryAllowed: !(
-      launchEnv[CODEX_POOL_BASE_URL_ENV] && launchEnv[CODEX_POOL_AUTH_TOKEN_ENV]
-    ),
+    quotaRecoveryAllowed: !poolSelected,
     rebuildBeforeNextTurnReason: null,
     daybreakEnabled: null,
     modelCatalog: null,
@@ -1288,6 +1403,7 @@ async function constructThreadSession(
     previousChildExit: null,
     releasePromise: null,
     goalStatus: existing?.goalStatus ?? null,
+    stopsRequested: 0,
   };
   sessionsByBbThreadId.set(args.threadId, session);
   if (existing) {
@@ -1394,6 +1510,7 @@ async function constructThreadSession(
         method = "thread/fork";
         const forkParams: BbThreadForkParams = {
           threadId: args.request.sourceProviderThreadId,
+          excludeTurns: true,
           ...(args.request.sourceProviderCheckpointId !== undefined
             ? {
                 lastTurnId: stripLegacyBridgeIdPrefix(
@@ -1408,22 +1525,66 @@ async function constructThreadSession(
       }
     }
 
-    const result = await requestThreadConstructionWithWriterRetry(
-      connection,
+    const result = await resumeWithProviderMigration({
       method,
       params,
-    );
+      poolSelected,
+      currentProvider: async () => {
+        const result = await connection.request({
+          method: "config/read",
+          params: {},
+          resultSchema: z.object({
+            config: z.object({ model_provider: z.string().nullish() }),
+          }),
+          timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+        });
+        return result.config.model_provider ?? "openai";
+      },
+      request: (nextMethod, nextParams) =>
+        requestThreadConstructionWithWriterRetry(
+          connection,
+          nextMethod,
+          nextParams,
+        ),
+    });
     const codexThreadId = result.thread.id;
     session.codexThreadId = codexThreadId;
+    if (
+      args.request.kind === "resume" &&
+      args.request.providerThreadId !== codexThreadId
+    ) {
+      session.identityAnnounced = false;
+      announceSessionIdentity(session, codexThreadId);
+      sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
+        threadId: args.threadId,
+        providerThreadId: codexThreadId,
+        reason:
+          "Codex provider routing changed; conversation history was preserved.",
+        contextLost: false,
+      });
+    }
     translator.activateThreadGitWritableRoots({
       providerThreadId: codexThreadId,
       threadId: args.threadId,
     });
+    const gitWritableRoots = translator.getThreadGitWritableRoots(
+      args.threadId,
+    );
     session.turnPermissionSettings = toCodexPermissionSettings({
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
-      gitWritableRoots: translator.getThreadGitWritableRoots(args.threadId),
+      gitWritableRoots,
       options: decoded.sessionOptions,
     });
+    session.grantedWriteRoots = [
+      ...new Set([
+        ...decoded.additionalWorkspaceWriteRoots,
+        ...(result.sandbox?.writableRoots ?? []).filter(
+          (root) =>
+            !gitWritableRoots.includes(root) &&
+            !decoded.additionalWorkspaceWriteRoots.includes(root),
+        ),
+      ]),
+    ];
     announceSessionIdentity(session, codexThreadId);
     session.daybreakEnabled = result.thread.daybreakEnabled ?? null;
     if (args.request.kind === "start" && decoded.daybreak !== null) {
@@ -1491,9 +1652,11 @@ function registerResumableSession(session: CodexBridgeSession): void {
     translator: session.translator,
     construction: session.construction,
     constructionSignature: session.constructionSignature,
+    grantedWriteRoots: session.grantedWriteRoots,
     environmentHash: session.environmentHash,
     turnPermissionSettings: session.turnPermissionSettings,
     openCodexTurnIds: new Set(),
+    pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
     unopenedCompactionDispatches: [],
     turnSettledWaiters: new Map(),
@@ -1511,6 +1674,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     previousChildExit: null,
     releasePromise: null,
     goalStatus: session.goalStatus,
+    stopsRequested: 0,
   });
 }
 
@@ -1518,6 +1682,7 @@ async function rebuildThreadSession(
   session: CodexBridgeSession,
   options: BridgeExecutionOptions,
   reason: string,
+  restore: "resume" | "fork",
 ): Promise<CodexBridgeSession> {
   const codexThreadId = session.codexThreadId;
   if (codexThreadId === null) {
@@ -1535,7 +1700,10 @@ async function rebuildThreadSession(
       ...(session.construction.dynamicTools !== undefined
         ? { dynamicTools: session.construction.dynamicTools }
         : {}),
-      request: { kind: "resume", providerThreadId: codexThreadId },
+      request:
+        restore === "fork"
+          ? { kind: "fork", sourceProviderThreadId: codexThreadId }
+          : { kind: "resume", providerThreadId: codexThreadId },
     });
   } catch (error) {
     if (!(error instanceof CodexSessionReleasedError)) {
@@ -1611,7 +1779,7 @@ function handleInitialize(id: string | number): void {
       approvalEnforcedBy: "runtime",
       grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
       steerMode: "inject",
-      skills: { configure: true },
+      skills: { configure: true, reconfigure: true },
       commands: { list: false },
     },
   };
@@ -1708,28 +1876,48 @@ async function requireLiveSessionForTurn(
       ? session.environmentHash
       : environmentHash(turnEnvVars),
   );
-  if (session.connection === null || session.connection.exited) {
+  const revokesWriteRoot = (candidate: CodexBridgeSession): boolean =>
+    candidate.grantedWriteRoots.some(
+      (root) => !decoded.additionalWorkspaceWriteRoots.includes(root),
+    );
+  const forkWithoutRevokedRoots = (
+    candidate: CodexBridgeSession,
+  ): Promise<CodexBridgeSession> =>
+    rebuildThreadSession(
+      candidate,
+      params.options,
+      "A writable folder was removed; the codex session was forked from its rollout to drop its access.",
+      "fork",
+    );
+  const resumeReason =
+    session.connection === null || session.connection.exited
+      ? "codex app-server exited; the session was restored from its rollout."
+      : (session.rebuildBeforeNextTurnReason ??
+        (signature !== session.constructionSignature
+          ? "Execution settings changed; the codex session was rebuilt to apply them."
+          : null));
+  if (revokesWriteRoot(session)) {
+    session = await forkWithoutRevokedRoots(session);
+  } else if (resumeReason !== null) {
     session = await rebuildThreadSession(
       session,
       params.options,
-      "codex app-server exited; the session was restored from its rollout.",
+      resumeReason,
+      "resume",
     );
-  } else if (session.rebuildBeforeNextTurnReason !== null) {
-    session = await rebuildThreadSession(
-      session,
-      params.options,
-      session.rebuildBeforeNextTurnReason,
-    );
-  } else if (signature !== session.constructionSignature) {
-    session = await rebuildThreadSession(
-      session,
-      params.options,
-      "Execution settings changed; the codex session was rebuilt to apply them.",
-    );
+    if (revokesWriteRoot(session)) {
+      session = await forkWithoutRevokedRoots(session);
+    }
   }
   if (session.connection === null) {
     throw new Error(`No active codex session for thread "${params.threadId}"`);
   }
+  session.grantedWriteRoots = [
+    ...new Set([
+      ...session.grantedWriteRoots,
+      ...decoded.additionalWorkspaceWriteRoots,
+    ]),
+  ];
   return { session, connection: session.connection };
 }
 
@@ -2236,6 +2424,9 @@ async function handleThreadStop(
   params: ThreadStopParamsShape,
 ): Promise<void> {
   const session = sessionsByBbThreadId.get(params.threadId);
+  if (session && params.intent === "interrupt") {
+    session.stopsRequested += 1;
+  }
 
   if (params.intent === "release") {
     if (session) {
@@ -2645,15 +2836,26 @@ async function handleRequest(
       await handleModelList(request.id, request.params);
       break;
     case "provider/health":
-      sendResult(request.id, await getCodexProviderHealth());
+      sendResult(
+        request.id,
+        await getCodexProviderHealth(
+          buildProviderCliEnv(request.params.envVars),
+        ),
+      );
       break;
     case "provider/usage":
-      sendResult(request.id, await getCodexProviderUsage());
+      sendResult(
+        request.id,
+        await getCodexProviderUsage(
+          buildProviderCliEnv(request.params.envVars),
+        ),
+      );
       break;
     case "provider/installation/status":
       sendResult(
         request.id,
         await getCodexProviderInstallationStatus(
+          buildProviderCliEnv(request.params.envVars),
           request.params.requirement,
           request.params.checkUpdates,
         ),
@@ -2662,7 +2864,10 @@ async function handleRequest(
     case "provider/installation/run":
       sendResult(
         request.id,
-        await getCodexProviderInstallationRun(request.params.action),
+        await getCodexProviderInstallationRun(
+          buildProviderCliEnv(request.params.envVars),
+          request.params.action,
+        ),
       );
       break;
     case "thread/start":

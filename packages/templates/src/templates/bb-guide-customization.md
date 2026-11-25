@@ -88,8 +88,9 @@ General keys: `bb settings general` accepts any key from `generalSettings` in
 `bb settings show`; an unknown key or wrongly shaped value is rejected with the
 list of known keys. Boolean preferences take `true`, `false`, `on`, or `off`,
 and `null` clears a preference that can be unset. Most appear in Settings →
-General. Machine-related keys (`machineServerUrl`, `defaultMachineAccess`,
-`machineGitCredentialsEnabled`) are covered in `bb guide machines`.
+General. Machine-related keys (`machineServerUrl`, `serverAccessOrder`,
+`localNetworkEnabled`, `machineGitCredentialsEnabled`) are covered
+in `bb guide machines`; prefer `bb server access` for the route keys.
 
 - `showDiagnosticEvents` (default false) shows provider environment resolution
   and unhandled provider events in the timeline. Warnings, errors, and model
@@ -160,8 +161,9 @@ already have `bb`. `bb settings cli-command` shows the state, and `install` or
 `remove` changes it. Install links the launcher at `~/.bb/bin/bb` into a PATH
 folder such as `~/.local/bin` (on Windows it adds `~/.bb/bin` to the user
 PATH). bb never replaces another `bb`: install is refused while one runs first
-in a new terminal. Only an installed bb (`npx bb-app` or the desktop app)
-offers this; a source checkout does not.
+in a new terminal. The exception is the `~/.local/bin/bb` a bb machine install
+added, which install replaces with the launcher. Only an installed bb
+(`npx bb-app` or the desktop app) offers this; a source checkout does not.
 
 Completed turns: `bb settings completed-turns` lists how each provider shows a
 finished turn: `collapse` folds the turn's work into one "Worked for" row and
@@ -182,51 +184,46 @@ across devices or server addresses. The Plugin SDK can list and revoke the
 viewing client's approvals; there is no CLI command that reads or modifies a
 remote client's localStorage.
 
+Reading a thread removes a thread's push, web, and desktop
+notifications once the thread is read on any client, and a thread open in a
+visible, focused bb window or tab gets no web or desktop system notification.
+
+A running thread's changes, pull request, and parent and child threads sit in a
+card at the upper-right of its pane, opened or pinned from the header; phones
+keep them above the composer.
+
+bb runs agent processes and setup and teardown scripts at a lower CPU priority
+(and, on macOS, the bb server and daemon with application scheduling) so it
+stays responsive under heavy agent load; terminals keep normal priority.
+
+A machine stays connected through a network drop of under 30 seconds: its
+daemon resumes the same server session, so terminals and running requests carry
+on, instead of opening a new one.
+
+Thread row metadata adds Organize → Rows → Metadata to the built-in thread list,
+a line under each thread title where plugins show details such as the pull
+request number.
+
+Updating when idle adds a "Restart and update bb automatically" switch to
+Settings → Updates (`bb updates app auto on|off`) that has bb check for updates
+every hour and restart into a new version once no thread is running, and
+enables `bb updates app apply --when-idle`; see `bb guide machines`.
+
 Experiments: `bb settings experiment <key> <true|false>` toggles a default-off
 experiment (Settings → Experiments). Experiments that
 gate a feature are documented with it: `serverMove` in `bb guide machines`,
 `performanceDiagnostics` under Server performance diagnostics below.
-`agentCpuPriority` runs agent processes and setup and teardown scripts at a
-lower CPU priority (and, on macOS, the bb server and daemon with application
-scheduling) so bb stays responsive under heavy agent load; it takes full effect
-after restarting bb, and terminals keep normal priority.
 `compactExpiredCache` offers a Compact chip in the composer when an idle
 thread's prompt cache has expired and its context holds at least 100k tokens;
 see `bb guide thread-messaging` for `--compact-first`.
-`resumeThreadsAfterRestart` retries a turn that a quit, crash, update, or
-machine restart cut off, and wakes idle threads whose background work it
-stopped, a few seconds after the machine's daemon comes back; see `bb guide
-thread-lifecycle`.
-`dismissReadNotifications` removes a thread's push, web, and desktop
-notifications once the thread is read on any client. It defaults on for early
-adopters.
-`keyedPluginCss` loads plugin stylesheets so that style updates inside other
-plugins' UI, such as the sidebar and composer, skip them; it applies after a
-reload and defaults on for early adopters.
+`serverRoutes` lets machines learn every available server access route and
+connect over the first one that answers; see Server access in
+`bb guide machines`. It defaults on for early adopters.
 `pluginUpdates` lists plugin updates on Settings → Updates with Update and
 Update all, and counts them in the sidebar updates badge; see `bb guide plugins`.
-`skipFocusedThreadNotifications` skips the web and desktop system notification
-for a thread open in a visible, focused bb window or tab. It defaults on for
-early adopters.
-`threadContextCard` moves a running thread's changes, pull request, and parent
-and child threads into a card at the upper-right of its pane, opened or pinned from
-the header.
-`threadRowMetadata` adds Organize → Rows → Metadata to the built-in thread list,
-a line under each thread title where plugins show details such as the pull
-request number. It defaults on for early adopters.
-`updateWhenIdle` adds a "Restart and update bb automatically" switch to
-Settings → Updates (`bb updates app auto on|off`) that has bb check for updates
-every hour and restart into a new version once no thread is running, and
-enables `bb updates app apply --when-idle`; see `bb guide machines`. It defaults on for early adopters.
-`walCheckpointWorker` copies recent writes into bb's SQLite database files on a
-background thread instead of during a commit, so heavy writing does not stall
-the server. It applies live.
 `bb settings general earlyAdopter on` (Settings → Experiments → Become an early
 adopter) turns on the experiments marked Early adopter, currently
-`compactExpiredCache`, `dismissReadNotifications`, `keyedPluginCss`,
-`pluginUpdates`, `skipFocusedThreadNotifications`, `threadRowMetadata`, and
-`updateWhenIdle`; an
-experiment you set yourself keeps your value.
+`compactExpiredCache`, `pluginUpdates`, and `serverRoutes`; an experiment you set yourself keeps your value.
 
 Launcher settings
 
@@ -240,8 +237,12 @@ not close a previous `0.0.0.0` listener.
 
 `--server-bind-host 0.0.0.0` (or `BB_SERVER_BIND_HOST=0.0.0.0`) listens on
 every interface for direct remote access; containers must also publish the
-port. BB accepts request hosts that are `localhost`, IP addresses (including
-LAN and Tailscale IPs), or the hostname in `BB_APP_URL`. For a custom DNS name
+port. To reach bb from a trusted LAN without a restart, prefer
+`bb server access add local-network` (`bb guide machines`). BB accepts
+request hosts that are `localhost`, IP addresses (including LAN and Tailscale
+IPs), the hostname of an available server access route (such as the Tailscale
+plugin's Serve address), or the hostname in
+`BB_APP_URL`. For a custom DNS name
 or reverse proxy, run `npx bb-app config set BB_APP_URL https://bb.example.com`
 before connecting, including from the CLI or SDK; forwarded host headers cannot
 authorize an unconfigured name. BB Connect needs no additional configuration.
@@ -262,9 +263,11 @@ bb settings keyboard reset [command] [--platform mac|windows|linux]
 `keyboard list` prints core command ids with their effective bindings, plus
 every saved override; examples include `panel.previousTab` / `panel.nextTab`,
 `pane.focus.left|right|up|down`, `pane.maximize.toggle`, and the initially
-unbound `panel.fullScreen.toggle`. `terminal.find` applies while a terminal has
-focus: `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere, so Ctrl+letter keys keep
-reaching the shell. `hints` (default true) shows or hides the delayed shortcut
+unbound `panel.fullScreen.toggle`. A focused terminal keeps the keys a shell
+reads: keys without Ctrl, Alt or Cmd (Escape, Enter, arrows, typing) and plain
+Ctrl+letter, Ctrl+Space, Ctrl+[, Ctrl+], Ctrl+\ and Ctrl+/. Every other bound
+shortcut, including function keys, runs its command from the terminal. That is
+why `terminal.find` is `Cmd+F` on macOS and `Ctrl+Shift+F` elsewhere. `hints` (default true) shows or hides the delayed shortcut
 badges shown while holding the modifier key; shortcuts work either way.
 
 `history.back` / `history.forward` (`Mod+[` / `Mod+]`) follow the pages opened
@@ -275,6 +278,10 @@ on desktop and `Control+Shift+[` / `Control+Shift+]` on the web.
 `thread.rename`, `thread.archive`, `thread.markRead`, and `thread.pin` start
 unbound and act on the focused pane's open thread; Mark read and Pin toggle
 like the matching thread menu item.
+
+`settings.search` (`/`) focuses the Settings search field. It works only on
+the Settings page, outside fields, editors and menus, so it can be rebound to
+another bare key; page commands on different pages never conflict.
 
 An open question card binds `question.select.1`–`9` (`1`–`9`),
 `question.submit` (`Mod+Enter`: Next, or Submit on the last question),
@@ -302,8 +309,14 @@ Sidebar preferences
 
 `bb settings ui` reads and writes server-side sidebar preferences shared by
 every window, device, and the CLI. The same registry stores which thread Info
-panel sections are collapsed (`infoPanel.collapsedSections`) and whether a
-thread pane's thread context card stays pinned open (`threadContextCard.pinned`).
+panel sections are collapsed (`infoPanel.collapsedSections`), whether a
+thread pane's thread context card stays pinned open (`threadContextCard.pinned`),
+which of its sections are folded (`threadContextCard.collapsedSections`), whether
+the sidebar update button includes provider CLI updates
+(`sidebar.updates.providerCli`), and which updates its card's Skip button hid
+(`sidebar.updates.skipped`). The button stays hidden until an update outside
+that list arrives; `bb settings ui reset sidebar.updates.skipped` shows it
+again.
 
 bb settings ui list [--json]
 bb settings ui get <key> [--json]
@@ -311,8 +324,8 @@ bb settings ui set <key> <value> [--json]
 bb settings ui reset <key> [--json]
 
 `list` prints every key with its value, revision, and a short description.
-`set` takes plain strings for enum and provider keys and JSON for lists and
-`null`; it retries once if another writer changed the key. `reset` writes the
+`set` takes plain strings for enum and provider keys and JSON for lists, maps
+and `null`; it retries once if another writer changed the key. `reset` writes the
 default. The SDK offers `sdk.system.uiPreferences.list()`, `.set()`, and
 `.reset()`.
 
@@ -321,16 +334,34 @@ The thread list is drawn by `sidebar.threadListProvider`, which defaults to
 Thread list plugin (`thread-list/thread-list`), or the bundled plugin when
 there is none, so installing a thread list plugin switches to it. Select one
 with `bb settings ui set sidebar.threadListProvider <plugin-id>/<slot-id>`, or
-reset to restore Automatic. The bundled Thread list plugin keeps its own
-layout (organization mode, sort, grouping, hidden and collapsed groups) and
-copies the legacy `sidebar.*` layout keys from here only once; change its
-layout with `bb thread-list prefs` (see `bb guide plugins`).
+reset to restore Automatic. A selected list whose plugin is disabled or
+uninstalled behaves as Automatic until it returns. The bundled Thread list
+plugin keeps its own layout (organization mode, sort, grouping, hidden and
+collapsed groups) and copies the legacy `sidebar.*` layout keys from here only
+once; change its layout with `bb thread-list prefs` (see `bb guide plugins`).
 
 The composer's input box is drawn by `composer.provider`, which defaults to
 `__automatic__`: the first composer plugin you installed, or the bundled
 Composer plugin (`bb--composer/composer`) when there is none. Pick one with
 `bb settings ui set composer.provider <plugin-id>/<slot-id>`, or reset to
-restore Automatic. With no composer plugin enabled, no composer is shown.
+restore Automatic. A selected composer whose plugin is disabled or
+uninstalled behaves as Automatic until it returns. With no composer plugin
+enabled, no composer is shown.
+
+Every surface only one plugin can draw follows the same rule, bb's own
+plugins included: your pick wins while its plugin is enabled, otherwise
+Automatic uses the first plugin you installed (by plugin id), then bb's own
+(bundled or from bb's official marketplace), then bb's built-in view. Besides the thread list, navigation and composer
+keys, the picks are `diff.provider`, `sourceCode.provider` and
+`threadHeader.titleProvider` (each also takes `__builtin__` for bb's own), and
+the JSON maps `fileOpener.byExtension`, `codeFence.byLanguage` and
+`messageDirective.byName`, where a missing key means Automatic. A message
+directive several plugins claim has no automatic winner: it shows a plugin
+picker in the message until you pick one there or, for example, with
+`bb settings ui set messageDirective.byName '{"task":"tasks/task"}'`. Each
+choice sits with what it changes: Settings → Appearance for the composer,
+thread list, navigation, renderers and header title, Appearance → Markdown
+for code blocks and directives, and Settings → Files → File openers.
 
 A vertical rail of destinations sits on the left edge of the sidebar on every
 screen size. Home is at the top and returns to the last thread; the visible
@@ -483,3 +514,5 @@ bundle. `NODE_USE_SYSTEM_CA=0` and `NODE_USE_ENV_PROXY=0` opt out of the default
 Restart bb after changes. Proxy support requires Node 22.21+, 24.5+, or 26;
 daemon WebSockets follow it, but other custom socket/agent libraries can still
 bypass it.
+
+Resume interrupted threads after a restart is available in Settings → General (default off). Toggle it with `bb settings general resumeThreadsAfterRestart true` or `false`, or through the SDK’s `system.updateGeneralSettings`. Existing experiment opt-ins are preserved.

@@ -17,6 +17,7 @@
     "plugins/environment-personal-workspace",
     "plugins/github",
     "plugins/github-star",
+    "plugins/server-switcher",
     "plugins/inline-vis",
     "plugins/keep-awake",
     "plugins/mcp",

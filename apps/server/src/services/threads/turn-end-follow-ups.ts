@@ -1,7 +1,10 @@
-import { and, desc, eq, gt, lt, sql } from "drizzle-orm";
 import {
-  events as storedEvents,
+  getLatestStoredThreadInterruptedDataBetweenSequences,
+  getLatestStoredTurnCompletedSequence,
+  getStoredTurnStartedSequence,
   getThread,
+  hasStoredManualStopInterruptionAfterSequence,
+  hasStoredThreadCommandFailureSystemErrorForTurn,
   isStoredTurnContextCompactionOnly,
   isTurnAimedAtByEarlierStop,
 } from "@bb/db";
@@ -30,15 +33,6 @@ import {
   isCommandTimeoutError,
   runtimeErrorLogFields,
 } from "../lib/error-log-fields.js";
-
-interface HasThreadCommandFailureSystemErrorForTurnDeps {
-  db: AppDeps["db"];
-}
-
-interface HasThreadCommandFailureSystemErrorForTurnArgs {
-  threadId: string;
-  turnId: string;
-}
 
 interface TurnKey {
   threadId: string;
@@ -85,118 +79,41 @@ export type TurnEndFollowUp =
   | ParentTurnNotificationFollowUp
   | QueuedMessageDispatchFollowUp;
 
-function hasThreadCommandFailureSystemErrorForTurn(
-  deps: HasThreadCommandFailureSystemErrorForTurnDeps,
-  args: HasThreadCommandFailureSystemErrorForTurnArgs,
-): boolean {
-  return (
-    deps.db
-      .select({ id: storedEvents.id })
-      .from(storedEvents)
-      .where(
-        and(
-          eq(storedEvents.threadId, args.threadId),
-          eq(storedEvents.turnId, args.turnId),
-          eq(storedEvents.scopeKind, "turn"),
-          eq(storedEvents.type, "system/error"),
-          sql`json_extract(${storedEvents.data}, '$.code') = 'thread_command_failed'`,
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
-}
-
 function wasTurnManuallyStopped(
   deps: Pick<AppDeps, "db">,
   args: TurnKey,
 ): boolean {
-  const turnStarted = deps.db
-    .select({ sequence: storedEvents.sequence })
-    .from(storedEvents)
-    .where(
-      and(
-        eq(storedEvents.threadId, args.threadId),
-        eq(storedEvents.turnId, args.turnId),
-        eq(storedEvents.type, "turn/started"),
-      ),
-    )
-    .limit(1)
-    .get();
-  if (!turnStarted) return false;
-
-  return (
-    deps.db
-      .select({ id: storedEvents.id })
-      .from(storedEvents)
-      .where(
-        and(
-          eq(storedEvents.threadId, args.threadId),
-          eq(storedEvents.type, "system/thread/interrupted"),
-          gt(storedEvents.sequence, turnStarted.sequence),
-          sql`json_extract(${storedEvents.data}, '$.reason') = 'manual-stop'`,
-        ),
-      )
-      .limit(1)
-      .get() !== undefined
-  );
+  const turnStartedSequence = getStoredTurnStartedSequence(deps.db, args);
+  if (turnStartedSequence === null) return false;
+  return hasStoredManualStopInterruptionAfterSequence(deps.db, {
+    afterSequence: turnStartedSequence,
+    threadId: args.threadId,
+  });
 }
 
 function getTurnInterruption(
   deps: Pick<AppDeps, "db">,
   args: TurnKey,
 ): ChildThreadOutcome["interruption"] {
-  const turnStarted = deps.db
-    .select({ sequence: storedEvents.sequence })
-    .from(storedEvents)
-    .where(
-      and(
-        eq(storedEvents.threadId, args.threadId),
-        eq(storedEvents.turnId, args.turnId),
-        eq(storedEvents.type, "turn/started"),
-      ),
-    )
-    .limit(1)
-    .get();
-  if (!turnStarted) {
+  const turnStartedSequence = getStoredTurnStartedSequence(deps.db, args);
+  if (turnStartedSequence === null) {
     return undefined;
   }
-
-  const turnCompleted = deps.db
-    .select({ sequence: sql<number>`${storedEvents.sequence}` })
-    .from(
-      sql`${storedEvents} INDEXED BY events_thread_turn_type_item_sequence_idx`,
-    )
-    .where(
-      and(
-        eq(storedEvents.threadId, args.threadId),
-        eq(storedEvents.turnId, args.turnId),
-        eq(storedEvents.type, "turn/completed"),
-      ),
-    )
-    .orderBy(desc(storedEvents.sequence))
-    .limit(1)
-    .get();
-  if (!turnCompleted) return undefined;
-
-  const interruption = deps.db
-    .select({ data: sql<string>`${storedEvents.data}` })
-    .from(sql`${storedEvents} INDEXED BY events_thread_type_sequence_idx`)
-    .where(
-      and(
-        eq(storedEvents.threadId, args.threadId),
-        eq(storedEvents.type, "system/thread/interrupted"),
-        gt(storedEvents.sequence, turnStarted.sequence),
-        lt(storedEvents.sequence, turnCompleted.sequence),
-      ),
-    )
-    .orderBy(desc(storedEvents.sequence))
-    .limit(1)
-    .get();
+  const turnCompletedSequence = getLatestStoredTurnCompletedSequence(
+    deps.db,
+    args,
+  );
+  if (turnCompletedSequence === null) return undefined;
+  const interruption = getLatestStoredThreadInterruptedDataBetweenSequences(
+    deps.db,
+    {
+      afterSequence: turnStartedSequence,
+      beforeSequence: turnCompletedSequence,
+      threadId: args.threadId,
+    },
+  );
   return interruption
-    ? systemThreadInterruptedEventDataSchema.parse(
-        JSON.parse(interruption.data),
-      )
+    ? systemThreadInterruptedEventDataSchema.parse(JSON.parse(interruption))
     : undefined;
 }
 
@@ -324,7 +241,7 @@ export function planTurnEnd(
   if (isParentNotifiableChildThread(thread, args.status)) {
     const alreadyHandledByCommandFailure =
       args.status === "failed" &&
-      hasThreadCommandFailureSystemErrorForTurn(deps, {
+      hasStoredThreadCommandFailureSystemErrorForTurn(deps.db, {
         threadId: thread.id,
         turnId,
       });

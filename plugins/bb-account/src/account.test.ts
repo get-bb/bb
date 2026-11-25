@@ -767,17 +767,6 @@ describe("sign-out, profile refresh, and adoption", () => {
         credential: stored.credential,
       },
     });
-    await expect(
-      host.harness.callRpc(
-        CONNECT_CREDENTIAL_METHOD,
-        {},
-        {
-          experimental_caller: { kind: "plugin", pluginId: "bb--connect-next" },
-        },
-      ),
-    ).resolves.toMatchObject({
-      credential: { credential: stored.credential },
-    });
     for (const caller of [
       undefined,
       {
@@ -786,28 +775,28 @@ describe("sign-out, profile refresh, and adoption", () => {
     ]) {
       await expect(
         host.harness.callRpc(CONNECT_CREDENTIAL_METHOD, {}, caller),
-      ).rejects.toThrow("only the connect plugins");
+      ).rejects.toThrow("only the connect plugin can read");
     }
   });
 
   it("keeps adoption and refusal reports to connect alone", async () => {
     const host = await loadAccount();
     await signInWithCode(host);
-    const asNext = {
-      experimental_caller: { kind: "plugin", pluginId: "bb--connect-next" },
+    const asOther = {
+      experimental_caller: { kind: "plugin", pluginId: "bb-ai" },
     } as const;
     await expect(
       host.harness.callRpc(
         CONFIRM_REFUSED_CREDENTIAL_METHOD,
         { credential: "bbcred_x" },
-        asNext,
+        asOther,
       ),
     ).rejects.toThrow("only the connect plugin");
     await expect(
       host.harness.callRpc(
         ADOPT_CONNECT_CREDENTIAL_METHOD,
         { credential: "bbcred_x", baseUrl: stub.apexUrl, replaces: null },
-        asNext,
+        asOther,
       ),
     ).rejects.toThrow("only the connect plugin");
   });

@@ -18,11 +18,17 @@ import { setStreamTraceEnabled } from "./stream-trace";
 import { wsManager } from "./ws";
 
 const unavailableSystemConfig: SystemConfigResponse = {
+  serverId: "",
+  routes: [],
   serverAccess: {
     providers: [],
-    defaultProviderId: "direct",
     effectiveUrl: null,
     urlSource: null,
+    localNetwork: {
+      bindHost: "127.0.0.1",
+      addresses: [],
+      listenerError: null,
+    },
   },
   generalSettings: defaultAppSettings,
   keybindings: [],
@@ -30,19 +36,11 @@ const unavailableSystemConfig: SystemConfigResponse = {
   keybindingOverrides: [],
   performanceDiagnosticsAvailable: false,
   experiments: {
-    agentCpuPriority: false,
     compactExpiredCache: false,
-    dismissReadNotifications: false,
-    keyedPluginCss: false,
     serverMove: false,
     performanceDiagnostics: false,
     pluginUpdates: false,
-    resumeThreadsAfterRestart: false,
-    skipFocusedThreadNotifications: false,
-    threadContextCard: false,
-    threadRowMetadata: false,
-    updateWhenIdle: false,
-    walCheckpointWorker: false,
+    serverRoutes: false,
   },
   appearance: defaultAppTheme,
   customThemes: [],

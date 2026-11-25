@@ -35,7 +35,10 @@ describe.skipIf(process.platform === "win32")(
       await writeFile(nativePath, executable, { mode: 0o755 });
       if (onPath) await writeFile(pathExecutable, executable, { mode: 0o755 });
 
-      const status = await getClaudeProviderInstallationStatus(false);
+      const status = await getClaudeProviderInstallationStatus(
+        process.env,
+        false,
+      );
 
       expect(status).toMatchObject({
         installed: true,

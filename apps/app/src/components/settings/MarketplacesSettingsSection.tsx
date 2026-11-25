@@ -4,7 +4,8 @@ import type { PluginMarketplace } from "@bb/server-contract";
 import { Badge } from "@bb/shared-ui/badge";
 import { Button } from "@bb/shared-ui/button";
 import { Input } from "@bb/shared-ui/input";
-import { SettingsSection } from "@/components/ui/settings-section";
+import { Switch } from "@bb/shared-ui/switch";
+import { SettingsSection } from "@bb/shared-ui/settings-section";
 import { appToast } from "@/components/ui/app-toast";
 import {
   ConfirmDeleteDialog,
@@ -16,6 +17,7 @@ import {
   addPluginMarketplace,
   refreshPluginMarketplaces,
   removePluginMarketplace,
+  setPluginMarketplaceEnabled,
   usePluginMarketplaces,
 } from "@/hooks/queries/plugin-catalog-queries";
 
@@ -23,6 +25,9 @@ const SOURCE_PLACEHOLDER = "https://example.com/marketplace.json";
 const SUBDIRECTORY_PLACEHOLDER = "Subdirectory (optional)";
 
 function formatRefreshedAt(marketplace: PluginMarketplace): string {
+  if (!marketplace.enabled) {
+    return "Disabled. Not refreshed, and its plugins are hidden";
+  }
   if (marketplace.lastError !== null) {
     return `Last refresh failed: ${marketplace.lastError}`;
   }
@@ -78,6 +83,21 @@ export function MarketplacesSettingsSection() {
       appToast.error("Refreshing the marketplace failed", {
         description: pluginAdminErrorMessage(error),
       });
+    },
+  });
+
+  const setEnabled = useMutation({
+    meta: { showErrorToast: false },
+    mutationFn: (value: { name: string; enabled: boolean }) =>
+      setPluginMarketplaceEnabled(fetch, value),
+    onSuccess: () => invalidate(),
+    onError: (error, value) => {
+      appToast.error(
+        value.enabled
+          ? "Enabling the marketplace failed"
+          : "Disabling the marketplace failed",
+        { description: pluginAdminErrorMessage(error) },
+      );
     },
   });
 
@@ -159,7 +179,13 @@ export function MarketplacesSettingsSection() {
             key={marketplace.name}
             className="flex items-start gap-3 rounded-md border border-border p-3"
           >
-            <div className="min-w-0 flex-1 space-y-1">
+            <div
+              className={
+                marketplace.enabled
+                  ? "min-w-0 flex-1 space-y-1"
+                  : "min-w-0 flex-1 space-y-1 opacity-60"
+              }
+            >
               <div className="flex items-center gap-2 text-sm text-foreground">
                 {marketplace.displayName}
                 <span className="font-mono text-2xs text-subtle-foreground">
@@ -182,12 +208,22 @@ export function MarketplacesSettingsSection() {
                 {formatRefreshedAt(marketplace)}
               </p>
             </div>
-            <div className="flex shrink-0 gap-1.5">
+            <div className="flex shrink-0 items-center gap-1.5">
+              {marketplace.canDisable ? (
+                <Switch
+                  checked={marketplace.enabled}
+                  disabled={setEnabled.isPending}
+                  aria-label={`Enable ${marketplace.displayName}`}
+                  onCheckedChange={(enabled) =>
+                    setEnabled.mutate({ name: marketplace.name, enabled })
+                  }
+                />
+              ) : null}
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                disabled={refresh.isPending}
+                disabled={refresh.isPending || !marketplace.enabled}
                 aria-label={`Refresh ${marketplace.displayName}`}
                 onClick={() => refresh.mutate(marketplace.name)}
               >

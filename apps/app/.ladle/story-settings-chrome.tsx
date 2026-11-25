@@ -6,6 +6,7 @@ import type { SettingsSearchCondition } from "@/components/settings/settings-sea
 import {
   SETTINGS_NAV_SECTIONS,
   type SettingsSectionId,
+  getSettingsTargetPath,
 } from "@/components/settings/settings-sections";
 import {
   Sidebar,
@@ -18,7 +19,6 @@ import {
   SETTINGS_ROUTE_PATH,
   SETTINGS_MACHINE_ROUTE_PATH,
   SETTINGS_PROJECT_ROUTE_PATH,
-  getSettingsRoutePath,
 } from "@/lib/route-paths";
 
 export type SettingsStoryRoute =
@@ -39,7 +39,7 @@ export function useSettingsStoryRoute(): SettingsStoryRoute {
   const section = SETTINGS_NAV_SECTIONS.find((entry) =>
     entry.id === "general"
       ? pathname === SETTINGS_ROUTE_PATH
-      : getSettingsRoutePath(entry.id) === pathname,
+      : getSettingsTargetPath({ section: entry.id }) === pathname,
   );
   return { kind: "section", id: section?.id ?? "general" };
 }

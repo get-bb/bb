@@ -11,6 +11,11 @@ import {
 } from "@bb/host-daemon-contract";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
+import {
+  printJsonLine,
+  reportCommandResult,
+  type ReportableWithoutFailure,
+} from "../command-result.js";
 
 interface ScopeOptions {
   json?: boolean;
@@ -80,8 +85,13 @@ function scoped(command: Command) {
     .requiredOption("--thread <id>", "Owning thread ID")
     .option("--json", "Print machine-readable JSON output");
 }
-function print(value: object, options: { json?: boolean }, summary: string) {
-  console.log(options.json ? JSON.stringify(value) : summary);
+function print<const T>(
+  value: T & ReportableWithoutFailure<T>,
+  options: { json?: boolean },
+  summary: string,
+) {
+  if (options.json) printJsonLine<T>(value);
+  else console.log(summary);
 }
 
 export function registerBrowserCommands(
@@ -319,8 +329,16 @@ export function registerBrowserCommands(
             sourceId: desktopBrowserImportSourceIdSchema.parse(options.from),
             sourceProfileDirectory: options.profile,
           });
-          print(outcome, options, formatImportOutcome(outcome));
-          if (!outcome.ok) process.exitCode = 1;
+          reportCommandResult(options, outcome, {
+            text: outcome.ok ? [formatImportOutcome(outcome)] : [],
+            failure: outcome.ok
+              ? null
+              : {
+                  message: formatImportOutcome(outcome),
+                  code: "browser_cookie_import_failed",
+                  hint: null,
+                },
+          });
         },
       ),
     );

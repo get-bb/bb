@@ -32,9 +32,14 @@ provider, and directive are all Docs.
   frontmatter `title`), and editing it never renames the file, so thread cards,
   tabs, and links keep working. A new note starts as `Untitled.md` and takes its
   first heading as its file name when it is saved from the Docs panel.
+- **Clickable links:** click a relative `.md`, `.mdx`, or `.markdown` link in a
+  vault document to open it in Docs, relative to the current document's folder.
+  HTTP and HTTPS links use bb's normal URL-opening behavior.
+  This also works in document thread panels and inline document cards. Relative
+  links with query strings or fragments are not handled by the editor.
 - **Default Markdown editor:** Docs registers for `.md`, `.mdx`, and
-  `.markdown` files, so it can be selected under Settings → File openers or
-  chosen from a file link's Open with menu. Workspace, absolute host, and
+  `.markdown` files, so it can be selected under Settings → Files → File openers
+  or chosen from a file link's Open with menu. Workspace, absolute host, and
   thread-storage files retain compare-and-swap saves even when they are outside
   a Docs vault.
 - **YAML frontmatter:** an opening fenced block that parses as a YAML mapping

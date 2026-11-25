@@ -1,4 +1,8 @@
-import { defineRpcContract, type BbPluginApi } from "@get-bb/plugin-sdk";
+import {
+  defineRpcContract,
+  experimental_BbHttpError,
+  type BbPluginApi,
+} from "@get-bb/plugin-sdk";
 import { z } from "zod";
 
 export const REPLY_SEED_PREFIX =
@@ -46,10 +50,8 @@ interface SideChatForkCandidate {
 
 function isSessionUnavailableError(error: unknown): boolean {
   return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code: unknown }).code === "fork_source_session_unavailable"
+    error instanceof experimental_BbHttpError &&
+    error.code === "fork_source_session_unavailable"
   );
 }
 

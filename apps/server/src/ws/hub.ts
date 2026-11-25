@@ -288,6 +288,7 @@ export class NotificationHub implements DbNotifier {
       connectedAt: number;
       heardSinceLivenessCheck: boolean;
       hostId: string;
+      leaseRenewedAt: number;
       localApiPort: number | null;
       platform: HostPlatform;
       quietLivenessChecks: number;
@@ -563,7 +564,7 @@ export class NotificationHub implements DbNotifier {
       (socket.raw?.bufferedAmount ?? 0) <= TERMINAL_SOCKET_HIGH_WATER_BYTES
     ) {
       try {
-        socket.send(payload);
+        socket.send(payload, COMPRESSED_SEND);
         return;
       } catch {
         this.dropTerminalSocket(socket, "terminal-send-failed");
@@ -616,7 +617,7 @@ export class NotificationHub implements DbNotifier {
         break;
       }
       try {
-        socket.send(payload);
+        socket.send(payload, COMPRESSED_SEND);
       } catch {
         this.dropTerminalSocket(socket, "terminal-send-failed");
         return;
@@ -773,10 +774,12 @@ export class NotificationHub implements DbNotifier {
       this.cancelPendingDaemonDisconnect(existingSessionId);
       this.unregisterDaemon(existingSessionId);
     }
+    const connectedAt = Date.now();
     this.daemonSessions.set(sessionId, {
-      connectedAt: Date.now(),
+      connectedAt,
       heardSinceLivenessCheck: true,
       hostId,
+      leaseRenewedAt: connectedAt,
       localApiPort:
         this.daemonSessionLocalApiPortsBySessionId.get(sessionId) ?? null,
       platform:
@@ -818,9 +821,33 @@ export class NotificationHub implements DbNotifier {
     }
   }
 
+  getDaemonSessionSocket(sessionId: string): HubSocket | null {
+    return this.daemonSessions.get(sessionId)?.socket ?? null;
+  }
+
+  takeDaemonLeaseRenewal(
+    sessionId: string,
+    now: number,
+    renewalIntervalMs: number,
+  ): boolean {
+    const entry = this.daemonSessions.get(sessionId);
+    if (
+      entry === undefined ||
+      (now >= entry.leaseRenewedAt &&
+        now - entry.leaseRenewedAt < renewalIntervalMs)
+    ) {
+      return false;
+    }
+    entry.leaseRenewedAt = now;
+    return true;
+  }
+
   takeSilentDaemonSessionIds(maxQuietChecks: number): string[] {
     const silentSessionIds: string[] = [];
     for (const [sessionId, entry] of this.daemonSessions) {
+      if (this.pendingDaemonDisconnects.has(sessionId)) {
+        continue;
+      }
       if (entry.heardSinceLivenessCheck) {
         entry.heardSinceLivenessCheck = false;
         entry.quietLivenessChecks = 0;

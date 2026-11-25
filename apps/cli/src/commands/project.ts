@@ -1,6 +1,12 @@
+import {
+  outputJson,
+  printJsonResult,
+  reportOperation,
+} from "../command-result.js";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
+import type { ProjectSourceFolder } from "@bb/domain";
 import type {
   CreateProjectSourceRequest,
   HostDiscoveredRepo,
@@ -11,7 +17,7 @@ import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
 import { resolveLocalHostId } from "../daemon.js";
 import { columnWidths, printBorderlessTable } from "../table.js";
-import { confirmDestructiveAction, outputJson } from "./helpers.js";
+import { confirmDestructiveAction } from "./helpers.js";
 import {
   resolveMachineEnvironmentRouting,
   resolveMachineHostId,
@@ -116,6 +122,12 @@ interface ProjectSourceDeleteCommandOptions {
   json?: boolean;
 }
 
+interface ProjectFolderCommandOptions {
+  host?: string;
+  json?: boolean;
+  machine?: string;
+}
+
 interface ProjectSourceInputOptions {
   path?: string;
 }
@@ -211,6 +223,48 @@ function buildProjectSourceUpdateRequest(
   };
 }
 
+async function resolveProjectFolderSource(
+  sdk: ReturnType<typeof createCliBbSdk>,
+  args: {
+    opts: ProjectFolderCommandOptions;
+    projectId: string;
+    serverUrl: string;
+  },
+): Promise<ProjectSource> {
+  const hostId = await resolveProjectSourceHostId(args.opts, args.serverUrl);
+  const project = await sdk.projects.get({ projectId: args.projectId });
+  const source = project.sources.find(
+    (candidate) => candidate.hostId === hostId,
+  );
+  if (!source) {
+    throw new Error(
+      `Project ${project.id} has no checkout on machine ${hostId}. Add one with \`bb project source add\` first.`,
+    );
+  }
+  return source;
+}
+
+async function resolveProjectFolder(
+  sdk: ReturnType<typeof createCliBbSdk>,
+  args: { pathOrId: string; projectId: string; sourceId: string },
+): Promise<ProjectSourceFolder> {
+  const folders = await sdk.projects.sources.experimental_folders.list({
+    projectId: args.projectId,
+    sourceId: args.sourceId,
+  });
+  const target = folders.find(
+    (entry) =>
+      entry.id === args.pathOrId ||
+      entry.path === args.pathOrId.replace(/(?<=.)[\\/]+$/u, ""),
+  );
+  if (!target) {
+    throw new Error(
+      `Folder ${args.pathOrId} is not one of project ${args.projectId}'s folders on that machine.`,
+    );
+  }
+  return target;
+}
+
 function getProjectDisplaySource(
   project: ProjectResponse,
 ): ProjectSource | undefined {
@@ -251,6 +305,11 @@ export function registerProjectCommands(
   const source = project
     .command("source")
     .description("Manage project sources");
+  const folder = project
+    .command("folder")
+    .description(
+      "Manage extra folders every thread of a project can read and write on a machine",
+    );
   const attachment = project
     .command("attachment")
     .description("Upload and download server-managed project attachments");
@@ -386,8 +445,7 @@ export function registerProjectCommands(
           projectId: id,
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -424,8 +482,7 @@ export function registerProjectCommands(
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -445,8 +502,7 @@ export function registerProjectCommands(
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -462,8 +518,7 @@ export function registerProjectCommands(
           provider: opts.provider ?? "",
           ...(await resolveMachineEnvironmentRouting(opts, serverUrl)),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -481,8 +536,7 @@ export function registerProjectCommands(
           ...(opts.query ? { query: opts.query } : {}),
           ...(opts.limit ? { limit: opts.limit } : {}),
         });
-        if (outputJson(opts, result)) return;
-        console.log(JSON.stringify(result, null, 2));
+        printJsonResult(result);
       }),
     );
 
@@ -589,9 +643,15 @@ export function registerProjectCommands(
           }
         }
         const sdk = createCliBbSdk(getUrl());
-        await sdk.projects.delete({ projectId: id });
-        if (outputJson(opts, { ok: true, id })) return;
-        console.log(`Project ${id} deleted`);
+        const result = await sdk.projects.delete({ projectId: id });
+        reportOperation(
+          opts,
+          { ...result, id },
+          {
+            complete: `Project ${id} deleted`,
+            inProgress: `Project ${id} deleted; its environments are still being cleaned up`,
+          },
+        );
       }),
     );
 
@@ -698,9 +758,169 @@ export function registerProjectCommands(
 
           const sdk = createCliBbSdk(getUrl());
           await sdk.projects.sources.delete({ projectId, sourceId });
-          const result = { ok: true, projectId, sourceId };
+          const result = { ok: true as const, projectId, sourceId };
           if (outputJson(opts, result)) return;
           console.log(`Project source ${sourceId} deleted`);
+        },
+      ),
+    );
+
+  folder
+    .command("list <projectId>")
+    .description(
+      "List a project's folders on a machine: the main folder first, then the extra folders (--json lists the extra folders only)",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout to read (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (projectId: string, opts: ProjectFolderCommandOptions) => {
+        const serverUrl = getUrl();
+        const sdk = createCliBbSdk(serverUrl);
+        const projectSource = await resolveProjectFolderSource(sdk, {
+          opts,
+          projectId,
+          serverUrl,
+        });
+        const folders = await sdk.projects.sources.experimental_folders.list({
+          projectId,
+          sourceId: projectSource.id,
+        });
+        if (outputJson(opts, folders)) return;
+        const labelWidth = Math.max(
+          "main".length,
+          ...folders.map((entry) => entry.id.length),
+        );
+        console.log(`${"main".padEnd(labelWidth)}  ${projectSource.path}`);
+        for (const entry of folders) {
+          console.log(`${entry.id.padEnd(labelWidth)}  ${entry.path}`);
+        }
+      }),
+    );
+
+  folder
+    .command("add <projectId> <path>")
+    .description(
+      "Add an existing folder that every thread of the project can read and write",
+    )
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout gets the folder (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          path: string,
+          opts: ProjectFolderCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const projectSource = await resolveProjectFolderSource(sdk, {
+            opts,
+            projectId,
+            serverUrl,
+          });
+          const added = await sdk.projects.sources.experimental_folders.add({
+            projectId,
+            sourceId: projectSource.id,
+            path,
+          });
+          if (outputJson(opts, added)) return;
+          console.log(`Project folder added: ${added.id}  ${added.path}`);
+        },
+      ),
+    );
+
+  folder
+    .command("update <projectId> <pathOrId> <newPath>")
+    .description("Point one of a project's extra folders at another path")
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout has the folder (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          pathOrId: string,
+          newPath: string,
+          opts: ProjectFolderCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const projectSource = await resolveProjectFolderSource(sdk, {
+            opts,
+            projectId,
+            serverUrl,
+          });
+          const target = await resolveProjectFolder(sdk, {
+            pathOrId,
+            projectId,
+            sourceId: projectSource.id,
+          });
+          const updated = await sdk.projects.sources.experimental_folders.update({
+            projectId,
+            sourceId: projectSource.id,
+            folderId: target.id,
+            path: newPath,
+          });
+          if (outputJson(opts, updated)) return;
+          console.log(
+            `Project folder updated: ${updated.id}  ${target.path} -> ${updated.path}`,
+          );
+        },
+      ),
+    );
+
+  folder
+    .command("remove <projectId> <pathOrId>")
+    .description("Remove an extra folder from a project")
+    .option(
+      "--machine <id-or-name>",
+      "Machine whose checkout loses the folder (default: this machine)",
+    )
+    .option("--host <id-or-name>", "Alias for --machine")
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(
+        async (
+          projectId: string,
+          pathOrId: string,
+          opts: ProjectFolderCommandOptions,
+        ) => {
+          const serverUrl = getUrl();
+          const sdk = createCliBbSdk(serverUrl);
+          const projectSource = await resolveProjectFolderSource(sdk, {
+            opts,
+            projectId,
+            serverUrl,
+          });
+          const target = await resolveProjectFolder(sdk, {
+            pathOrId,
+            projectId,
+            sourceId: projectSource.id,
+          });
+          await sdk.projects.sources.experimental_folders.remove({
+            projectId,
+            sourceId: projectSource.id,
+            folderId: target.id,
+          });
+          const result = {
+            ok: true as const,
+            projectId,
+            folderId: target.id,
+            path: target.path,
+          };
+          if (outputJson(opts, result)) return;
+          console.log(`Project folder removed: ${target.path}`);
         },
       ),
     );

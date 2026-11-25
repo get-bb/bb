@@ -21,10 +21,27 @@ export const machineLifecycleSchema = z.object({
     .object({
       status: z.enum(["running", "failed", "removed"]),
       attempt: z.number().int().nonnegative(),
+      needsRecovery: z.boolean(),
+      blockedByEnvironmentId: z.string().nullable(),
     })
     .nullable(),
 });
 export type MachineLifecycle = z.infer<typeof machineLifecycleSchema>;
+
+export const serverRouteKindSchema = z.enum([
+  "local-network",
+  "private-overlay",
+  "relay",
+  "custom",
+]);
+export type ServerRouteKind = z.infer<typeof serverRouteKindSchema>;
+
+export const hostServerRouteSchema = z.object({
+  providerId: z.string().min(1),
+  kind: serverRouteKindSchema,
+  displayName: z.string().min(1),
+});
+export type HostServerRoute = z.infer<typeof hostServerRouteSchema>;
 
 export const hostTypeSchema = z.enum(["persistent", "ephemeral"]);
 export type HostType = z.infer<typeof hostTypeSchema>;
@@ -38,6 +55,7 @@ export const hostSchema = z.object({
   lifecycle: machineLifecycleSchema,
   maxPermissionMode: permissionModeSchema,
   lastSeenAt: z.number().nullable(),
+  route: hostServerRouteSchema.nullable(),
   lastRejectedProtocolVersion: z.number().int().positive().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),

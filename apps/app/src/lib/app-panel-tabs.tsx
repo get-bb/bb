@@ -8,6 +8,7 @@ import type {
 import { parsePluginDetailKey } from "@/components/plugin/plugin-detail-key";
 import type { SecondaryPanelFixedTab } from "@/components/secondary-panel/ThreadSecondaryPanel";
 import type { SecondaryPanelRenderableTab } from "@/components/secondary-panel/secondaryPanelTab";
+import { CORE_PLUGIN_ID } from "@bb/domain";
 import type { FixedPanelTab } from "@/lib/fixed-panel-tabs-state";
 
 export interface AppPanelTabEntry {
@@ -52,7 +53,7 @@ function panelTabDetail(
     case "git-diff":
       return null;
     case "plugin-fixed":
-      return tab.pluginId === "core" && tab.tabId === "info"
+      return tab.pluginId === CORE_PLUGIN_ID && tab.tabId === "info"
         ? { kind: "info" }
         : {
             kind: "plugin",

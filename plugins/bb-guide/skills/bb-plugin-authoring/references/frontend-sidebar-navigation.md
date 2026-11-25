@@ -7,8 +7,10 @@ It is exclusive. bb's own Rail (`navigation/rail`, the default) and Top list
 (`navigation/top-list`) come from the bundled Navigation plugin
 (`plugins/navigation` in the bb repository), which uses only this slot and the
 hooks below, so it is a working example and a forkable starting point. Users
-pick a provider under Settings → Appearance → Navigation; Automatic uses the
-first provider from another plugin, or Rail when there is none.
+pick a provider under Settings → Appearance → Navigation
+(`sidebar.navigationProvider`); Automatic uses the first provider from another
+plugin, or Rail when there is none (see frontend-registration.md, Exclusive
+slots).
 
 Declare where you draw with `placement`, because bb lays out the sidebar
 before your bundle loads:
@@ -46,6 +48,12 @@ overflow menu so they stay reachable, and icons with
 `isShortcutModifierHeld` is true.
 
 ```tsx
+import {
+  experimental_SidebarNavigationIcon as SidebarNavigationIcon,
+  experimental_useSidebarNavigation,
+  type ExperimentalSidebarNavigationItem,
+} from "@get-bb/plugin-sdk/app";
+
 function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
   const { activeItemId, actions } = experimental_useSidebarNavigation();
   const split = experimental_useSidebarNavigationSplit(item.id);
@@ -64,7 +72,7 @@ function NavButton({ item }: { item: ExperimentalSidebarNavigationItem }) {
         })
       }
     >
-      <experimental_SidebarNavigationIcon icon={item.icon} />
+      <SidebarNavigationIcon icon={item.icon} />
     </button>
   );
 }
@@ -112,7 +120,8 @@ only on the topmost selected threads.
 
 A thread list with multi-selection passes a selected row's
 `experimental_ThreadActionsContextMenu` the selection as
-`experimental_bulkThreads` (two or more targets in list order), its own
+`experimental_bulkThreads` (two or more selected threads in list order; bb
+reads only their ids), its own
 `inline` entries such as Clear selection, and `onEscapeKeyDown` to clear the
 selection when Escape closes the menu; with fewer than two the row gets its
 own thread menu. In tests, `renderSlot(..., { threadBulkActions })` sets what
@@ -152,7 +161,7 @@ app.slots.experimental_sidebarNavigation({
 
 To turn your navigation on when your plugin is installed, set
 `sidebar.navigationProvider` to `<plugin-id>/<slot-id>` from `bb.onInstall`
-(see backend-ui-lifecycle.md); later choices in Settings → Appearance stick.
+(see backend-ui-lifecycle.md); later choices in Settings stick.
 Users do the same with `bb settings ui set`.
 
 Existing plugin bundles using `activate(id, { openInSplit })` map `true`

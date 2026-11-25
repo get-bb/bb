@@ -10,6 +10,10 @@ export function monotonicNowMs(): number {
   return Number(process.hrtime.bigint()) / 1e6;
 }
 
+export function roundDurationMs(durationMs: number): number {
+  return Math.round(durationMs * 10) / 10;
+}
+
 function tick(): void {
   const endedAt = monotonicNowMs();
   const startedAt = previousTickAt;

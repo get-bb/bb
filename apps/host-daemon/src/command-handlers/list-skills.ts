@@ -11,10 +11,10 @@ import {
 import type {
   DiscoveredSkill,
   HostDaemonOnlineRpcResult,
-  SkillRootKind,
 } from "@bb/host-daemon-contract";
 import {
   CommandDispatchError,
+  type CommandDispatchOptions,
   type CommandOf,
   ExpectedCommandDispatchError,
 } from "../command-dispatch-support.js";
@@ -29,45 +29,23 @@ import {
   resolveDeclaredScanRoots,
 } from "./list-commands.js";
 import { writeHostFile } from "./file-write.js";
+import { resolveNativeRootSet } from "./native-root-resolution.js";
 
 type SkillRootResolution = DeclaredScanRootResolution;
 
 const SHARED_SKILLS_PROVIDER_ID = "bb-shared";
 
-function createBbSkillScanRoot(
-  rootPath: string,
-  rootKind: Extract<SkillRootKind, `bb-${string}`>,
-): SkillScanRoot {
+function createBbSkillScanRoot(rootPath: string): SkillScanRoot {
   return {
     rootPath,
-    ...(rootKind === "bb-project"
-      ? { boundaryPath: path.dirname(path.dirname(rootPath)) }
-      : {}),
+    boundaryPath: path.dirname(path.dirname(rootPath)),
     shape: "skill",
     namePrefix: "",
     source: "skill",
-    origin: rootKind === "bb-project" ? "project" : "user",
-    identitySeed: rootKind,
-    rootKind,
+    origin: "project",
+    identitySeed: "bb-project",
+    rootKind: "bb-project",
   };
-}
-
-function resolveBbSkillScanRoots(
-  resolution: SkillRootResolution,
-): SkillScanRoot[] {
-  const roots: SkillScanRoot[] = [];
-  if (
-    resolution.cwd !== null &&
-    resolution.providerId !== SHARED_SKILLS_PROVIDER_ID
-  ) {
-    roots.push(
-      createBbSkillScanRoot(
-        path.join(resolution.cwd, ".bb", "skills"),
-        "bb-project",
-      ),
-    );
-  }
-  return roots;
 }
 
 function classifySkillRoot(
@@ -103,7 +81,7 @@ function classifySkillRoot(
 export async function resolveSkillScanRoots(
   resolution: SkillRootResolution,
 ): Promise<SkillScanRoot[]> {
-  const skillRoots = resolveBbSkillScanRoots(resolution);
+  const skillRoots: SkillScanRoot[] = [];
   const providerRoots = await resolveDeclaredScanRoots(resolution);
   for (const root of providerRoots) {
     const classification = classifySkillRoot(root, resolution);
@@ -115,8 +93,19 @@ export async function resolveSkillScanRoots(
   return skillRoots;
 }
 
+async function listWorkspaceSkills(
+  cwd: string | null,
+): Promise<DiscoveredSkill[]> {
+  if (cwd === null) {
+    return [];
+  }
+  return discoverSkills({
+    roots: [createBbSkillScanRoot(path.join(cwd, ".bb", "skills"))],
+  });
+}
+
 export async function listSharedSkills(args: {
-  cwd: string;
+  cwd: string | null;
   roots: ProviderNativeRoots;
 }): Promise<DiscoveredSkill[]> {
   if (providerNativeRootsAreEmpty(args.roots)) {
@@ -137,19 +126,37 @@ export async function listSharedSkills(args: {
 
 export async function listHostSkills(
   command: CommandOf<"host.list_skills">,
-  _options: { dataDir: string },
+  options: Pick<CommandDispatchOptions, "logger" | "pluginHost">,
+  signal: AbortSignal,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_skills">> {
-  if (command.cwd !== null && !path.isAbsolute(command.cwd)) {
+  const { cwd } = command;
+  if (cwd !== null && !path.isAbsolute(cwd)) {
     throw new CommandDispatchError("invalid_path", "cwd must be absolute");
   }
-  const roots = await resolveSkillScanRoots({
-    cwd: command.cwd,
-    homeDir: os.homedir(),
-    providerId: command.providerId,
-    nativeRoots: command.nativeRoots,
-  });
-  const skills = await discoverSkills({ roots });
-  return { skills };
+  const homeDir = os.homedir();
+  const [workspaceSkills, sharedSkills, providers] = await Promise.all([
+    listWorkspaceSkills(cwd),
+    listSharedSkills({ cwd, roots: command.sharedRoots }),
+    Promise.all(
+      command.providers.map(async (provider) => ({
+        providerId: provider.providerId,
+        skills: await discoverSkills({
+          roots: await resolveSkillScanRoots({
+            cwd,
+            homeDir,
+            providerId: provider.providerId,
+            nativeRoots: await resolveNativeRootSet(provider, {
+              cwd,
+              resolution: command.resolution,
+              options,
+              signal,
+            }),
+          }),
+        }),
+      })),
+    ),
+  ]);
+  return { workspaceSkills, sharedSkills, providers };
 }
 
 function isSafeSkillName(name: string): boolean {

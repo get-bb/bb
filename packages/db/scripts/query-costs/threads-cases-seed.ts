@@ -44,6 +44,7 @@ const ORCHESTRATOR_CHILDREN = 300;
 const WORKTREE_ENVIRONMENTS = 2_000;
 const THREAD_TABS = 7_000;
 const PROMPT_HISTORY_ENTRIES = 50_000;
+const SEARCHABLE_MESSAGE_TURNS = 4;
 const RUNNING_THREADS = 8;
 const STARTING_THREADS = 3;
 const ARCHIVED_TEARDOWN_THREADS = 4;
@@ -511,6 +512,31 @@ function titleSegments(
   ];
 }
 
+function messageSegments(
+  threadId: string,
+  spec: ThreadSpec,
+): UpsertThreadSearchSegmentInput[] {
+  return Array.from(
+    { length: SEARCHABLE_MESSAGE_TURNS },
+    (_, turn): UpsertThreadSearchSegmentInput[] => [
+      {
+        threadId,
+        sourceKind: "user_message",
+        sourceKey: `event:${turn * 2 + 1}`,
+        sourceSeq: turn * 2 + 1,
+        text: promptFor(spec.index, turn),
+      },
+      {
+        threadId,
+        sourceKind: "assistant_message",
+        sourceKey: `event:${turn * 2 + 2}`,
+        sourceSeq: turn * 2 + 2,
+        text: replyFor(spec.index, turn),
+      },
+    ],
+  ).flat();
+}
+
 function insertBulkThreads(
   db: DbConnection,
   specs: readonly ThreadSpec[],
@@ -570,7 +596,9 @@ function insertBulkThreads(
         ORDER BY row.key`);
     }
     const segments = specs.flatMap((spec) =>
-      spec.id === null ? [] : titleSegments(spec.id, spec),
+      spec.id === null
+        ? []
+        : [...titleSegments(spec.id, spec), ...messageSegments(spec.id, spec)],
     );
     for (const chunk of chunks(segments, BULK_ROWS)) {
       upsertThreadSearchSegmentBatch(db, { segments: chunk, updatedAt: now });
@@ -1113,7 +1141,7 @@ export function seedThreads(
     .filter(
       (thread) => thread.spec.slot === CHAIN_END_SLOT && !thread.spec.deleted,
     )
-    .slice(-200)
+    .slice(-20)
     .map((thread) => thread.id);
   const descendantRootIds = [
     orchestrator.id,
@@ -1122,7 +1150,7 @@ export function seedThreads(
         (thread) =>
           thread.spec.slot === ROOT_SLOT && thread.id !== orchestrator.id,
       )
-      .slice(-199)
+      .slice(-19)
       .map((thread) => thread.id),
   ];
   const mentionThreadIds = threads

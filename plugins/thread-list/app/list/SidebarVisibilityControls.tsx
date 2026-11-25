@@ -231,7 +231,7 @@ export function SidebarOverflowItem({
   item: SidebarVisibilityItem;
   onAddToSidebar: (id: string) => void;
   onClose: () => void;
-  onNewThread?: () => void;
+  onNewThread?: (split: boolean) => void;
   selected?: boolean;
 }) {
   const compact = useIsCompactViewport();
@@ -249,9 +249,9 @@ export function SidebarOverflowItem({
               COARSE_POINTER_COMPACT_ROW_HEIGHT_CLASS,
               "shrink-0",
             )}
-            onClick={() => {
+            onClick={(event) => {
               close();
-              onNewThread();
+              onNewThread(event.metaKey || event.ctrlKey);
             }}
           >
             <Icon name="MessageSquarePlus" aria-hidden="true" />

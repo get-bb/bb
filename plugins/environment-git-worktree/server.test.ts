@@ -1,21 +1,31 @@
 import type { JsonValue } from "@get-bb/plugin-sdk";
 import type {
   PluginEnvironmentProviderCreateContext,
+  PluginEnvironmentProviderInputsSchema,
   PluginEnvironmentProviderProgress,
   PluginEnvironmentProviderRestoreContext,
 } from "@get-bb/plugin-sdk/environment-provider";
+import type { PluginEnvironmentProviderRequirements } from "@get-bb/plugin-sdk";
 import {
   createFakePluginHost,
   makeHostResponse,
-  makeThreadResponse,
   type FakePluginHarness,
+  type FakeSdkOverrides,
 } from "@get-bb/plugin-sdk/testing";
 import { describe, expect, it, vi } from "vitest";
 import { worktreeHostContract } from "./contract.js";
 import { GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID } from "./provider-id.js";
 import plugin, { worktreeInputsSchema } from "./server.js";
 
-type Project = PluginEnvironmentProviderCreateContext["project"];
+type CreateContext = PluginEnvironmentProviderCreateContext<
+  PluginEnvironmentProviderRequirements,
+  PluginEnvironmentProviderInputsSchema
+>;
+type RestoreContext = PluginEnvironmentProviderRestoreContext<
+  PluginEnvironmentProviderRequirements,
+  PluginEnvironmentProviderInputsSchema
+>;
+type Project = CreateContext["project"];
 type HostRpcCall = FakePluginHarness["experimental_hostRpcCalls"][number];
 
 const HOST_ID = "host-a";
@@ -48,18 +58,22 @@ async function setup(
           "reset",
       };
     }
+    if (call.method === "nameBranch") return { status: "named" };
     if (call.method === "remove") return { status: "removed" };
     throw new Error(`unexpected host method ${call.method}`);
   },
+  sdk: FakeSdkOverrides = {},
 ) {
   const { bb, harness } = createFakePluginHost({
     experimental_callHostRpc: callHost,
+    sdk,
   });
   await plugin(bb);
   const provider = harness.registrations.environmentProviders.get(
     GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
   );
   if (provider === undefined) throw new Error("Provider not registered");
+  if (provider.apiVersion !== 2) throw new Error("Expected version 2");
   const steps: string[] = [];
   const logs: string[] = [];
   const report: PluginEnvironmentProviderProgress = {
@@ -67,32 +81,55 @@ async function setup(
     log: (text) => logs.push(text),
   };
   const signal = new AbortController().signal;
-  const context: PluginEnvironmentProviderCreateContext = {
-    thread: makeThreadResponse({ id: THREAD_ID, projectId: PROJECT_ID }),
+  const order: string[] = [];
+  const context: CreateContext = {
+    environment: { id: "env_1", name: null, projectId: PROJECT_ID },
     project: PROJECT,
     host: PROVISION_HOST,
-    projectCheckout: { experimental_ownsPath: false, path: SOURCE_PATH },
+    projectCheckout: { ownsPath: false, path: SOURCE_PATH },
     gitRemote: null,
-    inputs: { branch: { kind: "default" } },
-    suggestedBranchName: "bb/test",
+    inputs: { branch: { kind: "default" }, folders: [] },
+    branchName: async () => {
+      order.push("branchName");
+      return "bb/test";
+    },
+    setup: async (path, options) => {
+      const folders = options?.folders ?? [];
+      order.push(
+        folders.length === 0
+          ? `setup ${path}`
+          : `setup ${path} after ${folders.join(", ")}`,
+      );
+    },
+    adopt: async (id) => {
+      order.push(`adopt ${id}`);
+    },
     attempt: 1,
     pathKey: THREAD_ID,
-    experimental_claimPath: async () => true,
     report,
     signal,
   };
   const restore = provider.restore;
   if (restore === null) throw new Error("Provider cannot restore");
-  return { context, harness, logs, provider, report, restore, signal, steps };
+  return {
+    context,
+    harness,
+    logs,
+    order,
+    provider,
+    report,
+    restore,
+    signal,
+    steps,
+  };
 }
 
 function restoreContext(
-  context: PluginEnvironmentProviderCreateContext,
+  context: CreateContext,
   branchName: string | null,
-): PluginEnvironmentProviderRestoreContext {
-  const { suggestedBranchName: _suggested, ...operation } = context;
+): RestoreContext {
   return {
-    ...operation,
+    ...context,
     pathKey: "replacement",
     attempt: 2,
     previous: {
@@ -102,6 +139,7 @@ function restoreContext(
         projectId: PROJECT_ID,
         hostId: HOST_ID,
         path: WORKTREE_PATH,
+        additionalPaths: [],
         isGitRepo: true,
         isWorktree: true,
         branchName,
@@ -113,12 +151,14 @@ function restoreContext(
         lifecycle: {
           phase: "destroyed",
           retireAt: null,
-          teardown: { status: "removed", attempt: 1 },
+          teardown: { status: "removed", attempt: 1, needsRecovery: false },
         },
         hostLifecycle: "active",
         environmentProviderSelection: null,
         environmentProviderInstanceKey: THREAD_ID,
         managed: true,
+        heldBy: null,
+        statusMessage: null,
         workspaceProvisionType: "managed-worktree",
         createdAt: 1,
         updatedAt: 2,
@@ -132,12 +172,13 @@ describe("worktree resource operations", () => {
   it("defaults omitted inputs and uses per-attempt path keys", async () => {
     expect(worktreeInputsSchema.parse({})).toEqual({
       branch: { kind: "default" },
+      folders: [],
     });
     const { provider } = await setup();
     expect(provider.policy.pathKeys).toBe("per-attempt");
   });
 
-  it("runs one long host create and returns its path, base branch, and owned branch", async () => {
+  it("creates a detached worktree, starts setup there, then names its branch", async () => {
     const fixture = await setup();
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "created",
@@ -150,19 +191,62 @@ describe("worktree resource operations", () => {
           repositoryPath: SOURCE_PATH,
           baseBranch: "main",
         },
+        folderBranches: [],
       },
     });
-    expect(fixture.harness.experimental_hostRpcCalls[0]).toMatchObject({
-      method: "create",
-      hostId: HOST_ID,
-      input: {
-        operationId: `create#${THREAD_ID}#1`,
-        branchName: "bb/test",
-        pathKey: THREAD_ID,
-        baseBranch: { kind: "default" },
-        branchMode: "reset",
+    expect(fixture.harness.experimental_hostRpcCalls).toMatchObject([
+      {
+        method: "create",
+        hostId: HOST_ID,
+        input: {
+          operationId: `create#${THREAD_ID}#1`,
+          branchName: null,
+          pathKey: THREAD_ID,
+          baseBranch: { kind: "default" },
+          branchMode: "reset",
+        },
+        signal: fixture.signal,
       },
-      signal: fixture.signal,
+      {
+        method: "nameBranch",
+        input: {
+          operationId: `name#${THREAD_ID}#1`,
+          path: WORKTREE_PATH,
+          branchName: "bb/test",
+        },
+      },
+    ]);
+    expect(fixture.order).toEqual([`setup ${WORKTREE_PATH}`, "branchName"]);
+  });
+
+  it("removes the worktree and the branch it may have made when naming fails", async () => {
+    const fixture = await setup((call) => {
+      if (call.method === "create")
+        return {
+          status: "created",
+          path: WORKTREE_PATH,
+          baseBranch: "main",
+          ownsBranch: false,
+        };
+      if (call.method === "nameBranch")
+        return { status: "failed", message: "switch failed" };
+      if (call.method === "remove") return { status: "removed" };
+      throw new Error(`unexpected host method ${call.method}`);
+    });
+    expect(await fixture.provider.create(fixture.context)).toEqual({
+      status: "failed",
+      message: "switch failed",
+    });
+    expect(fixture.harness.experimental_hostRpcCalls.at(-1)).toMatchObject({
+      method: "remove",
+      input: {
+        path: WORKTREE_PATH,
+        ownedBranch: {
+          name: "bb/test",
+          repositoryPath: SOURCE_PATH,
+          baseBranch: "main",
+        },
+      },
     });
   });
 
@@ -170,7 +254,7 @@ describe("worktree resource operations", () => {
     const fixture = await setup();
     const restored = await fixture.restore({
       ...restoreContext(fixture.context, "bb/original-thread"),
-      inputs: { branch: { kind: "named", name: "release" } },
+      inputs: { branch: { kind: "named", name: "release" }, folders: [] },
     });
     expect(restored).not.toHaveProperty("resource");
     expect(fixture.harness.experimental_hostRpcCalls[0]?.input).toMatchObject({
@@ -194,11 +278,12 @@ describe("worktree resource operations", () => {
 
   it("forwards host progress while create is running", async () => {
     let finish: (value: unknown) => void = () => {};
-    const fixture = await setup(
-      () =>
-        new Promise((resolve) => {
-          finish = resolve;
-        }),
+    const fixture = await setup((call) =>
+      call.method === "nameBranch"
+        ? { status: "named" }
+        : new Promise((resolve) => {
+            finish = resolve;
+          }),
     );
     const creating = fixture.provider.create(fixture.context);
     await vi.waitFor(() => {
@@ -299,13 +384,223 @@ describe("worktree resource operations", () => {
   });
 });
 
+describe("branching project folders", () => {
+  const API = "/code/api";
+  const API_WORKTREE =
+    "/data/plugins/environment-git-worktree/worktrees/thr_1/api";
+  const FOLDER_SDK: FakeSdkOverrides = {
+    projects: {
+      get: () => ({
+        sources: [
+          {
+            id: "src_1",
+            type: "local_path",
+            hostId: HOST_ID,
+            path: SOURCE_PATH,
+          },
+        ],
+      }),
+      sources: {
+        experimental_folders: {
+          list: () => [
+            { id: "fld_1", projectSourceId: "src_1", path: API, createdAt: 1 },
+            {
+              id: "fld_2",
+              projectSourceId: "src_1",
+              path: "/code/web",
+              createdAt: 1,
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  function folderHost(
+    folders: (input: unknown) => unknown = () => ({
+      status: "created",
+      folders: [
+        {
+          sourcePath: API,
+          path: API_WORKTREE,
+          baseBranch: "origin/main",
+          ownsBranch: false,
+        },
+      ],
+    }),
+  ) {
+    return (call: HostRpcCall) => {
+      if (call.method === "create")
+        return {
+          status: "created",
+          path: WORKTREE_PATH,
+          baseBranch: "main",
+          ownsBranch: false,
+        };
+      if (call.method === "createFolders") return folders(call.input);
+      if (call.method === "nameBranch") return { status: "named" };
+      if (call.method === "remove") return { status: "removed" };
+      throw new Error(`unexpected host method ${call.method}`);
+    };
+  }
+
+  it("makes a worktree of each chosen folder before setup, names it on the thread's branch, and replaces the folder with it", async () => {
+    const fixture = await setup(folderHost(), FOLDER_SDK);
+    const context = {
+      ...fixture.context,
+      inputs: { branch: { kind: "default" }, folders: [`${API}/`] },
+    };
+    expect(await fixture.provider.validate?.(context)).toEqual({
+      action: "accept",
+    });
+    const created = await fixture.provider.create(context);
+    expect(created).toEqual({
+      status: "created",
+      path: WORKTREE_PATH,
+      ownsPath: true,
+      mergeBaseBranch: "main",
+      additionalPaths: [{ path: API_WORKTREE, replaces: API }],
+      resource: {
+        ownedBranch: {
+          name: "bb/test",
+          repositoryPath: SOURCE_PATH,
+          baseBranch: "main",
+        },
+        folderBranches: [
+          { name: "bb/test", repositoryPath: API, baseBranch: "origin/main" },
+        ],
+      },
+    });
+    expect(
+      fixture.harness.experimental_hostRpcCalls.map((call) => [
+        call.method,
+        call.input,
+      ]),
+    ).toMatchObject([
+      ["create", { branchName: null }],
+      [
+        "createFolders",
+        {
+          sourcePath: SOURCE_PATH,
+          path: WORKTREE_PATH,
+          folders: [API],
+          branchName: null,
+          branchMode: "reset",
+        },
+      ],
+      ["nameBranch", { path: WORKTREE_PATH, branchName: "bb/test" }],
+      [
+        "nameBranch",
+        { sourcePath: API, path: API_WORKTREE, branchName: "bb/test" },
+      ],
+    ]);
+    expect(fixture.order).toEqual([
+      `setup ${WORKTREE_PATH} after ${API_WORKTREE}`,
+      "branchName",
+    ]);
+
+    await fixture.provider.remove({
+      environment: null,
+      hostId: HOST_ID,
+      path: WORKTREE_PATH,
+      pathKey: THREAD_ID,
+      resource:
+        created.status === "created" ? (created.resource ?? null) : null,
+      attempt: 1,
+      report: fixture.report,
+      signal: fixture.signal,
+    });
+    expect(fixture.harness.experimental_hostRpcCalls.at(-1)).toMatchObject({
+      method: "remove",
+      input: {
+        path: WORKTREE_PATH,
+        folderBranches: [
+          { name: "bb/test", repositoryPath: API, baseBranch: "origin/main" },
+        ],
+      },
+    });
+  });
+
+  it("refuses a folder that is not one of the project's folders on the machine", async () => {
+    const fixture = await setup(folderHost(), FOLDER_SDK);
+    const context = {
+      ...fixture.context,
+      inputs: { branch: { kind: "default" }, folders: ["/code/other"] },
+    };
+    expect(await fixture.provider.validate?.(context)).toEqual({
+      action: "refuse",
+      message: expect.stringContaining(
+        "/code/other is not one of this project's folders",
+      ),
+    });
+    expect(await fixture.provider.create(context)).toMatchObject({
+      status: "failed",
+    });
+    expect(fixture.harness.experimental_hostRpcCalls).toEqual([]);
+  });
+
+  it("sets up each folder worktree a restore makes before its main worktree", async () => {
+    const fixture = await setup(folderHost(), FOLDER_SDK);
+    const restored = await fixture.restore({
+      ...restoreContext(fixture.context, "bb/original-thread"),
+      inputs: { branch: { kind: "default" }, folders: [API] },
+    });
+    expect(restored).toMatchObject({
+      status: "created",
+      additionalPaths: [{ path: API_WORKTREE, replaces: API }],
+    });
+    expect(fixture.order).toEqual([
+      `setup ${WORKTREE_PATH} after ${API_WORKTREE}`,
+    ]);
+  });
+
+  it("restores without a folder that left the project, and clears the recorded folder lists", async () => {
+    const fixture = await setup(folderHost(), FOLDER_SDK);
+    const restored = await fixture.restore({
+      ...restoreContext(fixture.context, "bb/original-thread"),
+      inputs: { branch: { kind: "default" }, folders: ["/code/gone"] },
+    });
+    expect(restored).toMatchObject({
+      status: "created",
+      path: WORKTREE_PATH,
+      additionalPaths: [],
+    });
+    expect(fixture.steps).toContain(
+      "Skipped /code/gone: it is no longer one of this project's folders",
+    );
+    expect(
+      fixture.harness.experimental_hostRpcCalls.map((call) => call.method),
+    ).toEqual(["create"]);
+  });
+
+  it("fails the create and removes the main worktree when a folder worktree fails", async () => {
+    const fixture = await setup(
+      folderHost(() => ({
+        status: "failed",
+        message: "api is not a repository",
+      })),
+      FOLDER_SDK,
+    );
+    expect(
+      await fixture.provider.create({
+        ...fixture.context,
+        inputs: { branch: { kind: "default" }, folders: [API] },
+      }),
+    ).toEqual({ status: "failed", message: "api is not a repository" });
+    expect(fixture.harness.experimental_hostRpcCalls.at(-1)).toMatchObject({
+      method: "remove",
+      input: { path: WORKTREE_PATH, ownedBranch: null, folderBranches: [] },
+    });
+    expect(fixture.order).toEqual([]);
+  });
+});
+
 describe("adopting an existing worktree", () => {
   const EXISTING_PATH = "/code/bb-feature";
 
   async function setupAdoption(
     overrides: {
       resolve?: unknown;
-      claim?: boolean;
     } = {},
   ) {
     const fixture = await setup((call) => {
@@ -321,14 +616,11 @@ describe("adopting an existing worktree", () => {
       if (call.method === "remove") return { status: "removed" };
       throw new Error(`unexpected host method ${call.method}`);
     });
-    const claimed = vi.fn(async () => overrides.claim ?? true);
     return {
       ...fixture,
-      claimed,
       context: {
         ...fixture.context,
         inputs: { kind: "existing" as const, path: EXISTING_PATH },
-        experimental_claimPath: claimed,
       },
     };
   }
@@ -337,15 +629,18 @@ describe("adopting an existing worktree", () => {
     const fixture = await setupAdoption();
 
     expect(
-      fixture.provider.experimental_existingPath?.(fixture.context.inputs),
-    ).toBe(EXISTING_PATH);
+      await fixture.provider.locate?.({
+        host: fixture.context.host,
+        projectCheckout: fixture.context.projectCheckout,
+        inputs: fixture.context.inputs,
+      }),
+    ).toEqual({ path: EXISTING_PATH, reuse: true });
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "created",
       path: EXISTING_PATH,
       ownsPath: false,
       resource: { adopted: true },
     });
-    expect(fixture.claimed).toHaveBeenCalledWith(EXISTING_PATH);
     expect(fixture.harness.experimental_hostRpcCalls).toHaveLength(1);
     expect(fixture.harness.experimental_hostRpcCalls[0]?.method).toBe(
       "resolveExistingWorktree",
@@ -359,7 +654,6 @@ describe("adopting an existing worktree", () => {
       await fixture.restore({
         ...restoreContext(fixture.context, "feature"),
         inputs: fixture.context.inputs,
-        experimental_claimPath: fixture.claimed,
       }),
     ).toEqual({
       status: "created",
@@ -380,17 +674,6 @@ describe("adopting an existing worktree", () => {
     expect(await fixture.provider.create(fixture.context)).toEqual({
       status: "failed",
       message: "not a worktree of this repo",
-    });
-    expect(fixture.claimed).not.toHaveBeenCalled();
-  });
-
-  it("refuses a path another environment already claimed", async () => {
-    const fixture = await setupAdoption({ claim: false });
-
-    const result = await fixture.provider.create(fixture.context);
-    expect(result.status).toBe("failed");
-    expect(result).toMatchObject({
-      message: expect.stringContaining("already in use"),
     });
   });
 
@@ -432,11 +715,12 @@ describe("adopting an existing worktree", () => {
     expect(worktreeInputsSchema.parse({ branch: { kind: "default" } })).toEqual(
       {
         branch: { kind: "default" },
+        folders: [],
       },
     );
     expect(
       worktreeInputsSchema.parse({ branch: { kind: "named", name: "main" } }),
-    ).toEqual({ branch: { kind: "named", name: "main" } });
+    ).toEqual({ branch: { kind: "named", name: "main" }, folders: [] });
     expect(
       worktreeInputsSchema.parse({ kind: "existing", path: "/code/wt" }),
     ).toEqual({ kind: "existing", path: "/code/wt" });

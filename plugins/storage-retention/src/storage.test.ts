@@ -1,4 +1,4 @@
-import type { BbPluginApi } from "@get-bb/plugin-sdk";
+import { experimental_BbHttpError, type BbPluginApi } from "@get-bb/plugin-sdk";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import fs from "node:fs/promises";
@@ -603,6 +603,7 @@ it("reads only the threads a report needs: non-empty storage entries by id and t
     projectId: "proj_work",
     hostId: "host_test",
     path: path.join(worktrees, name),
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: true,
     branchName: name,
@@ -616,6 +617,8 @@ it("reads only the threads a report needs: non-empty storage entries by id and t
     lifecycle: { phase: "retiring", retireAt: 1, teardown: null },
     hostLifecycle: "active",
     managed: true,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: "managed-worktree",
     createdAt: 0,
     updatedAt: 0,
@@ -1287,6 +1290,7 @@ it("counts distinct live managed worktrees for machine projects, including empty
     projectId: "proj_work",
     hostId: "host_test",
     path: "/work/live",
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: true,
     branchName: "feature",
@@ -1300,6 +1304,8 @@ it("counts distinct live managed worktrees for machine projects, including empty
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: true,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: "managed-worktree",
     createdAt: 0,
     updatedAt: 0,
@@ -1317,6 +1323,7 @@ it("counts distinct live managed worktrees for machine projects, including empty
         teardown: {
           status: "failed",
           attempt: 1,
+          needsRecovery: false,
           message: "Permission denied",
         },
       },
@@ -1334,7 +1341,7 @@ it("counts distinct live managed worktrees for machine projects, including empty
       lifecycle: {
         phase: "destroyed",
         retireAt: 1,
-        teardown: { status: "removed", attempt: 1 },
+        teardown: { status: "removed", attempt: 1, needsRecovery: false },
       },
     },
     { ...base, id: "env_checkout", path: "/work/checkout", isWorktree: false },
@@ -1447,6 +1454,7 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     return target;
   };
   const managed = worktree("managed", "-b", "managed");
+  const managedFolder = worktree("managed-folder", "-b", "managed-folder");
   const clean = worktree("clean", "-b", "clean");
   await fs.mkdir(path.join(clean, "node_modules"));
   await fs.writeFile(
@@ -1468,6 +1476,9 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     projectId: "proj_work",
     hostId: "host_test",
     path: managed,
+    additionalPaths: [
+      { path: managedFolder, replaces: path.join(root, "other-repo") },
+    ],
     isGitRepo: true,
     isWorktree: true,
     branchName: "managed",
@@ -1481,6 +1492,8 @@ it("finds worktrees created outside BB, removes only safe ones in bulk, and forc
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: true,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: "managed-worktree",
     createdAt: 0,
     updatedAt: 0,
@@ -2532,8 +2545,11 @@ it("stops retrying archive storage cleanup once its thread no longer exists", as
       threads: {
         get: async () => {
           if (exists) return thread;
-          throw Object.assign(new Error("HTTP 404: Thread not found"), {
+          throw new experimental_BbHttpError({
             status: 404,
+            code: null,
+            message: "Thread not found",
+            body: null,
           });
         },
       },
@@ -2560,7 +2576,7 @@ it("stops retrying archive storage cleanup once its thread no longer exists", as
   }
 });
 
-it("never clears thread storage that holds a workspace an environment still uses", async () => {
+it("clears a thread's workspace and deletes its environment once no live thread or hold uses it", async () => {
   type Environment = Awaited<
     ReturnType<
       import("@get-bb/plugin-sdk").BbPluginApi["sdk"]["environments"]["list"]
@@ -2572,19 +2588,22 @@ it("never clears thread storage that holds a workspace an environment still uses
     ["thr_owner/HANDOFF.md", 16],
     ["thr_owner/repair/src.ts", 16],
     ["thr_owner/repair/fixture.bin", large],
-    ["thr_plain/notes.md", 16],
+    ["thr_done/notes.md", 16],
+    ["thr_done/checkout/src.ts", 16],
+    ["thr_kept/scratch/src.ts", 16],
     ["thr_gone/worktrees/issue/src.ts", 16],
     ["thr_lonely/notes.md", 16],
   ] as const) {
     await fs.mkdir(path.dirname(path.join(root, file)), { recursive: true });
     await fs.writeFile(path.join(root, file), Buffer.alloc(size, 1));
   }
-  const environment: Environment = {
+  const base: Environment = {
     id: "env_repair",
     name: null,
     projectId: "proj_work",
     hostId: "host_test",
     path: path.join(root, "thr_owner", "repair"),
+    additionalPaths: [],
     isGitRepo: true,
     isWorktree: true,
     branchName: "feature",
@@ -2598,35 +2617,61 @@ it("never clears thread storage that holds a workspace an environment still uses
     lifecycle: { phase: "active", retireAt: null, teardown: null },
     hostLifecycle: "active",
     managed: false,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: null,
     createdAt: 0,
     updatedAt: 0,
   };
-  const environments: Environment[] = [
-    environment,
-    {
-      ...environment,
-      id: "env_orphaned",
-      path: `${path.join(root, "thr_gone", "worktrees", "issue")}/`,
-    },
-    {
-      ...environment,
-      id: "env_destroyed",
-      path: path.join(root, "thr_plain", "old"),
-      status: "destroyed",
-    },
-  ];
+  const environments = new Map<string, Environment>(
+    (
+      [
+        base,
+        {
+          ...base,
+          id: "env_done",
+          path: path.join(root, "thr_done", "checkout"),
+        },
+        {
+          ...base,
+          id: "env_kept",
+          path: path.join(root, "thr_kept", "scratch"),
+          heldBy: "user",
+        },
+        {
+          ...base,
+          id: "env_orphaned",
+          path: `${path.join(root, "thr_gone", "worktrees", "issue")}/`,
+        },
+      ] satisfies Environment[]
+    ).map((env) => [env.id, env]),
+  );
   const threads = new Map(
-    ["thr_owner", "thr_plain"].map((id) => [
-      id,
+    [
       makeThreadResponse({
-        id,
-        status: "idle",
+        id: "thr_owner",
         environmentId: "env_repair",
         archivedAt: 1,
       }),
-    ]),
+      makeThreadResponse({
+        id: "thr_live",
+        title: "Still working",
+        environmentId: "env_repair",
+      }),
+      makeThreadResponse({
+        id: "thr_done",
+        environmentId: "env_done",
+        archivedAt: 1,
+      }),
+      makeThreadResponse({
+        id: "thr_reader",
+        environmentId: "env_done",
+        archivedAt: 1,
+      }),
+      makeThreadResponse({ id: "thr_kept", archivedAt: 1 }),
+    ].map((thread) => [thread.id, thread]),
   );
+  const deleted: string[] = [];
   const worker = experimental_createHostEntryHarness(hostEntry);
   const host = createFakePluginHost({
     pluginId: "storage-retention",
@@ -2666,9 +2711,34 @@ it("never clears thread storage that holds a workspace an environment still uses
           threadStorageRootPath: root,
         }),
       },
-      environments: { list: async () => environments },
+      environments: {
+        list: async () =>
+          [...environments.values()].filter(
+            (env) => env.status !== "destroyed",
+          ),
+        get: async ({ environmentId }) => environments.get(environmentId)!,
+        delete: async ({ environmentId }) => {
+          const live = [...threads.values()].some(
+            (thread) =>
+              thread.environmentId === environmentId &&
+              thread.archivedAt === null,
+          );
+          if (live) throw new Error("Environment still has live threads");
+          deleted.push(environmentId);
+          environments.set(environmentId, {
+            ...environments.get(environmentId)!,
+            status: "destroyed",
+          });
+          return { ok: true };
+        },
+      },
       threads: {
-        list: async () => [...threads.values()],
+        list: async ({ environmentId }) =>
+          [...threads.values()].filter(
+            (thread) =>
+              environmentId === undefined ||
+              thread.environmentId === environmentId,
+          ),
         get: async ({ threadId }) => threads.get(threadId)!,
         storageLocation: async ({ threadId }) => ({
           hostId: "host_test",
@@ -2677,8 +2747,8 @@ it("never clears thread storage that holds a workspace an environment still uses
       },
     },
   });
-  const ownerFiles = async () =>
-    (await fs.readdir(path.join(root, "thr_owner"), { recursive: true }))
+  const files = async (name: string) =>
+    (await fs.readdir(path.join(root, name), { recursive: true }))
       .map(String)
       .sort();
   const expectedOwnerFiles = [
@@ -2695,14 +2765,15 @@ it("never clears thread storage that holds a workspace an environment still uses
       deleteDevDataOnCheckoutRemoval: false,
     });
     plugin(host.bb);
-    for (const thread of threads.values())
+    for (const id of ["thr_owner", "thr_done", "thr_reader"])
       await host.harness.behavior.emitThreadEvent("thread.archived", {
-        thread,
+        thread: threads.get(id)!,
       });
-    expect(await fs.readdir(path.join(root, "thr_plain"))).toEqual([]);
-    expect(await ownerFiles()).toEqual(expectedOwnerFiles);
+    await expect.poll(() => files("thr_done")).toEqual([]);
+    expect(deleted).toEqual(["env_done"]);
+    expect(await files("thr_owner")).toEqual(expectedOwnerFiles);
     await host.harness.behavior.runSchedule("archive-storage-cleanup");
-    expect(await ownerFiles()).toEqual(expectedOwnerFiles);
+    expect(await files("thr_owner")).toEqual(expectedOwnerFiles);
     await expect(
       host.harness.callRpc("clearThread", { threadId: "thr_owner" }),
     ).rejects.toThrow(
@@ -2724,8 +2795,30 @@ it("never clears thread storage that holds a workspace an environment still uses
     const report = hostStorageResponseSchema.parse(
       await host.harness.callRpc("host", { hostId: "host_test" }),
     ).report!;
+    expect(
+      Object.fromEntries(
+        report.largestThreads.map((thread) => [
+          thread.threadId,
+          thread.heldWorkspace,
+        ]),
+      ),
+    ).toEqual({
+      thr_owner: {
+        path: path.join(root, "thr_owner", "repair"),
+        threadTitles: ["Still working"],
+      },
+      thr_kept: {
+        path: path.join(root, "thr_kept", "scratch"),
+        threadTitles: [],
+      },
+    });
+    await expect(
+      host.harness.callRpc("clearThread", { threadId: "thr_kept" }),
+    ).rejects.toThrow(
+      `contains the workspace ${path.join(root, "thr_kept", "scratch")}`,
+    );
     expect(report.archivedFiles.threadCount).toBe(0);
-    expect(report.orphanCount).toBe(1);
+    expect(report.orphanCount).toBe(2);
     expect(report.archivedLargeFiles.threadCount).toBe(0);
 
     await expect(
@@ -2733,13 +2826,26 @@ it("never clears thread storage that holds a workspace an environment still uses
     ).resolves.toMatchObject({ clearedThreads: 0 });
     await host.harness.callRpc("clearLargeFiles", { hostId: "host_test" });
     await host.harness.callRpc("removeOrphans", { hostId: "host_test" });
-    expect(await ownerFiles()).toEqual(expectedOwnerFiles);
-    expect(
-      await fs.readdir(path.join(root, "thr_gone", "worktrees", "issue")),
-    ).toEqual(["src.ts"]);
-    await expect(fs.stat(path.join(root, "thr_lonely"))).rejects.toThrow(
-      "ENOENT",
+    expect(await files("thr_owner")).toEqual(expectedOwnerFiles);
+    expect(await files("thr_kept")).toEqual([
+      "scratch",
+      path.join("scratch", "src.ts"),
+    ]);
+    for (const name of ["thr_gone", "thr_lonely"])
+      await expect(fs.stat(path.join(root, name))).rejects.toThrow("ENOENT");
+    expect(deleted).toEqual(["env_done", "env_orphaned"]);
+
+    threads.set(
+      "thr_live",
+      makeThreadResponse({
+        id: "thr_live",
+        environmentId: "env_repair",
+        archivedAt: 1,
+      }),
     );
+    await host.harness.callRpc("clearThread", { threadId: "thr_owner" });
+    expect(await files("thr_owner")).toEqual([]);
+    expect(deleted).toEqual(["env_done", "env_orphaned", "env_repair"]);
   } finally {
     await host.harness.lifecycle.dispose();
     await expect
@@ -3111,11 +3217,20 @@ it("refuses to clear storage containing a live Windows workspace with different 
             status: "idle",
             environmentId: "env_live",
           }),
+        list: async () => [
+          makeThreadResponse({
+            id: "thr_owner",
+            status: "idle",
+            environmentId: "env_live",
+          }),
+        ],
         storageLocation: async () => ({ hostId: "host_test" }),
       },
       environments: {
         list: async () => [
           {
+            id: "env_live",
+            heldBy: null,
             path: "c:/storage/THR_OWNER/repo",
             status: "ready",
             lifecycle: { teardown: null },
@@ -3139,14 +3254,22 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
   type Environment = Awaited<
     ReturnType<BbPluginApi["sdk"]["environments"]["list"]>
   >[number];
-  const interrupted =
-    "Needs recovery: Environment hook outcome is unknown after interruption.";
-  const leftover = (id: string, message: string): Environment => ({
+  const interrupted = {
+    needsRecovery: true,
+    message:
+      "Needs recovery: Environment hook outcome is unknown after interruption.",
+  };
+  const leftover = (
+    id: string,
+    teardown: { needsRecovery: boolean; message: string },
+    additionalPaths: Environment["additionalPaths"] = [],
+  ): Environment => ({
     id,
     name: null,
     projectId: "proj_work",
     hostId: "host_test",
     path: `/worktrees/${id}`,
+    additionalPaths,
     isGitRepo: true,
     isWorktree: false,
     branchName: id,
@@ -3160,10 +3283,16 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
     lifecycle: {
       phase: "teardown",
       retireAt: 1,
-      teardown: { status: "failed", attempt: 5, message },
+      teardown: {
+        status: "failed",
+        attempt: teardown.needsRecovery ? 5 : 1,
+        ...teardown,
+      },
     },
     hostLifecycle: "active",
     managed: true,
+    heldBy: null,
+    statusMessage: null,
     workspaceProvisionType: "managed-worktree",
     createdAt: 0,
     updatedAt: 0,
@@ -3182,7 +3311,9 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
         checkouts: paths.map((path) =>
           path.endsWith("env_dirty")
             ? { path, state: "changed", changedFileCount: 2 }
-            : { path, state: "clean" },
+            : path.endsWith("/api")
+              ? { path, state: "changed", changedFileCount: 3 }
+              : { path, state: "clean" },
         ),
       };
     },
@@ -3195,8 +3326,18 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
         list: async () => [
           leftover("env_clean", interrupted),
           leftover("env_dirty", interrupted),
+          leftover("env_dirty_folder", interrupted, [
+            { path: "/worktrees/env_dirty_folder/api", replaces: "/code/api" },
+          ]),
           leftover("env_old_daemon", interrupted),
-          leftover("env_failed", "git worktree remove failed"),
+          leftover("env_failed", {
+            needsRecovery: false,
+            message: "git worktree remove failed",
+          }),
+          leftover("env_raced", {
+            needsRecovery: false,
+            message: "git worktree remove failed",
+          }),
         ],
         experimental_cleanup: async ({ environmentId, recover }) => {
           cleaned.push({ environmentId, recover });
@@ -3204,6 +3345,14 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
             throw new Error(
               "HTTP 409: Recovery refused: process inspection is unavailable on this host",
             );
+          if (environmentId === "env_raced")
+            throw new experimental_BbHttpError({
+              status: 409,
+              code: "environment_needs_recovery",
+              message:
+                "Needs recovery. Inspect the workspace, then run bb environment cleanup env_raced --recover.",
+              body: null,
+            });
           return null;
         },
       },
@@ -3226,9 +3375,18 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
           message: "Kept because it has 2 uncommitted changes",
         },
         {
+          environmentId: "env_dirty_folder",
+          message: "Kept because it has 3 uncommitted changes",
+        },
+        {
           environmentId: "env_old_daemon",
           message:
             "Kept because this machine’s BB can’t check for running programs yet; update BB on this machine",
+        },
+        {
+          environmentId: "env_raced",
+          message:
+            "Cleanup was interrupted. BB removes it once nothing is running in it and it has no uncommitted changes",
         },
       ],
     });
@@ -3236,6 +3394,7 @@ it("recovers interrupted checkouts without uncommitted changes and explains the 
       { environmentId: "env_clean", recover: true },
       { environmentId: "env_old_daemon", recover: true },
       { environmentId: "env_failed", recover: false },
+      { environmentId: "env_raced", recover: false },
     ]);
     cleaned.length = 0;
     await host.harness.callRpc("retryWorktreeCleanup", {

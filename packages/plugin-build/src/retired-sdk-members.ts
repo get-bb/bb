@@ -64,7 +64,7 @@ const RETIRED_NAME = new RegExp(`^(?:${RETIRED_NAMES})$`, "u");
 
 const PANEL_MEMBER_REPLACEMENTS: Readonly<Record<string, string>> = {
   openPanel:
-    'ctx.openPanel is retired. Use ctx.experimental_panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })',
+    'ctx.openPanel is retired. Use ctx.panel.openTab({ tab: { id, context: { kind: "thread" }, availability: "action" }, params, title })',
   openThreadPanel:
     'useBbNavigate().openThreadPanel is retired. Use experimental_useAppPanel().openTab({ tab: { id: actionId, context: { kind: "thread" }, availability: "action" }, params, title })',
   experimental_openTab:
@@ -83,6 +83,10 @@ const RETIRED_PANEL_DESTRUCTURING = new RegExp(
   "gu",
 );
 
+const RETIRED_CONTEXT_PANEL_ACCESS = /\.\s*experimental_panel\b/u;
+const RETIRED_CONTEXT_PANEL_DESTRUCTURING =
+  /\{[^{}]*\bexperimental_panel\b(?!\s*:)[^{}]*\}\s*(?:\)|=(?!=))/u;
+
 function retiredPanelMemberWarnings(source: string): string[] {
   const found = new Set<string>();
   for (const pattern of [RETIRED_PANEL_CALL, RETIRED_PANEL_DESTRUCTURING]) {
@@ -90,10 +94,20 @@ function retiredPanelMemberWarnings(source: string): string[] {
       if (match[1] !== undefined) found.add(match[1]);
     }
   }
-  return [...found].map(
-    (name) =>
-      `${PANEL_MEMBER_REPLACEMENTS[name]}. It keeps working only for existing plugins. See bb-plugin-authoring, frontend-hooks-and-ui.md#panel-controller.`,
-  );
+  const usesContextPanel =
+    RETIRED_CONTEXT_PANEL_ACCESS.test(source) ||
+    RETIRED_CONTEXT_PANEL_DESTRUCTURING.test(source);
+  return [
+    ...[...found].map(
+      (name) =>
+        `${PANEL_MEMBER_REPLACEMENTS[name]}. It keeps working only for existing plugins. See bb-plugin-authoring, frontend-hooks-and-ui.md#panel-controller.`,
+    ),
+    ...(usesContextPanel
+      ? [
+          "ctx.experimental_panel is renamed to ctx.panel in every callback context. It keeps working only for existing plugins. See bb-plugin-authoring, frontend-hooks-and-ui.md#callback-context.",
+        ]
+      : []),
+  ];
 }
 
 const RETIRED_RPC_INVALIDATES =

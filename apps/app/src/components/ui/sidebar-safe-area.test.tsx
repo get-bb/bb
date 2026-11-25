@@ -41,7 +41,7 @@ it.each([
       expect(computed.paddingLeft).toBe(`${left}px`);
       expect(computed.paddingTop).toBe("20px");
       expect(computed.paddingBottom).toBe("30px");
-      expect(computed.paddingRight).toBe(`${compact ? right : 0}px`);
+      expect(computed.paddingRight).toBe("0px");
     } finally {
       style.remove();
     }

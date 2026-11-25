@@ -123,6 +123,28 @@ describe("theme.css neutral ramp", () => {
     );
   });
 
+  it("brings hover-collapsed sidebar controls back into the row under the same states that reserve the actions inset", () => {
+    const activeRowStates = (target: string, declaration: string) => {
+      const rule = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].find(
+        ([, selector, body]) =>
+          selector.includes(".bb-sidebar-hover-actions-row") &&
+          selector.includes(target) &&
+          body.includes(declaration),
+      );
+      expect(rule).toBeDefined();
+      return rule![1].replaceAll(target, "").replace(/\s+/g, " ").trim();
+    };
+
+    expect(
+      activeRowStates(
+        ".bb-sidebar-hover-actions-collapse",
+        "position: relative",
+      ),
+    ).toEqual(
+      activeRowStates(".bb-sidebar-hover-actions-inset", "padding-right: var("),
+    );
+  });
+
   it("backs selected sticky sidebar rows with an opaque sidebar layer", () => {
     const rule = css.match(
       /\[data-sidebar-sticky-tier\]\.bb-sidebar-selected-row\s*\{([^}]*)\}/s,

@@ -95,6 +95,7 @@ function renderContainer({
     <SidebarProvider>
       <TooltipProvider>
         <SidebarSplitContainer
+          isTabListReady
           activeTabId={activeTabId}
           isFullScreen={isFullScreen}
           onActivateTab={onActivateTab}
@@ -196,6 +197,7 @@ describe("SidebarSplitContainer", () => {
       const [activeTabId, setActiveTabId] = useState("tab-a");
       return (
         <SidebarSplitContainer
+          isTabListReady
           activeTabId={activeTabId}
           isFullScreen={false}
           onActivateTab={(tabId) => {
@@ -351,6 +353,7 @@ describe("SidebarSplitContainer", () => {
             Start terminal
           </button>
           <SidebarSplitContainer
+            isTabListReady
             activeTabId={terminalOpen ? "terminal-a" : "tab-b"}
             isFullScreen={false}
             onActivateTab={vi.fn()}
@@ -416,6 +419,7 @@ describe("SidebarSplitContainer", () => {
             Open new tab
           </button>
           <SidebarSplitContainer
+            isTabListReady
             activeTabId={phase === "file" ? file.id : launcher.id}
             isFullScreen={false}
             onActivateTab={vi.fn()}
@@ -677,6 +681,7 @@ describe("SidebarSplitContainer", () => {
       const [isFullScreen, setIsFullScreen] = useState(false);
       return (
         <SidebarSplitContainer
+          isTabListReady
           activeTabId="tab-b"
           isFullScreen={isFullScreen}
           onActivateTab={vi.fn()}

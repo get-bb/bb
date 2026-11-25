@@ -4,6 +4,7 @@ import {
   acpSessionForkResultSchema,
   acpSessionNewResultSchema,
   acpToolCallUpdateEventSchema,
+  readOpenCodeCompactionUpdate,
 } from "./wire.js";
 
 describe("acpToolCallUpdateEventSchema", () => {
@@ -25,6 +26,24 @@ describe("acpToolCallUpdateEventSchema", () => {
     expect(nulls.status).toBeUndefined();
   });
 
+  it("reads the SDK's nullable title, name, content and locations as absent", () => {
+    const parsed = acpToolCallUpdateEventSchema.parse({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-1",
+      status: "failed",
+      title: null,
+      name: null,
+      content: null,
+      locations: null,
+    });
+
+    expect(parsed).toEqual({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-1",
+      status: "failed",
+    });
+  });
+
   it("skips a content entry of an unknown type instead of dropping the call", () => {
     const parsed = acpToolCallUpdateEventSchema.parse({
       sessionUpdate: "tool_call_update",
@@ -39,6 +58,21 @@ describe("acpToolCallUpdateEventSchema", () => {
     expect(parsed.content).toEqual([
       { type: "content", content: { type: "text", text: "done" } },
     ]);
+  });
+
+  it("accepts a permission request whose tool call carries SDK nulls", () => {
+    const parsed = acpRequestPermissionParamsSchema.parse({
+      sessionId: "s",
+      toolCall: {
+        toolCallId: "call-1",
+        title: null,
+        content: null,
+        locations: null,
+      },
+      options: [{ optionId: "y", name: "Allow", kind: "allow_once" }],
+    });
+
+    expect(parsed.toolCall).toEqual({ toolCallId: "call-1" });
   });
 
   it("opens the enums on a permission request's tool call too", () => {
@@ -181,5 +215,25 @@ describe("acpSessionForkResultSchema", () => {
       sessionId: "forked-session",
       configOptions: undefined,
     });
+  });
+});
+
+it("preserves the message ID and failure reason of an OpenCode compaction", () => {
+  expect(
+    readOpenCodeCompactionUpdate({
+      sessionUpdate: "session_info_update",
+      _meta: {
+        "opencode/compaction": {
+          messageId: "msg_compact",
+          status: "failed",
+          error: { type: "provider.error", message: "summary request failed" },
+        },
+      },
+    }),
+  ).toEqual({
+    sessionUpdate: "compaction_update",
+    compactionId: "msg_compact",
+    status: "failed",
+    error: "summary request failed",
   });
 });

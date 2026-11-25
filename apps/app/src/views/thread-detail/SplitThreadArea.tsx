@@ -23,7 +23,7 @@ import {
 } from "react";
 import { useRouteState } from "@/hooks/useRouteState";
 import {
-  getThreadRoutePath,
+  getThreadLocationPath,
   type ThreadRoutePathArgs,
 } from "@/lib/route-paths";
 import { useIsMutating } from "@tanstack/react-query";
@@ -486,7 +486,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
       if (next === null) return;
       store.set(splitLayoutAtom, next);
       if (workspaceMountedRef.current && next.focusedPaneId === paneId) {
-        navigate(getThreadRoutePath(thread));
+        navigate(getThreadLocationPath(thread));
       }
     },
     [navigate, store],
@@ -722,10 +722,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
   const firstPane = panes[0];
   const singlePane =
     panes.length === 1 && firstPane !== undefined ? firstPane : null;
-  const keepsSinglePane =
-    singlePane !== null &&
-    (currentContent.kind === "thread" || currentContent.kind === "new-thread");
-  if (!splitWorkspaceActive && !keepsSinglePane) {
+  if (!splitWorkspaceActive && singlePane === null) {
     return (
       <StandalonePaneContent
         content={currentContent}
@@ -815,6 +812,7 @@ function SplitThreadAreaContent({ routeContent }: SplitThreadAreaProps) {
               setKeyboardFocusRequest(null);
               focusPane(paneId);
             }}
+            onFocusWithinPane={focusPane}
             onClosePane={closePane}
             onToggleMaximizePane={toggleMaximizePane}
             onMovePaneToSide={movePaneToSide}
@@ -915,6 +913,7 @@ interface SplitTreeProps {
   maximizedPaneId: string | null;
   secondaryPanelRegistry: PaneSecondaryPanelRegistry;
   onFocusPane: (paneId: string) => void;
+  onFocusWithinPane: (paneId: string) => void;
   onClosePane: (paneId: string) => void;
   onToggleMaximizePane: (paneId: string) => void;
   onMovePaneToSide: (paneId: string, side: SplitSide) => void;
@@ -947,6 +946,11 @@ function SplitTree(props: SplitTreeProps) {
     return (
       <div
         onPointerDown={() => props.onFocusPane(node.paneId)}
+        onFocusCapture={
+          isHiddenByMaximize
+            ? undefined
+            : () => props.onFocusWithinPane(node.paneId)
+        }
         aria-hidden={isHiddenByMaximize || undefined}
         style={isHiddenByMaximize ? { contentVisibility: "hidden" } : undefined}
         className={cn(

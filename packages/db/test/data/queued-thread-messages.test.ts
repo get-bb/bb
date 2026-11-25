@@ -1008,10 +1008,12 @@ describe("queued thread messages", () => {
       tail.id,
     ]);
     requeueClaimedQueuedThreadMessages(db, noopNotifier, {
-      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+            compactFirstDone: false,
+claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,
+      recheckAt: null,
     });
 
     // The requeue wrote the wait on the lead only; the tail must not be
@@ -1088,10 +1090,12 @@ describe("queued thread messages", () => {
       () => true,
     );
     requeueClaimedQueuedThreadMessages(db, noopNotifier, {
-      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+            compactFirstDone: false,
+claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,
+      recheckAt: null,
     });
     clearQueuedThreadMessageWaitingOn(db, noopNotifier, {
       id: lead.id,

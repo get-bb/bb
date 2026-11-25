@@ -556,17 +556,24 @@ if [ ! -e "$HOME/.local/bin/bb" ] && [ ! -L "$HOME/.local/bin/bb" ]; then
   shim_file=$(mktemp "$HOME/.local/bin/.bb-machine.XXXXXX")
   node_path_quoted=$(printf '%s' "${node_bin%/*}" | sed "s/'/'\\''/g")
   printf '#!/bin/sh\nPATH=\047%s\047:"$PATH"\nexport PATH\n' "$node_path_quoted" > "$shim_file"
-  cli_path_quoted=$(printf '%s' "$data_dir/npm/bin/bb" | sed "s/'/'\\''/g")
-  cat >> "$shim_file" <<'BB_MACHINE_EXPLICIT_DATA'
-if [ -n "${BB_DATA_DIR:-}" ] && [ -x "$BB_DATA_DIR/npm/bin/bb" ]; then
-  exec "$BB_DATA_DIR/npm/bin/bb" "$@"
+  data_dir_quoted=$(printf '%s' "$data_dir" | sed "s/'/'\\''/g")
+  cat >> "$shim_file" <<'BB_MACHINE_RUN'
+run_machine_cli() {
+  machine_dir=$1
+  shift
+  for candidate in "$machine_dir/bin/bb" "$machine_dir/npm/bin/bb"; do
+    if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+  done
+}
+if [ -n "${BB_DATA_DIR:-}" ]; then
+  run_machine_cli "$BB_DATA_DIR" "$@"
 fi
-BB_MACHINE_EXPLICIT_DATA
-  printf 'if [ -x \047%s\047 ]; then exec \047%s\047 "$@"; fi\n' "$cli_path_quoted" "$cli_path_quoted" >> "$shim_file"
+BB_MACHINE_RUN
+  printf 'run_machine_cli \047%s\047 "$@"\n' "$data_dir_quoted" >> "$shim_file"
   cat >> "$shim_file" <<'BB_MACHINE_CLI'
 unset BB_DATA_DIR
-for candidate in "$HOME"/.bb-machines/*/npm/bin/bb; do
-  if [ -x "$candidate" ]; then exec "$candidate" "$@"; fi
+for machine_dir in "$HOME"/.bb-machines/*; do
+  run_machine_cli "$machine_dir" "$@"
 done
 if [ "${1:-}" = machine ] && [ "${2:-}" = uninstall ]; then exit 0; fi
 printf '%s\n' 'No installed bb machine CLI is available.' >&2
@@ -876,6 +883,30 @@ if [ -n "$bb_app_npm_prefix" ]; then
     (umask 077 && printf '%s\n' "$package_digest" >"$host_artifact_digest_temp")
     mv "$host_artifact_digest_temp" "$host_artifact_digest_file"
   fi
+  cli_launcher="$canonical_data_dir/bin/bb"
+  cli_launcher_marker='Written by bb: runs the bb command of the bb installed on this computer.'
+  if { [ ! -e "$cli_launcher" ] && [ ! -L "$cli_launcher" ]; } || {
+    [ -f "$canonical_data_dir/server-moved.json" ] &&
+    [ -f "$cli_launcher" ] && [ ! -L "$cli_launcher" ] &&
+    grep -qF "$cli_launcher_marker" "$cli_launcher"
+  }; then
+    mkdir -p "$canonical_data_dir/bin"
+    cli_launcher_file=$(mktemp "$canonical_data_dir/bin/.bb-machine.XXXXXX")
+    machine_cli_quoted=$(printf '%s' "$bb_app_npm_prefix/bin/bb" | sed "s/'/'\\''/g")
+    {
+      printf '#!/bin/sh\n# %s\n' "$cli_launcher_marker"
+      printf 'cli=\047%s\047\n' "$machine_cli_quoted"
+      cat <<'BB_MACHINE_LAUNCHER'
+if [ ! -x "$cli" ]; then
+  echo "This bb machine's package is missing. Rerun the machine install command." >&2
+  exit 127
+fi
+exec "$cli" "$@"
+BB_MACHINE_LAUNCHER
+    } > "$cli_launcher_file"
+    chmod 755 "$cli_launcher_file"
+    mv -f "$cli_launcher_file" "$cli_launcher"
+  fi
 fi
 
 if [ "$adopt" = no ]; then
@@ -1176,6 +1207,7 @@ Environment="BB_DATA_DIR=$escaped_data_dir"
 Restart=always
 RestartSec=2
 OOMPolicy=continue
+ManagedOOMPreference=avoid
 
 [Install]
 WantedBy=$service_target

@@ -7,6 +7,7 @@ export default defineWorkspaceTestConfig({
   resolve: { tsconfigPaths: true },
   test: {
     silent: "passed-only",
+    testTimeout: 15_000,
     projects: sharedWorkerProjects({
       pkgDir: __dirname,
       name: "bb-plugin-bb--github-pr-status",

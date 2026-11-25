@@ -116,6 +116,7 @@ describe("runtime recovery hints", () => {
     const providerThreadId = await startThread(runtime, "t-archived");
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhint23",
       input: [promptTextInput({ text: "continue" })],
       options: fullRuntimeOptions,
@@ -222,6 +223,7 @@ describe("runtime recovery hints", () => {
     let caught: unknown;
     try {
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_rcvrhint2f",
         input: [promptTextInput({ text: "never" })],
         options: fullRuntimeOptions,
@@ -302,6 +304,7 @@ describe("runtime recovery hints", () => {
     });
     await startThread(runtime, "t-ladder-stale");
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrrungab",
       input: [promptTextInput({ text: "hold_turn" })],
       options: fullRuntimeOptions,
@@ -315,6 +318,7 @@ describe("runtime recovery hints", () => {
     });
 
     const result = await runtime.steerTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrrungac",
       expectedTurnId: turnId,
       input: [promptTextInput({ text: "too late" })],
@@ -346,6 +350,7 @@ describe("runtime recovery hints", () => {
       });
     const providerThreadId = await startThread(runtime, "t-ladder-restart");
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrrungad",
       input: [promptTextInput({ text: "delay:800" })],
       options: fullRuntimeOptions,
@@ -361,6 +366,7 @@ describe("runtime recovery hints", () => {
     let caught: unknown;
     try {
       await runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_rcvrrungaf",
         expectedTurnId: turnId,
         input: [promptTextInput({ text: "never" })],
@@ -394,6 +400,7 @@ describe("runtime recovery hints", () => {
     expect(record.last("thread/resume")).toBeUndefined();
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrrungae",
       input: [promptTextInput({ text: "after restart" })],
       options: fullRuntimeOptions,
@@ -517,6 +524,7 @@ describe("runtime recovery hints", () => {
       });
     const providerThreadId = await startThread(runtime, "t-unarchive-restart");
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrunarab",
       input: [promptTextInput({ text: "delay:800" })],
       options: fullRuntimeOptions,
@@ -531,6 +539,7 @@ describe("runtime recovery hints", () => {
 
     await expect(
       runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_rcvrunarad",
         expectedTurnId: turnId,
         input: [promptTextInput({ text: "never" })],
@@ -558,6 +567,7 @@ describe("runtime recovery hints", () => {
     expect(record.last("thread/resume")).toBeUndefined();
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrunarac",
       input: [promptTextInput({ text: "after restart" })],
       options: fullRuntimeOptions,
@@ -620,7 +630,7 @@ describe("runtime recovery hints", () => {
     );
     let caught: unknown;
     try {
-      await runtime.listModels({ providerId: PROVIDER_ID });
+      await runtime.listModels({ providerId: PROVIDER_ID, contributedEnv: [] });
     } catch (error) {
       caught = error;
     }
@@ -678,6 +688,7 @@ describe("runtime recovery hints", () => {
     await startThread(runtime, "t-rate");
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhint24",
       input: [promptTextInput({ text: "after the wait" })],
       options: fullRuntimeOptions,
@@ -709,6 +720,7 @@ describe("runtime recovery hints", () => {
     let caught: unknown;
     try {
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_rcvrhint25",
         input: [promptTextInput({ text: "never" })],
         options: fullRuntimeOptions,
@@ -746,6 +758,7 @@ describe("runtime recovery hints", () => {
     let caught: unknown;
     try {
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_rcvrhint26",
         input: [promptTextInput({ text: "never" })],
         options: fullRuntimeOptions,
@@ -773,6 +786,7 @@ describe("runtime recovery hints", () => {
     const providerThreadId = await startThread(runtime, "t-restart");
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhint29",
       input: [promptTextInput({ text: "recover:restartRecommended" })],
       options: fullRuntimeOptions,
@@ -812,6 +826,7 @@ describe("runtime recovery hints", () => {
     });
     events.splice(0, events.length);
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhint2a",
       input: [promptTextInput({ text: "after restart" })],
       options: fullRuntimeOptions,
@@ -835,6 +850,7 @@ describe("runtime recovery hints", () => {
     await startThread(runtime, "t-restart-later");
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhintd2",
       input: [
         promptTextInput({ text: "delay:300 recover_now:restartRecommended" }),
@@ -862,6 +878,7 @@ describe("runtime recovery hints", () => {
 
     events.splice(0, events.length);
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhintd3",
       input: [promptTextInput({ text: "next turn" })],
       options: fullRuntimeOptions,
@@ -913,6 +930,7 @@ describe("runtime recovery hints", () => {
     expect(record.last("thread/resume")).toBeUndefined();
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhintd5",
       input: [promptTextInput({ text: "after restart" })],
       options: fullRuntimeOptions,
@@ -943,6 +961,7 @@ describe("runtime recovery hints", () => {
     expect(countSpawns(processLog)).toBe(1);
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrsibsab",
       input: [promptTextInput({ text: "recover:restartRecommended" })],
       options: fullRuntimeOptions,
@@ -964,6 +983,7 @@ describe("runtime recovery hints", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrsibsac",
       input: [promptTextInput({ text: "hold_turn" })],
       options: fullRuntimeOptions,
@@ -990,6 +1010,7 @@ describe("runtime recovery hints", () => {
     expect(runtime.getActiveTurnId("t-restart-b")).toBe(turnId);
     await expect(
       runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_rcvrsibsad",
         expectedTurnId: turnId,
         input: [promptTextInput({ text: "still steerable" })],
@@ -1005,6 +1026,7 @@ describe("runtime recovery hints", () => {
     await startThread(runtime, "t-batch");
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrbatchx",
       input: [promptTextInput({ text: "recover:restartRecommended" })],
       options: {
@@ -1041,6 +1063,7 @@ describe("runtime recovery hints", () => {
     await startThread(runtime, "t-bg-b");
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrbgwkab",
       input: [promptTextInput({ text: "bg_task" })],
       options: fullRuntimeOptions,
@@ -1051,6 +1074,7 @@ describe("runtime recovery hints", () => {
     expect(runtime.hasOpenBackgroundWork()).toBe(true);
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrbgwkac",
       input: [promptTextInput({ text: "recover:restartRecommended" })],
       options: fullRuntimeOptions,
@@ -1074,6 +1098,7 @@ describe("runtime recovery hints", () => {
 
     events.splice(0, events.length);
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrbgwkad",
       input: [promptTextInput({ text: "bg_task_done" })],
       options: fullRuntimeOptions,
@@ -1086,6 +1111,7 @@ describe("runtime recovery hints", () => {
       timeoutMs: 5_000,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrbgwkae",
       input: [promptTextInput({ text: "after restart" })],
       options: fullRuntimeOptions,
@@ -1121,6 +1147,7 @@ describe("runtime recovery hints", () => {
     expect(countSpawns(processLog)).toBe(2);
 
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhstaab",
       input: [promptTextInput({ text: "recover:restartRecommended" })],
       options: fullRuntimeOptions,
@@ -1141,6 +1168,7 @@ describe("runtime recovery hints", () => {
     expect(countSpawns(processLog)).toBe(2);
     expect(record.last("thread/resume")).toBeUndefined();
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhstaac",
       input: [promptTextInput({ text: "still here" })],
       options: fullRuntimeOptions,
@@ -1161,6 +1189,7 @@ describe("runtime recovery hints", () => {
       createRecoveryRuntime();
     await startThread(runtime, "t-forward");
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhint2d",
       input: [
         promptTextInput({
@@ -1213,6 +1242,7 @@ describe("runtime recovery hints", () => {
     await startThread(runtime, "t-two");
 
     const turn = runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhint2e",
       input: [promptTextInput({ text: "eventually" })],
       options: fullRuntimeOptions,
@@ -1285,6 +1315,7 @@ describe("runtime recovery hints", () => {
     });
     expect(countRequests(record, "thread/fork")).toBe(2);
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_rcvrhint2f",
       input: [promptTextInput({ text: "on the fork" })],
       options: fullRuntimeOptions,

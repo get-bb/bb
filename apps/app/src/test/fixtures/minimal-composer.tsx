@@ -12,8 +12,11 @@ import {
 import { installPluginRuntime } from "@/lib/plugin-frontend";
 import { setPluginSlotRegistrations } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "./plugins";
+import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
 
 export const MINIMAL_COMPOSER_PLUGIN_ID = "minimal-composer";
+
+const reported: { extraState: Record<string, unknown> } = { extraState: {} };
 
 export const minimalComposerLastRender: {
   renderer: ReturnType<typeof useComposerRenderer> | null;
@@ -62,15 +65,7 @@ function MinimalComposer() {
   };
 
   const editor: ExperimentalComposerEditor = {
-    state: {
-      layout: "expanded",
-      isRunning: submission.isRunning ?? false,
-      isSubmitting: submission.isSubmitting ?? false,
-      isSubmittingBlocked: submission?.disabled ?? false,
-      submittingBlockedReason: submission?.disabledReason ?? null,
-      isAttaching: renderer.input.attachments?.isAttaching ?? false,
-      attachmentError: renderer.input.attachments?.error ?? null,
-    },
+    state: { ...reported.extraState, layout: "expanded" },
     insertAtCursor(value) {
       if (textareaRef.current === null) return false;
       const { from, to } = caret();
@@ -135,7 +130,7 @@ function MinimalComposer() {
 
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (renderer.dispatchAppCommandKey(event.nativeEvent)) return;
-    if (event.key !== "Enter" || event.shiftKey) return;
+    if (!isNonImeKey(event, "Enter") || event.shiftKey) return;
     event.preventDefault();
     if (event.metaKey || event.ctrlKey) submission.modifier?.run();
     else submission.enter.run();
@@ -169,7 +164,10 @@ function MinimalComposer() {
   );
 }
 
-export function registerMinimalComposer(): void {
+export function registerMinimalComposer({
+  extraEditorState = {},
+}: { extraEditorState?: Record<string, unknown> } = {}): void {
+  reported.extraState = extraEditorState;
   installPluginRuntime();
   setPluginSlotRegistrations(
     MINIMAL_COMPOSER_PLUGIN_ID,

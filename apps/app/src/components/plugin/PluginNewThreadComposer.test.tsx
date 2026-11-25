@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
 
+import { unavailablePluginActionContext } from "@/lib/plugin-action-context-provider";
+import { createPluginPanelController } from "@/lib/plugin-panel-controller";
 import {
   useEffect,
+  useLayoutEffect,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -10,6 +13,7 @@ import { Provider } from "jotai";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   defaultAppSettings,
+  type Environment,
   PERSONAL_PROJECT_ID,
   type ThreadListEntry,
   type ThreadSessionOption,
@@ -53,9 +57,15 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { encodeReuseValue } from "@/components/pickers/environment-picker-value";
-import { useRootComposeReuseEnvironment } from "@/lib/root-compose-selection";
+import {
+  useRootComposeReuseEnvironment,
+  useSetRootComposeProjectId,
+} from "@/lib/root-compose-selection";
 import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
-import { makeThreadListEntry } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeEnvironment,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { createDeferredPromise } from "@bb/test-helpers";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import { makeProjectWithThreadsResponse } from "@/test/fixtures/projects";
@@ -71,10 +81,13 @@ import {
   serializeFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs-state";
 import { buildPluginPaletteActions } from "@/lib/command-palette/palette-plugin-actions";
-import { getFocusedAppPanelController } from "@/lib/app-fixed-tab-navigation";
+import { getFocusedAppPanelController } from "@/lib/app-navigation-host";
 import { useFixedPanelTabsState } from "@/lib/fixed-panel-tabs";
 import { openPluginDetailsInWorkspace } from "./plugin-detail-opener";
 import { PluginNewThreadComposer } from "./PluginNewThreadComposer";
+import { PluginContext } from "./plugin-context";
+import { initialPromptSeedFromComposer } from "@/lib/plugin-composer-handle";
+import { buildPluginEditThreadPrompt } from "@/lib/resource-edit-prompt";
 
 function PanedRootComposeView() {
   return (
@@ -120,6 +133,10 @@ const mocks = vi.hoisted(() => ({
   modelSessionOptions: undefined as ThreadSessionOption[] | undefined,
   openCreateDialogThen: vi.fn(),
 }));
+
+beforeEach(() => {
+  vi.mocked(sdk.environments.get).mockReset();
+});
 
 function subscribeToModelsLoading(onChange: () => void) {
   mocks.modelsLoadingListeners.add(onChange);
@@ -203,6 +220,7 @@ vi.mock("@/hooks/queries/plugin-settings-queries", () => ({
 
 vi.mock("@/lib/sdk", () => ({
   sdk: {
+    environments: { get: vi.fn() },
     projects: { attachments: { copy: mocks.copyAttachments } },
     system: {
       experimental_recordTelemetryEvent: vi
@@ -319,14 +337,21 @@ vi.mock("@/hooks/queries/system-queries", () => ({
             displayName: "bb connect",
             description: "Use a private getbb.app address.",
             pluginId: "connect",
+            routeKind: "relay",
+            enabled: true,
             availability: mocks.serverAccessReady
               ? { status: "available", serverUrl: "https://sawyer.getbb.app" }
               : { status: "setup-required", message: "Pair with bb connect" },
+            urls: mocks.serverAccessReady ? ["https://sawyer.getbb.app"] : [],
           },
         ],
-        defaultProviderId: "connect",
-        effectiveUrl: "https://sawyer.getbb.app",
+        effectiveUrl: null,
         urlSource: null,
+        localNetwork: {
+          bindHost: "127.0.0.1",
+          addresses: [],
+          listenerError: null,
+        },
       },
     },
   }),
@@ -1280,7 +1305,7 @@ describe("PluginNewThreadComposer seeding", () => {
     });
 
     expect(submitted).toHaveLength(1);
-    expect(submitted[0]).toMatchObject({ pluginSubmission });
+    expect(submitted[0]?.pluginSubmission).toEqual(pluginSubmission);
   });
 
   it("does not demote a project the replayed bootstrap does not know yet", async () => {
@@ -1542,6 +1567,48 @@ describe("PluginNewThreadComposer seeding", () => {
     });
   });
 
+  it("starts an unseeded composer on the remembered New thread project, as bb's New thread does", async () => {
+    function PickInNewThread() {
+      const setRootComposeProjectId = useSetRootComposeProjectId();
+      useLayoutEffect(() => setRootComposeProjectId("proj_1"));
+      return null;
+    }
+    const submitted: NewThreadRequest[] = [];
+    const composer = (
+      <PluginNewThreadComposer
+        draftKey="unseeded-project"
+        initialPrompt="hello"
+        onSubmit={(request) => {
+          submitted.push(request);
+        }}
+      />
+    );
+    const view = render(
+      <Provider>
+        <MemoryRouter>
+          <PickInNewThread />
+        </MemoryRouter>
+      </Provider>,
+    );
+    view.rerender(
+      <Provider>
+        <MemoryRouter>
+          <PickInNewThread />
+          {composer}
+        </MemoryRouter>
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().project.value).toBe("proj_1");
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]?.projectId).toBe("proj_1");
+  });
+
   it("keeps project defaults when no seed props are passed", async () => {
     const submitted: NewThreadRequest[] = [];
     render(
@@ -1697,9 +1764,9 @@ describe("PluginNewThreadComposer seeding", () => {
           defaultShortcut: null,
           id: "inspect",
           title: "Inspect project",
-          run: ({ experimental_panel }) => {
+          run: ({ panel }) => {
             accepted.push(
-              experimental_panel.openTab({
+              panel.openTab({
                 tab: {
                   id: "inspect-project",
                   context: { kind: "thread" },
@@ -1714,7 +1781,13 @@ describe("PluginNewThreadComposer seeding", () => {
       ],
       threadId: null,
       projectId: null,
-      panel: getFocusedAppPanelController(),
+      actionContext: (pluginId) => ({
+        ...unavailablePluginActionContext(pluginId),
+        panel: createPluginPanelController(
+          pluginId,
+          getFocusedAppPanelController,
+        ),
+      }),
     });
     await act(async () => {
       command.run();
@@ -1862,6 +1935,87 @@ describe("PluginNewThreadComposer seeding", () => {
       expect(router.state.location.state).toBeNull();
     });
   });
+
+  it("reuses an explicitly targeted environment without sidebar threads", async () => {
+    vi.mocked(sdk.environments.get).mockResolvedValue(
+      makeEnvironment({
+        id: "env_existing",
+        projectId: "proj_1",
+        hostId: "host_1",
+      }),
+    );
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const router = createMemoryRouter(
+      [{ path: "/", element: <PanedRootComposeView /> }],
+      {
+        initialEntries: [
+          { pathname: "/", state: { reuseEnvironmentId: "env_existing" } },
+        ],
+      },
+    );
+    render(
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>,
+    );
+
+    await waitFor(() => {
+      expect(router.state.location.state).toBeNull();
+      expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+        encodeReuseValue("env_existing"),
+      );
+    });
+    expect(latestPromptBoxProps().modeConfig.worktree.options).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ environmentId: "env_existing" }),
+      ]),
+    );
+  });
+
+  it.each([
+    { status: "ready" as const, expected: encodeReuseValue("env_existing") },
+    {
+      status: "destroyed" as const,
+      expected: "provider:project-checkout",
+    },
+  ])(
+    "restores a tab-stored reuse without sidebar threads ($status)",
+    async ({ status, expected }) => {
+      vi.mocked(sdk.environments.get).mockResolvedValue(
+        makeEnvironment({
+          id: "env_existing",
+          projectId: "proj_1",
+          hostId: "host_1",
+          status,
+        }),
+      );
+      window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+      window.sessionStorage.setItem(
+        "bb.root-compose.reuse-environment",
+        encodeReuseValue("env_existing"),
+      );
+      const router = createMemoryRouter(
+        [{ path: "/", element: <PanedRootComposeView /> }],
+        { initialEntries: ["/"] },
+      );
+      render(
+        <Provider>
+          <RouterProvider router={router} />
+        </Provider>,
+      );
+
+      await waitFor(() =>
+        expect(sdk.environments.get).toHaveBeenCalledWith(
+          expect.objectContaining({ environmentId: "env_existing" }),
+        ),
+      );
+      await waitFor(() =>
+        expect(latestPromptBoxProps().modeConfig.environment.value).toBe(
+          expected,
+        ),
+      );
+    },
+  );
 
   it("closes visible plugin details before an underlying terminal", async () => {
     const terminal = createTerminalFixedPanelTab({
@@ -2155,6 +2309,131 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(updateDepthErrors).toEqual([]);
   });
 
+  it("seeds core's plugin-edit hand-off with a path mention pill", async () => {
+    window.localStorage.setItem("bb.root-compose.project-id", "proj_1");
+    const rootDraft = getPromptDraftAccessor({ kind: "new-thread" });
+    const router = createMemoryRouter(
+      [{ path: "/", element: <PanedRootComposeView /> }],
+      {
+        initialEntries: [
+          {
+            pathname: "/",
+            state: {
+              focusPrompt: true,
+              initialPrompt: initialPromptSeedFromComposer(
+                buildPluginEditThreadPrompt({
+                  name: "Pattern Atlas",
+                  path: "/Users/me/plugins/pattern-atlas",
+                }),
+                null,
+              ),
+              replaceInitialPrompt: true,
+            },
+          },
+        ],
+      },
+    );
+    render(
+      <Provider>
+        <RouterProvider router={router} />
+      </Provider>,
+    );
+
+    const text =
+      'Edit the bb plugin "Pattern Atlas" at @/Users/me/plugins/pattern-atlas/. I want to ';
+    await waitFor(() => {
+      expect(rootDraft.getCurrent().text).toBe(text);
+    });
+    expect(rootDraft.getCurrent().mentions).toEqual([
+      {
+        start: 38,
+        end: 71,
+        resource: {
+          kind: "path",
+          source: "workspace",
+          entryKind: "directory",
+          path: "/Users/me/plugins/pattern-atlas",
+          label: "pattern-atlas",
+        },
+      },
+    ]);
+  });
+
+  it("submits a plugin's structured seed with its own mention resolved to the plugin", async () => {
+    const onSubmit = vi.fn<(request: NewThreadRequest) => void>();
+    render(
+      <MemoryRouter>
+        <PluginContext.Provider value="obsidian">
+          <PluginNewThreadComposer
+            draftKey="structured-seed"
+            defaultProjectId="proj_1"
+            initialPrompt={[
+              "Ask about ",
+              { provider: "notes", id: "daily/2026-11-22", label: "Daily" },
+            ]}
+            onSubmit={onSubmit}
+          />
+        </PluginContext.Provider>
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(promptBoxText()).toBe("Ask about @Daily");
+      expect(latestPromptBoxProps().disabled).toBe(false);
+    });
+    await submit();
+    expect(onSubmit.mock.calls[0]?.[0].input).toEqual([
+      {
+        type: "text",
+        text: "Ask about @Daily",
+        mentions: [
+          {
+            start: 10,
+            end: 16,
+            resource: {
+              kind: "plugin",
+              pluginId: "obsidian",
+              itemId: "notes:daily/2026-11-22",
+              label: "Daily",
+              icon: null,
+            },
+          },
+        ],
+      },
+    ]);
+  });
+
+  it("opens empty and warns instead of crashing the slot for a seed insert() would reject", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      render(
+        <MemoryRouter>
+          <PluginContext.Provider value="obsidian">
+            <p>Plugin panel content</p>
+            <PluginNewThreadComposer
+              draftKey="invalid-structured-seed"
+              defaultProjectId="proj_1"
+              initialPrompt={[
+                "Ask about ",
+                { provider: "notes:daily", id: "x", label: "Daily" },
+              ]}
+              onSubmit={vi.fn()}
+            />
+          </PluginContext.Provider>
+        </MemoryRouter>,
+      );
+      await waitFor(() => {
+        expect(screen.getByTestId("new-thread-prompt-box")).toBeTruthy();
+      });
+      expect(screen.getByText("Plugin panel content")).toBeTruthy();
+      expect(promptBoxText()).toBe("");
+      expect(warn).toHaveBeenCalledWith(
+        '[plugin:obsidian] NewThreadComposer ignored its initialPrompt: Invalid mention provider id "notes:daily".',
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
   it("ignores a repeated submit while the first submission is pending", async () => {
     let finishSubmit: (() => void) | null = null;
     const onSubmit = vi.fn(
@@ -2207,7 +2486,7 @@ describe("PluginNewThreadComposer seeding", () => {
     expect(promptBoxText()).toBe("review every PR for slop");
   });
 
-  it("does not replace a new draft when submission fails", async () => {
+  it("merges a failed submission ahead of a new draft", async () => {
     let failSubmit: (() => void) | null = null;
     const onSubmit = vi.fn(
       () =>
@@ -2235,7 +2514,7 @@ describe("PluginNewThreadComposer seeding", () => {
     await waitFor(() => {
       expect(latestPromptBoxProps().isSubmitting).toBe(false);
     });
-    expect(promptBoxText()).toBe("next thread");
+    expect(promptBoxText()).toBe("review every PR for slop\n\nnext thread");
   });
 
   it("accepts overlapping uploads and stays busy until every batch settles", async () => {
@@ -3113,6 +3392,70 @@ describe("NewThreadComposer setSelection", () => {
     if (failure !== null) throw failure;
     return result as unknown as ExperimentalComposerSelection;
   }
+
+  it.each(
+    ["root", "component-local"].flatMap((surface) =>
+      ["ready", "destroyed", "missing"].map((status) => ({ surface, status })),
+    ),
+  )(
+    "settles an explicit reuse selection without sidebar threads ($surface, $status)",
+    async ({ surface, status }) => {
+      const response = createDeferredPromise<Environment>();
+      vi.mocked(sdk.environments.get).mockReturnValue(response.promise);
+      if (surface === "root") {
+        render(rootLikeElement("proj_1"));
+      } else {
+        renderComposer(STORED_REQUEST, () => undefined, "explicit-reuse");
+      }
+      const host = currentHost();
+      const environment = {
+        type: "reuse" as const,
+        environmentId: "env_existing",
+      };
+      const selection = host.setSelection!({ environment });
+      let selectionSettled = false;
+      void selection.then(() => {
+        selectionSettled = true;
+      });
+      await waitFor(() =>
+        expect(sdk.environments.get).toHaveBeenCalledWith(
+          expect.objectContaining({ environmentId: "env_existing" }),
+        ),
+      );
+      expect(selectionSettled).toBe(false);
+      await act(async () => {
+        if (status === "missing") {
+          response.reject(
+            new BbHttpError({
+              body: null,
+              code: "not_found",
+              status: 404,
+              message: "Not found",
+            }),
+          );
+        } else {
+          response.resolve(
+            makeEnvironment({
+              id: "env_existing",
+              projectId: "proj_1",
+              hostId: "host_1",
+              status: status === "destroyed" ? "destroyed" : "ready",
+            }),
+          );
+        }
+      });
+      const result = await settled(selection);
+      if (status === "ready") {
+        expect(result.environment).toEqual(environment);
+      } else {
+        expect(result.environment).toMatchObject({
+          type: "provider",
+          environmentProviderId: "project-checkout",
+        });
+      }
+      expect(host.getSelection?.()?.environment).toEqual(result.environment);
+    },
+  );
 
   it("switches the project first and remembers the environment and machine for the new project", async () => {
     render(rootLikeElement("proj_2"));

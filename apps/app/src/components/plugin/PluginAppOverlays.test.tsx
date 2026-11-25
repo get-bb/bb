@@ -19,12 +19,8 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { pluginSdkAppImplementation } from "@/lib/plugin-sdk-app-impl";
-import {
-  useBbContext,
-  useBbNavigate,
-  useRpc,
-  useSettings,
-} from "@/lib/plugin-sdk-hooks";
+import { useBbContext } from "@/lib/plugin-bb-context";
+import { useBbNavigate, useRpc, useSettings } from "@/lib/plugin-sdk-hooks";
 import { resetAllCrashedPluginSlotsForTest } from "./PluginSlotMount";
 import { PluginAppOverlays } from "./PluginAppOverlays";
 import { makePluginRegistrationSet as registrationSet } from "@/test/fixtures/plugins";

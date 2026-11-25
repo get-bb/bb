@@ -1,9 +1,9 @@
+import { outputJson } from "../command-result.js";
 import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { Command } from "commander";
 import { action } from "../action.js";
 import { createCliBbSdk } from "../client.js";
-import { outputJson } from "./helpers.js";
 
 interface VoiceTranscribeOptions {
   json?: boolean;

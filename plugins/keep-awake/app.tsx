@@ -6,6 +6,11 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  SettingsList,
+  SettingsListItem,
+  SettingsListMessage,
+} from "@/components/ui/settings-section";
 import { Switch } from "@/components/ui/switch";
 import type { keepAwakeRpcContract } from "./server.js";
 
@@ -123,16 +128,11 @@ function KeepAwakeSettings() {
 
   if (view === null) {
     return (
-      <p
-        className={
-          error === null
-            ? "text-sm text-muted-foreground"
-            : "text-sm text-destructive"
-        }
-        role={error === null ? "status" : "alert"}
-      >
-        {error ?? "Loading hosts…"}
-      </p>
+      <SettingsList>
+        <SettingsListMessage tone={error === null ? "muted" : "error"}>
+          {error ?? "Loading hosts…"}
+        </SettingsListMessage>
+      </SettingsList>
     );
   }
 
@@ -142,126 +142,104 @@ function KeepAwakeSettings() {
 
   return (
     <div className="w-full space-y-5">
-      <div className="flex items-start justify-between gap-6">
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground">
-            Prevent idle sleep
-          </h3>
-          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            Keep selected Macs awake while bb is running. Closing the lid or
-            choosing Sleep still sleeps the Mac.
-          </p>
-        </div>
-        <Switch
-          checked={view.enabled}
-          size="default"
-          aria-label="Keep Awake"
-          onCheckedChange={(enabled) => {
-            updateConfiguration((current) => ({ ...current, enabled }));
-          }}
+      <SettingsList>
+        <SettingsListItem
+          title="Prevent idle sleep"
+          description="Keep selected Macs awake while bb is running. Closing the lid or choosing Sleep still sleeps the Mac."
+          control={
+            <Switch
+              checked={view.enabled}
+              size="default"
+              aria-label="Keep Awake"
+              onCheckedChange={(enabled) => {
+                updateConfiguration((current) => ({ ...current, enabled }));
+              }}
+            />
+          }
         />
-      </div>
+      </SettingsList>
 
       {view.enabled ? (
-        <>
-          <div className="border-t border-border/60 pt-4">
-            <h3 className="text-sm font-medium text-foreground">Hosts</h3>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-              Choose which Macs to keep awake.
-            </p>
-            <RadioGroup
-              className="mt-2 gap-1"
-              value={view.selection.mode}
-              onValueChange={(mode) => {
-                if (mode === "all" || mode === "selected") selectMode(mode);
-              }}
-            >
-              <label
-                htmlFor="keep-awake-all-hosts"
-                className="flex cursor-pointer items-start gap-3 rounded-md px-2 py-2 hover:bg-accent/50"
-              >
+        <RadioGroup
+          className="block"
+          value={view.selection.mode}
+          onValueChange={(mode) => {
+            if (mode === "all" || mode === "selected") selectMode(mode);
+          }}
+        >
+          <SettingsList
+            title="Hosts"
+            description="Choose which Macs to keep awake."
+            dividers={false}
+          >
+            <SettingsListItem
+              leading={
                 <RadioGroupItem
                   id="keep-awake-all-hosts"
                   value="all"
                   aria-label="All hosts"
-                  className="mt-0.5"
                 />
-                <span>
-                  <span className="block text-sm font-medium">All hosts</span>
-                  <span className="block text-xs text-muted-foreground">
-                    Include hosts added in the future. Only macOS and Windows
-                    hosts are supported.
-                  </span>
-                </span>
-              </label>
-              <label
-                htmlFor="keep-awake-selected-hosts"
-                className={`flex items-start gap-3 rounded-md px-2 py-2 ${
-                  hasHosts
-                    ? "cursor-pointer hover:bg-accent/50"
-                    : "cursor-not-allowed opacity-50"
-                }`}
-              >
+              }
+              title={
+                <label
+                  htmlFor="keep-awake-all-hosts"
+                  className="cursor-pointer"
+                >
+                  All hosts
+                </label>
+              }
+              description="Include hosts added in the future. Only macOS and Windows hosts are supported."
+            />
+            <SettingsListItem
+              leading={
                 <RadioGroupItem
                   id="keep-awake-selected-hosts"
                   value="selected"
                   aria-label="Specific hosts"
                   disabled={!hasHosts}
-                  className="mt-0.5"
                 />
-                <span>
-                  <span className="block text-sm font-medium">
-                    Specific hosts
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    Choose individual Macs below.
-                  </span>
-                </span>
-              </label>
-            </RadioGroup>
-          </div>
-
-          {view.selection.mode === "selected" ? (
-            <div className="overflow-hidden rounded-md border border-border/60">
-              {hasHosts ? (
-                <div className="divide-y divide-border/60">
-                  {view.hosts.map((host) => {
+              }
+              title={
+                <label
+                  htmlFor="keep-awake-selected-hosts"
+                  className={hasHosts ? "cursor-pointer" : "cursor-not-allowed"}
+                >
+                  Specific hosts
+                </label>
+              }
+              description={
+                hasHosts
+                  ? "Choose individual Macs below."
+                  : "No hosts available."
+              }
+            >
+              {view.selection.mode === "selected"
+                ? view.hosts.map((host) => {
                     const selected = selectedHostIds.includes(host.id);
-                    const isOnlySelectedHost =
-                      selected && selectedHostIds.length === 1;
                     return (
-                      <div
+                      <SettingsListItem
                         key={host.id}
-                        className="flex min-h-10 items-center gap-3 px-3 py-2"
-                      >
-                        <Checkbox
-                          checked={selected}
-                          disabled={isOnlySelectedHost}
-                          aria-label={host.name}
-                          onCheckedChange={(checked) => {
-                            setHostSelected(host.id, checked === true);
-                          }}
-                        />
-                        <span className="min-w-0 flex-1 truncate text-sm">
-                          {host.name}
-                        </span>
-                        <span className="text-xs text-muted-foreground">
-                          {host.status === "connected"
-                            ? "Connected"
-                            : "Offline"}
-                        </span>
-                      </div>
+                        leading={
+                          <Checkbox
+                            checked={selected}
+                            disabled={selected && selectedHostIds.length === 1}
+                            aria-label={host.name}
+                            onCheckedChange={(checked) => {
+                              setHostSelected(host.id, checked === true);
+                            }}
+                          />
+                        }
+                        title={host.name}
+                        meta={[
+                          host.status === "connected" ? "Connected" : "Offline",
+                        ]}
+                      />
                     );
-                  })}
-                </div>
-              ) : (
-                <p className="px-3 py-4 text-sm text-muted-foreground">
-                  No hosts available.
-                </p>
-              )}
-            </div>
-          ) : null}
-        </>
+                  })
+                : undefined}
+            </SettingsListItem>
+          </SettingsList>
+        </RadioGroup>
       ) : null}
 
       <div className="flex min-h-5 justify-end" aria-live="polite">

@@ -1,4 +1,4 @@
-import { RuntimeToolCalls } from "./runtime-provider-requests.js";
+import { RuntimeProviderRequests } from "./runtime-provider-requests.js";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -91,7 +91,6 @@ async function answerDirectRequest(args: {
     "process.stdin.pipe(process.stdout)",
   ]);
   const adapter = createProviderForId("fake", {
-    additionalWorkspaceWriteRoots: [],
     bridgeLaunch: createScriptedEchoLaunch(),
   });
   const [initialize] = adapter.buildPostInitializeRequests();
@@ -105,7 +104,8 @@ async function answerDirectRequest(args: {
   }
   try {
     handleRuntimeProviderRequest({
-      toolCalls: new RuntimeToolCalls(),
+      interactiveRequests: new RuntimeProviderRequests(),
+      toolCalls: new RuntimeProviderRequests(),
       getActiveTurnId: args.getActiveTurnId ?? (() => "bb-turn-1"),
       getThreadExecutionOptions:
         args.getThreadExecutionOptions ?? (() => undefined),
@@ -163,6 +163,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224h",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command ship it" })],
@@ -205,6 +206,53 @@ describe("createAgentRuntime interactive requests", () => {
     await runtime.shutdown();
   });
 
+  it("aborts the pending interactive request when the bridge withdraws it", async () => {
+    const signals: AbortSignal[] = [];
+    const events: ThreadEvent[] = [];
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: (_request, signal) => {
+          signals.push(signal);
+          return new Promise((_resolve, reject) => {
+            signal.addEventListener("abort", () => reject(signal.reason), {
+              once: true,
+            });
+          });
+        },
+      },
+    });
+
+    await runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: fullRuntimeOptions,
+    });
+    await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
+      clientRequestId: "creq_222222224w",
+      threadId: "t1",
+      input: [
+        promptTextInput({ text: "approve:command withdraw_approval delay:20" }),
+      ],
+      options: fullRuntimeOptions,
+    });
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: "fake",
+      runtime,
+      text: "Approval withdrawn",
+      threadId: "t1",
+    });
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]?.aborted).toBe(true);
+    await runtime.shutdown();
+  });
+
   it("completes the turn with Denied when the user denies the approval", async () => {
     const requests: PendingInteractionCreate[] = [];
     const events: ThreadEvent[] = [];
@@ -227,6 +275,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224i",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command hello" })],
@@ -304,6 +353,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: deniedEscalationOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224j",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command denied" })],
@@ -343,6 +393,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: deniedEscalationOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224k",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command provider-enforced" })],
@@ -393,6 +444,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: deniedEscalationOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224m",
       threadId: "t1",
       input: [promptTextInput({ text: "ask_user" })],
@@ -472,6 +524,7 @@ describe("createAgentRuntime interactive requests", () => {
       options: fullRuntimeOptions,
     });
     await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
       clientRequestId: "creq_222222224n",
       threadId: "t1",
       input: [promptTextInput({ text: "approve:command boom" })],
@@ -538,6 +591,7 @@ describe("createAgentRuntime interactive requests", () => {
           turnId: expectedTurnId,
           payload: expect.objectContaining({ kind: "secrets/secret-request" }),
         }),
+        expect.any(AbortSignal),
       );
       expect(answer).toMatchObject({
         jsonrpc: "2.0",

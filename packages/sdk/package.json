@@ -29,6 +29,12 @@
       "import": "./dist/node.js",
       "default": "./dist/node.js"
     },
+    "./http-error": {
+      "source": "./src/http-error.ts",
+      "types": "./src/http-error.ts",
+      "import": "./dist/http-error.js",
+      "default": "./dist/http-error.js"
+    },
     "./node-websocket": {
       "source": "./src/node-websocket.ts",
       "types": "./src/node-websocket.ts",

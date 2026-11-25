@@ -15,8 +15,9 @@ export class MachineEnvironment {
     this.originalShell = { ...shell };
   }
 
-  replace(entries: readonly HostDaemonContributedEnvEntry[]): void {
+  replace(entries: readonly HostDaemonContributedEnvEntry[]): boolean {
     const resolved = operationEnvironment(entries, this.original);
+    const previous = this.values;
     this.values = {};
     for (const entry of entries) {
       this.managed.add(entry.name);
@@ -27,6 +28,9 @@ export class MachineEnvironment {
       if (value === undefined) delete this.target[name];
       else this.target[name] = value;
     }
+    return [...this.managed].some(
+      (name) => previous[name] !== this.values[name],
+    );
   }
 
   shellEnvironment(shell: Record<string, string>): Record<string, string> {

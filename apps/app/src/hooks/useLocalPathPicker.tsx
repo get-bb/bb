@@ -13,6 +13,7 @@ import type {
   ProjectPathDialogSubmitHandler,
   ProjectPathDialogTarget,
 } from "@/components/dialogs/ProjectPathDialog";
+import { projectPathDialogTargetHostId } from "@/components/dialogs/project-path-dialog-target";
 
 export interface LocalPathSubmitParams {
   path: string;
@@ -109,7 +110,7 @@ export function useLocalPathPicker({
 
   const openPicker = useCallback(
     (target: ProjectPathDialogTarget) => {
-      const targetHostId = target.kind === "update" ? target.hostId : hostId;
+      const targetHostId = projectPathDialogTargetHostId(target) ?? hostId;
       if (isPending || !targetHostId) return;
 
       if (

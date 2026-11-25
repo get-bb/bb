@@ -6,6 +6,7 @@ import {
   type BbPluginApi,
   type MessageDispatchHookDecision,
   type PluginThreadEventName,
+  experimental_sliceUtf16Head as sliceUtf16Head,
 } from "@get-bb/plugin-sdk";
 import { z } from "zod";
 import { concurrencyLimitHostContract } from "./contract.js";
@@ -130,7 +131,7 @@ function waitDecision(
     reason:
       reason.length <= MAX_REASON_LENGTH
         ? reason
-        : `${reason.slice(0, MAX_REASON_LENGTH - 1)}…`,
+        : `${sliceUtf16Head(reason, MAX_REASON_LENGTH - 1)}…`,
   };
 }
 

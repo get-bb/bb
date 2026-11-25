@@ -47,7 +47,6 @@ export interface PaginateTimelineRowsArgs {
   maxBytes: number;
   ownedSequenceStart: number;
   ownedSequenceEnd: number;
-  ownershipSequenceOf: (row: TimelineRow) => number;
   hasOlderSegments: boolean;
   page: ThreadTimelinePageRequest;
   rows: readonly TimelineRow[];
@@ -63,12 +62,12 @@ function timelineWindowCursor(sequenceStart: number): TimelinePaginationCursor {
 function buildTimelineLogicalSegments(
   args: PaginateTimelineRowsArgs,
 ): TimelineLogicalSegment[] {
-  const { ownedSequenceStart, ownedSequenceEnd, ownershipSequenceOf } = args;
+  const { ownedSequenceStart, ownedSequenceEnd } = args;
   const bounds = [
     ownedSequenceStart,
     ...new Set(
       args.rows.flatMap((row) => {
-        const sequence = ownershipSequenceOf(row);
+        const sequence = row.sourceSeqStart;
         return row.kind === "conversation" &&
           row.role === "user" &&
           sequence > ownedSequenceStart &&
@@ -83,7 +82,7 @@ function buildTimelineLogicalSegments(
     sequenceStart,
   }));
   for (const row of args.rows) {
-    const sequence = ownershipSequenceOf(row);
+    const sequence = row.sourceSeqStart;
     if (sequence < ownedSequenceStart || sequence >= ownedSequenceEnd) {
       continue;
     }
@@ -162,8 +161,7 @@ export function paginateTimelineRows(
   > => {
     const omitted = rows.filter(
       (row) =>
-        args.ownershipSequenceOf(row) < args.ownedSequenceEnd &&
-        !returnedRows.has(row.id),
+        row.sourceSeqStart < args.ownedSequenceEnd && !returnedRows.has(row.id),
     );
     const changed =
       page.kind === "latest"

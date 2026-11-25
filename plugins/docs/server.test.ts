@@ -10,6 +10,7 @@ import {
 import simpleNotes from "./server";
 
 const temporaryDirectories: string[] = [];
+const searchSignal = new AbortController().signal;
 
 afterEach(async () => {
   await Promise.all(
@@ -328,7 +329,13 @@ describe("Docs mention provider", () => {
     });
     const provider = harness.registrations.mentionProviders[0]!;
     const search = (query: string) =>
-      provider.search({ trigger: "@", query, projectId: null, threadId: null });
+      provider.search({
+        trigger: "@",
+        query,
+        projectId: null,
+        threadId: null,
+        experimental_signal: searchSignal,
+      });
 
     const [roadmap, meeting] = await Promise.all([
       search("roadmap"),
@@ -356,6 +363,7 @@ describe("Docs mention provider", () => {
         query: "",
         projectId: null,
         threadId: null,
+        experimental_signal: searchSignal,
       });
     expect(await search()).toMatchObject([{ title: "Original" }]);
     await harness.callRpc("saveNote", { path: "plan.md", content: "# Saved" });
@@ -413,10 +421,36 @@ describe("Docs mention provider", () => {
       query: "plan",
       projectId: null,
       threadId: null,
+      experimental_signal: searchSignal,
     };
     await expect(provider.search(context)).rejects.toThrow("Host offline");
     expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
     expect(listPaths).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops scanning further vaults once the search is aborted", async () => {
+    const { harness } = await loadNotebook({ "plan.md": "# Plan" });
+    const other = await mkdtemp(path.join(os.tmpdir(), "bb-simple-notes-"));
+    temporaryDirectories.push(other);
+    await harness.callRpc("createVault", { name: "Work", rootPath: other });
+    const controller = new AbortController();
+    const listedRoots: string[] = [];
+    harness.sdk.stub("files.listPaths", async (args: { path: string }) => {
+      listedRoots.push(args.path);
+      controller.abort();
+      return { paths: [], truncated: false };
+    });
+    const provider = harness.registrations.mentionProviders[0]!;
+    await expect(
+      provider.search({
+        trigger: "@",
+        query: "plan",
+        projectId: null,
+        threadId: null,
+        experimental_signal: controller.signal,
+      }),
+    ).rejects.toThrow();
+    expect(listedRoots).toHaveLength(1);
   });
 
   it("bounds parallel summary reads while preserving tied result order", async () => {
@@ -446,6 +480,7 @@ describe("Docs mention provider", () => {
       query: "plan",
       projectId: null,
       threadId: null,
+      experimental_signal: searchSignal,
     });
     expect(peak).toBeGreaterThan(1);
     expect(peak).toBeLessThanOrEqual(8);
@@ -472,6 +507,7 @@ describe("Docs mention provider", () => {
         query: "launch",
         projectId: null,
         threadId: null,
+        experimental_signal: searchSignal,
       }),
     ).resolves.toEqual([
       {
@@ -503,6 +539,7 @@ describe("Docs mention provider", () => {
         query: "defensibility",
         projectId: null,
         threadId: null,
+        experimental_signal: searchSignal,
       }),
     ).resolves.toEqual([
       {
@@ -534,6 +571,7 @@ describe("Docs mention provider", () => {
         query: "california",
         projectId: null,
         threadId: null,
+        experimental_signal: searchSignal,
       }),
     ).resolves.toEqual([
       {
@@ -566,6 +604,7 @@ describe("Docs mention provider", () => {
         query: "echoed",
         projectId: null,
         threadId: null,
+        experimental_signal: searchSignal,
       }),
     ).resolves.toEqual([
       {
@@ -590,6 +629,7 @@ describe("Docs mention provider", () => {
         query: "thematic",
         projectId: null,
         threadId: null,
+        experimental_signal: searchSignal,
       }),
     ).resolves.toMatchObject([
       { subtitle: "Personal · Some intro text. More text." },
@@ -1011,7 +1051,7 @@ describe("Docs vault operations", () => {
     expect(JSON.parse(result.stdout ?? "{}")).toMatchObject({
       ok: false,
       error: {
-        code: "operation_failed",
+        code: "command_failed",
         message: expect.stringContaining(".bb-docs-state.json is malformed"),
       },
     });
@@ -1663,6 +1703,7 @@ describe("Docs vault operations", () => {
       query: "",
       projectId: null,
       threadId: null,
+      experimental_signal: searchSignal,
     };
     expect(await provider.search(context)).toMatchObject([{ title: "Plan" }]);
     await harness.callRpc("listNotes", { vaultId: "personal" });

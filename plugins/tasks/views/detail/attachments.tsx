@@ -9,6 +9,7 @@ import {
   ConfirmDeleteDialogContent,
 } from "@/components/ui/confirm-delete-dialog";
 import { Icon } from "@/components/ui/icon";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 let tokenPromise: Promise<string> | null = null;
 
@@ -76,7 +77,7 @@ export function Lightbox({
 }) {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!isNonImeKey(event, "Escape")) return;
       event.preventDefault();
       event.stopPropagation();
       onClose();

@@ -132,9 +132,15 @@ const UPDATED_THREAD_MENTION: PromptTextMention = {
   },
 };
 
-const MESSAGE_DIRECTIVE_REGISTRY: MessageDirectiveRegistry = new Map([
-  ["inline-vis", { status: "collision", pluginIds: ["plugin-a", "plugin-b"] }],
-]);
+const MESSAGE_DIRECTIVE_REGISTRY: MessageDirectiveRegistry = {
+  directives: new Map([
+    [
+      "inline-vis",
+      { status: "collision", pluginIds: ["plugin-a", "plugin-b"] },
+    ],
+  ]),
+  unclaimed: "literal",
+};
 
 const ACTIVE_MESSAGE_DIRECTIVES: MarkdownMessageDirectives = {
   registry: MESSAGE_DIRECTIVE_REGISTRY,

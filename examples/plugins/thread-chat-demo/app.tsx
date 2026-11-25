@@ -180,7 +180,7 @@ export default definePluginApp((app) => {
     title: "Open in demo panel",
     icon: "MessageSquarePlus",
     run(context) {
-      const opened = context.experimental_panel.openTab({
+      const opened = context.panel.openTab({
         tab: {
           id: "demo-panel",
           context: { kind: "thread" },

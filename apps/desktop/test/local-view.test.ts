@@ -31,6 +31,15 @@ const localViewTestCases: LocalViewTestCase[] = [
       title: "Could not open bb",
     },
   },
+  {
+    label: "renderer crash",
+    viewModel: {
+      details: "Its page crashed.",
+      kind: "renderer-crash",
+      reloadHref: "https://reload.bb-desktop.invalid/",
+      title: "This window stopped working",
+    },
+  },
 ];
 
 function decodeLocalViewHtml(args: DecodeLocalViewHtmlArgs): string {

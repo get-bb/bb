@@ -56,7 +56,6 @@ async function readWindowsProcess(pid: number) {
       ],
       {
         encoding: "utf8",
-        windowsHide: true,
         timeout: 30_000,
         maxBuffer: 1024 * 1024,
       },

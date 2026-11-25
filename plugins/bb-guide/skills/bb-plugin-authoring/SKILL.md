@@ -43,7 +43,8 @@ the same change.
   covers each `bb.*` member), logging, settings, storage, server information,
   and host entries.
 - Read references/backend-sdk.md for the `bb.sdk` area map, threads, plugin
-  metadata, files, terminals, attachments, and calls to another plugin's RPC.
+  metadata, files, terminals, attachments, calls to another plugin's RPC, and
+  thread files with the `thread.delete_finalize` hook.
 - Read references/backend-api-index.md to check every public backend, host,
   AI-service, and test export.
 - Read references/backend-events.md for lifecycle events, the dispatch hook,
@@ -65,10 +66,20 @@ the same change.
 ### Frontend
 
 - Read references/frontend-registration.md for definePluginApp, thread header
-  and Browser toolbar controls, and sidebar replacement.
+  and Browser toolbar controls.
+- Read references/frontend-thread-list.md to replace the sidebar thread list
+  (`experimental_threadList`), read live threads, and window rows against the
+  sidebar's scroll element.
+- Read references/exclusive-slots.md for which plugin draws a one-plugin
+  surface (composer, thread list, navigation, renderers, thread outline, file
+  openers, code fences, directives) and how a plugin may write that pick.
 - Read references/frontend-thread-header-row.md to add a full-width row under
   the thread header (`experimental_threadHeaderRow`), such as a tab strip, or
   to replace the thread title in the header (`experimental_threadHeaderTitle`).
+- Read references/frontend-thread-rail.md to replace bb's thread outline
+  (`experimental_threadRailOutline`), add an item to the rail beside the
+  conversation (`experimental_threadRail`), read a thread's prompts and what
+  the pane shows, or reveal a message.
 - Read references/frontend-sidebar-navigation.md for navigation providers
   (rail or list placement) and controls beside the sidebar toggle.
 - Read references/frontend-thread-row-metadata.md to add a badge to every thread
@@ -76,7 +87,8 @@ the same change.
 - Read references/frontend-panel-tabs.md to list the side panel's open tabs,
   bb's included, and select or close them.
 - Read references/frontend-thread-context-card.md to add a row or section to
-  the thread context card beside each thread's transcript.
+  the thread context card beside each thread's transcript, or for a context
+  segment's focus handoff and related-thread data.
 - Read references/frontend-collapsible-stack-card.md to show a collapsible
   card above a thread's composer (`experimental_CollapsibleStackCard`) from
   your provider's extension state.
@@ -99,6 +111,8 @@ the same change.
   icons.
 - Read references/frontend-hooks-and-ui.md for hooks, composer customization,
   vendored components, runtime shims, crash isolation, and styling.
+- Read references/frontend-navigation.md to open or link a thread, a message
+  in it, the New thread screen, or settings.
 
 ### Testing
 

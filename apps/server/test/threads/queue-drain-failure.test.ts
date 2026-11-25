@@ -11,10 +11,8 @@ import {
   type PluginHookRegistration,
 } from "../../src/services/plugins/plugin-hook-registry.js";
 import { noteDispatchRequeued } from "../../src/services/threads/dispatch-hooks.js";
-import {
-  QUEUED_MESSAGE_RETRY_DELAYS_MS,
-  recordQueuedMessageDrainFailure,
-} from "../../src/services/threads/queue-drain-failure.js";
+import { QUEUED_MESSAGE_RETRY_DELAYS_MS } from "../../src/services/lib/persisted-retry.js";
+import { recordQueuedMessageDrainFailure } from "../../src/services/threads/queue-drain-failure.js";
 import { runQueuedMessageDispatch } from "../../src/services/threads/queued-message-dispatch.js";
 import { toThreadQueuedMessage } from "../../src/services/threads/thread-queued-messages.js";
 import { textInput } from "../helpers/prompt-input.js";
@@ -127,7 +125,10 @@ describe("recordQueuedMessageDrainFailure", () => {
   it("hides a failed row from the wakes that are not its booked retry", async () => {
     await withTestHarness(async (harness) => {
       let attempts = 0;
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = {
+        "message.dispatch": [],
+        "thread.delete_finalize": [],
+      };
       registry["message.dispatch"].push({
         pluginId: "rejector",
         handler: () => {
@@ -142,6 +143,7 @@ describe("recordQueuedMessageDrainFailure", () => {
           value: await run(),
         }),
         decisionTimeoutMs: 10_000,
+        isLoadingPlugins: () => false,
       });
 
       try {
@@ -181,7 +183,10 @@ describe("recordQueuedMessageDrainFailure", () => {
 
   it("records a terminal failure from the turn-started wake", async () => {
     await withTestHarness(async (harness) => {
-      const registry: HookRegistry = { "message.dispatch": [] };
+      const registry: HookRegistry = {
+        "message.dispatch": [],
+        "thread.delete_finalize": [],
+      };
       registry["message.dispatch"].push({
         pluginId: "rejector",
         handler: () =>
@@ -194,6 +199,7 @@ describe("recordQueuedMessageDrainFailure", () => {
           value: await run(),
         }),
         decisionTimeoutMs: 10_000,
+        isLoadingPlugins: () => false,
       });
 
       try {
@@ -317,7 +323,10 @@ describe("a failed row's booked retry", () => {
 
   function installRejector(): { attempts: () => number; dispose(): void } {
     let attempts = 0;
-    const registry: HookRegistry = { "message.dispatch": [] };
+    const registry: HookRegistry = {
+      "message.dispatch": [],
+      "thread.delete_finalize": [],
+    };
     registry["message.dispatch"].push({
       pluginId: "rejector",
       handler: () => {
@@ -332,6 +341,7 @@ describe("a failed row's booked retry", () => {
         value: await run(),
       }),
       decisionTimeoutMs: 10_000,
+      isLoadingPlugins: () => false,
     });
     return {
       attempts: () => attempts,

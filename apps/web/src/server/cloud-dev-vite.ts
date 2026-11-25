@@ -18,7 +18,6 @@ export function resolveCloudDevViteSettings(
   }
 
   const baseDomain = new URL(appUrl).hostname;
-  const gatePublicKeys = env.BB_CLOUD_DEV_GATE_PUBLIC_KEYS?.trim();
   return {
     persistStatePath,
     vars: {
@@ -29,8 +28,6 @@ export function resolveCloudDevViteSettings(
       DEV_EMAIL_PASSWORD_AUTH: "true",
       GITHUB_CLIENT_ID: "local-cloud-dev-unused",
       GITHUB_CLIENT_SECRET: "local-cloud-dev-unused",
-      NEXT_BASE_DOMAIN: `next.${baseDomain}`,
-      ...(gatePublicKeys ? { GATE_PUBLIC_KEYS: gatePublicKeys } : {}),
     },
   };
 }

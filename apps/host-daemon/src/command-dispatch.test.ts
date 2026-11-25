@@ -182,6 +182,9 @@ function createRuntime(): FakeDispatchRuntime {
     hasThread: (threadId) => hostedThreadIds.has(threadId),
     getLiveThreadIds: vi.fn(() => [...activeTurnsByThreadId.keys()]),
     hasOpenBackgroundWork: () => false,
+    reconfigureSkillRoots: vi.fn(async () => ({
+      appliedToEveryProvider: false,
+    })),
     listOpenBackgroundWork: () => [],
     shutdown: vi.fn(async () => undefined),
     setActiveTurn: (threadId, turnId) => {
@@ -224,6 +227,7 @@ function createTurnSubmitCommand(
       providerId: "codex",
       providerThreadId: "provider-thread-1",
       instructions: "Be concise.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: [],
       injectedSkillSources: [],
@@ -324,6 +328,7 @@ function createInstallationGatedThreadStart(
       permissionEscalation: null,
     },
     instructions: "Be concise.",
+    additionalWorkspaceFolders: [],
     dynamicTools: [],
     contributedEnv: [],
     injectedSkillSources: [],
@@ -359,6 +364,7 @@ async function runSuccessfulClaudeCodeUpdateVerification(args: {
   const result = await dispatchOnlineRpcCommand(
     {
       type: "provider.installation.run",
+      contributedEnv: [],
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       providerId: "claude-code",
       action: "update",
@@ -427,6 +433,7 @@ describe("dispatchCommand", () => {
       const result = await dispatchOnlineRpcCommand(
         {
           type: "provider.list_commands",
+          contributedEnv: [],
           providerId: "pi",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           cwd,
@@ -801,6 +808,7 @@ describe("dispatchCommand", () => {
         providerId: "codex",
         providerThreadId: "provider-thread-1",
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -878,6 +886,7 @@ describe("dispatchCommand", () => {
         providerId: "codex",
         providerThreadId: "provider-thread-1",
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -1276,6 +1285,7 @@ describe("dispatchCommand", () => {
         providerId: "codex",
         providerThreadId: "provider-thread-1",
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [],
@@ -1369,6 +1379,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       instructions: "Be concise.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: [],
       injectedSkillSources: [],
@@ -1448,6 +1459,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       instructions: "Be concise.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: [],
       injectedSkillSources: [],
@@ -1515,6 +1527,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       instructions: "Be concise.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: [],
       injectedSkillSources: [],
@@ -1720,6 +1733,7 @@ describe("dispatchCommand", () => {
       retainThroughProviderCheckpoint: "turn-before-edit",
       options: start.options,
       instructions: start.instructions,
+      additionalWorkspaceFolders: [],
       dynamicTools: start.dynamicTools,
       contributedEnv: [],
       injectedSkillSources: start.injectedSkillSources,
@@ -1933,6 +1947,7 @@ describe("dispatchCommand", () => {
     );
     const command: CommandOf<"provider.installation.run"> = {
       type: "provider.installation.run",
+      contributedEnv: [],
       bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
       providerId: "codex",
       action: "update",
@@ -2037,6 +2052,7 @@ describe("dispatchCommand", () => {
       const result = await dispatchOnlineRpcCommand(
         {
           type: "provider.installation.run",
+          contributedEnv: [],
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           providerId: testCase.provider,
           action: testCase.action,
@@ -2099,6 +2115,7 @@ describe("dispatchCommand", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.installation.run",
+        contributedEnv: [],
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         providerId: "claude-code",
         action: "update",
@@ -2186,6 +2203,7 @@ describe("dispatchCommand", () => {
     const result = await dispatchOnlineRpcCommand(
       {
         type: "provider.installation.run",
+        contributedEnv: [],
         bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
         providerId: "claude-code",
         action: "update",
@@ -2299,6 +2317,7 @@ describe("dispatchCommand", () => {
         permissionEscalation: null,
       },
       instructions: "Be concise.",
+      additionalWorkspaceFolders: [],
       dynamicTools: [],
       contributedEnv: [],
       injectedSkillSources: [fixture.source],
@@ -2381,6 +2400,7 @@ describe("dispatchCommand", () => {
         providerId: "codex",
         providerThreadId: "provider-thread-1",
         instructions: "Be concise.",
+        additionalWorkspaceFolders: [],
         dynamicTools: [],
         contributedEnv: [],
         injectedSkillSources: [fixture.source],
@@ -2445,6 +2465,14 @@ describe("dispatchCommand", () => {
           providerId: "pi",
           bridgeLaunch: DISPATCH_TEST_BRIDGE_LAUNCH,
           cwd: "/tmp/workspace",
+          contributedEnv: [
+            {
+              name: "BB_PI_BRIDGE_COMMAND",
+              value: "/opt/pi/bin/pi",
+              source: { plugin: "managed-pi" },
+              reason: "plugin ships Pi",
+            },
+          ],
         },
         options,
         new AbortController().signal,
@@ -2466,6 +2494,14 @@ describe("dispatchCommand", () => {
       providerId: "pi",
       cwd: "/tmp/workspace",
       bridgeLaunch: dispatchTestRuntimeBridgeLaunch(options.dataDir),
+      contributedEnv: [
+        {
+          name: "BB_PI_BRIDGE_COMMAND",
+          value: "/opt/pi/bin/pi",
+          source: { plugin: "managed-pi" },
+          reason: "plugin ships Pi",
+        },
+      ],
     });
     expect(providerUsage).toHaveBeenCalledWith({
       providerId: "pi",

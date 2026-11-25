@@ -118,6 +118,7 @@ describe("thread entity store", () => {
       runtime: { displayStatus: "active" },
       activity: server[0]!.activity,
       latestAttentionAt: 20,
+      statusChangedAt: 11,
       updatedAt: 11,
     });
     await s.fetchList(s.lateKey, () => server);
@@ -205,6 +206,7 @@ describe("thread entity store", () => {
       runtime: { displayStatus: "active" },
       activity: server[0]!.activity,
       latestAttentionAt: 12,
+      statusChangedAt: 12,
       updatedAt: 12,
     });
     let finishReadBack!: () => void;
@@ -283,6 +285,7 @@ describe("thread entity store", () => {
         runtime: { displayStatus: status },
         activity: server[0]!.activity,
         latestAttentionAt: updatedAt,
+        statusChangedAt: updatedAt,
         updatedAt,
       });
     expect(s.describeRows(s.sidebarRows())).toEqual(["t2:null:idle"]);
@@ -403,6 +406,7 @@ describe("thread entity store", () => {
       runtime: { displayStatus: "idle" },
       activity: server[0]!.activity,
       latestAttentionAt: 11,
+      statusChangedAt: 11,
       updatedAt: 11,
     });
     expect(s.describeRows(s.sidebarRows())).toEqual(["t1:null:stopping"]);
@@ -444,6 +448,7 @@ describe("thread entity store", () => {
         runtime: { displayStatus: status },
         activity: server[0]!.activity,
         latestAttentionAt: updatedAt,
+        statusChangedAt: updatedAt,
         updatedAt,
       });
     expect(s.describeRows(s.sidebarRows())).toEqual(["t1:null:active"]);

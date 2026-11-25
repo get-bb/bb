@@ -1,21 +1,16 @@
-import type { JsonValue } from "@bb/domain";
-import type { HostDaemonOnlineRpcRequestMessage } from "@bb/host-daemon-contract";
 import type { PluginProviderDeclaration } from "@get-bb/plugin-sdk";
-import type { ExperimentalNativeRootsResolveAnswer } from "@get-bb/plugin-sdk/host";
 import { describe, expect, it, vi } from "vitest";
 import { COMMAND_TIMEOUT_MS } from "../../../src/constants.js";
 import { ApiError } from "../../../src/errors.js";
 import {
   PROVIDER_LISTING_BUDGET_FLOOR_MS,
-  PROVIDER_NATIVE_ROOTS_CACHE_TTL_MS,
+  PROVIDER_NATIVE_ROOTS_RESOLVE_TIMEOUT_MS,
   createProviderListingBudget,
-  resolveProviderNativeRootSet,
+  listNativeRootSkills,
+  listProviderNativeCommands,
 } from "../../../src/services/providers/native-roots.js";
 import type { ProviderRegistration } from "../../../src/services/providers/provider-registry.js";
-import {
-  registerHostRpcResponder,
-  type HostRpcHandlerResult,
-} from "../../helpers/host-rpc.js";
+import { registerHostRpcResponder } from "../../helpers/host-rpc.js";
 import { stubHostArtifact } from "../../helpers/provider-registry.js";
 import { seedHostSession } from "../../helpers/seed.js";
 import {
@@ -57,53 +52,38 @@ const RESOLVING = {
   }),
 };
 
-const USER_SKILLS = {
-  path: "/home/me/.resolving/skills",
-  origin: "user",
-  recursive: false,
-  ancestors: false,
-  namePrefix: "",
-  shape: "skills",
-} as const;
+const DECLARED = {
+  pluginId: "provider-declared",
+  declaration: declaration("declared", {
+    experimental_nativeSkillRoots: { user: [".declared/skills"] },
+  }),
+};
 
-interface ResolverStub {
-  calls: HostDaemonOnlineRpcRequestMessage[];
-  answer: ExperimentalNativeRootsResolveAnswer | Error | { raw: JsonValue };
-  holdUntil: Promise<void> | null;
-}
-
-function registerResolverHost(
-  harness: TestAppHarness,
-  hostId: string,
-): ResolverStub {
+function registerListingHost(harness: TestAppHarness, hostId: string) {
   const { host, session } = seedHostSession(harness.deps, { id: hostId });
-  const stub: ResolverStub = {
-    calls: [],
-    answer: { skills: [{ path: USER_SKILLS.path, origin: "user" }] },
-    holdUntil: null,
-  };
-  const answer = (): HostRpcHandlerResult => {
-    if (stub.answer instanceof Error) throw stub.answer;
-    if ("raw" in stub.answer) {
-      return { ok: true, result: { output: stub.answer.raw } };
-    }
-    return { ok: true, result: { output: stub.answer } };
-  };
-  registerHostRpcResponder(harness, {
+  return registerHostRpcResponder(harness, {
     hostId: host.id,
     sessionId: session.id,
     handle: (request) => {
-      if (
-        request.command.type !== "plugin.host.call" ||
-        request.command.method !== "resolveNativeRoots"
-      ) {
-        throw new Error(`Unexpected RPC ${request.command.type}`);
+      if (request.command.type === "host.list_commands") {
+        return { ok: true, result: { commands: [] } };
       }
-      stub.calls.push(request);
-      return stub.holdUntil === null ? answer() : stub.holdUntil.then(answer);
+      if (request.command.type === "host.list_skills") {
+        return {
+          ok: true,
+          result: {
+            workspaceSkills: [],
+            sharedSkills: [],
+            providers: request.command.providers.map((provider) => ({
+              providerId: provider.providerId,
+              skills: [],
+            })),
+          },
+        };
+      }
+      throw new Error(`Unexpected RPC ${request.command.type}`);
     },
   });
-  return stub;
 }
 
 function registration(
@@ -115,326 +95,144 @@ function registration(
   return found;
 }
 
-describe("resolveProviderNativeRootSet", () => {
-  it("asks the plugin on the workspace host once per (host, cwd) within the TTL", async () => {
-    let clock = 1_000;
-    await withTestHarness(
-      { extraProviders: [RESOLVING], nativeRootsClock: () => clock },
-      async (harness) => {
-        harness.deps.pluginHostArtifacts.set(
-          PLUGIN_ID,
-          stubHostArtifact(PLUGIN_ID),
-        );
-        const stubA = registerResolverHost(harness, "host-a");
-        const stubB = registerResolverHost(harness, "host-b");
-        const reg = registration(harness, "resolving");
+const RESOLVING_SCAN = {
+  providerId: "resolving",
+  declaredRoots: {
+    skills: {
+      user: [],
+      project: [
+        {
+          path: ".resolving/skills",
+          recursive: false,
+          ancestors: false,
+          namePrefix: "",
+        },
+      ],
+    },
+    commands: { user: [], project: [] },
+  },
+};
 
-        const first = await resolveProviderNativeRootSet(harness.deps, {
-          registration: reg,
-          hostId: "host-a",
-          cwd: "/work/one",
-          timeoutMs: 4_500,
-        });
-        expect(first).toEqual({
-          skills: {
-            user: [],
-            project: [
-              {
-                path: ".resolving/skills",
-                recursive: false,
-                ancestors: false,
-                namePrefix: "",
-              },
-            ],
-          },
-          commands: { user: [], project: [] },
-          resolved: { skills: [USER_SKILLS], commands: [] },
-        });
-        expect(stubA.calls.map((call) => call.command)).toEqual([
-          expect.objectContaining({
-            pluginId: PLUGIN_ID,
-            method: "resolveNativeRoots",
-            input: { providerId: "resolving", cwd: "/work/one" },
-            timeoutMs: 4_500,
-          }),
-        ]);
-
-        clock += PROVIDER_NATIVE_ROOTS_CACHE_TTL_MS - 1;
-        await resolveProviderNativeRootSet(harness.deps, {
-          registration: reg,
-          hostId: "host-a",
-          cwd: "/work/one",
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-        expect(stubA.calls).toHaveLength(1);
-
-        await resolveProviderNativeRootSet(harness.deps, {
-          registration: reg,
-          hostId: "host-a",
-          cwd: "/work/two",
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-        await resolveProviderNativeRootSet(harness.deps, {
-          registration: reg,
-          hostId: "host-a",
-          cwd: null,
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-        await resolveProviderNativeRootSet(harness.deps, {
-          registration: reg,
-          hostId: "host-b",
-          cwd: "/work/one",
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-        expect(stubA.calls.map((call) => call.command)).toEqual([
-          expect.objectContaining({
-            input: { providerId: "resolving", cwd: "/work/one" },
-          }),
-          expect.objectContaining({
-            input: { providerId: "resolving", cwd: "/work/two" },
-          }),
-          expect.objectContaining({
-            input: { providerId: "resolving", cwd: null },
-          }),
-        ]);
-        expect(stubB.calls).toHaveLength(1);
-
-        clock += 2;
-        await resolveProviderNativeRootSet(harness.deps, {
-          registration: reg,
-          hostId: "host-a",
-          cwd: "/work/one",
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-        expect(stubA.calls).toHaveLength(4);
-      },
-    );
-  });
-
-  it("keeps a slow answer for a full window after it lands, not after the call started", async () => {
-    let clock = 1_000;
-    await withTestHarness(
-      { extraProviders: [RESOLVING], nativeRootsClock: () => clock },
-      async (harness) => {
-        harness.deps.pluginHostArtifacts.set(
-          PLUGIN_ID,
-          stubHostArtifact(PLUGIN_ID),
-        );
-        const stub = registerResolverHost(harness, "host-a");
-        const reg = registration(harness, "resolving");
-        const resolve = () =>
-          resolveProviderNativeRootSet(harness.deps, {
-            registration: reg,
-            hostId: "host-a",
-            cwd: "/work/one",
-            timeoutMs: COMMAND_TIMEOUT_MS,
-          });
-        let land = (): void => {};
-        stub.holdUntil = new Promise<void>((settle) => {
-          land = settle;
-        });
-
-        const slow = resolve();
-        clock += PROVIDER_NATIVE_ROOTS_CACHE_TTL_MS + 2_000;
-        land();
-        await expect(slow).resolves.toMatchObject({
-          resolved: { skills: [USER_SKILLS] },
-        });
-        expect(stub.calls).toHaveLength(1);
-        const landedAt = clock;
-
-        stub.holdUntil = null;
-        clock = landedAt + 1_000;
-        await expect(resolve()).resolves.toMatchObject({
-          resolved: { skills: [USER_SKILLS] },
-        });
-        expect(stub.calls).toHaveLength(1);
-
-        clock = landedAt + PROVIDER_NATIVE_ROOTS_CACHE_TTL_MS - 1;
-        await resolve();
-        expect(stub.calls).toHaveLength(1);
-        clock = landedAt + PROVIDER_NATIVE_ROOTS_CACHE_TTL_MS;
-        await resolve();
-        expect(stub.calls).toHaveLength(2);
-      },
-    );
-  });
-
-  it("shares one in-flight call between concurrent listings", async () => {
+describe("native-root listings", () => {
+  it("sends the resolver with the scan in one host call, leaving time for the scan after it", async () => {
     await withTestHarness({ extraProviders: [RESOLVING] }, async (harness) => {
-      harness.deps.pluginHostArtifacts.set(
-        PLUGIN_ID,
-        stubHostArtifact(PLUGIN_ID),
-      );
-      const stub = registerResolverHost(harness, "host-a");
-      const reg = registration(harness, "resolving");
+      const artifact = stubHostArtifact(PLUGIN_ID);
+      harness.deps.pluginHostArtifacts.set(PLUGIN_ID, artifact);
+      const responder = registerListingHost(harness, "host-a");
 
-      const results = await Promise.all(
-        [0, 1, 2].map(() =>
-          resolveProviderNativeRootSet(harness.deps, {
-            registration: reg,
-            hostId: "host-a",
-            cwd: "/work/one",
-            timeoutMs: COMMAND_TIMEOUT_MS,
-          }),
-        ),
-      );
-
-      expect(stub.calls).toHaveLength(1);
-      for (const result of results) {
-        expect(result.resolved.skills).toEqual([USER_SKILLS]);
-      }
-    });
-  });
-
-  it("re-asks after the plugin's settings change and after the registration set changes", async () => {
-    await withTestHarness({ extraProviders: [RESOLVING] }, async (harness) => {
-      harness.deps.pluginHostArtifacts.set(
-        PLUGIN_ID,
-        stubHostArtifact(PLUGIN_ID),
-      );
-      const stub = registerResolverHost(harness, "host-a");
-      const reg = registration(harness, "resolving");
-      const resolve = () =>
-        resolveProviderNativeRootSet(harness.deps, {
-          registration: reg,
-          hostId: "host-a",
-          cwd: "/work/one",
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-
-      await resolve();
-      expect(stub.calls).toHaveLength(1);
-
-      harness.deps.providerNativeRoots.invalidate("some-other-plugin");
-      await resolve();
-      expect(stub.calls).toHaveLength(1);
-
-      harness.deps.providerNativeRoots.invalidate(PLUGIN_ID);
-      await resolve();
-      expect(stub.calls).toHaveLength(2);
-
-      const other = harness.deps.providerRegistry.register({
-        ...reg,
-        info: { ...reg.info, id: "resolving-twin" },
-        pluginId: PLUGIN_ID,
+      await listProviderNativeCommands(harness.deps, {
+        registration: registration(harness, "resolving"),
+        hostId: "host-a",
+        cwd: "/work/one",
       });
-      await resolve();
-      expect(stub.calls).toHaveLength(3);
-      other.dispose();
-      await resolve();
-      expect(stub.calls).toHaveLength(4);
-      await resolve();
-      expect(stub.calls).toHaveLength(4);
+
+      expect(responder.requests).toHaveLength(1);
+      const command = responder.requests[0]?.command;
+      if (command?.type !== "host.list_commands") {
+        throw new Error("expected one host.list_commands");
+      }
+      expect(command).toEqual({
+        type: "host.list_commands",
+        cwd: "/work/one",
+        provider: {
+          ...RESOLVING_SCAN,
+          resolver: {
+            pluginId: PLUGIN_ID,
+            generation: artifact.generation,
+            artifact: {
+              digest: artifact.digest,
+              byteLength: artifact.byteLength,
+            },
+          },
+        },
+        resolution: { contributedEnv: [], timeoutMs: expect.any(Number) },
+      });
+      expect(command.resolution.timeoutMs).toBe(
+        PROVIDER_NATIVE_ROOTS_RESOLVE_TIMEOUT_MS,
+      );
     });
   });
 
-  it("yields no resolved roots, and warns once per window, when the plugin cannot answer", async () => {
-    let clock = 1_000;
+  it("scans every provider and the shared roots in one host call", async () => {
     await withTestHarness(
-      { extraProviders: [RESOLVING], nativeRootsClock: () => clock },
+      { extraProviders: [RESOLVING, DECLARED] },
       async (harness) => {
         harness.deps.pluginHostArtifacts.set(
           PLUGIN_ID,
           stubHostArtifact(PLUGIN_ID),
         );
-        const stub = registerResolverHost(harness, "host-a");
-        const reg = registration(harness, "resolving");
-        const warn = vi.fn();
-        const deps = { ...harness.deps, logger: { ...testLogger, warn } };
-        const resolve = (cwd: string) =>
-          resolveProviderNativeRootSet(deps, {
-            registration: reg,
-            hostId: "host-a",
-            cwd,
-            timeoutMs: COMMAND_TIMEOUT_MS,
-          });
-
-        stub.answer = new Error("plugin.json is not valid JSON");
-        const failed = await resolve("/work/throws");
-        expect(failed.resolved).toEqual({ skills: [], commands: [] });
-        expect(failed.skills.project).toHaveLength(1);
-        expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0]?.[0]).toMatchObject({
-          pluginId: PLUGIN_ID,
-          providerId: "resolving",
-          hostId: "host-a",
-          cwd: "/work/throws",
-        });
-        expect(warn.mock.calls[0]?.[1]).toContain(PLUGIN_ID);
-        expect(warn.mock.calls[0]?.[1]).toContain("resolving");
-
-        await resolve("/work/throws");
-        expect(stub.calls).toHaveLength(1);
-        expect(warn).toHaveBeenCalledTimes(1);
-        clock += PROVIDER_NATIVE_ROOTS_CACHE_TTL_MS + 1;
-        await resolve("/work/throws");
-        expect(stub.calls).toHaveLength(2);
-        expect(warn).toHaveBeenCalledTimes(2);
-
-        stub.answer = {
-          raw: {
-            skills: [
-              { path: "relative/skills", origin: "user", ancestors: true },
-            ],
-          },
+        const responder = registerListingHost(harness, "host-a");
+        const sharedRoots = {
+          user: [
+            {
+              path: ".agents/skills",
+              recursive: false,
+              ancestors: false,
+              namePrefix: "",
+            },
+          ],
+          project: [],
         };
-        const malformed = await resolve("/work/malformed");
-        expect(malformed.resolved).toEqual({ skills: [], commands: [] });
-        expect(warn).toHaveBeenCalledTimes(3);
+
+        const result = await listNativeRootSkills(harness.deps, {
+          registrations: [
+            registration(harness, "resolving"),
+            registration(harness, "declared"),
+          ],
+          sharedRoots,
+          hostId: "host-a",
+          cwd: "/work/one",
+        });
+
+        expect(result.providers.map((entry) => entry.providerId)).toEqual([
+          "resolving",
+          "declared",
+        ]);
+        expect(responder.requests.map((request) => request.command)).toEqual([
+          expect.objectContaining({
+            type: "host.list_skills",
+            cwd: "/work/one",
+            sharedRoots,
+            providers: [
+              expect.objectContaining({
+                providerId: "resolving",
+                resolver: expect.objectContaining({ pluginId: PLUGIN_ID }),
+              }),
+              expect.objectContaining({
+                providerId: "declared",
+                resolver: null,
+              }),
+            ],
+          }),
+        ]);
       },
     );
   });
 
-  it("does not call a host when the plugin has no live artifact or does not resolve roots", async () => {
-    const declared = {
-      pluginId: "provider-declared",
-      declaration: declaration("declared", {
-        experimental_nativeSkillRoots: { user: [".declared/skills"] },
-      }),
-    };
-    await withTestHarness(
-      { extraProviders: [RESOLVING, declared] },
-      async (harness) => {
-        const stub = registerResolverHost(harness, "host-a");
-        const warn = vi.fn();
-        const deps = { ...harness.deps, logger: { ...testLogger, warn } };
+  it("lists declared roots only, and warns, when a resolving plugin has no live artifact", async () => {
+    await withTestHarness({ extraProviders: [RESOLVING] }, async (harness) => {
+      const responder = registerListingHost(harness, "host-a");
+      const warn = vi.fn();
+      const deps = { ...harness.deps, logger: { ...testLogger, warn } };
 
-        const withoutArtifact = await resolveProviderNativeRootSet(deps, {
-          registration: registration(harness, "resolving"),
-          hostId: "host-a",
-          cwd: "/work/one",
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-        expect(withoutArtifact.resolved).toEqual({ skills: [], commands: [] });
-        expect(warn).toHaveBeenCalledTimes(1);
-        expect(warn.mock.calls[0]?.[1]).toContain("no live bb.host artifact");
+      await listProviderNativeCommands(deps, {
+        registration: registration(harness, "resolving"),
+        hostId: "host-a",
+        cwd: "/work/one",
+      });
 
-        const declaredOnly = await resolveProviderNativeRootSet(deps, {
-          registration: registration(harness, "declared"),
-          hostId: "host-a",
-          cwd: "/work/one",
-          timeoutMs: COMMAND_TIMEOUT_MS,
-        });
-        expect(declaredOnly).toEqual({
-          skills: {
-            user: [
-              {
-                path: ".declared/skills",
-                recursive: false,
-                ancestors: false,
-                namePrefix: "",
-              },
-            ],
-            project: [],
-          },
-          commands: { user: [], project: [] },
-          resolved: { skills: [], commands: [] },
-        });
-        expect(warn).toHaveBeenCalledTimes(1);
-        expect(stub.calls).toEqual([]);
-      },
-    );
+      expect(responder.requests.map((request) => request.command)).toEqual([
+        expect.objectContaining({
+          provider: { ...RESOLVING_SCAN, resolver: null },
+        }),
+      ]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(warn.mock.calls[0]?.[0]).toMatchObject({
+        pluginId: PLUGIN_ID,
+        providerId: "resolving",
+      });
+      expect(warn.mock.calls[0]?.[1]).toContain("no live bb.host artifact");
+    });
   });
 });
 

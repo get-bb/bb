@@ -173,7 +173,6 @@ function buildPromptAreaElement({
         providerCommands={null}
         sessionOptions={sessionOptions}
         modelFallback={modelFallback}
-        parentThreadSection={null}
         pendingInteractions={pendingInteractions}
         queuedMessageCount={queuedMessageCount}
         pendingTodos={null}
@@ -248,7 +247,7 @@ describe("shared draft submission ownership", () => {
       ["modifier", "ordinary"],
       ["modifier", "modifier"],
     ] as const)(
-      "serializes %s then %s without losing edits",
+      "serializes %s then %s and merges the failed send into newer edits",
       async (firstAction, secondAction) => {
         const threadId = `thr_lock_${++nextId}`;
         const draft = draftFor(threadId);
@@ -307,7 +306,10 @@ describe("shared draft submission ownership", () => {
         }
         expect({ requests: calls, draft: draft.getCurrent() }).toEqual({
           requests: 1,
-          draft: newer,
+          draft: {
+            ...original,
+            text: "first message\n\nedited while pending",
+          },
         });
         expect(await secondAttempt).toBeInstanceOf(Error);
         if (lifetime !== "same callback") expect(pendingVisible).toBe(true);
@@ -352,6 +354,49 @@ describe("shared draft submission ownership", () => {
       });
     }
   });
+
+  it("merges a failed handoff back into a draft typed while it was pending", async () => {
+    const threadId = `thr_handoff_${++nextId}`;
+    const draft = draftFor(threadId);
+    draft.setDraft({ text: "hand this off", mentions: [], attachments: [] });
+    const created = createDeferredPromise<{ id: string; projectId: string }>();
+    mocks.createThreadMutateAsync.mockReturnValueOnce(created.promise);
+    const view = renderPromptArea({ thread: makeThread({ id: threadId }) });
+    fireEvent.click(
+      within(view.container).getByRole("button", { name: "Start handoff" }),
+    );
+    fireEvent.click(
+      within(view.container).getByRole("button", {
+        name: "Capture plugin host",
+      }),
+    );
+    const submit = mocks.composerSubmit;
+    if (!submit) throw new Error("Missing composer submit");
+    const submitted = draft.getCurrent();
+
+    let attempt: Promise<unknown> = Promise.resolve();
+    act(() => {
+      attempt = Promise.resolve(submit()).catch((error: unknown) => error);
+    });
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledOnce(),
+    );
+    expect(draft.getCurrent().text).toBe("");
+    act(() => {
+      draft.setDraft({ text: "newer idea", mentions: [], attachments: [] });
+    });
+    await act(async () => {
+      created.reject(new Error("Simulated transport failure"));
+      await attempt;
+    });
+
+    expect(await attempt).toBeInstanceOf(Error);
+    expect(draft.getCurrent()).toEqual({
+      text: `${submitted.text}\n\nnewer idea`,
+      mentions: submitted.mentions,
+      attachments: [],
+    });
+  });
 });
 
 beforeEach(() => {
@@ -373,7 +418,8 @@ beforeEach(() => {
     updateAttachments: mocks.promptDraft.updateAttachments,
     clear: vi.fn(),
     clearIfCurrentMatches: mocks.promptDraft.clearIfCurrentMatches,
-    restoreIfEmpty: mocks.promptDraft.restoreIfEmpty,
+    restoreUnsent: mocks.promptDraft.restoreUnsent,
+    seedIfEmpty: mocks.promptDraft.seedIfEmpty,
   };
   vi.mocked(usePromptDraftController).mockImplementation(
     () => promptDraftController,
@@ -1198,6 +1244,55 @@ describe("ThreadDetailPromptArea", () => {
     ).toBe("First plugin update + second plugin update");
   });
 
+  it("scopes thread and queued-message composers to the thread's project and current environment", () => {
+    mocks.queuedMessages = [makeQueuedMessage({ id: "qmsg_1" })];
+    const thread = makeThread({ projectId: "proj_vault", environmentId: null });
+    const mounted = renderPromptArea({ thread });
+    const captureBottomHost = () => {
+      fireEvent.click(
+        within(mounted.container).getByRole("button", {
+          name: "Capture plugin host",
+        }),
+      );
+      return mocks.pluginComposerHost;
+    };
+    expect(captureBottomHost()?.scope).toEqual({
+      kind: "thread",
+      threadId: thread.id,
+      projectId: "proj_vault",
+      environmentId: null,
+    });
+
+    mounted.rerender(
+      buildPromptAreaElement({
+        thread: { ...thread, environmentId: "env_vault" },
+      }),
+    );
+    expect(captureBottomHost()?.scope).toEqual({
+      kind: "thread",
+      threadId: thread.id,
+      projectId: "proj_vault",
+      environmentId: "env_vault",
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Edit queued message 1" }),
+    );
+    fireEvent.click(
+      within(screen.getByTestId("inline-queued-message-editor")).getByRole(
+        "button",
+        { name: "Capture plugin host" },
+      ),
+    );
+    expect(mocks.pluginComposerHost?.scope).toEqual({
+      kind: "queued-message",
+      threadId: thread.id,
+      queuedMessageId: "qmsg_1",
+      projectId: "proj_vault",
+      environmentId: "env_vault",
+    });
+  });
+
   it("renders text effects only for the active queued edit session", () => {
     mocks.queuedMessages = [
       makeQueuedMessage({ id: "qmsg_1" }),
@@ -1560,6 +1655,100 @@ describe("ThreadDetailPromptArea", () => {
         screen.queryByRole("button", { name: "Cancel queued edit" }),
       ).toBeNull(),
     );
+  });
+
+  describe("unsaved queued message edits", () => {
+    const mainDraft = () =>
+      getPromptDraftAccessor({
+        kind: "thread",
+        projectId: "proj_1",
+        threadId: "thr_1",
+      });
+
+    beforeEach(() => {
+      mainDraft().setDraft({
+        text: "newer composer text",
+        mentions: [],
+        attachments: [],
+      });
+      mocks.queuedMessages = [makeQueuedMessage()];
+    });
+
+    afterEach(() => {
+      mainDraft().clear();
+    });
+
+    function editQueuedMessage(text: string | null) {
+      const view = renderPromptArea();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Edit queued message 1" }),
+      );
+      if (text !== null) {
+        fireEvent.change(
+          within(screen.getByTestId("inline-queued-message-editor")).getByRole(
+            "textbox",
+            { name: "Composer message" },
+          ),
+          { target: { value: text } },
+        );
+      }
+      return view;
+    }
+
+    it("moves the edit into the composer when the message leaves the queue", () => {
+      const view = editQueuedMessage("Already queued, but edited");
+
+      mocks.queuedMessages = [];
+      view.rerender(buildPromptAreaElement());
+
+      expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull();
+      expect(mainDraft().getCurrent().text).toBe(
+        "Already queued, but edited\n\nnewer composer text",
+      );
+      expect(mocks.toastWarning).toHaveBeenCalledWith(
+        "Your queued message edit is in the composer",
+        {
+          description: "The message left the queue before the edit was saved.",
+        },
+      );
+    });
+
+    it("leaves the composer alone when the edit had no changes", () => {
+      const view = editQueuedMessage(null);
+
+      mocks.queuedMessages = [];
+      view.rerender(buildPromptAreaElement());
+
+      expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull();
+      expect(mainDraft().getCurrent().text).toBe("newer composer text");
+      expect(mocks.toastWarning).not.toHaveBeenCalled();
+    });
+
+    it("moves the edit into the composer when saving finds the message gone", async () => {
+      mocks.updateQueuedMessageMutateAsync.mockRejectedValueOnce(
+        new BbHttpError({
+          body: null,
+          code: "invalid_request",
+          status: 404,
+          message: "Queued message not found",
+        }),
+      );
+      editQueuedMessage("Already queued, but edited");
+
+      fireEvent.click(
+        within(screen.getByTestId("inline-queued-message-editor")).getByRole(
+          "button",
+          { name: "Submit composer" },
+        ),
+      );
+
+      await waitFor(() =>
+        expect(mainDraft().getCurrent().text).toBe(
+          "Already queued, but edited\n\nnewer composer text",
+        ),
+      );
+      expect(screen.queryByTestId("inline-queued-message-editor")).toBeNull();
+    });
   });
 
   it("auto-collapses concurrently running workflows into a stack that expands to independently expandable cards", () => {
@@ -1990,6 +2179,33 @@ describe("ThreadDetailPromptArea", () => {
       ),
     );
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("creates the handoff of a child thread next to its source", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea({
+      thread: makeThread({
+        parentThreadId: "thr_coordinator",
+        parentNotifications: "stuck",
+        sectionId: "sec_work",
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parentThreadId: "thr_coordinator",
+          parentNotifications: "stuck",
+          sectionId: "sec_work",
+        }),
+      ),
+    );
   });
 
   it("marks a supported handoff service tier explicit", async () => {

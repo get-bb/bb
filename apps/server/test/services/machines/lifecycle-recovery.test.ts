@@ -545,10 +545,7 @@ it("holds the machine drain deadline while the server is moving", async () =>
       await vi.advanceTimersByTimeAsync(
         5 * 60_000 + SERVER_MOVE_FROZEN_RETRY_MS,
       );
-      expect(getHost(harness.db, target.host.id)).toMatchObject({
-        phase: "suspending",
-        suspendRetryAt: null,
-      });
+      expect(getHost(harness.db, target.host.id)?.phase).toBe("suspending");
     } finally {
       setServerMoveFrozen(harness.db, false);
     }
@@ -560,5 +557,7 @@ it("holds the machine drain deadline while the server is moving", async () =>
     });
     expect(save).not.toHaveBeenCalled();
     expect(getHost(harness.db, target.host.id)?.phase).toBe("active");
-    expect(getHost(harness.db, target.host.id)?.suspendRetryAt).not.toBeNull();
+    expect(getHost(harness.db, target.host.id)?.statusMessage).toBe(
+      "Machine suspension failed: Machine drain exceeded its deadline; old compute is retained",
+    );
   }));

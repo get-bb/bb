@@ -51,8 +51,15 @@ export interface ProviderRegistration {
   deriveProviderOptions: (
     context: Omit<PluginProviderOptionsContext, "settings">,
   ) => Readonly<Record<string, JsonValue>>;
+  reportBridgeFailure: (failure: ProviderBridgeFailure) => void;
   icon?: { bytes: Uint8Array; contentType: string; hash: string };
   iconNames: ReadonlySet<string>;
+}
+
+export interface ProviderBridgeFailure {
+  hostId: string;
+  operation: string;
+  message: string;
 }
 
 const PROVIDER_INSTALLED_CACHE_TTL_MS = 5 * 60_000;
@@ -70,6 +77,7 @@ export interface ProviderRegistryService {
     probe: () => Promise<boolean>,
   ): Promise<void>;
   forgetInstalledKey(key: ProviderHealthCacheKey): void;
+  forgetInstalledForHost(hostId: string): void;
   forgetAllInstalled(): void;
   getServerCapabilities(providerId: string): ProviderServerCapabilities | null;
   getSupportedPermissionModes(
@@ -285,6 +293,10 @@ export function createProviderRegistryService(
       if (hostEntries === undefined) return;
       hostEntries.delete(key.providerId);
       if (hostEntries.size === 0) installedByHostId.delete(key.hostId);
+    },
+
+    forgetInstalledForHost(hostId) {
+      installedByHostId.delete(hostId);
     },
 
     forgetAllInstalled() {

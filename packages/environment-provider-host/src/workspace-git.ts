@@ -120,16 +120,67 @@ export function trimOutput(value: string): string {
   return value.trim().replace(/\n+$/u, "");
 }
 
+type GitConfigEntry = readonly [key: string, value: string];
+
+const MACHINE_READ_GIT_CONFIG: readonly GitConfigEntry[] = [
+  ["color.ui", "never"],
+  ["color.diff", "never"],
+  ["color.branch", "never"],
+  ["color.status", "never"],
+  ["diff.noprefix", "false"],
+  ["diff.mnemonicPrefix", "false"],
+  ["diff.srcPrefix", "a/"],
+  ["diff.dstPrefix", "b/"],
+  ["diff.suppressBlankEmpty", "false"],
+  ["diff.relative", "false"],
+  ["diff.submodule", "short"],
+  ["log.showSignature", "false"],
+];
+
+const GIT_CONFIG_ENV_KEY = /^GIT_CONFIG_(?:COUNT|KEY_\d+|VALUE_\d+)$/u;
+
+function readGitConfigEnv(env: NodeJS.ProcessEnv): GitConfigEntry[] {
+  const count = Number(env.GIT_CONFIG_COUNT ?? "0");
+  if (!Number.isSafeInteger(count) || count < 0) return [];
+  const entries: GitConfigEntry[] = [];
+  for (let index = 0; index < count; index += 1) {
+    const key = env[`GIT_CONFIG_KEY_${index}`];
+    if (key === undefined) continue;
+    entries.push([key, env[`GIT_CONFIG_VALUE_${index}`] ?? ""]);
+  }
+  return entries;
+}
+
+function withoutGitConfigEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return Object.fromEntries(
+    Object.entries(env).filter(([key]) => !GIT_CONFIG_ENV_KEY.test(key)),
+  );
+}
+
 export function resolveGitProcessEnv(
   args: ResolveGitProcessEnvArgs,
 ): NodeJS.ProcessEnv {
-  return {
-    ...sanitizeInheritedChildProcessEnv({
-      env: process.env,
-      ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
-    }),
-    ...args.env,
+  const inherited = sanitizeInheritedChildProcessEnv({
+    env: process.env,
+    ...(args.shellPath !== undefined ? { shellPath: args.shellPath } : {}),
+  });
+  const requested = args.env ?? {};
+  const config = [
+    ...readGitConfigEnv(inherited),
+    ...MACHINE_READ_GIT_CONFIG,
+    ...readGitConfigEnv(requested),
+  ];
+  const env: NodeJS.ProcessEnv = {
+    ...withoutGitConfigEnv(inherited),
+    LANGUAGE: "C",
+    ...withoutGitConfigEnv(requested),
+    GIT_CONFIG_COUNT: String(config.length),
   };
+  config.forEach(([key, value], index) => {
+    env[`GIT_CONFIG_KEY_${index}`] = key;
+    env[`GIT_CONFIG_VALUE_${index}`] = value;
+  });
+  return env;
 }
 
 function createGitCommandTimedOutError(
@@ -822,25 +873,6 @@ export function createGitQueries(run: GitQueryRunner) {
     return result.exitCode === 0;
   }
 
-  async function isAncestorRef(
-    cwd: string,
-    ancestorRef: string,
-    descendantRef: string,
-    options: GitTimeoutOptions = {},
-  ): Promise<boolean | undefined> {
-    const result = await run(
-      ["merge-base", "--is-ancestor", ancestorRef, descendantRef],
-      { cwd, ...options, allowFailure: true },
-    );
-    if (result.exitCode === 0) {
-      return true;
-    }
-    if (result.exitCode === 1) {
-      return false;
-    }
-    return undefined;
-  }
-
   async function readOriginHeadBranchName(
     cwd: string,
     options: GitTimeoutOptions = {},
@@ -942,12 +974,7 @@ export function createGitQueries(run: GitQueryRunner) {
     const relation =
       local === undefined || origin === undefined
         ? undefined
-        : await compareBranchOids(
-            cwd,
-            { ref: localRef, oid: local.oid },
-            { ref: originRef, oid: origin.oid },
-            options,
-          );
+        : await compareBranchOids(cwd, local.oid, origin.oid, options);
     return (
       chooseBranchRef(
         local === undefined ? undefined : name,
@@ -959,43 +986,35 @@ export function createGitQueries(run: GitQueryRunner) {
 
   async function compareBranchOids(
     cwd: string,
-    local: { ref: string; oid: string | undefined },
-    origin: { ref: string; oid: string | undefined },
+    localOid: string | undefined,
+    originOid: string | undefined,
     options: GitTimeoutOptions,
   ): Promise<DefaultBranchRelation> {
-    if (!local.oid || !origin.oid) {
+    if (!localOid || !originOid) {
       return "unknown";
     }
-    if (local.oid === origin.oid) {
+    if (localOid === originOid) {
       return "equal";
     }
 
-    const localIsAncestor = await isAncestorRef(
+    const mergeBase = await run(["merge-base", localOid, originOid], {
       cwd,
-      local.ref,
-      origin.ref,
-      options,
-    );
-    if (localIsAncestor === true) {
+      ...options,
+      allowFailure: true,
+    });
+    if (mergeBase.exitCode === 1) {
+      return "diverged";
+    }
+    if (mergeBase.exitCode !== 0) {
+      return "unknown";
+    }
+    const base = trimOutput(mergeBase.stdout);
+    if (base === localOid) {
       return "local-behind";
     }
-    if (localIsAncestor === undefined) {
-      return "unknown";
-    }
-
-    const originIsAncestor = await isAncestorRef(
-      cwd,
-      origin.ref,
-      local.ref,
-      options,
-    );
-    if (originIsAncestor === true) {
+    if (base === originOid) {
       return "local-ahead";
     }
-    if (originIsAncestor === undefined) {
-      return "unknown";
-    }
-
     return "diverged";
   }
 
@@ -1074,8 +1093,8 @@ export function createGitQueries(run: GitQueryRunner) {
     const originRef = `refs/remotes/origin/${originDefaultBranch}`;
     const defaultBranchRelation = await compareBranchOids(
       cwd,
-      { ref: localRef, oid: refs.get(localRef)?.oid },
-      { ref: originRef, oid: refs.get(originRef)?.oid },
+      refs.get(localRef)?.oid,
+      refs.get(originRef)?.oid,
       options,
     );
     return {

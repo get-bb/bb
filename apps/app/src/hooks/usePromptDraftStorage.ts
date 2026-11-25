@@ -5,6 +5,7 @@ import {
   arePromptDraftStatesEqual,
   emptyPromptDraftState,
   isPromptDraftEmpty,
+  mergeUnsentPromptDraft,
   parsePromptDraftStorage,
   promptDraftToInput,
   serializePromptDraftStorage,
@@ -205,7 +206,7 @@ function writePromptDraft(
   emitPromptDraftChange(storageKey);
 }
 
-function restorePromptDraftIfEmpty(
+function seedPromptDraftIfEmpty(
   storageKey: string | null,
   value: PromptDraftState,
 ): boolean {
@@ -258,7 +259,29 @@ export interface PromptDraftController {
   ) => void;
   clear: () => void;
   clearIfCurrentMatches: (expectedDraft: PromptDraftState) => boolean;
-  restoreIfEmpty: (nextDraft: PromptDraftState) => void;
+  seedIfEmpty: (nextDraft: PromptDraftState) => void;
+  restoreUnsent: (unsentDraft: PromptDraftState) => void;
+}
+
+type PromptDraftSendTarget = Pick<
+  PromptDraftController,
+  "clearIfCurrentMatches" | "restoreUnsent"
+>;
+
+export async function sendPromptDraft<Result>(
+  target: PromptDraftSendTarget,
+  submittedDraft: PromptDraftState,
+  send: () => Promise<Result>,
+): Promise<Result> {
+  const cleared = target.clearIfCurrentMatches(submittedDraft);
+  try {
+    return await send();
+  } catch (error) {
+    if (cleared) {
+      target.restoreUnsent(submittedDraft);
+    }
+    throw error;
+  }
 }
 
 function createPromptDraftController(
@@ -316,8 +339,14 @@ function createPromptDraftController(
       writePromptDraft(storageKey, EMPTY_PROMPT_DRAFT);
       return true;
     },
-    restoreIfEmpty: (nextDraft) => {
-      restorePromptDraftIfEmpty(storageKey, nextDraft);
+    seedIfEmpty: (nextDraft) => {
+      seedPromptDraftIfEmpty(storageKey, nextDraft);
+    },
+    restoreUnsent: (unsentDraft) => {
+      writePromptDraft(
+        storageKey,
+        mergeUnsentPromptDraft(unsentDraft, readPromptDraft(storageKey)),
+      );
     },
   };
 }

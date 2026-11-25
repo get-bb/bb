@@ -1,11 +1,21 @@
-import type { BbDesktopServerChoice } from "@bb/desktop-contract";
+import {
+  bbDesktopConnectSignInLabel,
+  type BbDesktopServerChoice,
+  type BbDesktopServerList,
+} from "@bb/desktop-contract";
 import { getNativeShell } from "./native-shell";
 
 export type ServerChoice = BbDesktopServerChoice;
 
+export interface AccountSignIn {
+  label: string;
+  start(): void;
+}
+
 export interface ServerChoicesSnapshot {
   status: "loading" | "ready";
   servers: readonly ServerChoice[];
+  accountSignIn: AccountSignIn | null;
 }
 
 export interface ServerChoices {
@@ -13,38 +23,54 @@ export interface ServerChoices {
   subscribe(listener: () => void): () => void;
   refresh(): void;
   switchTo(id: string): void;
+  addServer: (() => void) | null;
+}
+
+interface ServerList {
+  servers: readonly ServerChoice[];
+  connectServersSkipReason: BbDesktopServerList["connectServersSkipReason"];
 }
 
 interface ServerChoiceSource {
-  initial: readonly ServerChoice[] | null;
-  load(): Promise<readonly ServerChoice[]>;
-  watch(listener: (choices: readonly ServerChoice[]) => void): void;
+  initial: ServerList | null;
+  load(): Promise<ServerList>;
+  watch(listener: (list: ServerList) => void): void;
   switchTo(id: string): void;
+  addServer: (() => void) | null;
+  signInToConnect: (() => void) | null;
 }
 
-function sameServers(
-  left: readonly ServerChoice[],
-  right: readonly ServerChoice[],
-): boolean {
+function sameServerList(left: ServerList, right: ServerList): boolean {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
 function createServerChoices(source: ServerChoiceSource): ServerChoices {
-  let snapshot: ServerChoicesSnapshot =
-    source.initial === null
-      ? { status: "loading", servers: [] }
-      : { status: "ready", servers: source.initial };
+  const toSnapshot = (list: ServerList | null): ServerChoicesSnapshot => {
+    if (list === null)
+      return { status: "loading", servers: [], accountSignIn: null };
+    const label = bbDesktopConnectSignInLabel(list.connectServersSkipReason);
+    return {
+      status: "ready",
+      servers: list.servers,
+      accountSignIn:
+        label === null || source.signInToConnect === null
+          ? null
+          : { label, start: source.signInToConnect },
+    };
+  };
+  let current = source.initial;
+  let snapshot = toSnapshot(current);
   let changes = 0;
   const listeners = new Set<() => void>();
-  const publish = (servers: readonly ServerChoice[]) => {
-    if (snapshot.status === "ready" && sameServers(snapshot.servers, servers))
-      return;
-    snapshot = { status: "ready", servers };
+  const publish = (list: ServerList) => {
+    if (current !== null && sameServerList(current, list)) return;
+    current = list;
+    snapshot = toSnapshot(list);
     for (const listener of listeners) listener();
   };
-  source.watch((servers) => {
+  source.watch((list) => {
     changes += 1;
-    publish(servers);
+    publish(list);
   });
   return {
     getSnapshot: () => snapshot,
@@ -57,15 +83,17 @@ function createServerChoices(source: ServerChoiceSource): ServerChoices {
     refresh() {
       const changesBefore = changes;
       void source.load().then(
-        (servers) => {
-          if (changes === changesBefore) publish(servers);
+        (list) => {
+          if (changes === changesBefore) publish(list);
         },
         () => {
-          if (snapshot.status === "loading") publish([]);
+          if (current === null)
+            publish({ servers: [], connectServersSkipReason: null });
         },
       );
     },
     switchTo: (id) => source.switchTo(id),
+    addServer: source.addServer,
   };
 }
 
@@ -81,13 +109,28 @@ function desktopSource(): ServerChoiceSource | null {
   ) {
     return null;
   }
+  const getServerList = desktop?.getServerList?.bind(desktop);
+  const onServerListChange = desktop?.onServerListChange?.bind(desktop);
   return {
     initial: null,
-    load: listServerChoices,
+    load:
+      getServerList ??
+      (async () => ({
+        servers: await listServerChoices(),
+        connectServersSkipReason: null,
+      })),
     watch: (listener) => {
-      onServerChoicesChange(listener);
+      if (onServerListChange !== undefined) {
+        onServerListChange(listener);
+        return;
+      }
+      onServerChoicesChange((servers) =>
+        listener({ servers, connectServersSkipReason: null }),
+      );
     },
     switchTo: selectServer,
+    addServer: desktop?.addServer?.bind(desktop) ?? null,
+    signInToConnect: desktop?.signInToConnect?.bind(desktop) ?? null,
   };
 }
 
@@ -95,15 +138,24 @@ function mobileSource(): ServerChoiceSource | null {
   const shell = getNativeShell();
   const initial = shell?.servers() ?? null;
   if (shell === null || initial === null) return null;
+  const toList = (servers: readonly ServerChoice[]): ServerList => ({
+    servers,
+    connectServersSkipReason: null,
+  });
   return {
-    initial,
-    load: async () => shell.servers() ?? [],
+    initial: toList(initial),
+    load: async () => toList(shell.servers() ?? []),
     watch: (listener) => {
       shell.subscribe((event) => {
-        if (event.type === "servers") listener(event.servers);
+        if (event.type === "servers") listener(toList(event.servers));
       });
     },
     switchTo: (id) => shell.post({ type: "switch-server", id }),
+    addServer:
+      shell.has("open-native") && shell.handshake.bridgeVersion >= 5
+        ? () => shell.post({ type: "open-native", screen: "add-server" })
+        : null,
+    signInToConnect: null,
   };
 }
 

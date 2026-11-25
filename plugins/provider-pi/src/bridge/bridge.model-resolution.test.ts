@@ -1,8 +1,11 @@
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { join } from "node:path";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { z } from "zod";
+import { PI_BRIDGE_ARGS_ENV, PI_BRIDGE_COMMAND_ENV } from "./rpc-child.js";
 import {
   FULL_PERMISSION_OPTIONS,
   type FakePiBridgeHarness,
+  fakePiPath,
   startFakePiBridge,
 } from "./test-support.js";
 
@@ -30,6 +33,7 @@ for (const warm of [false, true]) {
     async (model, contextWindow) => {
       if (warm) {
         const catalog = await harness.request(1, "model/list", {
+          envVars: {},
           cwd: harness.workspaceDir,
         });
         expect(catalog.error).toBeUndefined();
@@ -67,6 +71,7 @@ for (const warm of [false, true]) {
     async (model, message) => {
       if (warm) {
         const catalog = await harness.request(1, "model/list", {
+          envVars: {},
           cwd: harness.workspaceDir,
         });
         expect(catalog.error).toBeUndefined();
@@ -81,3 +86,18 @@ for (const warm of [false, true]) {
     60_000,
   );
 }
+
+it("resolves the model with the Pi command the thread env selects", async () => {
+  vi.stubEnv(PI_BRIDGE_COMMAND_ENV, join(harness.workspaceDir, "missing-pi"));
+  const response = await harness.startThread("thr_model_resolution", {
+    options: {
+      ...FULL_PERMISSION_OPTIONS,
+      model: "fake-provider/fake-model",
+      envVars: {
+        [PI_BRIDGE_COMMAND_ENV]: process.execPath,
+        [PI_BRIDGE_ARGS_ENV]: JSON.stringify([fakePiPath]),
+      },
+    },
+  });
+  expect(response.error, JSON.stringify(response)).toBeUndefined();
+}, 60_000);

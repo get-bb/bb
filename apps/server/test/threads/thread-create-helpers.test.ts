@@ -38,7 +38,7 @@ describe("buildSuggestedBranchName", () => {
       buildSuggestedBranchName({
         branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
         title: null,
-        threadId: "thr_abc123def456",
+        id: "thr_abc123def456",
       }),
     ).toBe("bb/thr_abc123def456");
   });
@@ -48,7 +48,7 @@ describe("buildSuggestedBranchName", () => {
       buildSuggestedBranchName({
         branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
         title: "Fix login flow!",
-        threadId: "thr_abc123def456",
+        id: "thr_abc123def456",
       }),
     ).toBe("bb/fix-login-flow-thr_abc123def456");
   });
@@ -58,7 +58,7 @@ describe("buildSuggestedBranchName", () => {
       buildSuggestedBranchName({
         branchPrefix: DEFAULT_MANAGED_BRANCH_PREFIX,
         title: "!!!",
-        threadId: "thr_abc123def456",
+        id: "thr_abc123def456",
       }),
     ).toBe("bb/thr_abc123def456");
   });
@@ -68,14 +68,14 @@ describe("buildSuggestedBranchName", () => {
       buildSuggestedBranchName({
         branchPrefix: "sawyer/wt-",
         title: "Fix login flow!",
-        threadId: "thr_abc123def456",
+        id: "thr_abc123def456",
       }),
     ).toBe("sawyer/wt-fix-login-flow-thr_abc123def456");
     expect(
       buildSuggestedBranchName({
         branchPrefix: "sawyer/wt-",
         title: null,
-        threadId: "thr_abc123def456",
+        id: "thr_abc123def456",
       }),
     ).toBe("sawyer/wt-thr_abc123def456");
   });
@@ -85,7 +85,7 @@ describe("buildSuggestedBranchName", () => {
       buildSuggestedBranchName({
         branchPrefix: "",
         title: "Fix login flow!",
-        threadId: "thr_abc123def456",
+        id: "thr_abc123def456",
       }),
     ).toBe("fix-login-flow-thr_abc123def456");
   });

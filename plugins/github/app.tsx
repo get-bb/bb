@@ -50,6 +50,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "./components/empty-state.js";
+import { isNonImeKey } from "@/lib/ime-keyboard";
 
 type IssueDetail = PluginRpcResult<
   (typeof githubRpcContract)["getIssue"]
@@ -403,7 +404,7 @@ function FilterBar({
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") {
+    if (isNonImeKey(event, "Escape")) {
       setOpen(false);
       return;
     }
@@ -417,7 +418,7 @@ function FilterBar({
     } else if (event.key === "ArrowUp") {
       event.preventDefault();
       setHighlight((active - 1 + suggestions.length) % suggestions.length);
-    } else if (event.key === "Enter" || event.key === "Tab") {
+    } else if (isNonImeKey(event, "Enter") || event.key === "Tab") {
       event.preventDefault();
       accept(suggestions[active]);
     }

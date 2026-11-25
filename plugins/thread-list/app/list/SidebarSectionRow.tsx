@@ -61,7 +61,7 @@ interface SidebarSectionRowProps {
   consumeClickSuppression?: ConsumeDragClickSuppression;
   dragBindings?: SidebarSortableDragBindings;
   isDropTargetActive?: boolean;
-  onCreateThread?: () => void;
+  onCreateThread?: (split: boolean) => void;
   onRename?: () => void;
   onRenameFromMenu?: () => void;
   onCloseAutoFocus?: (event: Event) => void;

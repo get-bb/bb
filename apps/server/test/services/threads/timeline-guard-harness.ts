@@ -219,6 +219,7 @@ export function registerGuardProvider(harness: TestAppHarness): GuardProvider {
   const declareStateKinds = (kinds: readonly string[]) => {
     registration?.dispose();
     registration = harness.deps.providerRegistry.register({
+      reportBridgeFailure: () => undefined,
       ...buildPluginProviderRegistration({
         iconHash: null,
         available: true,
