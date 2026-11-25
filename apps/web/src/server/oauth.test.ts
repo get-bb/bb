@@ -48,6 +48,26 @@ const REDIRECT_URI = "https://claude.example/callback?tenant=1";
 const RESOURCE = "https://alice.getbb.app/mcp";
 const VERIFIER = "v".repeat(64);
 const JSON_HEADERS = { "content-type": "application/json" };
+const CHATGPT_CLIENT_ID = "https://chatgpt.com/oauth/client.json";
+const CHATGPT_REDIRECT_URI =
+  "https://chatgpt.com/connector_platform_oauth_redirect";
+const CHATGPT_DOCUMENT = {
+  client_id: CHATGPT_CLIENT_ID,
+  client_uri: "https://chatgpt.com/",
+  redirect_uris: [CHATGPT_REDIRECT_URI],
+  token_endpoint_auth_method: "private_key_jwt",
+  token_endpoint_auth_methods_supported: ["none", "private_key_jwt"],
+  grant_types: [
+    "authorization_code",
+    "refresh_token",
+    "urn:ietf:params:oauth:grant-type:jwt-bearer",
+  ],
+  response_types: ["code"],
+  client_name: "ChatGPT",
+  logo_uri: "https://persistent.oaistatic.com/sonic/misc/openai-logo.png",
+  token_endpoint_auth_signing_alg: "RS256",
+  jwks_uri: "https://chatgpt.com/oauth/jwks.json",
+};
 
 let database: TestConnectDb;
 let db: ConnectDb;
@@ -388,11 +408,75 @@ describe("client metadata documents", () => {
       "a confidential auth method",
       { token_endpoint_auth_method: "client_secret_basic" },
     ],
+    [
+      "a client that supports only private_key_jwt",
+      {
+        token_endpoint_auth_method: "private_key_jwt",
+        token_endpoint_auth_methods_supported: ["private_key_jwt"],
+      },
+    ],
+    [
+      "a supported list without none",
+      {
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: ["private_key_jwt"],
+      },
+    ],
+    [
+      "an empty supported list",
+      {
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: [],
+      },
+    ],
+    [
+      "a singular method that the supported list omits",
+      {
+        token_endpoint_auth_method: "none",
+        token_endpoint_auth_methods_supported: ["private_key_jwt"],
+      },
+    ],
+    [
+      "a supported list that is not a list of strings",
+      { token_endpoint_auth_methods_supported: "none" },
+    ],
+    ["a non-string singular method", { token_endpoint_auth_method: 7 }],
     ["an empty client_name", { client_name: "   " }],
     ["empty redirect_uris", { redirect_uris: [] }],
     ["non-string redirect_uris", { redirect_uris: [REDIRECT_URI, 7] }],
   ])("rejects %s", async (_label, over) => {
     expect((await load(documentFetch(over))).ok).toBe(false);
+  });
+
+  it("admits ChatGPT's published metadata as a public client", async () => {
+    const result = await load(
+      fetchReturning(() =>
+        Response.json(CHATGPT_DOCUMENT, { headers: JSON_HEADERS }),
+      ),
+      CHATGPT_CLIENT_ID,
+    );
+    expect(result).toEqual({
+      ok: true,
+      client: {
+        clientId: CHATGPT_CLIENT_ID,
+        clientName: "ChatGPT",
+        redirectUris: [CHATGPT_REDIRECT_URI],
+      },
+    });
+  });
+
+  it.each([
+    ["a singular none", { token_endpoint_auth_method: "none" }],
+    ["no auth method fields", { token_endpoint_auth_method: undefined }],
+    [
+      "a supported list with none",
+      {
+        token_endpoint_auth_method: undefined,
+        token_endpoint_auth_methods_supported: ["none"],
+      },
+    ],
+  ])("admits a public client with %s", async (_label, over) => {
+    expect((await load(documentFetch(over))).ok).toBe(true);
   });
 
   it("rejects a non-JSON content type", async () => {
@@ -1158,6 +1242,77 @@ describe("token endpoint: refresh_token", () => {
       .set({ userId: "alice", revokedAt: new Date(T0) })
       .where(eq(server.id, "srv-alice"));
     await expectTokenError(await refresh(first.refresh_token), "invalid_grant");
+  });
+});
+
+describe("ChatGPT as a public client", () => {
+  const chatgpt = () => ({
+    fetch: fetchReturning(() =>
+      Response.json(CHATGPT_DOCUMENT, { headers: JSON_HEADERS }),
+    ),
+    now: () => now,
+  });
+  const chatgptParams = () =>
+    authorizeParams({
+      client_id: CHATGPT_CLIENT_ID,
+      redirect_uri: CHATGPT_REDIRECT_URI,
+    });
+
+  async function authorizeChatGpt(): Promise<string> {
+    const code = redirectParams(
+      await completeOAuthAuthorization(
+        ENV,
+        db,
+        "alice",
+        chatgptParams(),
+        { approved: true },
+        chatgpt(),
+      ),
+    ).get("code");
+    if (!code) throw new Error("no code issued");
+    return code;
+  }
+
+  function chatgptCodeBody(code: string, over: Record<string, string> = {}) {
+    return codeBody(code, {
+      client_id: CHATGPT_CLIENT_ID,
+      redirect_uri: CHATGPT_REDIRECT_URI,
+      ...over,
+    });
+  }
+
+  it("connects ChatGPT as a public client that presents no client authentication", async () => {
+    expect(
+      await prepareOAuthAuthorization(
+        ENV,
+        db,
+        "alice",
+        chatgptParams(),
+        chatgpt(),
+      ),
+    ).toMatchObject({
+      kind: "consent",
+      consent: { clientName: "ChatGPT", clientIdHost: "chatgpt.com" },
+    });
+    const issued = await tokens(
+      await tokenRequest(chatgptCodeBody(await authorizeChatGpt())),
+    );
+    expect(await grantRows()).toMatchObject([
+      { clientId: CHATGPT_CLIENT_ID, clientName: "ChatGPT" },
+    ]);
+    await tokens(await refresh(issued.refresh_token, CHATGPT_CLIENT_ID));
+  });
+
+  it("still requires ChatGPT's PKCE verifier", async () => {
+    await expectTokenError(
+      await tokenRequest(
+        chatgptCodeBody(await authorizeChatGpt(), {
+          code_verifier: "w".repeat(64),
+        }),
+      ),
+      "invalid_grant",
+    );
+    expect(await grantRows()).toHaveLength(0);
   });
 });
 

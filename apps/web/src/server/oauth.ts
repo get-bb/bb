@@ -39,6 +39,7 @@ export const OAUTH_CLIENT_METADATA_TIMEOUT_MS = 5_000;
 export const OAUTH_CLIENT_NAME_MAX_LENGTH = 80;
 export const OAUTH_AUDIT_ACTION_GRANT = "mcp.oauth.grant";
 export const OAUTH_AUDIT_ACTION_REVOKE = "mcp.oauth.revoke";
+const PUBLIC_CLIENT_AUTH_METHOD = "none";
 
 const LOOPBACK_HOSTNAMES = new Set(["127.0.0.1", "localhost", "[::1]"]);
 const IPV4_LITERAL = /^\d+(\.\d+){3}$/u;
@@ -130,7 +131,7 @@ export function oauthAuthorizationServerMetadata(
     response_types_supported: ["code"],
     grant_types_supported: ["authorization_code", "refresh_token"],
     code_challenge_methods_supported: ["S256"],
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: [PUBLIC_CLIENT_AUTH_METHOD],
     scopes_supported: [...MCP_SCOPES],
     client_id_metadata_document_supported: true,
     authorization_response_iss_parameter_supported: true,
@@ -268,6 +269,23 @@ function isJsonContentType(value: string | null): boolean {
   );
 }
 
+function clientAuthMethods(document: Record<string, unknown>): string[] | null {
+  const preferred = document.token_endpoint_auth_method;
+  const supported = document.token_endpoint_auth_methods_supported;
+  if (preferred !== undefined && typeof preferred !== "string") return null;
+  if (supported === undefined) {
+    return [preferred ?? PUBLIC_CLIENT_AUTH_METHOD];
+  }
+  if (
+    !Array.isArray(supported) ||
+    !supported.every((method): method is string => typeof method === "string")
+  ) {
+    return null;
+  }
+  if (preferred !== undefined && !supported.includes(preferred)) return null;
+  return supported;
+}
+
 function parseClientMetadataDocument(
   clientId: string,
   text: string,
@@ -308,10 +326,14 @@ function parseClientMetadataDocument(
   ) {
     return { ok: false, message: "client metadata has no redirect_uris" };
   }
-  if (
-    document.token_endpoint_auth_method !== undefined &&
-    document.token_endpoint_auth_method !== "none"
-  ) {
+  const authMethods = clientAuthMethods(document);
+  if (authMethods === null) {
+    return {
+      ok: false,
+      message: "client metadata token endpoint auth methods are malformed",
+    };
+  }
+  if (!authMethods.includes(PUBLIC_CLIENT_AUTH_METHOD)) {
     return {
       ok: false,
       message:
