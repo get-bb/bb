@@ -256,19 +256,25 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
-  function createIdleProviderManager(
+  function createIdleAdapter(
     script = "process.stdin.resume()",
+  ): BridgeProtocolAdapter {
+    return {
+      ...createManagerAdapter({}),
+      process: {
+        command: process.execPath,
+        args: ["-e", script],
+      },
+      buildPostInitializeRequests: () => [],
+    };
+  }
+
+  function createIdleProviderManager(
+    script?: string,
   ): RuntimeProviderProcessManager {
-    const adapter = createManagerAdapter({});
+    const adapter = createIdleAdapter(script);
     const manager = createProviderProcessManager({
-      createAdapter: () => ({
-        ...adapter,
-        process: {
-          command: process.execPath,
-          args: ["-e", script],
-        },
-        buildPostInitializeRequests: () => [],
-      }),
+      createAdapter: () => adapter,
       onProcessExit: vi.fn(),
       workspacePath: tmpDir,
     });
@@ -391,9 +397,9 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     const manager = createProviderProcessManager({
       createAdapter: () =>
-        createManagerAdapter(
-          starts++ === 0 ? {} : { rawScriptPath: stalledBridge },
-        ),
+        starts++ === 0
+          ? createIdleAdapter()
+          : createManagerAdapter({ rawScriptPath: stalledBridge }),
       onProcessExit: vi.fn(),
       onStderr: (line) => {
         if (line.includes("stalled-initialize-received")) markInitializing();
@@ -475,17 +481,16 @@ describe("createAgentRuntime process lifecycle", () => {
   it("drains provider stderr before reporting process exit", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const crashScript = join(tmpDir, "delayed-stderr-provider.cjs");
-    const delayedWriter =
-      'setTimeout(() => process.stderr.write("stderr-after-exit"), 50);';
+    const exitWatcher =
+      'process.on("disconnect", () => setTimeout(() => process.stderr.write("stderr-after-exit"), 50)); process.send("ready");';
     writeFileSync(
       crashScript,
       `const { spawn } = require("node:child_process");
-      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(exitWatcher)}], {
         detached: process.platform === "win32",
-        stdio: ["ignore", "ignore", "inherit"],
+        stdio: ["ignore", "ignore", "inherit", "ipc"],
       });
-      writer.unref();
-      process.exit(42);`,
+      writer.once("message", () => process.exit(42));`,
     );
     const manager = createProviderProcessManager({
       onProcessExit: exitInfo,
