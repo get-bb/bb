@@ -12,6 +12,8 @@ it.each([
   { compact: false, left: 0, right: 0 },
   { compact: false, left: 0, right: 70 },
   { compact: false, left: 70, right: 70 },
+  { compact: true, left: 0, right: 0 },
+  { compact: true, left: 0, right: 84 },
   { compact: true, left: 70, right: 70 },
 ])(
   "reserves only exposed safe-area edges (compact=$compact, left=$left, right=$right)",
