@@ -80,6 +80,9 @@ const VALUE_CAPABILITY_CHANGES: {
     capabilities: Capabilities,
   ) => Pick<Capabilities, K>;
 } = {
+  experimental_supportsThreadVoice: () => ({
+    experimental_supportsThreadVoice: true,
+  }),
   fork: () => ({ fork: "tip" }),
   permissionModes: () => ({
     permissionModes: ["accept-edits", "auto", "full"],
