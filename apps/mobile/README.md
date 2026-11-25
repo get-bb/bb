@@ -312,12 +312,11 @@ server the phone cannot reach, so the shell never loads a dead origin; it
 does not use the harness backend.
 `shell-connect.yaml` drives bb connect end to end against the stub apex +
 gate (`pnpm --filter @bb/integration-tests e2e:mobile-connect-stub`, see
-"bb connect" below): manual code entry with the handle and the self-hosted
-apex → enrolled screen (session signed in, account servers listed) → Done →
-the shell through the gate (cookie on fetch and on `/ws`) → the stub expires
-the session (the app re-mints and reconnects by itself) → the stub revokes
-the machine ("needs to be paired again" banner) → "Sign in again" re-pairs
-the same profile with a new code. The flow needs the stub started with
+"bb connect" below). It submits expired and valid pairing codes using
+loopback pairing links, checks the saved profiles in native Servers settings,
+and loads a thread through the shell after the stub expires the session.
+After the stub revokes the machine, **Pair again** re-pairs the saved profile.
+The flow needs the stub started with
 `BB_MOBILE_E2E_SIMULATOR=<udid>` once (it installs its root certificate in
 that simulator) and drives the stub through `e2e/scripts/connect-stub-control.js`
 (plain-HTTP control port 42997).

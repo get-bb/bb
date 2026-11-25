@@ -1,5 +1,5 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -18,6 +18,21 @@ function flowSource(path: string): string {
 }
 
 describe("Mobile E2E flow boundaries", () => {
+  it("resolves relative YAML includes in stock flows", () => {
+    for (const path of yamlFiles(e2eRoot)) {
+      const source = readFileSync(path, "utf8");
+      const includes = source.matchAll(
+        /^[ \t]*(?:- runFlow:|file:)[ \t]+(\.\.?\/[^\s]+\.yaml)$/gmu,
+      );
+      for (const [, include] of includes) {
+        expect(
+          existsSync(join(dirname(path), include)),
+          `${path} → ${include}`,
+        ).toBe(true);
+      }
+    }
+  });
+
   it("routes every bb scheme link through the native-confirmation helper", () => {
     for (const path of yamlFiles(e2eRoot)) {
       expect(readFileSync(path, "utf8"), path).not.toMatch(
