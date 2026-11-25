@@ -2387,6 +2387,45 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
       });
     },
 
+    async stopBackgroundTask({ threadId, itemId }) {
+      return runThreadOperation({
+        threadId,
+        work: async () => {
+          const task = backgroundWorkState.getOpenBackgroundTask(
+            threadId,
+            itemId,
+          );
+          if (task === null) {
+            return { stopped: false };
+          }
+          const pid = threadIdentityRegistry.resolveProviderForThread(threadId);
+          if (task.stoppable !== true || task.familyId === undefined) {
+            throw new Error(
+              `Provider "${pid}" cannot stop background task ${itemId}.`,
+            );
+          }
+          const proc = requireProviderProcessForThread(threadId);
+          const adapterCommand: AdapterCommand = {
+            type: "thread/backgroundTask/stop",
+            threadId,
+            providerThreadId: requireProviderThreadId(threadId),
+            familyId: task.familyId,
+          };
+          const cmd = requireProviderRequestPlan({
+            commandType: adapterCommand.type,
+            plan: proc.adapter.buildCommandPlan(adapterCommand),
+            providerId: pid,
+          });
+          await sendCommand({
+            proc,
+            message: cmd,
+            resultSchema: ignoredJsonRpcResultSchema,
+          });
+          return { stopped: true };
+        },
+      });
+    },
+
     async renameThread({ threadId, title }) {
       return runThreadOperation({
         threadId,

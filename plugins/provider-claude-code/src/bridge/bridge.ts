@@ -84,6 +84,7 @@ import {
   claudeTurnSteerParamsSchema,
   decodeClaudeCodeJsonRpcRequest,
   type ClaudeCodeJsonRpcRequest,
+  type ThreadBackgroundTaskStopParams,
   type ThreadForkParams,
   type ThreadResumeParams,
   type ThreadStartParams,
@@ -2482,6 +2483,9 @@ async function handleRequest(request: ClaudeCodeJsonRpcRequest): Promise<void> {
     case "thread/discard":
       sendResult(request.id, await closeThreadForStop(request.params.threadId));
       break;
+    case "thread/backgroundTask/stop":
+      await handleBackgroundTaskStop(request.id, request.params);
+      break;
     case "skills/configure":
       configuredSkillRoots = request.params.roots;
       sendResult(request.id, { ok: true });
@@ -2827,6 +2831,23 @@ async function handleThreadStop(
     );
   }
   sendResult(id, await closeThreadForStop(params.threadId));
+}
+
+async function handleBackgroundTaskStop(
+  id: string | number,
+  params: ThreadBackgroundTaskStopParams,
+): Promise<void> {
+  const threadSession = threadAttachments.get(params.threadId)?.residentSession;
+  if (threadSession == null || threadSession.closing) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      `Thread ${params.threadId} has no running Claude session`,
+    );
+    return;
+  }
+  await threadSession.session.stopTask(params.familyId);
+  sendResult(id, {});
 }
 
 function localAttachmentMarker(args: {

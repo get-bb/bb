@@ -15,6 +15,7 @@ const runningCommand = (
   backgroundCommandRow({
     status: "pending",
     taskStatus: "running",
+    stoppable: true,
     summary: null,
     ...args,
   });
@@ -68,6 +69,7 @@ function ExpandableCard({
         commands={commands}
         isExpanded={expanded}
         onToggle={() => setExpanded((value) => !value)}
+        onStop={() => {}}
       />
       <FauxComposer />
     </div>

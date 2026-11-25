@@ -30,6 +30,7 @@ import type {
   QueuedMessageEditHoldResponse,
   SendQueuedMessageResponse,
   ThreadArchiveAllResponse,
+  ThreadBackgroundTasksResponse,
   ThreadChildSummaryResponse,
   ThreadImportResponse,
   ThreadConversationOutlineResponse,
@@ -238,6 +239,8 @@ export type ThreadQueuedMessageGroupBoundaryResult =
   ThreadQueuedMessageListResponse;
 export type ThreadQueueListResult = ThreadQueuedMessageListResponse;
 export type ThreadTabsResult = ThreadTabsResponse;
+export type ThreadBackgroundTaskListResult = ThreadBackgroundTasksResponse;
+export type ThreadBackgroundTaskStopResult = OperationResponse;
 export type ThreadTabsUpdateResult = ThreadTabsResponse;
 export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
 export type ThreadStorageLocationResult = ThreadStorageLocationResponse;
@@ -481,6 +484,11 @@ export interface ThreadInteractionListArgs {
   threadId: string;
 }
 
+export interface ThreadBackgroundTaskTargetArgs {
+  itemId: string;
+  threadId: string;
+}
+
 export interface ThreadInteractionTargetArgs {
   interactionId: string;
   threadId: string;
@@ -609,6 +617,24 @@ export interface ThreadQueuedMessagesArea {
   ): Promise<ThreadQueuedMessageUpdateResult>;
 }
 
+/**
+ * The thread's running background tasks: the commands and agents its provider
+ * started in the background, which can outlive the turn that started them.
+ */
+export interface ThreadBackgroundTasksArea {
+  /** Running background tasks, with the timeline item id of each. */
+  list(args: ThreadStatusArgs): Promise<ThreadBackgroundTaskListResult>;
+  /**
+   * Stop one running background task without stopping the thread or its
+   * other tasks. Only tasks listed with `stoppable: true` can be stopped; the
+   * task settles as stopped once the provider reports it, which may follow
+   * an `in-progress` result.
+   */
+  stop(
+    args: ThreadBackgroundTaskTargetArgs,
+  ): Promise<ThreadBackgroundTaskStopResult>;
+}
+
 export interface ThreadTabsArea {
   get(args: ThreadStatusArgs): Promise<ThreadTabsResult>;
   update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
@@ -630,6 +656,8 @@ export interface ThreadQueueArea {
 export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
+  /** Experimental: see docs/api_to_audit.md. */
+  experimental_backgroundTasks: ThreadBackgroundTasksArea;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
   compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
@@ -1303,6 +1331,25 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
   };
+  const backgroundTasks: ThreadBackgroundTasksArea = {
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["background-tasks"].$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async stop(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["background-tasks"][
+          ":itemId"
+        ].stop.$post({
+          param: { id: input.threadId, itemId: input.itemId },
+        }),
+      );
+    },
+  };
   const tabs: ThreadTabsArea = {
     async get(input) {
       const body = await transport.readJson(
@@ -1702,6 +1749,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     tabs,
+    experimental_backgroundTasks: backgroundTasks,
     async context(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].context.$get(

@@ -439,6 +439,7 @@ import {
   type UpdateUiPreferenceRequest,
 } from "./api/ui-preferences.js";
 import type { ApiError } from "./errors.js";
+import type { ThreadBackgroundTasksResponse } from "./api/thread-background-tasks.js";
 
 type PathProjectSourceId = { param: { id: string; sourceId: string } };
 type PathProjectSourceFolderId = {
@@ -447,6 +448,9 @@ type PathProjectSourceFolderId = {
 type PathThreadMessage = { param: { id: string; seq: string } };
 type PathThreadInteractionId = {
   param: { id: string; interactionId: string };
+};
+type PathThreadBackgroundTaskId = {
+  param: { id: string; itemId: string };
 };
 
 export const publicApiRoutes = {
@@ -1691,6 +1695,18 @@ export const publicApiRoutes = {
       path: "/threads/:id/goal/clear",
       method: "post",
       request: noRequest<PathId>(),
+      response: jsonResponse<OperationResponse>(),
+    }),
+    backgroundTasks: defineRoute({
+      path: "/threads/:id/background-tasks",
+      method: "get",
+      request: noRequest<PathId>(),
+      response: jsonResponse<ThreadBackgroundTasksResponse>(),
+    }),
+    stopBackgroundTask: defineRoute({
+      path: "/threads/:id/background-tasks/:itemId/stop",
+      method: "post",
+      request: noRequest<PathThreadBackgroundTaskId>(),
       response: jsonResponse<OperationResponse>(),
     }),
     open: defineRoute({

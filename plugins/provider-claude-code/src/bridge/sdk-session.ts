@@ -206,6 +206,13 @@ export class SdkSession {
     return this.query ? this.query.supportedCommands() : [];
   }
 
+  async stopTask(taskId: string): Promise<void> {
+    if (!this.query) {
+      throw new Error("Claude SDK session is not running");
+    }
+    await this.query.stopTask(taskId);
+  }
+
   async setModel(model: string | undefined): Promise<void> {
     await this.query?.setModel(model);
     this.options.model = model;

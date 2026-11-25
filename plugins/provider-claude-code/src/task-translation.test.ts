@@ -604,6 +604,7 @@ describe("claude-code background task translation", () => {
       description: "Count ticks from 1 to 6 with 1 second delays",
       status: "pending",
       taskStatus: "running",
+      stoppable: true,
       skipTranscript: false,
       parentToolCallId: harness.itemId("toolu_bash_1", "bb-thread-1"),
     });
@@ -637,6 +638,7 @@ describe("claude-code background task translation", () => {
       summary:
         'Background command "Count ticks from 1 to 6 with 1 second delays" completed (exit code 0)',
     });
+    expect(backgroundTaskItem(completed[0]!).stoppable).toBeUndefined();
   });
 
   it("keeps a foreground shell command out of background tasks", () => {

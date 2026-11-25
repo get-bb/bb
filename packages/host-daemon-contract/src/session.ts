@@ -530,6 +530,7 @@ const hostDaemonOnlineRpcResponseSuccessSchema = z.discriminatedUnion(
     commandRpcResponseSuccessSchemaFor("thread.storage.delete"),
     commandRpcResponseSuccessSchemaFor("thread.goal.clear"),
     commandRpcResponseSuccessSchemaFor("thread.plan.cancel"),
+    commandRpcResponseSuccessSchemaFor("thread.background_task.stop"),
     commandRpcResponseSuccessSchemaFor("thread.rename"),
     commandRpcResponseSuccessSchemaFor("thread.archive"),
     commandRpcResponseSuccessSchemaFor("thread.unarchive"),

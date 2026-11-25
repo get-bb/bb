@@ -1604,6 +1604,32 @@ Docs: `backend-sdk.md`, `docs/timeline-pagination.md`.
    about 15 community plugins (amrtawfik160/bb-plugin-firstmate,
    cristoslc/bb-plugin-focus-board, gpambrozio/bb-plugins among them).
 
+## `bb.sdk.threads.experimental_backgroundTasks`
+
+`list({ threadId })` (`GET /threads/:id/background-tasks`) returns
+`{ backgroundTasks: { itemId, taskType, description, taskStatus, stoppable }[] }`
+for the thread's open `backgroundTask` items, read with the targeted open-item
+query the dangling-task settlement uses. `stop({ threadId, itemId })`
+(`POST /threads/:id/background-tasks/:itemId/stop`) sends the daemon command
+`thread.background_task.stop`; the runtime resolves the item to the provider's
+`familyId` from its own open-work state and sends the bridge request
+`thread/backgroundTask/stop`. Only items the bridge marked `stoppable: true`
+are accepted (a 409 otherwise, and a 404 once the task is no longer running).
+The result is `complete` when the task has already settled and `in-progress`
+while the provider's stopped notification is still on its way. Core callers:
+the background-commands card's Stop button and `bb thread background-tasks
+list|stop`.
+
+Docs: `backend-sdk.md`, [provider-bridge-protocol.md](provider-bridge-protocol.md).
+
+**Audit before stabilizing.**
+
+1. **Output.** #2572 asks to read a task's live output from the same card.
+   Decide whether that becomes a `read`/`tail` member here (the item already
+   carries `outputFile` on the host) before the shape freezes.
+2. **List fields.** Decide whether callers need `startedAt` and the model of
+   background agents, which the timeline row has and this list omits.
+
 ## `bb.sdk.threads.experimental_listAncestors`
 
 `POST /threads/ancestors` with `{ threadIds }` (1–200 ids) returns

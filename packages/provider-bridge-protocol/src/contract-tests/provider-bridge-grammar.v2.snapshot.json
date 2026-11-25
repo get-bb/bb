@@ -201,7 +201,8 @@
       "usage": "optional",
       "summary": "optional",
       "error": "optional",
-      "outputFile": "optional"
+      "outputFile": "optional",
+      "stoppable": "optional"
     },
     "command": {
       "type": "required",
@@ -326,6 +327,7 @@
     "provider/usage",
     "skills/configure",
     "thread/archive",
+    "thread/backgroundTask/stop",
     "thread/discard",
     "thread/fork",
     "thread/goal/clear",

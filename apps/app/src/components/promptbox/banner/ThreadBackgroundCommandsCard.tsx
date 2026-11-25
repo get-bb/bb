@@ -7,7 +7,14 @@ import {
   PromptStackCard,
 } from "@/components/promptbox/banner/PromptStackCard";
 import { LiveDurationText } from "@/components/thread/timeline/LiveDurationText";
+import { Button } from "@bb/shared-ui/button";
 import { Icon } from "@bb/shared-ui/icon";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@bb/shared-ui/tooltip";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import {
@@ -156,10 +163,44 @@ function BackgroundActivitySummary({
   );
 }
 
+function StopBackgroundActivityButton({
+  row,
+  onStop,
+}: {
+  row: TimelineWorkflowWorkRow;
+  onStop: (row: TimelineWorkflowWorkRow) => void;
+}) {
+  const label = backgroundActivityDisplay(row).label.toLowerCase();
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            size="icon"
+            variant="ghost"
+            className="size-6 shrink-0 text-muted-foreground hover:text-foreground"
+            aria-label={`Stop ${label}: ${row.description}`}
+            onClick={() => onStop(row)}
+          >
+            <Icon
+              name="Square"
+              className="size-3 fill-current [&_*]:stroke-0"
+              aria-hidden
+            />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent className="max-md:hidden">Stop</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 interface ThreadBackgroundCommandsCardProps {
   commands: TimelineWorkflowWorkRow[];
   isExpanded: boolean;
   onToggle: () => void;
+  onStop: (row: TimelineWorkflowWorkRow) => void;
 }
 
 function readIsCompactCard(width: number): boolean | null {
@@ -170,6 +211,7 @@ export function ThreadBackgroundCommandsCard({
   commands,
   isExpanded,
   onToggle,
+  onStop,
 }: ThreadBackgroundCommandsCardProps) {
   const isCompactViewport = useIsCompactViewport();
   const cardRef = useRef<HTMLElement>(null);
@@ -209,7 +251,12 @@ export function ThreadBackgroundCommandsCard({
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
-      <div className="flex items-center">
+      <div
+        className={activityRowClass(
+          "active",
+          "flex items-center rounded-none p-0",
+        )}
+      >
         {canExpand ? (
           <button
             type="button"
@@ -223,12 +270,9 @@ export function ThreadBackgroundCommandsCard({
             }
             ref={triggerRef}
             onClick={onTriggerClick}
-            className={activityRowClass(
-              "active",
-              cn(
-                PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-                PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-              ),
+            className={cn(
+              PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
             )}
           >
             <Icon
@@ -252,10 +296,7 @@ export function ThreadBackgroundCommandsCard({
           </button>
         ) : (
           <div
-            className={activityRowClass(
-              "active",
-              "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
-            )}
+            className="flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground"
             aria-label={backgroundActivityAriaLabel(primary)}
           >
             <Icon
@@ -266,6 +307,11 @@ export function ThreadBackgroundCommandsCard({
             <BackgroundActivitySummary row={primary} showDuration />
           </div>
         )}
+        {!useCompactSummary && primary.stoppable ? (
+          <span className="flex shrink-0 items-center pr-3">
+            <StopBackgroundActivityButton row={primary} onStop={onStop} />
+          </span>
+        ) : null}
       </div>
       {canExpand ? (
         <AnimatedDisclosureBody
@@ -318,6 +364,11 @@ export function ThreadBackgroundCommandsCard({
                       <LiveDurationText startedAt={row.startedAt} />
                     ) : null}
                   </span>
+                  {row.stoppable ? (
+                    <span className="flex h-[1lh] shrink-0 items-center">
+                      <StopBackgroundActivityButton row={row} onStop={onStop} />
+                    </span>
+                  ) : null}
                 </div>
               );
             })}

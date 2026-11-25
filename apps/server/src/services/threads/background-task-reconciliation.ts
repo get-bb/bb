@@ -59,6 +59,18 @@ function parseStoredBackgroundTaskItem(
   }
 }
 
+export function listOpenThreadBackgroundTasks(
+  db: AppDeps["db"],
+  args: { threadId: string },
+): ThreadEventBackgroundTaskItem[] {
+  return listOpenBackgroundTaskItemRowsForThread(db, args).flatMap((row) => {
+    const item = parseStoredBackgroundTaskItem(row);
+    return item === null || isSettledBackgroundTaskStatus(item.taskStatus)
+      ? []
+      : [item];
+  });
+}
+
 export function settleDanglingBackgroundTasks(
   deps: SettleDanglingBackgroundTasksDeps,
   args: SettleDanglingBackgroundTasksArgs,

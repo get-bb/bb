@@ -110,6 +110,7 @@ interface ControlledClaudeQuery {
   interrupt: ReturnType<typeof vi.fn>;
   setModel: ReturnType<typeof vi.fn>;
   setPermissionMode: ReturnType<typeof vi.fn>;
+  stopTask: ReturnType<typeof vi.fn>;
   supportedCommands: ReturnType<typeof vi.fn>;
   [Symbol.asyncIterator](): AsyncIterator<SDKMessage>;
 }
@@ -330,6 +331,7 @@ function createControlledClaudeQuery(): ControlledClaudeQuery {
     interrupt: vi.fn().mockResolvedValue(undefined),
     setModel: vi.fn().mockResolvedValue(undefined),
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
+    stopTask: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue([]),
     [Symbol.asyncIterator]() {
       return iterator;
@@ -5834,6 +5836,72 @@ describe("bridge", () => {
         activeTurnId: null,
       });
       await bridge.waitForResponse(3);
+    } finally {
+      bridge.restore();
+    }
+  });
+
+  it("stops one background command through the Claude SDK", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+
+    try {
+      const threadId = "thread-stop-one-background-command";
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: canonicalOptions({}),
+      });
+      const providerThreadId = getProviderThreadIdFromResult(
+        await bridge.waitForResponse(1),
+      );
+      bridge.sendRequest(
+        2,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId,
+          input: [{ type: "text", text: "Serve the docs in the background" }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(2);
+      queries[0]?.emit({
+        type: "system",
+        subtype: "task_started",
+        task_id: "b2z037fen",
+        description: "Serve the docs",
+        task_type: "local_bash",
+        uuid: "00000000-0000-4000-8000-000000000003",
+        session_id: providerThreadId,
+      });
+      queries[0]?.emit(createSuccessfulResultMessage(providerThreadId));
+      await bridge.flushWork();
+
+      bridge.sendRequest(3, "thread/backgroundTask/stop", {
+        threadId,
+        providerThreadId,
+        familyId: "b2z037fen",
+      });
+      expect(await bridge.waitForResponse(3)).toMatchObject({ result: {} });
+      expect(queries[0]?.stopTask).toHaveBeenCalledExactlyOnceWith("b2z037fen");
+      expect(queries[0]?.close).not.toHaveBeenCalled();
+
+      bridge.sendRequest(4, "thread/stop", {
+        threadId,
+        providerThreadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await bridge.flushWork();
+      queries[0]?.finish();
+      await bridge.waitForResponse(4);
     } finally {
       bridge.restore();
     }
