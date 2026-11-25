@@ -13,12 +13,10 @@ import {
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import {
-  useSenderThreadMetadataById,
-  type SenderThreadMetadata,
-} from "@/hooks/useSenderThreadMetadataById";
+import { useSenderThreadMetadataById } from "@/hooks/useSenderThreadMetadataById";
 import { useSecondTick } from "@/hooks/useSecondTick";
 import { usePluginDisplayName } from "@/lib/plugin-logos";
+import { queuedMessageAttribution } from "@/lib/queued-message-attribution";
 import { PluginIcon } from "@/components/plugin/PluginIcon";
 import {
   describeQueuedMessageWait,
@@ -132,7 +130,7 @@ interface QueuedMessagePreviewText {
 }
 
 interface QueuedMessageRowProps {
-  senderLabel: string | null;
+  senderTitle: string | null;
   queuedMessage: ThreadQueuedMessage;
   resolveMentionLink?: PromptMentionLinkResolver;
   index: number;
@@ -484,19 +482,6 @@ function visibleQueuedMessageTextChunks(
   );
 }
 
-function queuedMessageSenderLabel(
-  queuedMessage: ThreadQueuedMessage,
-  senderThreadMetadataById: ReadonlyMap<string, SenderThreadMetadata>,
-): string | null {
-  if (queuedMessage.payload.kind === "retry") return null;
-  if (queuedMessage.initiator !== "agent") return null;
-  return (
-    senderThreadMetadataById.get(queuedMessage.senderThreadId ?? "")?.title ??
-    queuedMessage.senderThreadId ??
-    "Agent"
-  );
-}
-
 function shiftMentionsBy(
   mentions: readonly PromptTextMention[],
   offset: number,
@@ -805,7 +790,7 @@ function QueuedMessageProcessingLine({ label }: { label: string }) {
 }
 
 const QueuedMessageRow = memo(function QueuedMessageRow({
-  senderLabel,
+  senderTitle,
   queuedMessage,
   resolveMentionLink,
   index,
@@ -844,6 +829,14 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
       : "",
   );
   const hasWaitLine = queuedMessageHasWaitLine(queuedMessage);
+  const attribution = queuedMessageAttribution(queuedMessage);
+  const sender =
+    attribution === null
+      ? null
+      : {
+          ...attribution,
+          label: senderTitle ?? attribution.threadId ?? "Agent",
+        };
   const sendAllowed =
     sendAction === "steer-when-ready" ||
     isQueuedMessageSendNowAllowed(queuedMessage);
@@ -912,7 +905,7 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
         <div
           className={cn(
             "min-w-0 flex-1 py-1",
-            (senderLabel !== null || hasWaitLine || isProcessing) && "py-1.5",
+            (sender !== null || hasWaitLine || isProcessing) && "py-1.5",
           )}
         >
           <div className="flex min-w-0 items-center gap-1">
@@ -941,40 +934,40 @@ const QueuedMessageRow = memo(function QueuedMessageRow({
               </span>
             ) : null}
           </div>
-          {senderLabel !== null || isProcessing || hasWaitLine ? (
+          {sender !== null || isProcessing || hasWaitLine ? (
             <div
               data-queued-message-metadata=""
               className="mt-0.5 flex min-w-0 items-center gap-1 text-2xs text-subtle-foreground"
             >
-              {senderLabel === null ? null : (
+              {sender === null ? null : (
                 <span
                   data-queued-message-sender=""
                   className={cn(
                     "inline-flex min-w-0 items-center gap-1",
-                    (isProcessing || hasWaitLine) && "max-w-[40%] shrink-0",
+                    (isProcessing || hasWaitLine) &&
+                      "max-w-[max(40%,11rem)] shrink-0",
                   )}
-                  title={`From ${senderLabel}`}
+                  title={`${sender.prefix} ${sender.label}`}
                 >
-                  <span className="shrink-0">From</span>
-                  {queuedMessage.initiator === "agent" &&
-                  queuedMessage.senderThreadId !== null ? (
+                  <span className="shrink-0">{sender.prefix}</span>
+                  {sender.threadId !== null ? (
                     <span className="flex min-w-0 [&>.prompt-mention-pill]:text-2xs">
                       <PromptMentionPill
                         interactive={false}
                         resource={{
                           kind: "thread",
-                          threadId: queuedMessage.senderThreadId,
-                          label: senderLabel,
+                          threadId: sender.threadId,
+                          label: sender.label,
                         }}
-                        serializedText={`@thread:${queuedMessage.senderThreadId}`}
+                        serializedText={`@thread:${sender.threadId}`}
                       />
                     </span>
                   ) : (
-                    <span className="min-w-0 truncate">{senderLabel}</span>
+                    <span className="min-w-0 truncate">{sender.label}</span>
                   )}
                 </span>
               )}
-              {senderLabel !== null && (isProcessing || hasWaitLine) ? (
+              {sender !== null && (isProcessing || hasWaitLine) ? (
                 <span aria-hidden className="shrink-0">
                   ·
                 </span>
@@ -1670,10 +1663,12 @@ export function QueuedMessagesList({
         <QueuedMessageRow
           key={queuedMessage.id}
           queuedMessage={queuedMessage}
-          senderLabel={queuedMessageSenderLabel(
-            queuedMessage,
-            senderThreadMetadataById,
-          )}
+          senderTitle={
+            queuedMessage.senderThreadId === null
+              ? null
+              : (senderThreadMetadataById.get(queuedMessage.senderThreadId)
+                  ?.title ?? null)
+          }
           resolveMentionLink={resolveMentionLink}
           index={messageIndex}
           isProcessing={processingMessageId === queuedMessage.id}

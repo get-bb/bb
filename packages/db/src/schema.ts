@@ -20,7 +20,7 @@ import {
   threadTurnRequestKindValues,
   threadTurnRequestPhaseValues,
 } from "@bb/domain/thread-run-state";
-import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
+import { dispatchRequesterInitiatorValues } from "@bb/domain/started-on-behalf-of";
 import { threadCreateOriginValues } from "@bb/domain/thread-create-origin";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadParentNotificationsValues } from "@bb/domain/thread-parent-notifications";
@@ -1155,7 +1155,7 @@ export const queuedThreadMessages = sqliteTable(
     origin: text("origin", { enum: threadCreateOriginValues }),
     originPluginId: text("origin_plugin_id"),
     requestedByInitiator: text("requested_by_initiator", {
-      enum: startedOnBehalfOfInitiatorValues,
+      enum: dispatchRequesterInitiatorValues,
     }),
     requestedByThreadId: text("requested_by_thread_id"),
     model: text("model").notNull(),

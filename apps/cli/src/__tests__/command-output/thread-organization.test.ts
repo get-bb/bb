@@ -267,6 +267,30 @@ describe("bb thread organization commands", () => {
     expect(output).toContain("System");
   });
 
+  it("shows the requesting thread of a user message without naming it the sender", async () => {
+    const list = vi.fn(async () => [
+      queuedMessage({
+        id: "queued-spawn",
+        initiator: "user",
+        senderThreadId: "thr_requester",
+      }),
+    ]);
+    stubServerApi({ "v1.queued-messages.$get": list });
+
+    await runCommand(["thread", "queue", "list"], register);
+
+    const lines = vi
+      .mocked(console.log)
+      .mock.calls.map((args) => args.join(" "))
+      .join("\n")
+      .split("\n");
+    const header = lines.find((line) => line.includes("Sender")) ?? "";
+    const row = lines.find((line) => line.includes("queued-spawn")) ?? "";
+    expect(row.slice(header.indexOf("Sender"))).toMatch(
+      /^Requested by thr_requester\s/u,
+    );
+  });
+
   it("titles a restart resume row as a resume and keeps other retry rows' text", async () => {
     const list = vi.fn(async () => [
       queuedMessage({

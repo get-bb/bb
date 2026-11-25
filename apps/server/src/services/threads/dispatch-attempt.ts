@@ -30,7 +30,7 @@ import {
   type QueuedMessageWaitingOn,
   type ResolvedThreadExecutionOptions,
   startedOnBehalfOfSchema,
-  type StartedOnBehalfOf,
+  type DispatchRequester,
   type Thread,
   type ThreadCreateOrigin,
   type ThreadQueuedMessage,
@@ -102,6 +102,8 @@ import {
 } from "./thread-send.js";
 import {
   resolveDispatchAuthor,
+  resolveTurnAuthor,
+  startedOnBehalfOfRequester,
   type DispatchAuthor,
 } from "./dispatch-author.js";
 import type { TurnRequestRetryMarker } from "./thread-events.js";
@@ -271,7 +273,7 @@ export interface DispatchAttemptArgs {
   retryOf?: TurnRequestRetryMarker;
   origin: ThreadCreateOrigin | null;
   originPluginId: string | null;
-  startedOnBehalfOf: StartedOnBehalfOf | null;
+  requestedBy: DispatchRequester | null;
   /** Execution defaults resolved by creation, which the thread row lacks. */
   executionDefaults?: Parameters<typeof buildExecutionOptions>[2];
   trigger: "auto-dispatch" | "user";
@@ -435,14 +437,14 @@ async function runDispatchAttempt(
       : {
           environmentIntent: interruptedStartupRequest.environmentIntent,
           fork: interruptedStartupRequest.fork,
-          startedOnBehalfOf: args.startedOnBehalfOf,
+          startedOnBehalfOf: startedOnBehalfOfRequester(args.requestedBy),
           titleProvided: interruptedStartupRequest.titleProvided,
         };
   const author = resolveDispatchAuthor({
     retrying: args.retryOf !== undefined,
     systemNotice: systemNotice !== null,
     senderThreadId,
-    startedOnBehalfOf: args.startedOnBehalfOf,
+    requestedBy: args.requestedBy,
   });
   const claimed = args.source.kind === "drain" ? args.source.claimed : null;
   const sendNow = args.source.kind === "drain" && args.source.sendNow;
@@ -468,7 +470,7 @@ async function runDispatchAttempt(
     senderThreadId,
     origin: args.origin,
     originPluginId: args.originPluginId,
-    requestedBy: args.startedOnBehalfOf,
+    requestedBy: args.requestedBy,
     payload: args.queuePayload,
     systemNotice,
     deliveryMode: run.deliveryMode,
@@ -662,7 +664,7 @@ async function runDispatchAttempt(
 
     if (firstDispatch) {
       admitted.value = await admitPendingThread(deps, {
-        author,
+        author: resolveTurnAuthor(author),
         claimed,
         originPluginId: args.originPluginId,
         payload:
@@ -712,7 +714,7 @@ async function runDispatchAttempt(
       senderThreadId: author.senderThreadId,
       origin: args.origin,
       originPluginId: args.originPluginId,
-      startedOnBehalfOf: args.startedOnBehalfOf,
+      startedOnBehalfOf: startedOnBehalfOfRequester(args.requestedBy),
       parentThreadId: thread.parentThreadId,
       queuedMessages: claimed?.map(toThreadQueuedMessage) ?? [],
       pluginSubmission: args.pluginSubmission,
@@ -1089,7 +1091,7 @@ export async function compactThreadContext(
     systemNotice: null,
     origin: null,
     originPluginId: null,
-    startedOnBehalfOf: null,
+    requestedBy: null,
     trigger: "user",
   });
 }

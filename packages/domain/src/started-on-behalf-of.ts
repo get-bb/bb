@@ -13,3 +13,14 @@ export type StartedOnBehalfOfInitiator = z.infer<
   typeof startedOnBehalfOfInitiatorSchema
 >;
 export type StartedOnBehalfOf = z.infer<typeof startedOnBehalfOfSchema>;
+
+export const dispatchRequesterInitiatorValues = [
+  "user",
+  ...startedOnBehalfOfInitiatorValues,
+] as const;
+export type DispatchRequesterInitiator =
+  (typeof dispatchRequesterInitiatorValues)[number];
+export interface DispatchRequester {
+  initiator: DispatchRequesterInitiator;
+  senderThreadId: string;
+}

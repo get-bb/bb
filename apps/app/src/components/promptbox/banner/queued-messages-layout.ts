@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { ThreadQueuedMessage } from "@bb/domain";
+import { queuedMessageAttribution } from "@/lib/queued-message-attribution";
 import { queuedMessageHasWaitLine } from "@/lib/queued-message-wait";
 
 export const QUEUED_MESSAGES_COLLAPSED_HEIGHT = 44;
@@ -16,16 +17,12 @@ function queuedMessageSecondLineHeight(
   queuedMessage: ThreadQueuedMessage,
   processingMessageId: string | null,
 ): number {
-  if (
-    queuedMessage.initiator === "agent" &&
-    queuedMessage.senderThreadId !== null &&
-    queuedMessage.payload.kind !== "retry"
-  ) {
+  const attribution = queuedMessageAttribution(queuedMessage);
+  if (attribution !== null && attribution.threadId !== null) {
     return DRAWER_SENDER_PILL_LINE_HEIGHT;
   }
   if (
-    (queuedMessage.initiator === "agent" &&
-      queuedMessage.payload.kind !== "retry") ||
+    attribution !== null ||
     queuedMessageHasWaitLine(queuedMessage) ||
     queuedMessage.id === processingMessageId
   ) {

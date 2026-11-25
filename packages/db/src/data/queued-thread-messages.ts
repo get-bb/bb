@@ -32,6 +32,7 @@ import {
   queuedMessageWaitingOnSchema,
 } from "@bb/domain";
 import type {
+  DispatchRequester,
   QueuedMessageDeliveryMode,
   QueuedMessageLifecycleEventType,
   QueuedMessageLifecycleFrom,
@@ -40,7 +41,6 @@ import type {
   PromptInput,
   QueuedMessagePayload,
   QueuedMessageSystemNotice,
-  StartedOnBehalfOf,
   ThreadCreateOrigin,
   ThreadEventType,
   QueuedMessageWaitHolder,
@@ -83,7 +83,7 @@ export interface CreateQueuedThreadMessageInput {
    * `senderThreadId`, which is the sender of a message TO an existing thread:
    * a thread-start has a requester and no message sender.
    */
-  requestedBy?: StartedOnBehalfOf | null;
+  requestedBy?: DispatchRequester | null;
   model: string;
   reasoningLevel: string;
   permissionMode: PermissionMode;

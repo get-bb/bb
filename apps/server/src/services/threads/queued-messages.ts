@@ -530,7 +530,7 @@ async function sendClaimedQueuedMessageForThread(
       : {}),
     origin: lead.origin,
     originPluginId: lead.originPluginId,
-    startedOnBehalfOf: storedQueuedThreadMessageRequestedBy(lead),
+    requestedBy: storedQueuedThreadMessageRequestedBy(lead),
     trigger: "auto-dispatch",
   });
   if (
