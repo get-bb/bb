@@ -256,19 +256,25 @@ describe("createAgentRuntime process lifecycle", () => {
     await runtime.shutdown();
   });
 
-  function createIdleProviderManager(
+  function createIdleAdapter(
     script = "process.stdin.resume()",
+  ): BridgeProtocolAdapter {
+    return {
+      ...createManagerAdapter({}),
+      process: {
+        command: process.execPath,
+        args: ["-e", script],
+      },
+      buildPostInitializeRequests: () => [],
+    };
+  }
+
+  function createIdleProviderManager(
+    script?: string,
   ): RuntimeProviderProcessManager {
-    const adapter = createManagerAdapter({});
+    const adapter = createIdleAdapter(script);
     const manager = createProviderProcessManager({
-      createAdapter: () => ({
-        ...adapter,
-        process: {
-          command: process.execPath,
-          args: ["-e", script],
-        },
-        buildPostInitializeRequests: () => [],
-      }),
+      createAdapter: () => adapter,
       onProcessExit: vi.fn(),
       workspacePath: tmpDir,
     });
@@ -391,9 +397,9 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     const manager = createProviderProcessManager({
       createAdapter: () =>
-        createManagerAdapter(
-          starts++ === 0 ? {} : { rawScriptPath: stalledBridge },
-        ),
+        starts++ === 0
+          ? createIdleAdapter()
+          : createManagerAdapter({ rawScriptPath: stalledBridge }),
       onProcessExit: vi.fn(),
       onStderr: (line) => {
         if (line.includes("stalled-initialize-received")) markInitializing();
