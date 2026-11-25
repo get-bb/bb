@@ -330,6 +330,9 @@ Add server and connect fields use "next".
 Flows cold-start the dev client (`stopApp`) because a warm reload keeps the
 last deep link as the initial URL. Without `EXPO_PUBLIC_BB_E2E=1`, open `bb://e2e/reset`
 (dev builds) to return the simulator to first run.
+Both send flows also use Maestro's `clearState` before launch to clear the
+WebView draft that survives `stopApp`. They wait for the software keyboard
+and its animation to settle before tapping the enabled Submit button.
 
 ### Flows against a Release build (no Metro)
 
