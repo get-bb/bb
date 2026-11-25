@@ -10,6 +10,8 @@ import {
 import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
+  beginCodexBackgroundCommandStop,
+  cancelCodexBackgroundCommandStop,
   normalizeCodexRateLimits,
   clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
@@ -1707,8 +1709,24 @@ export function createCodexEventTranslator(
     setCodexInjectedTools(eventTranslationState, tools);
   }
 
+  function beginBackgroundCommandStop(args: {
+    providerThreadId: string;
+    itemId: string;
+  }): string | null {
+    return beginCodexBackgroundCommandStop(eventTranslationState, args);
+  }
+
+  function cancelBackgroundCommandStop(args: {
+    providerThreadId: string;
+    itemId: string;
+  }): void {
+    cancelCodexBackgroundCommandStop(eventTranslationState, args);
+  }
+
   return {
     activateThreadGitWritableRoots,
+    beginBackgroundCommandStop,
+    cancelBackgroundCommandStop,
     recoverRateLimits,
     resetRateLimits,
     clearExitedChildThreadState,

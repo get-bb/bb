@@ -40,8 +40,8 @@ Background tasks:
 
   Stopping a background task leaves the thread and its other tasks running;
   `bb thread stop` ends them all. Only tasks listed as stoppable can be
-  stopped (Claude Code tasks are); the task's timeline row then settles as
-  stopped.
+  stopped (Claude Code tasks are, and so are Codex commands still running
+  after their turn ends); the task's timeline row then settles as stopped.
 
   bb thread retry [id]                     Retry the thread's failed turn
     --self                                 Target current thread
