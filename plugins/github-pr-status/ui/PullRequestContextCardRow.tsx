@@ -22,12 +22,14 @@ import {
 import { Icon } from "@bb/shared-ui/icon";
 import {
   SHOW_PULL_REQUEST_SETTING,
+  type EnvironmentPullRequestEntry,
   type PullRequest,
   type PullRequestMergeMethod,
 } from "../contract";
 import {
   describePullRequestStatus,
   getPullRequestGithubCheckStatus,
+  getPullRequestListNames,
 } from "./display";
 import { GithubFaviconIcon } from "./GithubFaviconIcon";
 import {
@@ -43,6 +45,7 @@ export interface PullRequestRowHandlers {
   onMarkReady(): void;
   onMarkDraft(): void;
   onMerge(method: PullRequestMergeMethod): void;
+  onUnlink: (() => void) | null;
 }
 
 function PullRequestRowMenu({
@@ -135,6 +138,19 @@ function PullRequestRowMenu({
             )}
           </>
         ) : null}
+        {handlers.onUnlink === null ? null : (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              textValue="Remove from thread"
+              disabled={handlers.isPending}
+              onSelect={handlers.onUnlink}
+            >
+              <Icon name="X" />
+              Remove from thread
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -142,9 +158,11 @@ function PullRequestRowMenu({
 
 export function PullRequestContextCardRowView({
   pullRequest,
+  name,
   handlers,
 }: {
   pullRequest: PullRequest;
+  name?: string;
   handlers: PullRequestRowHandlers;
 }) {
   return (
@@ -159,6 +177,7 @@ export function PullRequestContextCardRowView({
         <span className="flex min-w-0 items-center gap-1.5">
           <PullRequestSummaryLabel
             pullRequest={pullRequest}
+            name={name}
             showState
             hideNumberWhenCompact={false}
           />
@@ -175,16 +194,22 @@ export function PullRequestContextCardRowView({
 
 function PullRequestRow({
   environmentId,
-  pullRequest,
+  entry,
+  name,
+  actionUrl,
 }: {
   environmentId: string;
-  pullRequest: PullRequest;
+  entry: EnvironmentPullRequestEntry;
+  name: string | undefined;
+  actionUrl: string | null;
 }) {
+  const { pullRequest } = entry;
   const navigate = useBbNavigate();
-  const actions = usePullRequestActions(environmentId);
+  const actions = usePullRequestActions(environmentId, actionUrl);
   return (
     <PullRequestContextCardRowView
       pullRequest={pullRequest}
+      name={name}
       handlers={{
         isPending: actions.isPending,
         onOpen: () => {
@@ -196,9 +221,16 @@ function PullRequestRow({
         onMarkReady: () => void actions.markReady(),
         onMarkDraft: () => void actions.markDraft(),
         onMerge: (method) => void actions.merge(method),
+        onUnlink: entry.linked
+          ? () => void actions.unlink(pullRequest.url)
+          : null,
       }}
     />
   );
+}
+
+function cardRowName(name: string): string {
+  return name.startsWith("#") ? `PR ${name}` : name;
 }
 
 export function PullRequestContextCardRow({
@@ -206,9 +238,23 @@ export function PullRequestContextCardRow({
 }: ExperimentalThreadContextCardProps) {
   const show = useSettings().values?.[SHOW_PULL_REQUEST_SETTING] === true;
   const environmentId = show ? (environment?.id ?? null) : null;
-  const { pullRequest } = useEnvironmentPullRequest(environmentId);
-  if (environmentId === null || pullRequest === null) return null;
+  const { pullRequests } = useEnvironmentPullRequest(environmentId);
+  if (environmentId === null || pullRequests.length === 0) return null;
+  const multiple = pullRequests.length > 1;
+  const names = getPullRequestListNames(
+    pullRequests.map((entry) => entry.pullRequest),
+  );
   return (
-    <PullRequestRow environmentId={environmentId} pullRequest={pullRequest} />
+    <>
+      {pullRequests.map((entry, index) => (
+        <PullRequestRow
+          key={entry.pullRequest.url}
+          environmentId={environmentId}
+          entry={entry}
+          name={multiple ? cardRowName(names[index]!) : undefined}
+          actionUrl={multiple ? entry.pullRequest.url : null}
+        />
+      ))}
+    </>
   );
 }

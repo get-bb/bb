@@ -4,6 +4,7 @@ import {
 } from "@get-bb/plugin-sdk/app";
 import {
   describePullRequestStatus,
+  getPullRequestListNames,
   getPullRequestNextStep,
   getPullRequestStateDisplay,
   isPullRequestAutoMergeOn,
@@ -17,8 +18,10 @@ import type { PullRequest } from "../contract";
 
 export function PullRequestSummary({
   pullRequest,
+  name = `#${pullRequest.number}`,
 }: {
   pullRequest: PullRequest;
+  name?: string;
 }) {
   const handleClick = useOpenUrlClick(pullRequest.url);
   const stateDisplay = getPullRequestStateDisplay(pullRequest);
@@ -34,9 +37,7 @@ export function PullRequestSummary({
         className="flex min-w-0 items-center gap-2 overflow-hidden text-xs text-foreground no-underline transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <GithubFaviconIcon />
-        <span className="shrink-0 text-muted-foreground">
-          #{pullRequest.number}
-        </span>
+        <span className="shrink-0 text-muted-foreground">{name}</span>
         <span className="inline-flex h-5 shrink-0 items-center gap-1.5 rounded-full border border-border bg-background px-1.5 text-muted-foreground">
           <PullRequestStateIcon
             pullRequest={pullRequest}
@@ -64,9 +65,39 @@ export function PullRequestRow({ pullRequest }: { pullRequest: PullRequest }) {
   );
 }
 
+export function PullRequestsRow({
+  pullRequests,
+}: {
+  pullRequests: readonly PullRequest[];
+}) {
+  const names = getPullRequestListNames(pullRequests);
+  return (
+    <DetailRow icon="GitPullRequestArrow" label="Pull requests" align="start">
+      <span className="flex min-w-0 flex-col gap-0.5">
+        {pullRequests.map((pullRequest, index) => (
+          <PullRequestSummary
+            key={pullRequest.url}
+            pullRequest={pullRequest}
+            name={names[index]}
+          />
+        ))}
+      </span>
+    </DetailRow>
+  );
+}
+
 export function PullRequestInfoRow({
   environment,
 }: ExperimentalThreadInfoProps) {
-  const { pullRequest } = useEnvironmentPullRequest(environment?.id ?? null);
-  return pullRequest ? <PullRequestRow pullRequest={pullRequest} /> : null;
+  const { pullRequest, pullRequests } = useEnvironmentPullRequest(
+    environment?.id ?? null,
+  );
+  if (pullRequest === null) return null;
+  if (pullRequests.length > 1)
+    return (
+      <PullRequestsRow
+        pullRequests={pullRequests.map((entry) => entry.pullRequest)}
+      />
+    );
+  return <PullRequestRow pullRequest={pullRequest} />;
 }

@@ -182,9 +182,20 @@ export const pullRequestSchema = z
   .strict();
 export type PullRequest = z.infer<typeof pullRequestSchema>;
 
+const environmentPullRequestEntrySchema = z
+  .object({ pullRequest: pullRequestSchema, linked: z.boolean() })
+  .strict();
+export type EnvironmentPullRequestEntry = z.infer<
+  typeof environmentPullRequestEntrySchema
+>;
+
 export const environmentPullRequestSchema = z.discriminatedUnion("outcome", [
   z
-    .object({ outcome: z.literal("available"), pullRequest: pullRequestSchema })
+    .object({
+      outcome: z.literal("available"),
+      pullRequest: pullRequestSchema,
+      pullRequests: z.array(environmentPullRequestEntrySchema).min(1),
+    })
     .strict(),
   z.object({ outcome: z.literal("absent") }).strict(),
   z
@@ -204,15 +215,24 @@ export type PullRequestMergeMethod = z.infer<
   typeof pullRequestMergeMethodSchema
 >;
 
-const environmentActionInputSchema = z
+const environmentInputSchema = z
   .object({ environmentId: z.string().min(1) })
+  .strict();
+const environmentActionInputSchema = z
+  .object({
+    environmentId: z.string().min(1),
+    url: z.string().url().optional(),
+  })
+  .strict();
+const environmentLinkInputSchema = z
+  .object({ environmentId: z.string().min(1), url: z.string().url() })
   .strict();
 const actionOutputSchema = z.object({ message: z.string() }).strict();
 
 export const githubPrStatusRpcContract = defineRpcContract({
   pullRequests: {
     experimental_description:
-      "The GitHub pull request for each environment's current branch, keyed by environment id.",
+      "The GitHub pull requests of each environment, keyed by environment id: the PR of every repo's checked-out branch, then PRs linked to the environment. `pullRequest` is the first of `pullRequests`.",
     input: z
       .object({
         keys: z.array(z.string().min(1)).min(1).max(PULL_REQUESTS_MAX_KEYS),
@@ -223,28 +243,40 @@ export const githubPrStatusRpcContract = defineRpcContract({
   },
   refresh: {
     experimental_description:
-      "Re-check the environment's pull request on GitHub now, whatever the age of the saved row, and resolve once the row is current.",
-    input: environmentActionInputSchema,
+      "Re-check the environment's repos and pull requests on GitHub now, whatever the age of the saved row, and resolve once the row is current.",
+    input: environmentInputSchema,
     output: z.object({ ok: z.literal(true) }).strict(),
   },
   markReady: {
     experimental_description:
-      "Mark the environment's draft pull request ready for review.",
+      "Mark one of the environment's draft pull requests ready for review: `url`, or the first pull request when omitted.",
     input: environmentActionInputSchema,
     output: actionOutputSchema,
   },
   markDraft: {
     experimental_description:
-      "Convert the environment's open pull request back to a draft.",
+      "Convert one of the environment's open pull requests back to a draft: `url`, or the first pull request when omitted.",
     input: environmentActionInputSchema,
     output: actionOutputSchema,
   },
   merge: {
     experimental_description:
-      "Merge the environment's pull request with the given method.",
+      "Merge one of the environment's pull requests with the given method: `url`, or the first pull request when omitted.",
     input: environmentActionInputSchema
       .extend({ method: pullRequestMergeMethodSchema })
       .strict(),
+    output: actionOutputSchema,
+  },
+  link: {
+    experimental_description:
+      "Show a pull request with the environment, beside the PR of each repo's checked-out branch, until it is unlinked.",
+    input: environmentLinkInputSchema,
+    output: actionOutputSchema,
+  },
+  unlink: {
+    experimental_description:
+      "Stop showing a linked pull request with the environment.",
+    input: environmentLinkInputSchema,
     output: actionOutputSchema,
   },
 });
@@ -292,19 +324,29 @@ export const githubPrStatusHostContract = defineRpcContract({
       .object({
         reads: z
           .array(
-            z
-              .object({
-                path: z.string().min(1),
-                known: z
-                  .object({
-                    url: z.string().url(),
-                    branchName: z.string().nullable(),
-                  })
-                  .strict()
-                  .nullable(),
-                refresh: z.boolean(),
-              })
-              .strict(),
+            z.discriminatedUnion("kind", [
+              z
+                .object({
+                  kind: z.literal("branch"),
+                  path: z.string().min(1),
+                  known: z
+                    .object({
+                      url: z.string().url(),
+                      branchName: z.string().nullable(),
+                    })
+                    .strict()
+                    .nullable(),
+                  refresh: z.boolean(),
+                })
+                .strict(),
+              z
+                .object({
+                  kind: z.literal("url"),
+                  path: z.string().min(1),
+                  url: z.string().url(),
+                })
+                .strict(),
+            ]),
           )
           .min(1)
           .max(HOST_VIEWS_MAX_READS),

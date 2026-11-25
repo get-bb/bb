@@ -121,6 +121,14 @@ function Row({ thread, listed = [thread] }: RowProps) {
   );
 }
 
+function availableRow(pr: PullRequest): EnvironmentPullRequest {
+  return {
+    outcome: "available",
+    pullRequest: pr,
+    pullRequests: [{ pullRequest: pr, linked: false }],
+  };
+}
+
 function renderRow(
   props: RowProps,
   rows: Record<string, EnvironmentPullRequest>,
@@ -142,10 +150,7 @@ describe("pull request row metadata", () => {
   it("reads the row's PR and draws its state and checks", async () => {
     const pr = pullRequest();
     const rows: Record<string, EnvironmentPullRequest> = {
-      env_row: {
-        outcome: "available",
-        pullRequest: pr,
-      },
+      env_row: availableRow(pr),
     };
     const view = renderRow({ thread: thread("env_row") }, rows);
     const badge = await view.findByRole("img", {
@@ -168,7 +173,7 @@ describe("pull request row metadata", () => {
         listed: [thread("env_row"), thread("env_other", "thr_other")],
       },
       {
-        env_row: { outcome: "available", pullRequest: pullRequest() },
+        env_row: availableRow(pullRequest()),
         env_other: { outcome: "absent" },
       },
     );
@@ -193,7 +198,7 @@ describe("pull request row metadata", () => {
         ],
       },
       {
-        env_row: { outcome: "available", pullRequest: pullRequest() },
+        env_row: availableRow(pullRequest()),
         env_other: { outcome: "absent" },
       },
     );
@@ -252,10 +257,7 @@ describe("pull request row metadata", () => {
     const view = renderRow(
       { thread: thread("env_row") },
       {
-        env_row: {
-          outcome: "available",
-          pullRequest: pullRequest(overrides),
-        },
+        env_row: availableRow(pullRequest(overrides)),
       },
     );
     expect(
@@ -268,10 +270,7 @@ describe("pull request row metadata", () => {
       const view = renderRow(
         { thread: thread("env_row") },
         {
-          env_row: {
-            outcome: "available",
-            pullRequest: pullRequest(overrides),
-          },
+          env_row: availableRow(pullRequest(overrides)),
         },
       );
       const badge = await view.findByRole("img", {
@@ -353,10 +352,7 @@ describe("pull request row metadata", () => {
     const view = renderRow(
       { thread: thread("env_row") },
       {
-        env_row: {
-          outcome: "available",
-          pullRequest: pr,
-        },
+        env_row: availableRow(pr),
       },
     );
     const badge = await view.findByRole("img", {

@@ -221,8 +221,9 @@ Making your repo work with bb:
   Inspect `bb environment show <id>` after recovery to confirm removal.
 
   Pull requests moved to the bundled GitHub PR Status plugin:
-  `bb pull-request show|ready|draft|merge <environment-id>`. See its
-  github-pr-status skill.
+  `bb pull-request show|ready|draft|merge|link|unlink <environment-id>`. It
+  shows the pull request of each repo's checked-out branch plus any you
+  link. See its github-pr-status skill.
 
   Git status, branches, diffs and Viewed marks moved to the bundled Git
   plugin: `bb git status|branches|diff|files|file|patch|viewed

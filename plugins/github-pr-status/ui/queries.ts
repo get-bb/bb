@@ -2,6 +2,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import {
   githubPrStatusRpcContract,
+  type EnvironmentPullRequestEntry,
   type PullRequest,
   type PullRequestMergeMethod,
 } from "../contract";
@@ -14,7 +15,10 @@ import {
 export interface EnvironmentPullRequestState {
   isLoading: boolean;
   pullRequest: PullRequest | null;
+  pullRequests: readonly EnvironmentPullRequestEntry[];
 }
+
+const NO_PULL_REQUESTS: readonly EnvironmentPullRequestEntry[] = [];
 
 export function useEnvironmentPullRequest(
   environmentId: string | null | undefined,
@@ -46,6 +50,8 @@ export function useEnvironmentPullRequest(
   return {
     isLoading: enabled && query.error === null && row === undefined,
     pullRequest: row?.outcome === "available" ? row.pullRequest : null,
+    pullRequests:
+      row?.outcome === "available" ? row.pullRequests : NO_PULL_REQUESTS,
   };
 }
 
@@ -96,7 +102,11 @@ async function runWithToast(
   }
 }
 
-export function usePullRequestActions(environmentId: string) {
+export function usePullRequestActions(
+  environmentId: string,
+  url: string | null,
+) {
+  const target = url === null ? { environmentId } : { environmentId, url };
   const markReady = useRpcMutation({
     contract: githubPrStatusRpcContract,
     method: "markReady",
@@ -109,19 +119,36 @@ export function usePullRequestActions(environmentId: string) {
     contract: githubPrStatusRpcContract,
     method: "merge",
   });
+  const unlink = useRpcMutation({
+    contract: githubPrStatusRpcContract,
+    method: "unlink",
+  });
   const [mergeMethod, setMergeMethod] = useState(readMergeMethod);
   return {
-    isPending: markReady.isPending || markDraft.isPending || merge.isPending,
+    isPending:
+      markReady.isPending ||
+      markDraft.isPending ||
+      merge.isPending ||
+      unlink.isPending,
     mergeMethod,
     markReady: () =>
       runWithToast(
         { loading: "Marking pull request ready", ...UPDATE_FAILURE },
-        () => markReady.mutate({ environmentId }),
+        () => markReady.mutate(target),
       ),
     markDraft: () =>
       runWithToast(
         { loading: "Converting pull request to draft", ...UPDATE_FAILURE },
-        () => markDraft.mutate({ environmentId }),
+        () => markDraft.mutate(target),
+      ),
+    unlink: (linkedUrl: string) =>
+      runWithToast(
+        {
+          loading: "Removing pull request from thread",
+          failure: "Failed to remove pull request",
+          fallback: "Pull request was not removed",
+        },
+        () => unlink.mutate({ environmentId, url: linkedUrl }),
       ),
     merge: (method: PullRequestMergeMethod) => {
       window.localStorage.setItem(MERGE_METHOD_STORAGE_KEY, method);
@@ -132,7 +159,7 @@ export function usePullRequestActions(environmentId: string) {
           failure: "Failed to merge pull request",
           fallback: "Pull request was not merged",
         },
-        () => merge.mutate({ environmentId, method }),
+        () => merge.mutate({ ...target, method }),
       );
     },
   };

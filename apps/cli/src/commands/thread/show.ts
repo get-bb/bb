@@ -92,6 +92,7 @@ interface ThreadShowJsonPayload extends ThreadStatusPayload {
 interface ThreadShowPullRequestPayload {
   status: "available" | "none" | "unavailable";
   pullRequest: PullRequest | null;
+  pullRequests: PullRequest[];
   message?: string;
 }
 
@@ -170,23 +171,27 @@ async function fetchPullRequest(args: {
       return {
         status: "available",
         pullRequest: response.pullRequest,
+        pullRequests: response.pullRequests.map((entry) => entry.pullRequest),
       };
     }
     if (response.outcome === "unavailable") {
       return {
         status: "unavailable",
         pullRequest: null,
+        pullRequests: [],
         message: response.message,
       };
     }
     return {
       status: "none",
       pullRequest: null,
+      pullRequests: [],
     };
   } catch (err) {
     return {
       status: "unavailable",
       pullRequest: null,
+      pullRequests: [],
       message: getErrorMessage(err),
     };
   }
@@ -204,6 +209,7 @@ function threadShowEnvironmentJson(
     pullRequest: pullRequest ?? {
       status: "unavailable",
       pullRequest: null,
+      pullRequests: [],
       message: "Pull request lookup was not run.",
     },
   };
@@ -690,24 +696,26 @@ function printEnvironmentPullRequest(
     return;
   }
 
-  const pr = pullRequest.pullRequest;
-  if (!pr) {
+  if (pullRequest.pullRequests.length === 0) {
     console.log("    Pull request: none");
     return;
   }
-  console.log(`    Pull request: #${pr.number} ${pr.state} - ${pr.title}`);
-  console.log(`    URL:          ${pr.url}`);
-  console.log(`    Branch:       ${pr.headRefName} -> ${pr.baseRefName}`);
-  console.log(`    Attention:    ${pr.attention}`);
-  console.log(
-    `    Checks:       ${pr.checks.state} (${pr.checks.passedCount} passed, ` +
-      `${pr.checks.failedCount} failed, ${pr.checks.pendingCount} pending, ` +
-      `${pr.checks.totalCount} total)`,
-  );
-  console.log(
-    `    Review:       ${pr.review.state} (${pr.review.reviewRequestCount} requested)`,
-  );
-  console.log(`    Merge:        ${pr.mergeability.state}`);
+  pullRequest.pullRequests.forEach((pr, index) => {
+    if (index > 0) console.log("");
+    console.log(`    Pull request: #${pr.number} ${pr.state} - ${pr.title}`);
+    console.log(`    URL:          ${pr.url}`);
+    console.log(`    Branch:       ${pr.headRefName} -> ${pr.baseRefName}`);
+    console.log(`    Attention:    ${pr.attention}`);
+    console.log(
+      `    Checks:       ${pr.checks.state} (${pr.checks.passedCount} passed, ` +
+        `${pr.checks.failedCount} failed, ${pr.checks.pendingCount} pending, ` +
+        `${pr.checks.totalCount} total)`,
+    );
+    console.log(
+      `    Review:       ${pr.review.state} (${pr.review.reviewRequestCount} requested)`,
+    );
+    console.log(`    Merge:        ${pr.mergeability.state}`);
+  });
 }
 
 async function printThreadLogMessage(

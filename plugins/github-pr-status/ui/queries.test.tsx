@@ -31,33 +31,39 @@ vi.mock("@get-bb/plugin-sdk/app", () => ({
 }));
 
 function row(state: PullRequest["state"]): EnvironmentPullRequest {
+  const pullRequest = pullRequestIn(state);
   return {
     outcome: "available",
-    pullRequest: {
-      number: 7,
-      title: "Ship it",
-      state,
-      url: "https://github.com/acme/bb/pull/7",
-      baseRefName: "main",
-      headRefName: "bb/ship",
-      updatedAt: "2026-10-22T00:00:00Z",
-      autoMerge: false,
-      inMergeQueue: false,
-      checks: {
-        state: "passing",
-        totalCount: 1,
-        passedCount: 1,
-        failedCount: 0,
-        pendingCount: 0,
-      },
-      review: { state: "none", reviewRequestCount: 0 },
-      mergeability: {
-        state: "mergeable",
-        mergeStateStatus: "CLEAN",
-        mergeable: "MERGEABLE",
-      },
-      attention: "ready_to_merge",
+    pullRequest,
+    pullRequests: [{ pullRequest, linked: false }],
+  };
+}
+
+function pullRequestIn(state: PullRequest["state"]): PullRequest {
+  return {
+    number: 7,
+    title: "Ship it",
+    state,
+    url: "https://github.com/acme/bb/pull/7",
+    baseRefName: "main",
+    headRefName: "bb/ship",
+    updatedAt: "2026-10-22T00:00:00Z",
+    autoMerge: false,
+    inMergeQueue: false,
+    checks: {
+      state: "passing",
+      totalCount: 1,
+      passedCount: 1,
+      failedCount: 0,
+      pendingCount: 0,
     },
+    review: { state: "none", reviewRequestCount: 0 },
+    mergeability: {
+      state: "mergeable",
+      mergeStateStatus: "CLEAN",
+      mergeable: "MERGEABLE",
+    },
+    attention: "ready_to_merge",
   };
 }
 

@@ -509,9 +509,19 @@ describe("bb thread show command output", () => {
     });
     const get = vi.fn(async () => thread);
     const environmentGet = vi.fn(async () => environment);
+    const stacked = makePullRequest({
+      number: 43,
+      title: "Stack on top",
+      url: "https://github.com/example/bb/pull/43",
+      state: "draft",
+    });
     const rpc = stubPullRequestRpc("env-show-pr", {
       outcome: "available",
       pullRequest,
+      pullRequests: [
+        { pullRequest, linked: false },
+        { pullRequest: stacked, linked: true },
+      ],
     });
     const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
@@ -543,6 +553,7 @@ describe("bb thread show command output", () => {
     );
     expect(output).toContain("Review:       review_required (1 requested)");
     expect(output).toContain("Merge:        mergeable");
+    expect(output).toContain("Pull request: #43 draft - Stack on top");
   });
 
   it("bb thread show reports a failed pull request lookup distinctly from none", async () => {
@@ -608,6 +619,7 @@ describe("bb thread show command output", () => {
     stubPullRequestRpc("env-json-show-pr", {
       outcome: "available",
       pullRequest,
+      pullRequests: [{ pullRequest, linked: false }],
     });
     const headStateGet = fixtures.makeEmptyHeadStateGetMock();
     stubServerApi({
@@ -633,6 +645,7 @@ describe("bb thread show command output", () => {
         pullRequest: {
           status: "available",
           pullRequest,
+          pullRequests: [pullRequest],
         },
       },
       pendingTodos: null,

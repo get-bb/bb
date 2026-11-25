@@ -5,9 +5,11 @@ import {
   type ExperimentalFakeHostRpcCall,
 } from "@get-bb/plugin-sdk/testing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  GitHubPullRequestView,
-  HostPullRequestLookup,
+import { z } from "zod";
+import {
+  environmentPullRequestSchema,
+  type GitHubPullRequestView,
+  type HostPullRequestLookup,
 } from "./contract.js";
 import plugin, { environmentChangeEffect } from "./server.js";
 
@@ -86,8 +88,13 @@ function viewResults(
   }));
 }
 
+type EnvironmentRepo = Awaited<
+  ReturnType<BbPluginApi["sdk"]["environments"]["experimental_repos"]>
+>["repos"][number];
+
 async function setup(options: {
   environments?: Record<string, Environment>;
+  repos?: Record<string, EnvironmentRepo[]>;
   host?: Parameters<typeof makeHostResponse>[0];
   callHost?: (call: ExperimentalFakeHostRpcCall) => unknown;
   subscribe?: BbPluginApi["sdk"]["subscribe"];
@@ -110,6 +117,17 @@ async function setup(options: {
             });
           }
           return found;
+        },
+        experimental_repos: async ({
+          environmentId,
+        }: {
+          environmentId: string;
+        }) => {
+          sdkCalls.push(`environments.repos ${environmentId}`);
+          return {
+            repos: options.repos?.[environmentId] ?? [],
+            truncated: false,
+          };
         },
       },
       hosts: {
@@ -216,8 +234,16 @@ describe("GitHub PR Status server", () => {
         .filter((call) => call.method === "views")
         .map((call) => call.input),
     ).toEqual([
-      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
-      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
+      {
+        reads: [
+          { kind: "branch", path: "/work/env-1", known: null, refresh: false },
+        ],
+      },
+      {
+        reads: [
+          { kind: "branch", path: "/work/env-1", known: null, refresh: false },
+        ],
+      },
     ]);
   });
 
@@ -266,10 +292,15 @@ describe("GitHub PR Status server", () => {
         .filter((call) => call.method === "views")
         .map((call) => call.input),
     ).toEqual([
-      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
+      {
+        reads: [
+          { kind: "branch", path: "/work/env-1", known: null, refresh: false },
+        ],
+      },
       ...Array.from({ length: 2 }, () => ({
         reads: [
           {
+            kind: "branch",
             path: "/work/env-1",
             known: { url: view().url, branchName: "bb/pr" },
             refresh: false,
@@ -322,10 +353,22 @@ describe("GitHub PR Status server", () => {
           state: "open",
           attention: "none",
         }),
+        pullRequests: [
+          {
+            pullRequest: expect.objectContaining({ number: 7 }),
+            linked: false,
+          },
+        ],
       },
       "env-2": {
         outcome: "available",
         pullRequest: expect.objectContaining({ number: 7 }),
+        pullRequests: [
+          {
+            pullRequest: expect.objectContaining({ number: 7 }),
+            linked: false,
+          },
+        ],
       },
       "env-plain": { outcome: "absent" },
       "env-asleep": { outcome: "unavailable", message: "Host is suspended" },
@@ -340,8 +383,18 @@ describe("GitHub PR Status server", () => {
         method: "views",
         input: {
           reads: [
-            { path: "/work/env-1", known: null, refresh: false },
-            { path: "/work/env-2", known: null, refresh: false },
+            {
+              kind: "branch",
+              path: "/work/env-1",
+              known: null,
+              refresh: false,
+            },
+            {
+              kind: "branch",
+              path: "/work/env-2",
+              known: null,
+              refresh: false,
+            },
           ],
         },
         hostId: "host-1",
@@ -349,7 +402,14 @@ describe("GitHub PR Status server", () => {
       {
         method: "views",
         input: {
-          reads: [{ path: "/work/env-1", known: null, refresh: false }],
+          reads: [
+            {
+              kind: "branch",
+              path: "/work/env-1",
+              known: null,
+              refresh: false,
+            },
+          ],
         },
         hostId: "host-2",
       },
@@ -376,8 +436,8 @@ describe("GitHub PR Status server", () => {
     ).toEqual([
       {
         reads: [
-          { path: "/work/env-1", known: null, refresh: false },
-          { path: "/work/env-2", known: null, refresh: false },
+          { kind: "branch", path: "/work/env-1", known: null, refresh: false },
+          { kind: "branch", path: "/work/env-2", known: null, refresh: false },
         ],
       },
     ]);
@@ -454,10 +514,15 @@ describe("GitHub PR Status server", () => {
     expect(
       calls.filter((call) => call.method === "views").map((call) => call.input),
     ).toEqual([
-      { reads: [{ path: "/work/env-1", known: null, refresh: false }] },
+      {
+        reads: [
+          { kind: "branch", path: "/work/env-1", known: null, refresh: false },
+        ],
+      },
       {
         reads: [
           {
+            kind: "branch",
             path: "/work/env-1",
             known: {
               url: "https://github.com/acme/bb/pull/7",
@@ -597,4 +662,204 @@ describe("GitHub PR Status server", () => {
       expect(environmentChangeEffect(changes)).toBe(effect);
     },
   );
+
+  describe("several pull requests per environment", () => {
+    const OTHER_URL = "https://github.com/acme/other/pull/8";
+    const LINKED_URL = "https://github.com/acme/bb/pull/9";
+    const repos = {
+      "env-1": [
+        {
+          rootPath: "/work/env-1",
+          path: "/work/env-1",
+          label: "",
+          source: "main" as const,
+        },
+        {
+          rootPath: "/work/other",
+          path: "/work/other",
+          label: "../other",
+          source: "folder" as const,
+        },
+      ],
+    };
+    function lookup(read: unknown): HostPullRequestLookup {
+      const target = read as { kind: string; path: string };
+      if (target.kind === "url")
+        return {
+          outcome: "found",
+          pullRequest: view({
+            number: 9,
+            url: LINKED_URL,
+            isDraft: true,
+            headRefName: "stacked",
+          }),
+        };
+      return target.path === "/work/other"
+        ? { outcome: "found", pullRequest: view({ number: 8, url: OTHER_URL }) }
+        : { outcome: "found", pullRequest: view() };
+    }
+    const AS_PLUGIN = {
+      experimental_caller: { kind: "plugin" as const, pluginId: "bb--tasks" },
+    };
+    async function readRows(
+      fake: Awaited<ReturnType<typeof setup>>,
+      input: { keys: string[] },
+      options?: Parameters<typeof fake.harness.callRpc>[2],
+    ) {
+      return z
+        .record(z.string(), environmentPullRequestSchema)
+        .parse(await fake.harness.callRpc("pullRequests", input, options));
+    }
+    function setupSeveral() {
+      return setup({
+        repos,
+        subscribe: () => () => {},
+        callHost: (call) =>
+          call.method === "views" ? viewResults(call, lookup) : { ok: true },
+      });
+    }
+
+    it("reads every repo's branch in one host call and lists the main repo's PR first", async () => {
+      const fake = await setupSeveral();
+
+      const rows = await readRows(fake, { keys: ["env-1"] }, AS_PLUGIN);
+
+      expect(rows["env-1"]).toMatchObject({
+        outcome: "available",
+        pullRequest: { number: 7 },
+        pullRequests: [
+          { pullRequest: { number: 7 }, linked: false },
+          { pullRequest: { number: 8, url: OTHER_URL }, linked: false },
+        ],
+      });
+      expect(
+        fake.harness.experimental_hostRpcCalls
+          .filter((call) => call.method === "views")
+          .map((call) => call.input),
+      ).toEqual([
+        {
+          reads: [
+            {
+              kind: "branch",
+              path: "/work/env-1",
+              known: null,
+              refresh: false,
+            },
+            {
+              kind: "branch",
+              path: "/work/other",
+              known: null,
+              refresh: false,
+            },
+          ],
+        },
+      ]);
+    });
+
+    it("answers an app read from the main repo at once and finds the other repos once, in the background", async () => {
+      const fake = await setupSeveral();
+      const stop = fake.harness.experimental_watchRpc("pullRequests", {
+        key: "env-1",
+      });
+
+      const first = await readRows(fake, {
+        keys: ["env-1"],
+      });
+      expect(first["env-1"]).toMatchObject({
+        pullRequests: [{ pullRequest: { number: 7 } }],
+      });
+      await vi.waitFor(async () => {
+        const next = await readRows(fake, {
+          keys: ["env-1"],
+        });
+        expect(next["env-1"]).toMatchObject({
+          pullRequests: [
+            { pullRequest: { number: 7 } },
+            { pullRequest: { number: 8 } },
+          ],
+        });
+      });
+      await readRows(fake, { keys: ["env-1"] });
+      expect(
+        fake.sdkCalls.filter((call) => call.startsWith("environments.repos")),
+      ).toEqual(["environments.repos env-1"]);
+      stop();
+    });
+
+    it("shows a linked PR by its canonical URL until it is unlinked", async () => {
+      const fake = await setupSeveral();
+
+      await expect(
+        fake.harness.callRpc("link", {
+          environmentId: "env-1",
+          url: `${LINKED_URL}/files`,
+        }),
+      ).resolves.toEqual({ message: "Linked pull request #9 to env-1" });
+      const linked = await readRows(fake, { keys: ["env-1"] }, AS_PLUGIN);
+      expect(linked["env-1"]).toMatchObject({
+        pullRequests: [
+          { pullRequest: { number: 7 } },
+          { pullRequest: { number: 8 } },
+          { pullRequest: { number: 9, state: "draft" }, linked: true },
+        ],
+      });
+
+      await fake.harness.callRpc("unlink", {
+        environmentId: "env-1",
+        url: LINKED_URL,
+      });
+      const unlinked = await readRows(fake, { keys: ["env-1"] }, AS_PLUGIN);
+      expect(
+        unlinked["env-1"]?.outcome === "available"
+          ? unlinked["env-1"].pullRequests.map(
+              (entry) => entry.pullRequest.number,
+            )
+          : [],
+      ).toEqual([7, 8]);
+    });
+
+    it("refuses to link a URL that is not a pull request", async () => {
+      const fake = await setupSeveral();
+
+      await expect(
+        fake.harness.callRpc("link", {
+          environmentId: "env-1",
+          url: "https://github.com/acme/bb/issues/9",
+        }),
+      ).rejects.toMatchObject({
+        code: "conflict",
+        message: expect.stringContaining("Expected a pull request URL"),
+      });
+    });
+
+    it("acts on the requested PR from its own repo's folder", async () => {
+      const fake = await setupSeveral();
+
+      await expect(
+        fake.harness.callRpc("merge", {
+          environmentId: "env-1",
+          url: OTHER_URL,
+          method: "squash",
+        }),
+      ).resolves.toEqual({ message: "Pull request merge started" });
+      expect(
+        fake.harness.experimental_hostRpcCalls.find(
+          (call) => call.method === "act",
+        )?.input,
+      ).toEqual({
+        path: "/work/other",
+        url: OTHER_URL,
+        action: { operation: "merge", method: "squash" },
+      });
+      await expect(
+        fake.harness.callRpc("markReady", {
+          environmentId: "env-1",
+          url: "https://github.com/acme/elsewhere/pull/1",
+        }),
+      ).rejects.toMatchObject({
+        message:
+          "https://github.com/acme/elsewhere/pull/1 is not one of this environment's pull requests",
+      });
+    });
+  });
 });

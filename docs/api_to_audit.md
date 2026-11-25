@@ -5584,8 +5584,10 @@ Core callers: the agent's instructions (`thread-runtime-config.ts`, which
 names the repos found inside each folder and skips discovery when the main
 folder is a repo and there are no extra folders), the git plugin's Changes
 panel (`plugins/git/server/reads.ts`, which groups changes by repo and runs
-git from each repo's top level), and `bb environment repos`. The GitHub PR
-status plugin is the next intended reader.
+git from each repo's top level), the GitHub PR status plugin
+(`plugins/github-pr-status/server.ts`, which reads the PR of each repo's
+checked-out branch from its `rootPath` and saves the list per environment),
+and `bb environment repos`.
 
 Before stabilizing, decide whether the list should refresh on file-system
 events rather than a 10-second cache, whether repos found inside the main
