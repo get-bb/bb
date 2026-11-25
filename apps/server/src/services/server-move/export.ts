@@ -3,7 +3,9 @@ import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import {
   countAppliedMigrations,
+  createConnection,
   getExperiments,
+  sanitizeEnvironmentDiagnosticSnapshot,
   type DbConnection,
 } from "@bb/db";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
@@ -65,6 +67,12 @@ export async function exportServerArchive(
       SERVER_DATABASE_ARCHIVE_PATH,
     );
     await args.db.$client.backup(databaseSnapshotPath);
+    const snapshot = createConnection(databaseSnapshotPath);
+    try {
+      sanitizeEnvironmentDiagnosticSnapshot(snapshot.$client, "apply");
+    } finally {
+      snapshot.$client.close();
+    }
     const migrationCount = countAppliedMigrations(args.db);
     const inventory = await listServerOwnedEntries(args.dataDir);
     if (inventory.skippedPaths.length > 0) {

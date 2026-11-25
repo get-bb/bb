@@ -70,6 +70,7 @@ import {
   threads,
 } from "../schema.js";
 import { createEventId } from "../ids.js";
+import { serializeEnvironmentDiagnosticData } from "../environment-diagnostic-data.js";
 import {
   COMPLETED_EVENT_OUTPUT_TRUNCATION_THRESHOLD_CHARS,
   RETAINED_EVENT_OUTPUT_TARGETS,
@@ -456,7 +457,10 @@ function insertStoredEventRow(
   const id = createEventId();
   const prepared = prepareCompletedEventOutputData({
     createdAt: args.createdAt,
-    data: args.data,
+    data:
+      args.type === "provider.env-resolved"
+        ? serializeEnvironmentDiagnosticData(args.data)
+        : args.data,
     itemKind: args.itemKind,
     type: args.type,
   });
@@ -977,7 +981,9 @@ function copyMayRewriteEventData(row: StoredEventRowMetadata): boolean {
 
 function copyReadsEventData(row: StoredEventRowMetadata): boolean {
   return (
-    row.type === "client/turn/requested" || canProduceThreadSearchSegments(row)
+    row.type === "client/turn/requested" ||
+    row.type === "provider.env-resolved" ||
+    canProduceThreadSearchSegments(row)
   );
 }
 
@@ -1105,7 +1111,7 @@ export function copyStoredThreadEventsInTransaction(
       type: row.type,
     };
     let targetEventId: string;
-    if (rewritable.has(row.id) && data !== undefined) {
+    if ((row.type === "provider.env-resolved" || rewritable.has(row.id)) && data !== undefined) {
       flush();
       const insertResult = insertStoredEventRow(db, {
         ...values,

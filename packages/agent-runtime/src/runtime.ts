@@ -4,7 +4,12 @@ import {
   normalizeProviderThreadNameEvent,
   toProviderExternalThreadName,
 } from "@bb/domain";
-import type { DynamicTool, InstructionMode, ThreadEvent } from "@bb/domain";
+import type {
+  DynamicTool,
+  InstructionMode,
+  ProviderEnvironmentDiagnosticEntry,
+  ThreadEvent,
+} from "@bb/domain";
 import type { AdapterCommand } from "./provider-adapter.js";
 import {
   BRIDGE_JSON_RPC_ERRORS,
@@ -71,7 +76,6 @@ import {
   resolveContributedEnvironment,
   resolveThreadEnvironment,
   type DroppedThreadEnvironmentContribution,
-  type ResolvedThreadEnvironmentEntry,
 } from "./thread-shell-environment.js";
 import {
   bridgeLaunchProcessKey,
@@ -1207,7 +1211,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
 
   function emitResolvedProviderEnvironment(args: {
     droppedContributions: DroppedThreadEnvironmentContribution[];
-    entries: ResolvedThreadEnvironmentEntry[];
+    entries: ProviderEnvironmentDiagnosticEntry[];
     providerThreadId: string;
     threadId: string;
   }): void {
@@ -1240,7 +1244,7 @@ export function createAgentRuntime(options: AgentRuntimeOptions): AgentRuntime {
   }): {
     droppedContributions: DroppedThreadEnvironmentContribution[];
     envVars: Record<string, string>;
-    entries: ResolvedThreadEnvironmentEntry[];
+    entries: ProviderEnvironmentDiagnosticEntry[];
   } {
     return resolveThreadEnvironment({
       baseShellEnv: options.shellEnv,

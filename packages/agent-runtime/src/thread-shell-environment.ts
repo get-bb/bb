@@ -1,3 +1,4 @@
+import type { ProviderEnvironmentDiagnosticEntry } from "@bb/domain";
 import type {
   AgentRuntimeContributedEnvEntry,
   AgentRuntimeShellEnvironment,
@@ -51,16 +52,6 @@ export function resolveContributedEnvironment(
   return envVars;
 }
 
-export interface ResolvedThreadEnvironmentEntry {
-  name: string;
-  source:
-    | "shell"
-    | { plugin: string }
-    | { core: "machine-git" | "machine-environment" | "project-environment" };
-  value: string | { masked: true };
-  reason?: string;
-}
-
 export interface DroppedThreadEnvironmentContribution {
   name: string;
   plugin: string;
@@ -74,13 +65,13 @@ interface ResolveThreadEnvironmentArgs extends ThreadShellEnvironmentArgs {
 export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
   droppedContributions: DroppedThreadEnvironmentContribution[];
   envVars: Record<string, string>;
-  entries: ResolvedThreadEnvironmentEntry[];
+  entries: ProviderEnvironmentDiagnosticEntry[];
 } {
   const envVars = buildThreadShellEnvironment(args);
   const droppedContributions: DroppedThreadEnvironmentContribution[] = [];
-  const entries: ResolvedThreadEnvironmentEntry[] = Object.entries(envVars).map(
-    ([name, value]) => ({ name, source: "shell", value }),
-  );
+  const entries: ProviderEnvironmentDiagnosticEntry[] = Object.keys(
+    envVars,
+  ).map((name) => ({ name, source: "shell", value: { masked: true } }));
   for (const contribution of args.contributedEnv) {
     const value = resolveContributedEnvValue(contribution, args.baseShellEnv);
     if (value === null) {
@@ -88,7 +79,6 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
         name: contribution.name,
         source: contribution.source,
         value: { masked: true },
-        reason: `${contribution.reason} (dropped: no BB_SERVER_URL)`,
       });
       droppedContributions.push({
         name: contribution.name,
@@ -107,8 +97,7 @@ export function resolveThreadEnvironment(args: ResolveThreadEnvironmentArgs): {
     entries.push({
       name: contribution.name,
       source: contribution.source,
-      value: "core" in contribution.source ? { masked: true } : value,
-      reason: contribution.reason,
+      value: { masked: true },
     });
   }
   return { droppedContributions, envVars, entries };

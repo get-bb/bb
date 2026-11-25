@@ -485,6 +485,44 @@ function itemTextDeltaEventSchema<TType extends string>(type: TType) {
   });
 }
 
+const providerEnvironmentDiagnosticEntrySchema = z
+  .object({
+    name: z.string(),
+    source: z.union([
+      z.literal("shell"),
+      z.object({ plugin: z.string() }).strict(),
+      z
+        .object({
+          core: z.enum([
+            "machine-git",
+            "machine-environment",
+            "project-environment",
+          ]),
+        })
+        .strict(),
+    ]),
+    value: z.union([
+      z.string(),
+      z.object({ masked: z.literal(true) }).strict(),
+    ]),
+    reason: z.string().optional(),
+  })
+  .strict()
+  .transform(({ name, source }) => ({
+    name,
+    source,
+    value: { masked: true as const },
+  }));
+
+export type ProviderEnvironmentDiagnosticEntry = z.output<
+  typeof providerEnvironmentDiagnosticEntrySchema
+>;
+
+export const providerEnvironmentDiagnosticDataSchema = z.object({
+  providerThreadId: z.string().optional(),
+  entries: z.array(providerEnvironmentDiagnosticEntrySchema),
+});
+
 const unscopedProviderEventSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("thread/started"),
@@ -655,35 +693,10 @@ const unscopedProviderEventSchema = z.discriminatedUnion("type", [
     providerThreadId: z.string(),
     rateLimits: providerRateLimitStateSchema,
   }),
-  z.object({
+  providerEnvironmentDiagnosticDataSchema.extend({
     type: z.literal("provider.env-resolved"),
     threadId: z.string(),
     providerThreadId: z.string(),
-    entries: z.array(
-      z
-        .object({
-          name: z.string(),
-          source: z.union([
-            z.literal("shell"),
-            z.object({ plugin: z.string() }).strict(),
-            z
-              .object({
-                core: z.enum([
-                  "machine-git",
-                  "machine-environment",
-                  "project-environment",
-                ]),
-              })
-              .strict(),
-          ]),
-          value: z.union([
-            z.string(),
-            z.object({ masked: z.literal(true) }).strict(),
-          ]),
-          reason: z.string().optional(),
-        })
-        .strict(),
-    ),
   }),
   z.object({
     type: z.literal("thread/extensionState/updated"),

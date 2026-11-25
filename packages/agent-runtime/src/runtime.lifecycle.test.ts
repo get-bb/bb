@@ -267,6 +267,12 @@ describe("createAgentRuntime lifecycle", () => {
           source: { plugin: "env-test" },
           reason: "Use the authenticated server proxy",
         },
+        {
+          name: "DEMO_AUTH_TOKEN",
+          value: "fictional-plugin-value-3815",
+          source: { plugin: "env-test" },
+          reason: "Authenticate with fictional-plugin-value-3815",
+        },
       ] as const;
       const runtime = createScriptedEchoRuntime({
         runtime: {
@@ -275,6 +281,7 @@ describe("createAgentRuntime lifecycle", () => {
           env: record.env,
           shellEnv: {
             PATH: "/tmp/bb-bin:/usr/bin",
+            DEMO_SHELL_VALUE: "fictional-shell-value-3815",
             BB_HOST_DAEMON_PORT: "3002",
             BB_PROJECT_ID: "wrong-project",
             BB_SERVER_URL: "http://127.0.0.1:3334",
@@ -302,6 +309,8 @@ describe("createAgentRuntime lifecycle", () => {
           options: expect.objectContaining({
             envVars: {
               PATH: "/plugin/bin",
+              DEMO_AUTH_TOKEN: "fictional-plugin-value-3815",
+              DEMO_SHELL_VALUE: "fictional-shell-value-3815",
               AUTH_PROXY_URL: "http://127.0.0.1:3334/plugins/env-test/auth",
               BB_HOST_DAEMON_PORT: "3002",
               BB_PROJECT_ID: "p1",
@@ -318,20 +327,25 @@ describe("createAgentRuntime lifecycle", () => {
       ).toMatchObject({
         entries: expect.arrayContaining([
           {
-            name: "PATH",
+            name: "DEMO_AUTH_TOKEN",
             source: { plugin: "env-test" },
-            value: "/plugin/bin",
-            reason: "Use the plugin toolchain",
+            value: { masked: true },
+          },
+          {
+            name: "DEMO_SHELL_VALUE",
+            source: "shell",
+            value: { masked: true },
           },
           {
             name: "AUTH_PROXY_URL",
             source: { plugin: "env-test" },
-            value: "http://127.0.0.1:3334/plugins/env-test/auth",
-            reason: "Use the authenticated server proxy",
+            value: { masked: true },
           },
         ]),
       });
-      expect(JSON.stringify(events)).toContain("/plugins/env-test/auth");
+      expect(JSON.stringify(events)).not.toMatch(
+        /fictional-(plugin|shell)-value-3815|\/plugins\/env-test\/auth/u,
+      );
 
       await runtime.runTurn({
         additionalWorkspaceWriteRoots: [],
@@ -530,8 +544,6 @@ describe("createAgentRuntime lifecycle", () => {
             name: "AUTH_PROXY_URL",
             source: { plugin: "env-test" },
             value: { masked: true },
-            reason:
-              "Use the authenticated server proxy (dropped: no BB_SERVER_URL)",
           },
         ]),
       });

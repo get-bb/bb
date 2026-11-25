@@ -87,7 +87,6 @@ describe("parseOperationMessage operation titles", () => {
           name: "PLUGIN_TOKEN",
           source: { plugin: "auth-proxy" },
           value: { masked: true },
-          reason: "Authenticate provider traffic",
         },
       ],
     };
@@ -107,8 +106,7 @@ describe("parseOperationMessage operation titles", () => {
     expect(message).toMatchObject({
       kind: "operation",
       title: "Provider environment resolved",
-      detail:
-        "PLUGIN_TOKEN=•••••• (auth-proxy) — Authenticate provider traffic",
+      detail: "PLUGIN_TOKEN=•••••• (auth-proxy)",
     });
   });
 
@@ -281,5 +279,7 @@ describe("parseOperationMessage operation titles", () => {
 });
 
 it("explains an intentional machine removal without suggesting a daemon failure", () => {
-  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe("Stopped because the machine was removed");
+  expect(interruptedTitle("host-removed", THREAD_NAME)).toBe(
+    "Stopped because the machine was removed",
+  );
 });

@@ -1,9 +1,14 @@
 import Database from "better-sqlite3";
 import { existsSync } from "node:fs";
-import { mkdir, readFile, symlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { createConnection, getHost, setExperiments } from "@bb/db";
-import { defaultExperiments } from "@bb/domain";
+import {
+  createConnection,
+  getHost,
+  sanitizeEnvironmentDiagnosticSnapshot,
+  setExperiments,
+} from "@bb/db";
+import { defaultExperiments, threadScope } from "@bb/domain";
 import { HOST_DAEMON_PROTOCOL_VERSION } from "@bb/host-daemon-contract";
 import {
   extractServerArchive,
@@ -12,7 +17,7 @@ import {
 import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { exportServerArchive } from "../../src/services/server-move/export.js";
-import { seedHost } from "../helpers/seed.js";
+import { seedEvent, seedHost, seedThreadFixture } from "../helpers/seed.js";
 import { withTestHarness } from "../helpers/test-app.js";
 
 async function writeDataFile(
@@ -158,6 +163,160 @@ describe("server archive export", () => {
         }
       } finally {
         pluginDatabase.close();
+      }
+    }));
+
+  it("exports a standalone SQLite snapshot with legacy environment diagnostics sanitized", () =>
+    withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const secret = "fictional-export-3815";
+      const legacy = JSON.stringify({
+        entries: [{ name: "DEMO_AUTH_TOKEN", source: "shell", value: secret }],
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        providerThreadId: "fixture-provider",
+        sequence: 1,
+        type: "provider.env-resolved",
+        scope: threadScope(),
+        data: { entries: [] },
+      });
+      harness.db.$client
+        .prepare("UPDATE events SET data = ? WHERE thread_id = ?")
+        .run(legacy, thread.id);
+      const beforeDryRun = harness.db.$client.serialize();
+      expect(sanitizeEnvironmentDiagnosticSnapshot(harness.db.$client)).toBe(1);
+      expect(harness.db.$client.serialize().equals(beforeDryRun)).toBe(true);
+      const archive = await exportServerArchive({
+        appVersion: harness.config.appVersion,
+        dataDir: harness.config.dataDir,
+        db: harness.db,
+        fileName: "server.tar.gz",
+        logger: harness.deps.logger,
+        now: 1_700_000_000_000,
+        sourceServerHostId: null,
+        workDir: join(
+          harness.config.dataDir,
+          "server-export",
+          "export-diagnostics",
+        ),
+      });
+      const destinationDir = await makeTempDir();
+      await extractServerArchive({ archivePath: archive.path, destinationDir });
+      const path = join(destinationDir, "files", "bb.db");
+      const exported = new Database(path, {
+        readonly: true,
+        fileMustExist: true,
+      });
+      const select =
+        "SELECT data, sequence, provider_thread_id FROM events WHERE thread_id = ?";
+      try {
+        const row = exported
+          .prepare<[string], { data: string }>(select)
+          .get(thread.id);
+        expect.soft(JSON.parse(row?.data ?? "null")).toEqual({
+          entries: [
+            {
+              name: "DEMO_AUTH_TOKEN",
+              source: "shell",
+              value: { masked: true },
+            },
+          ],
+        });
+        expect(row).toMatchObject({
+          sequence: 1,
+          provider_thread_id: "fixture-provider",
+        });
+        expect
+          .soft((await readFile(path)).includes(Buffer.from(secret)))
+          .toBe(false);
+        expect(harness.db.$client.prepare(select).get(thread.id)).toMatchObject(
+          { data: legacy },
+        );
+        expect(sanitizeEnvironmentDiagnosticSnapshot(exported)).toBe(0);
+      } finally {
+        exported.close();
+      }
+    }));
+
+  it("aborts export on a malformed diagnostic without changing the source or leaving artifacts", () =>
+    withTestHarness(async (harness) => {
+      const { thread } = seedThreadFixture(harness);
+      const legacyRows = [
+        JSON.stringify({
+          entries: [
+            {
+              name: "DEMO_AUTH_TOKEN",
+              source: "shell",
+              value: "fictional-abort-3815",
+            },
+          ],
+        }),
+        JSON.stringify({ entries: "malformed fictional diagnostic" }),
+      ];
+      const writeLegacy = harness.db.$client.prepare(
+        "UPDATE events SET data = ? WHERE thread_id = ? AND sequence = ?",
+      );
+      for (const [index, data] of legacyRows.entries()) {
+        const sequence = index + 1;
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          providerThreadId: "fixture-provider",
+          sequence,
+          type: "provider.env-resolved",
+          scope: threadScope(),
+          data: { entries: [] },
+        });
+        writeLegacy.run(data, thread.id, sequence);
+      }
+
+      const workDir = join(harness.config.dataDir, "server-export", "abort");
+      const before = harness.db.$client.serialize();
+      const malformedDiagnostic =
+        "Invalid provider environment diagnostic data";
+      await expect
+        .soft(
+          exportServerArchive({
+            appVersion: harness.config.appVersion,
+            dataDir: harness.config.dataDir,
+            db: harness.db,
+            fileName: "server.tar.gz",
+            logger: harness.deps.logger,
+            now: 1_700_000_000_000,
+            sourceServerHostId: null,
+            workDir,
+          }),
+        )
+        .rejects.toThrow(malformedDiagnostic);
+      expect.soft(await readdir(workDir)).toEqual([]);
+      expect.soft(harness.db.$client.serialize()).toEqual(before);
+
+      const snapshotPath = join(await makeTempDir(), "snapshot.db");
+      await harness.db.$client.backup(snapshotPath);
+      const copy = createConnection(snapshotPath);
+      try {
+        expect
+          .soft(() =>
+            sanitizeEnvironmentDiagnosticSnapshot(copy.$client, "apply"),
+          )
+          .toThrow(malformedDiagnostic);
+      } finally {
+        copy.$client.close();
+      }
+      const readOnlyCopy = new Database(snapshotPath, {
+        readonly: true,
+        fileMustExist: true,
+      });
+      try {
+        expect(
+          readOnlyCopy
+            .prepare<[string], { data: string }>(
+              "SELECT data FROM events WHERE thread_id = ? ORDER BY rowid",
+            )
+            .all(thread.id),
+        ).toEqual(legacyRows.map((data) => ({ data })));
+      } finally {
+        readOnlyCopy.close();
       }
     }));
 
