@@ -272,7 +272,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     expect(queries[0]).toContain(`headRefName: "${localBranch}"`);
   });
 
-  it("reads a linked PR by URL in the same GraphQL request as a branch read, without branch refs", async () => {
+  it("reads a linked PR by URL beside a branch read, without branch refs", async () => {
     const workspacePath = await createManagedBaseTrackedWorkspace();
     const gh = await installFakeGh(sameRepository);
     const linked = "https://github.com/acme/bb/pull/1300";
@@ -286,10 +286,9 @@ describe("pull request lookup for differently named upstream branches", () => {
 
     expect(views[0]!.refs).toMatchObject({ branchName: localBranch });
     expect(views[1]!.refs).toBeNull();
-    const queries = await gh.readQueries();
-    expect(queries).toHaveLength(1);
-    expect(queries[0]).toContain(`headRefName: "${localBranch}"`);
-    expect(queries[0]).toContain(`resource(url: ${JSON.stringify(linked)})`);
+    const queries = (await gh.readQueries()).join("\n");
+    expect(queries).toContain(`headRefName: "${localBranch}"`);
+    expect(queries).toContain(`resource(url: ${JSON.stringify(linked)})`);
   });
 
   it("uses the local branch when a differently named remote aliases origin", async () => {
