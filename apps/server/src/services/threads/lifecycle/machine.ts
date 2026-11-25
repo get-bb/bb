@@ -28,7 +28,7 @@ export interface ThreadLifecycleState extends StoredThreadRunState {
 }
 
 export interface ThreadStartAcceptance {
-  emptyFork: boolean;
+  emptyInput: boolean;
   executionId: string;
   providerThreadId: string;
   stale: boolean;
@@ -164,7 +164,7 @@ export type ThreadLifecycleEffect =
   | { kind: "settle-background-tasks" }
   | { kind: "clear-provision-schedule" }
   | {
-      kind: "record-empty-fork-session";
+      kind: "record-empty-thread-session";
       executionId: string;
       providerThreadId: string;
     }
@@ -548,17 +548,17 @@ function acceptThreadStart(
     return;
   }
   if (acceptance !== null && !acceptance.stale) {
-    if (acceptance.emptyFork) {
+    if (acceptance.emptyInput) {
       draft.effect({
-        kind: "record-empty-fork-session",
+        kind: "record-empty-thread-session",
         executionId: acceptance.executionId,
         providerThreadId: acceptance.providerThreadId,
       });
     }
     const applied = draft.move(
-      acceptance.emptyFork ? "run.succeeded" : "run.started",
+      acceptance.emptyInput ? "run.succeeded" : "run.started",
     );
-    if (applied && acceptance.emptyFork) {
+    if (applied && acceptance.emptyInput) {
       draft.effect({ kind: "drain-queue", wake: "thread-ready" });
     }
   }

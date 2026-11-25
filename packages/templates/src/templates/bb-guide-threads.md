@@ -24,8 +24,17 @@ Spawning:
 
   bb thread spawn --project <id> --prompt "..." [options]
   bb thread spawn --project <id> --prompt-file <path> [options]
+  bb thread spawn --project <id> --initialize-only [options]
 
-    --prompt <prompt>              Initial prompt (one of --prompt or --prompt-file is required)
+    --initialize-only             Initialize an idle provider session without submitting a task.
+                                   Cannot combine with prompts, attachments, --plan or --send-at.
+                                   SDK: threads.spawn({ projectId, environment, input: [],
+                                   start: "initialize", ... }). start defaults to "run", which
+                                   requires a first message as before. "initialize" requires empty
+                                   input and rejects sendAt, fork origins and plugin submissions.
+                                   An untitled initialized thread gets its fallback and generated
+                                   title from its first real message, as a normal spawn does.
+    --prompt <prompt>              Initial prompt (required unless --prompt-file or --initialize-only is given)
     --prompt-file <path>           Read the prompt from a file; `-` reads stdin. Use this for
                                    multi-line or Markdown prompts: inside double quotes the shell
                                    runs `backticks` and $(...) before bb sees them

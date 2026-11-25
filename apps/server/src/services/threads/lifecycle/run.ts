@@ -196,7 +196,7 @@ function applyTransactionEffect(
         threadId: thread.id,
       });
       return;
-    case "record-empty-fork-session":
+    case "record-empty-thread-session":
       appendThreadEventInTransaction(deps.db, {
         threadId: thread.id,
         environmentId: thread.environmentId,

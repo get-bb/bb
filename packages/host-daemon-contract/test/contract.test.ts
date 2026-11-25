@@ -1118,7 +1118,7 @@ describe("host-daemon command schemas", () => {
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
-  it("accepts only daemons that preserve optional user questions", () => {
+  it("accepts only daemons with the current thread initialization contract", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(245)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(246)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(247)).toBe(false);
@@ -2015,6 +2015,13 @@ describe("host-daemon command schemas", () => {
       instructionMode: "replace",
     };
 
+    expect(
+      hostDaemonCommandSchema.parse({
+        ...threadStartCommand,
+        input: [],
+        inputGroups: undefined,
+      }),
+    ).toMatchObject({ type: "thread.start", input: [] });
     expect(() => hostDaemonCommandSchema.parse(threadStartCommand)).toThrow(
       /flattened inputGroups/u,
     );

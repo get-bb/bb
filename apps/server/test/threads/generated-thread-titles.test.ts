@@ -663,6 +663,133 @@ describe("generated thread titles", () => {
     });
   });
 
+  it.each([
+    { title: undefined, generates: true },
+    { title: "Manual voice title", generates: false },
+  ])(
+    "titles an initialized thread from its first real task only when untitled (title: $title)",
+    async ({ title, generates }) => {
+      mockThreadMetadata({ title: "Fix Login Redirect Loop" });
+      await withTestHarness(async (harness) => {
+        const { host } = seedHostSession(harness.deps, {
+          id: "host-initialized-title",
+        });
+        const { project } = seedProjectWithSource(harness.deps, {
+          hostId: host.id,
+          path: "/tmp/initialized-title",
+        });
+        seedEnvironment(harness.deps, {
+          hostId: host.id,
+          projectId: project.id,
+          path: "/tmp/initialized-title",
+          status: "ready",
+        });
+        const created = await harness.app.request("/api/v1/threads", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            origin: "sdk",
+            projectId: project.id,
+            providerId: "codex",
+            model: "gpt-5",
+            start: "initialize",
+            input: [],
+            ...(title === undefined ? {} : { title }),
+            environment: {
+              type: "host",
+              hostId: host.id,
+              workspace: { type: "unmanaged", path: "/tmp/initialized-title" },
+            },
+          }),
+        });
+        expect(created.status).toBe(201);
+        const thread = threadSchema.parse(await readJson(created));
+        const start = await waitForQueuedCommand(
+          harness,
+          ({ command }) =>
+            command.type === "thread.start" && command.threadId === thread.id,
+        );
+        await reportQueuedCommandSuccess(
+          harness,
+          start,
+          { providerThreadId: "provider-initialized-title" },
+          { hostId: host.id },
+        );
+        expect(getThread(harness.db, thread.id)).toMatchObject({
+          status: "idle",
+          title: title ?? null,
+          titleFallback: null,
+        });
+        expect(completeTitle).not.toHaveBeenCalled();
+
+        const send = (text: string) =>
+          harness.app.request(`/api/v1/threads/${thread.id}/send`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "auto",
+              input: [
+                {
+                  type: "text",
+                  text: "Internal handoff guidance for the coding agent only",
+                  visibility: "agent-only",
+                },
+                {
+                  type: "text",
+                  text,
+                },
+              ],
+            }),
+          });
+        expect(
+          (
+            await send(
+              "Please fix the login redirect loop on the settings page",
+            )
+          ).status,
+        ).toBe(200);
+
+        if (!generates) {
+          await new Promise((resolve) => setTimeout(resolve, 20));
+          expect(completeTitle).not.toHaveBeenCalled();
+          expect(getThread(harness.db, thread.id)).toMatchObject({
+            title: "Manual voice title",
+            titleFallback: null,
+          });
+          return;
+        }
+        expect(getThread(harness.db, thread.id)?.titleFallback).toBe(
+          "Please fix the login redirect loop on the settings page",
+        );
+        await vi.waitFor(() => {
+          expect(getThread(harness.db, thread.id)?.title).toBe(
+            "Fix Login Redirect Loop",
+          );
+        });
+        expect(completeTitle).toHaveBeenCalledTimes(1);
+        expect(sentPrompt()).toContain("login redirect loop");
+        expect(sentPrompt()).not.toContain("Internal handoff guidance");
+        const rename = await waitForQueuedCommandAfter(
+          harness,
+          start.row.cursor,
+          ({ command }) =>
+            command.type === "thread.rename" && command.threadId === thread.id,
+        );
+        expect(rename.command).toMatchObject({
+          title: "Fix Login Redirect Loop",
+        });
+
+        mockThreadMetadata({ title: "Should Not Replace" });
+        await send("And then also update the logout redirect behaviour too");
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect(completeTitle).toHaveBeenCalledTimes(1);
+        expect(getThread(harness.db, thread.id)?.title).toBe(
+          "Fix Login Redirect Loop",
+        );
+      });
+    },
+  );
+
   it("does not rename a non-managed thread that errored before its title landed", async () => {
     const resolveMetadata = pendingThreadMetadata();
 

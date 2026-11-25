@@ -294,13 +294,6 @@ const threadStartCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict()
   .superRefine((value, ctx) => {
-    if (value.fork === undefined && value.input.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: "input must contain at least one entry",
-        path: ["input"],
-      });
-    }
     refineGroupedInputMatchesFlatInput(value, ctx);
   });
 

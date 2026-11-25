@@ -11,6 +11,7 @@ import {
   listThreadIdsCopyingForkHistory,
   markThreadDeleted,
 } from "@bb/db";
+import { threadCreateStartIssues } from "@bb/server-contract";
 import {
   describeSessionOptionConflict,
   modelSessionOptionConflict,
@@ -677,6 +678,20 @@ export async function createThreadFromRequest(
       "originKind requires a sourceThreadId",
     );
   }
+  const start = requestInput.start ?? "run";
+  const [startIssue] = threadCreateStartIssues({
+    start,
+    input: requestInput.input,
+    originKind,
+    ...(sourceThreadId === undefined ? {} : { sourceThreadId }),
+    ...(requestInput.sendAt === undefined
+      ? {}
+      : { sendAt: requestInput.sendAt }),
+    pluginSubmission: requestInput.pluginSubmission,
+  });
+  if (startIssue !== undefined) {
+    throw new ApiError(400, "invalid_request", startIssue.message);
+  }
   const forkSourceEnvironmentId =
     options.forkSourceEnvironmentId ??
     (originKind === "fork" &&
@@ -760,6 +775,7 @@ export async function createThreadFromRequest(
       : {}),
     ...(sourceThread ? { sourceThreadId: sourceThread.id } : {}),
     originKind,
+    start,
     parentNotifications: requestInput.parentNotifications ?? "auto",
     pluginMetadata,
     visibility: resolveCreateThreadVisibility({

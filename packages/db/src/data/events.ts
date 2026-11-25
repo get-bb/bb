@@ -5226,6 +5226,7 @@ export function listStoredTaskTurnRequestEvents(
 ): StoredTurnRequestEventRow[] {
   return listStoredTurnRequestEventRowsByType(db, {
     filter: sql`json_extract(candidate.data, '$.systemMessageKind') IS NULL
+      AND json_array_length(candidate.data, '$.input') > 0
       AND (
         json_extract(candidate.data, '$.initiator') = 'user'
         OR json_extract(candidate.data, '$.target.kind') = 'thread-start'
