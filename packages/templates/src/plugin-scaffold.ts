@@ -1401,7 +1401,9 @@ Listing on the public marketplace is self-service, and listings are not
 reviewed by BB:
 
 1. Set \`bbMarketplace.category\` in package.json to a marketplace category
-   (\`bb plugin publish --check\` lists them). Optionally add
+   (\`bb plugin publish --check\` lists them). It is optional but
+   recommended: without one, people browsing by category miss the plugin.
+   Optionally add
    \`secondaryCategories\` (up to 3) and \`screenshots\` (up to 6 relative
    PNG, JPEG, or WebP paths, at least 1200 px wide and at most 2 MiB each).
    Other \`keywords\` become search tags.
@@ -1501,7 +1503,7 @@ export async function scaffoldPlugin(args: ScaffoldPluginArgs): Promise<void> {
           server: "./server.ts",
           app: "./app.tsx",
         },
-        bbMarketplace: { category: "choose-a-category" },
+        bbMarketplace: {},
         dependencies: {
           ...PLUGIN_STARTER_DEPENDENCIES,
           zod: "^4.6.5",

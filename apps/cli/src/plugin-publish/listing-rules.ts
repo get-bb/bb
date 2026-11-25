@@ -5,7 +5,6 @@ import { MARKETPLACE_OVERVIEW_MAX_CHARS } from "@bb/domain";
 
 export const LISTING_TOPIC = "bb-plugin";
 export const LISTING_KEYWORD = "bb-plugin";
-export const BB_MARKETPLACE_CATEGORY_PLACEHOLDER = "choose-a-category";
 export const LISTING_MAX_TAGS = 10;
 export const LISTING_TAG_MAX_LENGTH = 32;
 export const LISTING_MAX_SECONDARY_CATEGORIES = 3;
@@ -76,6 +75,7 @@ export type ListingProblemCode =
   | "invalid-screenshot";
 
 export interface ListingProblem {
+  severity: "error" | "warning";
   code: ListingProblemCode;
   message: string;
 }
@@ -118,8 +118,9 @@ export function parseBbMarketplace(
       ...empty,
       problems: [
         {
+          severity: "warning",
           code: "missing-category",
-          message: `package.json has no "bbMarketplace" object. Add "bbMarketplace": { "category": "<id>" } with one of: ${categoryList(categoryIds)}.`,
+          message: `package.json has no "bbMarketplace" object, so the plugin is listed without a category (or keeps the category of the entry it replaces). Add "bbMarketplace": { "category": "<id>" } with one of: ${categoryList(categoryIds)}.`,
         },
       ],
     };
@@ -129,6 +130,7 @@ export function parseBbMarketplace(
       ...empty,
       problems: [
         {
+          severity: "error",
           code: "invalid-manifest",
           message: `"bbMarketplace" must be an object.`,
         },
@@ -138,6 +140,7 @@ export function parseBbMarketplace(
   for (const key of Object.keys(value)) {
     if (!BB_MARKETPLACE_KEYS.has(key)) {
       problems.push({
+        severity: "error",
         code: "invalid-manifest",
         message: `"bbMarketplace.${key}" is not a known field. The fields are category, secondaryCategories, and screenshots.`,
       });
@@ -148,20 +151,22 @@ export function parseBbMarketplace(
   const rawCategory = value.category;
   if (
     rawCategory === undefined ||
-    rawCategory === BB_MARKETPLACE_CATEGORY_PLACEHOLDER ||
     (typeof rawCategory === "string" && rawCategory.trim().length === 0)
   ) {
     problems.push({
+      severity: "warning",
       code: "missing-category",
-      message: `Set "bbMarketplace.category" to one of: ${categoryList(categoryIds)}.`,
+      message: `"bbMarketplace.category" is not set, so the plugin is listed without a category (or keeps the category of the entry it replaces). Set it to one of: ${categoryList(categoryIds)}.`,
     });
   } else if (typeof rawCategory !== "string") {
     problems.push({
+      severity: "error",
       code: "invalid-manifest",
       message: `"bbMarketplace.category" must be a string.`,
     });
   } else if (!categoryIds.has(rawCategory)) {
     problems.push({
+      severity: "error",
       code: "unknown-category",
       message: `"bbMarketplace.category" is "${rawCategory}", which is not a marketplace category. Use one of: ${categoryList(categoryIds)}.`,
     });
@@ -174,12 +179,14 @@ export function parseBbMarketplace(
     const raw = stringArray(value.secondaryCategories);
     if (raw === null) {
       problems.push({
+        severity: "error",
         code: "invalid-manifest",
         message: `"bbMarketplace.secondaryCategories" must be an array of category ids.`,
       });
     } else {
       if (raw.length > LISTING_MAX_SECONDARY_CATEGORIES) {
         problems.push({
+          severity: "error",
           code: "invalid-manifest",
           message: `"bbMarketplace.secondaryCategories" has ${raw.length} ids. The maximum is ${LISTING_MAX_SECONDARY_CATEGORIES}.`,
         });
@@ -187,16 +194,19 @@ export function parseBbMarketplace(
       for (const id of raw) {
         if (!categoryIds.has(id)) {
           problems.push({
+            severity: "error",
             code: "unknown-category",
             message: `"bbMarketplace.secondaryCategories" has "${id}", which is not a marketplace category.`,
           });
         } else if (id === rawCategory) {
           problems.push({
+            severity: "error",
             code: "invalid-manifest",
             message: `"bbMarketplace.secondaryCategories" repeats the main category "${id}".`,
           });
         } else if (secondaryCategories.includes(id)) {
           problems.push({
+            severity: "error",
             code: "invalid-manifest",
             message: `"bbMarketplace.secondaryCategories" lists "${id}" twice.`,
           });
@@ -212,12 +222,14 @@ export function parseBbMarketplace(
     const raw = stringArray(value.screenshots);
     if (raw === null) {
       problems.push({
+        severity: "error",
         code: "invalid-screenshot",
         message: `"bbMarketplace.screenshots" must be an array of relative paths.`,
       });
     } else {
       if (raw.length > LISTING_MAX_SCREENSHOTS) {
         problems.push({
+          severity: "error",
           code: "invalid-screenshot",
           message: `"bbMarketplace.screenshots" has ${raw.length} paths. The maximum is ${LISTING_MAX_SCREENSHOTS}.`,
         });

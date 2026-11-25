@@ -8,7 +8,6 @@ import {
   pluginPackageJsonSchema,
 } from "@bb/domain";
 import {
-  BB_MARKETPLACE_CATEGORY_PLACEHOLDER,
   classifyListingIcon,
   compareVersions,
   imageFormatForPath,
@@ -483,13 +482,16 @@ export async function runPublishCheck(
 
   const marketplace = parseBbMarketplace(manifest.bbMarketplace, categoryIds);
   for (const problem of marketplace.problems) {
-    findings.error(problem.code, problem.message);
+    if (problem.severity === "error") {
+      findings.error(problem.code, problem.message);
+    } else {
+      findings.warning(problem.code, problem.message);
+    }
   }
   if (
     manifest.bbMarketplace !== undefined &&
     isRecord(manifest.bbMarketplace) &&
     typeof manifest.bbMarketplace.category === "string" &&
-    manifest.bbMarketplace.category !== BB_MARKETPLACE_CATEGORY_PLACEHOLDER &&
     BUILT_IN_CATEGORY_IDS.has(manifest.bbMarketplace.category) &&
     !categoryIds.has(manifest.bbMarketplace.category)
   ) {
@@ -555,13 +557,13 @@ export async function runPublishCheck(
   if ("problem" in overviewFile) {
     findings.warning(
       "overview-missing",
-      "PLUGIN_OVERVIEW.md is missing. The detail page shows only bb.description without it.",
+      "PLUGIN_OVERVIEW.md is missing. The detail page shows only bb.description (or the overview of the entry it replaces).",
     );
   } else {
     hasOverview = true;
+    const overviewProblems: string[] = [];
     if (overviewFile.data.length > LISTING_OVERVIEW_MAX_BYTES) {
-      findings.error(
-        "invalid-overview",
+      overviewProblems.push(
         `PLUGIN_OVERVIEW.md is larger than ${LISTING_OVERVIEW_MAX_BYTES} bytes.`,
       );
     } else {
@@ -571,15 +573,19 @@ export async function runPublishCheck(
           overviewFile.data,
         );
       } catch {
-        findings.error("invalid-overview", "PLUGIN_OVERVIEW.md is not UTF-8.");
+        overviewProblems.push("PLUGIN_OVERVIEW.md is not UTF-8.");
       }
       if (text !== null) {
-        for (const problem of overviewMarkdownProblems(
-          normalizeOverviewText(text),
-        )) {
-          findings.error("invalid-overview", problem);
-        }
+        overviewProblems.push(
+          ...overviewMarkdownProblems(normalizeOverviewText(text)),
+        );
       }
+    }
+    for (const problem of overviewProblems) {
+      findings.warning(
+        "invalid-overview",
+        `${problem} The listing drops the overview until this is fixed.`,
+      );
     }
   }
 
@@ -1062,9 +1068,9 @@ async function checkNpmSource(
       packed.flatMap((entry) => entry.files.map((file) => file.path)),
     );
     if (hasOverview && !files.has("PLUGIN_OVERVIEW.md")) {
-      findings.error(
+      findings.warning(
         "invalid-overview",
-        'PLUGIN_OVERVIEW.md is not in the npm tarball. Add it to "files" in package.json.',
+        'PLUGIN_OVERVIEW.md is not in the npm tarball, so the listing has no overview. Add it to "files" in package.json.',
       );
     }
     if (iconPath !== null && !files.has(iconPath)) {
@@ -1171,7 +1177,7 @@ function checkCatalogClaim(
     } else if (sameSource || sameOwner) {
       findings.info(
         "replaces-listing",
-        `"${id}" is already listed from ${describeCatalogSource(held.source)}. ${sameSource ? "It is the same source" : `It belongs to the same GitHub owner (${heldOwner})`}, so your self-published listing replaces it completely: the overview, screenshots, and category come only from your release. No pull request to get-bb/marketplace is needed.`,
+        `"${id}" is already listed from ${describeCatalogSource(held.source)}. ${sameSource ? "It is the same source" : `It belongs to the same GitHub owner (${heldOwner})`}, so your self-published listing replaces it. The category, screenshots, and overview of the old entry carry over only where your release has none. No pull request to get-bb/marketplace is needed.`,
       );
     } else {
       findings.error(

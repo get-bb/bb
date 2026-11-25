@@ -11,7 +11,7 @@ from the release, never from the default branch.
 | description          | `bb.description`                                          |
 | icon                 | `bb.branding.icon`                                        |
 | tags                 | `keywords`                                                |
-| category             | `bbMarketplace.category` (required)                       |
+| category             | `bbMarketplace.category` (recommended)                    |
 | secondary categories | `bbMarketplace.secondaryCategories`                       |
 | screenshots          | `bbMarketplace.screenshots`                               |
 | overview             | PLUGIN_OVERVIEW.md beside package.json                    |
@@ -80,7 +80,10 @@ Put a second model on every code review, so a bug has to survive two reviewers.
 
 ## Choose the category
 
-Set `bbMarketplace.category` to one category id. `bb plugin publish --check`
+Set `bbMarketplace.category` to one category id. The category is optional, but
+always set one: without it the plugin is listed uncategorized (or keeps the
+category of the entry it replaces), and people browsing by category miss it.
+An unknown id is an error that keeps the plugin out. `bb plugin publish --check`
 lists the valid ids when the category is missing or unknown. Pick the category
 for the surface a user gets, not for the code inside. Ask the user when two
 categories fit equally well. Add up to three `secondaryCategories` only when
@@ -143,7 +146,9 @@ When the plugin has none, draft one from the behavior you observed while
 validating and screenshotting the plugin, show the full text to the user, and
 get approval before you commit it. Never invent a capability.
 
-Rules (the check enforces each one):
+Rules (the check reports each one). A file that breaks a rule does not block the
+listing; the listing is published without the overview (or keeps the overview
+of the entry it replaces) until a release fixes it.
 
 - UTF-8, at most 4000 characters. Aim for 700 to 1800.
 - Headings, paragraphs, emphasis, strong text, strikethrough, inline code,

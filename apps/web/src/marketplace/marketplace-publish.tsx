@@ -126,7 +126,8 @@ export function PublicMarketplacePublishPage({
                 to 256 KiB).
               </li>
               <li>
-                <code>bbMarketplace.category</code> is required. Add up to 3{" "}
+                Set <code>bbMarketplace.category</code> so people browsing by
+                category find the plugin. Add up to 3{" "}
                 <code>secondaryCategories</code>. bb ignores{" "}
                 <code>bbMarketplace</code> when it loads the plugin.
               </li>
@@ -141,7 +142,8 @@ export function PublicMarketplacePublishPage({
               <li>
                 <code>PLUGIN_OVERVIEW.md</code> is the long description: up to
                 4000 characters of headings, paragraphs, lists, code, and https
-                links. No HTML, images, or tables.
+                links. No HTML, images, or tables. A file that breaks these
+                rules is left out of the listing.
               </li>
               <li>
                 The plugin id comes from the package name, so{" "}
@@ -218,8 +220,8 @@ export function PublicMarketplacePublishPage({
             Plugins added to the Marketplace by pull request keep working. To
             change your listing, release from the same repository or package, or
             from another repository you own. The new listing replaces the old
-            one completely, so include the category, screenshots, and overview.
-            Each later release updates it again.
+            one; its category, screenshots, and overview carry over only where
+            your release has none. Each later release updates it again.
           </p>
         </section>
 

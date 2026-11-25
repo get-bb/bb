@@ -408,8 +408,8 @@ Authoring a plugin
                                  and npm lookups
 
 Getting listed on bb-community is self-service; there is no pull request.
-Fill in `bbMarketplace` (category, optional secondaryCategories and
-screenshots) and PLUGIN_OVERVIEW.md, run `bb plugin publish --check`, then
+Fill in `bbMarketplace` (a category, recommended; secondaryCategories and
+screenshots, optional) and PLUGIN_OVERVIEW.md, run `bb plugin publish --check`, then
 either give the public GitHub repository the `bb-plugin` topic and push a
 semver tag (`vX.Y.Z`, or `<dir>/vX.Y.Z` for a plugin in a subdirectory listed
 in .bb/plugins.json; the `v` is required), or keep `bb-plugin` in package.json `keywords` and run

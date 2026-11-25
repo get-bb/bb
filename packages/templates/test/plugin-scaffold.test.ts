@@ -65,7 +65,7 @@ describe("scaffoldPlugin SDK dependency", () => {
       app: "./app.tsx",
     });
     expect(pkg.keywords).toEqual(["bb-plugin"]);
-    expect(pkg.bbMarketplace).toEqual({ category: "choose-a-category" });
+    expect(pkg.bbMarketplace).toEqual({});
     expect(pluginPackageJsonSchema.safeParse(pkg).success).toBe(true);
     expect(pkg.devDependencies["@types/react"]).toBeDefined();
     expect(pkg.dependencies.zod).toBeDefined();

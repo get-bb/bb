@@ -100,14 +100,19 @@ describe("listing rules", () => {
     });
   });
 
-  it("requires a real category and rejects unknown bbMarketplace keys", () => {
+  it("warns about a missing category and rejects unknown ids and bbMarketplace keys", () => {
     expect(parseBbMarketplace(undefined, categories).problems).toEqual([
-      expect.objectContaining({ code: "missing-category" }),
+      expect.objectContaining({
+        severity: "warning",
+        code: "missing-category",
+      }),
     ]);
-    expect(
-      parseBbMarketplace({ category: "choose-a-category" }, categories)
-        .problems,
-    ).toEqual([expect.objectContaining({ code: "missing-category" })]);
+    expect(parseBbMarketplace({}, categories).problems).toEqual([
+      expect.objectContaining({
+        severity: "warning",
+        code: "missing-category",
+      }),
+    ]);
     const parsed = parseBbMarketplace(
       {
         category: "utilities",
@@ -127,7 +132,9 @@ describe("listing rules", () => {
     expect(parsed.secondaryCategories).toEqual(["security"]);
     expect(
       parseBbMarketplace({ category: "games" }, categories).problems,
-    ).toEqual([expect.objectContaining({ code: "unknown-category" })]);
+    ).toEqual([
+      expect.objectContaining({ severity: "error", code: "unknown-category" }),
+    ]);
   });
 
   it("checks screenshot format, extension, and width", () => {
@@ -358,8 +365,8 @@ describe("bb plugin publish --check", () => {
       "error:invalid-screenshot",
       "error:invalid-screenshot",
       "error:invalid-icon",
-      "error:invalid-overview",
     ]);
+    expect(codes(report)).toContain("warning:invalid-overview");
     expect(report.nextSteps[0]).toContain("Fix the errors above");
   });
 
@@ -409,6 +416,31 @@ describe("bb plugin publish --check", () => {
     expect(tagged.nextSteps.join("\n")).toContain(
       "git push origin notes/v1.0.0",
     );
+  });
+
+  it("lists a plugin without a category or with a bad overview, with warnings", async () => {
+    await writePlugin(root, { bbMarketplace: undefined });
+    await writeFile(join(root, "PLUGIN_OVERVIEW.md"), "x".repeat(4001));
+    await initRepo(root, "https://github.com/acme/bb-plugin-notes.git");
+    await git(root, "tag", "v1.0.0");
+
+    const report = await runPublishCheck({
+      directory: root,
+      source: null,
+      offline: true,
+      environment: fakeEnvironment(world),
+    });
+    expect(report.ok).toBe(true);
+    expect(codes(report)).toEqual([
+      "info:offline",
+      "warning:missing-category",
+      "warning:invalid-overview",
+    ]);
+    expect(report.listing?.category).toBeNull();
+    expect(
+      report.findings.find((finding) => finding.code === "invalid-overview")
+        ?.message,
+    ).toContain("The listing drops the overview");
   });
 
   it("reports a bare X.Y.Z tag as no-release-tag with a hint to tag vX.Y.Z", async () => {
@@ -589,7 +621,7 @@ describe("bb plugin publish --check", () => {
     expect(codes(report)).toEqual([
       "info:offline",
       "warning:not-opted-in",
-      "error:invalid-overview",
+      "warning:invalid-overview",
       "error:invalid-screenshot",
     ]);
     expect(report.nextSteps.join("\n")).toContain(

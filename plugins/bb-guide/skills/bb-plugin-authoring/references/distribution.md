@@ -256,14 +256,16 @@ The listing comes from the plugin's own files:
   rest are lowercased, and only kebab-case words of at most 32 characters are
   kept, up to 10.
 - `bbMarketplace` is a top-level key that bb ignores when it loads the plugin.
-  `category` is required, `secondaryCategories` holds at most 3 other
-  categories, and an unknown key is an error. `bb plugin new` scaffolds
-  `"category": "choose-a-category"`; replace it.
+  Set `category`: it is optional, but a plugin without one is listed
+  uncategorized. An unknown category id is an error, `secondaryCategories`
+  holds at most 3 other categories, and an unknown key is an error.
+  `bb plugin new` scaffolds an empty `bbMarketplace` to fill in.
 - `bbMarketplace.screenshots` holds at most 6 relative paths inside the plugin
   directory: PNG, JPEG, or WebP files whose extension matches their data, at
   most 2 MiB and at least 1200 px wide.
 - PLUGIN_OVERVIEW.md beside package.json becomes the overview (see
-  [Store listing text](#store-listing-text)). It is optional.
+  [Store listing text](#store-listing-text)). It is optional, and an invalid
+  one drops only the overview, not the listing.
 - npm: the overview, a file icon, and every screenshot must be in the
   published tarball, so add them to `files` when package.json has one.
 - The author is the GitHub owner, or for npm the owner of `repository`.
@@ -287,9 +289,9 @@ https://getbb.app/marketplace/index/v1/report.json under
 To update a listing, release a new version. Plugins that were added to
 get-bb/marketplace by pull request keep working; their authors update them the
 same way, by self-publishing from the same source or a repository of the same
-GitHub owner. The self-published listing then replaces the old entry
-completely, so the release must carry the category, screenshots, and
-overview.
+GitHub owner. The self-published listing then replaces the old entry; the old
+category, screenshots, and overview carry over only where the release has
+none.
 
 ### Store listing text
 
@@ -315,7 +317,8 @@ tarball) and publishes it as the listing's overview. A bundled BB plugin uses
 the same file, and the bb-official generator folds it into the built catalog.
 
 Follow these rules. `bb plugin publish --check` reports a file that breaks
-one, and the crawler skips the listing (`invalid-overview`).
+one (`invalid-overview`), and the crawler then publishes the listing without
+the overview.
 
 - UTF-8 text with a maximum of 4000 characters. Aim for 700 to 1800.
 - Headings, paragraphs, emphasis, strong text, strikethrough, inline code,
