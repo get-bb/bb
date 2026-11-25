@@ -613,16 +613,16 @@ function rankPathQueryMatches<T>(
 function mergeRankedMatches<T>(
   matches: readonly RankedPathMatch<T>[],
 ): RankedPathMatch<T>[] {
-  const matchesByPath = new Map<string, RankedPathMatch<T>>();
+  const matchesByItem = new Map<T, RankedPathMatch<T>>();
 
   for (const match of matches) {
-    const existing = matchesByPath.get(match.path);
+    const existing = matchesByItem.get(match.item);
     if (!existing || compareRankedMatches(match, existing) < 0) {
-      matchesByPath.set(match.path, match);
+      matchesByItem.set(match.item, match);
     }
   }
 
-  return [...matchesByPath.values()].sort(compareRankedMatches);
+  return [...matchesByItem.values()].sort(compareRankedMatches);
 }
 
 function rankedMatchesToFuzzyMatches<T>(

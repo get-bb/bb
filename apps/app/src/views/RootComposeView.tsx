@@ -18,6 +18,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useProviderDirectory } from "@/hooks/queries/system-queries";
 import {
   findLocalPathProjectSourceForHost,
+  isAbsoluteHostPath,
   type EnvironmentStatus,
   type Host,
   type ProviderInfo,
@@ -1022,6 +1023,17 @@ function RootComposeSurface({
       if (isProjectless) {
         return null;
       }
+      if (isAbsoluteHostPath(resource.path)) {
+        const hostId =
+          rootPanelEnvironmentQuery.data?.hostId ?? rootProjectHostId;
+        if (hostId === null) return null;
+        return () => {
+          openLiveFilePreview({
+            target: { kind: "host", hostId, path: resource.path },
+            location: null,
+          });
+        };
+      }
       if (rootPanelEnvironmentId === null) return null;
       return () => {
         openLiveFilePreview({
@@ -1035,6 +1047,8 @@ function RootComposeSurface({
       };
     },
     [
+      rootPanelEnvironmentQuery.data?.hostId,
+      rootProjectHostId,
       isProjectless,
       openLiveFilePreview,
       navigate,

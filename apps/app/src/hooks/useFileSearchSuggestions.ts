@@ -65,6 +65,7 @@ export function useFileSearchSuggestions(
     hostId: args.hostId,
     currentThreadId: args.currentThreadId,
     includeDirectories: false,
+    includeExtraFolders: false,
   });
   const suggestions = useMemo<FilePathSearchSuggestion[]>(
     () =>

@@ -1,5 +1,9 @@
 import { useMemo } from "react";
-import type { WorkspacePathEntry } from "@bb/server-contract";
+import { joinHostPath } from "@bb/domain";
+import type {
+  WorkspacePathEntry,
+  WorkspaceSearchPathEntry,
+} from "@bb/server-contract";
 import { useEnvironmentPathSuggestions } from "./queries/environment-queries";
 import { useProjectPathSuggestions } from "./queries/project-queries";
 import { useThreadStoragePaths } from "./queries/thread-panel-queries";
@@ -20,6 +24,7 @@ type WorkspaceSource = "environment" | "project" | "none";
 export interface PathSuggestion {
   source: PathSuggestionSource;
   entryKind: PathSuggestionEntryKind;
+  folderPath: string | null;
   path: string;
   name: string;
   score: number;
@@ -34,6 +39,7 @@ interface UsePathSuggestionsArgs {
   hostId?: string | null;
   currentThreadId?: string;
   includeDirectories: boolean;
+  includeExtraFolders: boolean;
 }
 
 interface UsePathSuggestionsResult {
@@ -78,6 +84,7 @@ function toPathSuggestion(
   return {
     source: rankedSuggestion.source,
     entryKind: rankedSuggestion.entryKind,
+    folderPath: rankedSuggestion.folderPath,
     path: rankedSuggestion.path,
     name: rankedSuggestion.name,
     score: rankedSuggestion.score,
@@ -87,12 +94,13 @@ function toPathSuggestion(
 
 interface ToRankedPathSuggestionArgs {
   pathEntry: WorkspacePathEntry;
+  folderPath: string | null;
   source: PathSuggestionSource;
   sourceOrder: number;
 }
 
 interface BuildPathSuggestionsArgs {
-  workspacePaths: readonly WorkspacePathEntry[];
+  workspacePaths: readonly WorkspaceSearchPathEntry[];
   threadStoragePaths: readonly WorkspacePathEntry[];
   limit: number;
 }
@@ -105,7 +113,14 @@ function toRankedPathSuggestion(
     sourceRank: getSourceRank(args.source),
     sourceOrder: args.sourceOrder,
     entryKind: args.pathEntry.kind,
-    path: args.pathEntry.path,
+    folderPath: args.folderPath,
+    path:
+      args.folderPath === null
+        ? args.pathEntry.path
+        : (joinHostPath({
+            rootPath: args.folderPath,
+            relativePath: args.pathEntry.path,
+          }) ?? args.pathEntry.path),
     name: args.pathEntry.name,
     score: args.pathEntry.score,
     positions: args.pathEntry.positions,
@@ -121,6 +136,7 @@ export function buildPathSuggestions(
     rankedSuggestions.push(
       toRankedPathSuggestion({
         pathEntry,
+        folderPath: pathEntry.folderPath,
         source: "workspace",
         sourceOrder,
       }),
@@ -130,6 +146,7 @@ export function buildPathSuggestions(
     rankedSuggestions.push(
       toRankedPathSuggestion({
         pathEntry,
+        folderPath: null,
         source: "thread-storage",
         sourceOrder,
       }),
@@ -179,7 +196,7 @@ export function usePathSuggestions(
     [args.includeDirectories, debouncedQuery, oversampleLimit],
   );
 
-  const projectWorkspaceQuery = useProjectPathSuggestions({
+  const projectArgs = {
     projectId: workspaceSource === "project" ? args.projectId : undefined,
     environmentId: null,
     hostId: args.hostId ?? null,
@@ -187,19 +204,43 @@ export function usePathSuggestions(
     limit: oversampleLimit,
     includeFiles: true,
     includeDirectories: args.includeDirectories,
-  });
-  const environmentWorkspaceQuery = useEnvironmentPathSuggestions({
+  };
+  const environmentArgs = {
     environmentId:
       workspaceSource === "environment" ? args.environmentId : undefined,
     query: debouncedQuery,
     limit: oversampleLimit,
     includeFiles: true,
     includeDirectories: args.includeDirectories,
+  };
+  const projectWorkspaceQuery = useProjectPathSuggestions({
+    ...projectArgs,
+    folders: "main",
+  });
+  const projectExtraFoldersQuery = useProjectPathSuggestions({
+    ...projectArgs,
+    projectId: args.includeExtraFolders ? projectArgs.projectId : undefined,
+    folders: "extra",
+  });
+  const environmentWorkspaceQuery = useEnvironmentPathSuggestions({
+    ...environmentArgs,
+    folders: "main",
+  });
+  const environmentExtraFoldersQuery = useEnvironmentPathSuggestions({
+    ...environmentArgs,
+    environmentId: args.includeExtraFolders
+      ? environmentArgs.environmentId
+      : undefined,
+    folders: "extra",
   });
   const workspaceQuery =
     workspaceSource === "environment"
       ? environmentWorkspaceQuery
       : projectWorkspaceQuery;
+  const extraFoldersQuery =
+    workspaceSource === "environment"
+      ? environmentExtraFoldersQuery
+      : projectExtraFoldersQuery;
   const threadStorageQuery = useThreadStoragePaths(
     args.currentThreadId ?? "",
     threadStorageOptions,
@@ -215,7 +256,12 @@ export function usePathSuggestions(
 
     return buildPathSuggestions({
       workspacePaths: includeWorkspace
-        ? (workspaceQuery.data?.paths ?? [])
+        ? [
+            ...(workspaceQuery.data?.paths ?? []),
+            ...(args.includeExtraFolders
+              ? (extraFoldersQuery.data?.paths ?? [])
+              : []),
+          ]
         : [],
       threadStoragePaths: includeThreadStorage
         ? (threadStorageQuery.data?.paths ?? [])
@@ -229,13 +275,19 @@ export function usePathSuggestions(
     limit,
     threadStorageQuery.data?.paths,
     workspaceQuery.data?.paths,
+    extraFoldersQuery.data?.paths,
+    args.includeExtraFolders,
   ]);
 
+  const isExtraFoldersQueryEnabled =
+    isWorkspaceQueryEnabled && args.includeExtraFolders;
   const isFetching =
     (isWorkspaceQueryEnabled && workspaceQuery.isFetching) ||
+    (isExtraFoldersQueryEnabled && extraFoldersQuery.isFetching) ||
     (isThreadStorageQueryEnabled && threadStorageQuery.isFetching);
   const isPending =
     (isWorkspaceQueryEnabled && workspaceQuery.isPending) ||
+    (isExtraFoldersQueryEnabled && extraFoldersQuery.isPending) ||
     (isThreadStorageQueryEnabled && threadStorageQuery.isPending);
   const isSearching = isDebouncing || isPending || isFetching;
   const isLoading = hasQuery && suggestions.length === 0 && isSearching;
@@ -243,6 +295,7 @@ export function usePathSuggestions(
   const isError =
     hasQuery &&
     ((isWorkspaceQueryEnabled && workspaceQuery.isError) ||
+      (isExtraFoldersQueryEnabled && extraFoldersQuery.isError) ||
       (isThreadStorageQueryEnabled && threadStorageQuery.isError));
 
   return {

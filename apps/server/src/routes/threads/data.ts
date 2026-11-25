@@ -505,7 +505,8 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_paths",
-          path: target.storagePath,
+          rootPaths: [target.storagePath],
+          followRootSymlink: false,
           ...(query.query ? { query: query.query } : {}),
           limit,
           includeFiles: inclusion.includeFiles,
@@ -516,7 +517,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
         },
       });
       return context.json({
-        paths: result.paths,
+        paths: result.paths.map(({ rootPath: _rootPath, ...entry }) => entry),
         truncated: result.truncated,
         storageRootPath: target.storagePath,
       });

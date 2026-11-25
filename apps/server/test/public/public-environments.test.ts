@@ -1,11 +1,17 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { getEnvironment, threads } from "@bb/db";
+import {
+  createProjectSourceFolder,
+  getEnvironment,
+  setEnvironmentColumns,
+  threads,
+} from "@bb/db";
 import {
   registerTestHostRpcCapture,
   reportQueuedCommandSuccess,
   waitForQueuedCommand,
 } from "../helpers/commands.js";
+import { registerHostRpcResponder } from "../helpers/host-rpc.js";
 import { readJson } from "../helpers/json.js";
 import {
   seedEnvironment,
@@ -88,10 +94,11 @@ describe("public environments", () => {
         harness,
         ({ command }) =>
           command.type === "host.list_paths" &&
-          command.path === "/tmp/personal-workspace",
+          command.rootPaths[0] === "/tmp/personal-workspace",
       );
       expect(pathsCommand.command).toMatchObject({
-        path: "/tmp/personal-workspace",
+        rootPaths: ["/tmp/personal-workspace"],
+        followRootSymlink: true,
         query: "app",
         includeFiles: true,
         includeDirectories: false,
@@ -118,6 +125,7 @@ describe("public environments", () => {
             name: "app.ts",
             score: 80,
             positions: [0, 1, 2],
+            rootPath: "/tmp/personal-workspace",
           },
         ],
         truncated: false,
@@ -133,9 +141,182 @@ describe("public environments", () => {
             name: "app.ts",
             score: 80,
             positions: [0, 1, 2],
+            folderPath: null,
           },
         ],
         truncated: false,
+      });
+    });
+  });
+
+  it("searches the project's and the environment's folders in one host search and says which folder each result is from", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-environment-paths-folders",
+      });
+      const searched: string[][] = [];
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          if (command.type !== "host.list_paths") {
+            throw new Error(`Unexpected RPC ${command.type}`);
+          }
+          searched.push(command.rootPaths);
+          return {
+            ok: true,
+            result: {
+              paths: command.rootPaths.map((rootPath) => ({
+                kind: "file" as const,
+                path: "src/app.ts",
+                name: "app.ts",
+                score: 50,
+                positions: [],
+                rootPath,
+              })),
+              truncated: true,
+            },
+          };
+        },
+      });
+      const { project, source } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/work/app",
+      });
+      createProjectSourceFolder(harness.db, harness.hub, {
+        projectId: project.id,
+        projectSourceId: source.id,
+        path: "/work/api",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/work/app",
+      });
+      setEnvironmentColumns(harness.db, environment.id, {
+        additionalPaths: [{ path: "/work/extra", replaces: null }],
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}/paths?query=app&includeFiles=true&includeDirectories=false`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(searched).toEqual([["/work/app", "/work/api", "/work/extra"]]);
+      await expect(readJson(response)).resolves.toEqual({
+        paths: [
+          expect.objectContaining({ path: "src/app.ts", folderPath: null }),
+          expect.objectContaining({
+            path: "src/app.ts",
+            folderPath: "/work/api",
+          }),
+          expect.objectContaining({
+            path: "src/app.ts",
+            folderPath: "/work/extra",
+          }),
+        ],
+        truncated: true,
+      });
+
+      for (const [folders, expected] of [
+        ["main", ["/work/app"]],
+        ["extra", ["/work/api", "/work/extra"]],
+      ] as const) {
+        searched.length = 0;
+        const scoped = await harness.app.request(
+          `/api/v1/environments/${environment.id}/paths?query=app&includeFiles=true&includeDirectories=false&folders=${folders}`,
+        );
+        expect(scoped.status).toBe(200);
+        expect(searched).toEqual([expected]);
+      }
+    });
+  });
+
+  it("answers an extra-folders search with no extra folders without calling the host", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-environment-paths-no-extra",
+      });
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          throw new Error(`Unexpected RPC ${command.type}`);
+        },
+      });
+      const { project } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/work/app",
+      });
+      const environment = seedEnvironment(harness.deps, {
+        hostId: host.id,
+        projectId: project.id,
+        path: "/work/app",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/environments/${environment.id}/paths?query=app&includeFiles=true&includeDirectories=false&folders=extra`,
+      );
+
+      expect(response.status).toBe(200);
+      await expect(readJson(response)).resolves.toEqual({
+        paths: [],
+        truncated: false,
+      });
+    });
+  });
+
+  it("searches the project's folders for the chosen machine before a thread has an environment", async () => {
+    await withTestHarness(async (harness) => {
+      const { host, session } = seedHostSession(harness.deps, {
+        id: "host-project-paths-folders",
+      });
+      const searched: string[][] = [];
+      registerHostRpcResponder(harness, {
+        hostId: host.id,
+        sessionId: session.id,
+        handle: ({ command }) => {
+          if (command.type !== "host.list_paths") {
+            throw new Error(`Unexpected RPC ${command.type}`);
+          }
+          searched.push(command.rootPaths);
+          return {
+            ok: true,
+            result: {
+              paths: command.rootPaths.map((rootPath) => ({
+                kind: "file" as const,
+                path: "README.md",
+                name: "README.md",
+                score: 50,
+                positions: [],
+                rootPath,
+              })),
+              truncated: false,
+            },
+          };
+        },
+      });
+      const { project, source } = seedProjectWithSource(harness.deps, {
+        hostId: host.id,
+        path: "/work/app",
+      });
+      createProjectSourceFolder(harness.db, harness.hub, {
+        projectId: project.id,
+        projectSourceId: source.id,
+        path: "/work/docs",
+      });
+
+      const response = await harness.app.request(
+        `/api/v1/projects/${project.id}/paths?hostId=${host.id}&query=readme&includeFiles=true&includeDirectories=true`,
+      );
+
+      expect(response.status).toBe(200);
+      expect(searched).toEqual([["/work/app", "/work/docs"]]);
+      await expect(readJson(response)).resolves.toMatchObject({
+        paths: [
+          { path: "README.md", folderPath: null },
+          { path: "README.md", folderPath: "/work/docs" },
+        ],
       });
     });
   });

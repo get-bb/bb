@@ -20,7 +20,7 @@ import {
   type EnvironmentPathsQuery,
   type EnvironmentReposResponse,
   type UpdateEnvironmentRequest,
-  type WorkspacePathListResponse,
+  type WorkspaceSearchPathListResponse,
   type SystemEnvironmentProvider,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -78,7 +78,7 @@ export interface EnvironmentReposArgs {
 export type EnvironmentArchiveThreadsResult = EnvironmentArchiveThreadsResponse;
 export type EnvironmentCommitResult = CommitActionResponse;
 export type EnvironmentGetResult = Environment;
-export type EnvironmentPathsResult = WorkspacePathListResponse;
+export type EnvironmentPathsResult = WorkspaceSearchPathListResponse;
 export type EnvironmentUpdateResult = Environment;
 export interface EnvironmentListArgs {
   environmentProviderId?: string;
@@ -175,6 +175,7 @@ function environmentPathsQuery(
     includeFiles: args.includeFiles,
     limit: args.limit,
     query: args.query,
+    ...(args.folders === undefined ? {} : { folders: args.folders }),
   };
 }
 

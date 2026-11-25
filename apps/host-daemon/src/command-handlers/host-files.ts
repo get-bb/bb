@@ -19,6 +19,7 @@ import {
   finalizeListedFiles,
   finalizeListedPaths,
   listWorkspacePathCandidates,
+  type ListedPath,
 } from "./file-list.js";
 import {
   readFileForTransport,
@@ -99,43 +100,56 @@ export async function listHostFiles(
   }
 }
 
+interface RootedListedPath extends ListedPath {
+  rootPath: string;
+}
+
+async function listHostRootPathCandidates(
+  command: CommandOf<"host.list_paths">,
+  rootPath: string,
+): Promise<RootedListedPath[]> {
+  try {
+    const realRootPath = await resolveNonSymlinkDirectoryPath({
+      description: "Path",
+      path: command.followRootSymlink ? await fs.realpath(rootPath) : rootPath,
+    });
+    const candidates = await listWorkspacePathCandidates({
+      root: realRootPath,
+      includeFiles: command.includeFiles,
+      includeDirectories: command.includeDirectories,
+      includeHidden: command.includeHidden,
+      excludeNames: command.excludeNames,
+      respectGitIgnore: command.respectGitIgnore,
+      limit: command.limit,
+      ...(command.query ? { query: command.query } : {}),
+    });
+    return candidates.map((candidate) => ({ ...candidate, rootPath }));
+  } catch (error) {
+    if (isFsErrorWithCode(error, "ENOENT")) return [];
+    throw error;
+  }
+}
+
 export async function listHostPaths(
   command: CommandOf<"host.list_paths">,
   signal: AbortSignal,
 ): Promise<HostDaemonOnlineRpcResult<"host.list_paths">> {
-  if (!path.isAbsolute(command.path)) {
+  if (!command.rootPaths.every((rootPath) => path.isAbsolute(rootPath))) {
     throw new CommandDispatchError("invalid_path", "Path must be absolute");
   }
-
-  try {
-    const realRootPath = await resolveNonSymlinkDirectoryPath({
-      description: "Path",
-      path: command.path,
-    });
-
-    return await finalizeListedPaths({
-      paths: await listWorkspacePathCandidates({
-        root: realRootPath,
-        includeFiles: command.includeFiles,
-        includeDirectories: command.includeDirectories,
-        includeHidden: command.includeHidden,
-        excludeNames: command.excludeNames,
-        respectGitIgnore: command.respectGitIgnore,
-        limit: command.limit,
-        ...(command.query ? { query: command.query } : {}),
-      }),
-      limit: command.limit,
-      includeFiles: command.includeFiles,
-      includeDirectories: command.includeDirectories,
-      signal,
-      ...(command.query ? { query: command.query } : {}),
-    });
-  } catch (error) {
-    if (isFsErrorWithCode(error, "ENOENT")) {
-      return { paths: [], truncated: false };
-    }
-    throw error;
-  }
+  const candidatesByRoot = await Promise.all(
+    command.rootPaths.map((rootPath) =>
+      listHostRootPathCandidates(command, rootPath),
+    ),
+  );
+  return finalizeListedPaths({
+    paths: candidatesByRoot.flat(),
+    limit: command.limit,
+    includeFiles: command.includeFiles,
+    includeDirectories: command.includeDirectories,
+    signal,
+    ...(command.query ? { query: command.query } : {}),
+  });
 }
 
 const DIRECTORY_BROWSE_SKIP_NAMES = new Set(["node_modules"]);

@@ -24,7 +24,7 @@ import type {
   UpdateProjectRequest,
   UpdateProjectSourceRequest,
   UploadedPromptAttachment,
-  WorkspacePathListResponse,
+  WorkspaceSearchPathListResponse,
   WorkspaceFileListResponse,
 } from "@bb/server-contract";
 import { uploadedPromptAttachmentSchema } from "@bb/server-contract";
@@ -206,7 +206,7 @@ export type ProjectGetResult = ProjectResponse;
 export type ProjectListResult =
   | ProjectResponse[]
   | ProjectWithThreadsResponse[];
-export type ProjectPathsResult = WorkspacePathListResponse;
+export type ProjectPathsResult = WorkspaceSearchPathListResponse;
 export type ProjectPromptHistoryResult = PromptHistoryResponse;
 export type ProjectReorderResult = ProjectResponse[];
 export type ProjectSidebarBootstrapResult = SidebarBootstrapResponse;

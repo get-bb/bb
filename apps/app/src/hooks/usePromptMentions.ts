@@ -130,6 +130,7 @@ export function usePromptMentions(
     hostId: options.hostId,
     currentThreadId: options.threadStorageThreadId,
     includeDirectories: true,
+    includeExtraFolders: true,
   });
   const projectNamesQuery = useSidebarNavigation({
     enabled: includeBuiltInSources && hasQuery,

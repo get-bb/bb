@@ -265,7 +265,8 @@ export function registerFileRoutes(app: Hono, deps: AppDeps): void {
         timeoutMs: COMMAND_TIMEOUT_MS,
         command: {
           type: "host.list_paths",
-          path: payload.path,
+          rootPaths: [payload.path],
+          followRootSymlink: false,
           limit: payload.limit ?? HOST_FILE_LIST_LIMIT_DEFAULT,
           includeFiles: payload.includeFiles,
           includeDirectories: payload.includeDirectories,
