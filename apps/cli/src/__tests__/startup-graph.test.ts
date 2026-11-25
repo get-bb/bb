@@ -328,6 +328,13 @@ describe("bb startup module graph", () => {
           serverUrl,
         );
         expect(direct.stdout).toBe("fixture ran: inspect fixture-1\n");
+        const coreGroupChunks = direct.urls.filter((url) =>
+          CORE_COMMAND_GROUPS.some((group) =>
+            new RegExp(`/index-chunks/${group.name}-[A-Z0-9]+\\.js$`).test(url),
+          ),
+        );
+        expect(coreGroupChunks).toEqual([]);
+        expect(loaded(direct, `${chunkDirUrl}json-shapes-`)).toEqual([]);
 
         const raw = await runCli(
           "dist",
