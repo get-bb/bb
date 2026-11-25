@@ -1,4 +1,4 @@
-import { readThreads } from "./sdk-data.js";
+import { readThreads, readThreadsById } from "./sdk-data.js";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { policySchema, runSchema, type Policy, type Run } from "./contract.js";
 import type { ColdStorage } from "./cold-storage.js";
@@ -12,12 +12,18 @@ const DEFAULT_POLICY: Policy = {
   deleteDevDataOnCheckoutRemoval: false,
 };
 const BATCH_LIMIT = 50;
+const SNAPSHOT_MAX_AGE_MS = 60_000;
+type ThreadRow = Awaited<ReturnType<typeof readThreads>>[number];
 
 export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
   let disposed = false;
   let running = false;
+  let createdThreads = 0;
   bb.onDispose(() => {
     disposed = true;
+  });
+  bb.events.on("thread.created", () => {
+    createdThreads += 1;
   });
   function requireActive() {
     if (disposed) throw new Error("Storage & retention plugin is disabled.");
@@ -59,6 +65,43 @@ export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
     bb.realtime.publish("policy-changed", null);
     return state();
   }
+  async function recheck(
+    snapshot: readonly ThreadRow[],
+    policy: Policy,
+    action: "archive" | "coldStore" | "delete",
+    candidate: { rootId: string; memberIds: readonly string[] },
+  ) {
+    const cascade = await bb.sdk.threads.experimental_listCascade({
+      threadIds: [candidate.rootId],
+      action: action === "archive" ? "archive" : "delete",
+    });
+    const requested = new Set([
+      candidate.rootId,
+      ...candidate.memberIds,
+      ...cascade.threads.flatMap((entry) => entry.cascadeThreadIds),
+    ]);
+    const rows = await readThreadsById(bb, [...requested]);
+    const root = rows.get(candidate.rootId);
+    const related = [root?.parentThreadId, root?.sourceThreadId].filter(
+      (id): id is string => typeof id === "string" && !requested.has(id),
+    );
+    if (related.length > 0) {
+      for (const [id, row] of await readThreadsById(bb, related))
+        rows.set(id, row);
+      for (const id of related) requested.add(id);
+    }
+    const overlay = new Map(snapshot.map((thread) => [thread.id, thread]));
+    for (const id of requested) {
+      const row = rows.get(id);
+      if (row === undefined) overlay.delete(id);
+      else overlay.set(id, row);
+    }
+    const threads = [...overlay.values()];
+    const fresh = selectCandidates(threads, policy, Date.now())[action].find(
+      (entry) => entry.rootId === candidate.rootId,
+    );
+    return { fresh, threads };
+  }
   async function sweep() {
     if (running || disposed) return;
     running = true;
@@ -71,7 +114,10 @@ export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
         policy.deleteAfterDays === null
       )
         return;
-      const selected = await candidates(policy);
+      let takenAt = Date.now();
+      let snapshotCreatedThreads = createdThreads;
+      let snapshot: readonly ThreadRow[] = await readThreads(bb);
+      const selected = selectCandidates(snapshot, policy, Date.now());
       const run: Run = {
         ranAt: Date.now(),
         archivedCount: 0,
@@ -91,10 +137,21 @@ export function createService(bb: BbPluginApi, coldStorage: ColdStorage) {
           )
             break;
           try {
-            const threads = await readThreads(bb);
-            const fresh = selectCandidates(threads, current, Date.now())[
-              action
-            ].find((entry) => entry.rootId === candidate.rootId);
+            if (
+              createdThreads !== snapshotCreatedThreads ||
+              Date.now() - takenAt >= SNAPSHOT_MAX_AGE_MS
+            ) {
+              takenAt = Date.now();
+              snapshotCreatedThreads = createdThreads;
+              snapshot = await readThreads(bb);
+              if (disposed) return;
+            }
+            const { fresh, threads } = await recheck(
+              snapshot,
+              current,
+              action,
+              candidate,
+            );
             if (disposed) return;
             if (fresh === undefined) continue;
             if (action === "archive") {

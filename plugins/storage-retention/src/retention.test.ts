@@ -10,6 +10,27 @@ import type { ColdThreadCursor } from "./contract.js";
 import { selectCandidates, type RetentionThread } from "./policy.js";
 import plugin from "./server.js";
 
+type ThreadRow = ReturnType<typeof makeThreadResponse>;
+function listRows(rows: () => readonly ThreadRow[]) {
+  return async ({
+    offset = 0,
+    limit = 500,
+    threadIds,
+  }: {
+    offset?: number;
+    limit?: number;
+    threadIds?: readonly string[];
+  } = {}) =>
+    threadIds === undefined
+      ? rows().slice(offset, offset + limit)
+      : rows().filter((row) => threadIds.includes(row.id));
+}
+function noCascade({ threadIds }: { threadIds: readonly string[] }) {
+  return {
+    threads: threadIds.map((threadId) => ({ threadId, cascadeThreadIds: [] })),
+  };
+}
+
 const DAY = 86400000;
 const NOW = 100 * DAY;
 function thread(
@@ -119,9 +140,10 @@ describe("retention plugin", () => {
       pluginId: "storage-retention",
       sdk: {
         threads: {
-          list: async () => [
+          list: listRows(() => [
             makeThreadResponse({ id: "thr_old", updatedAt: 1 }),
-          ],
+          ]),
+          experimental_listCascade: async (args) => noCascade(args),
           archive: async ({ threadId }) => ({ archivedThreadIds: [threadId] }),
         },
       },
@@ -185,8 +207,8 @@ describe("retention plugin", () => {
       pluginId: "storage-retention",
       sdk: {
         threads: {
-          list: async ({ offset = 0, limit }) =>
-            rows.slice(offset, offset + limit),
+          list: listRows(() => rows),
+          experimental_listCascade: async (args) => noCascade(args),
           archive: async ({ threadId }) => {
             if (threadId === "thr_001") throw new Error("offline");
             return { archivedThreadIds: ["thr_archived"] };
@@ -246,6 +268,7 @@ describe("retention plugin", () => {
               deletedAt: deleted ? 2 : null,
             }),
           ],
+          experimental_listCascade: async (args) => noCascade(args),
           delete: async () => {
             deleted = true;
             return { ok: true };
@@ -350,6 +373,7 @@ describe("retention plugin", () => {
           list: async () => [
             makeThreadResponse({ id: "thr_old", archivedAt: 1 }),
           ],
+          experimental_listCascade: async (args) => noCascade(args),
           delete: async () => ({ ok: true }),
           experimental_export: async () => {
             if (failures-- > 0) throw new Error("disk full");
@@ -793,7 +817,7 @@ describe("retention plugin", () => {
       pluginId: "storage-retention",
       sdk: {
         threads: {
-          list: async () => [
+          list: listRows(() => [
             makeThreadResponse({ id: "thr_old", archivedAt: 1 }),
             makeThreadResponse({
               id: "thr_owned",
@@ -801,7 +825,8 @@ describe("retention plugin", () => {
               archivedAt: 1,
             }),
             makeThreadResponse({ id: "thr_keep", archivedAt: 1, pinnedAt: 1 }),
-          ],
+          ]),
+          experimental_listCascade: async (args) => noCascade(args),
           delete: async () => ({ ok: true }),
         },
       },
@@ -830,7 +855,7 @@ describe("retention plugin", () => {
       pluginId: "storage-retention",
       sdk: {
         threads: {
-          list: async () => {
+          list: listRows(() => {
             reads++;
             return [
               makeThreadResponse({
@@ -844,7 +869,8 @@ describe("retention plugin", () => {
               }),
               makeThreadResponse({ id: "thr_old", archivedAt: 1 }),
             ];
-          },
+          }),
+          experimental_listCascade: async (args) => noCascade(args),
           delete: async () => ({ ok: true }),
         },
       },
@@ -867,6 +893,212 @@ describe("retention plugin", () => {
     }
   });
 
+  it("reads every thread once per sweep and rechecks each group by ID", async () => {
+    const rows = Array.from({ length: 30 }, (_, i) =>
+      makeThreadResponse({ id: `thr_${i}`, updatedAt: 1 }),
+    );
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: listRows(() => rows),
+          experimental_listCascade: async (args) => noCascade(args),
+          archive: async ({ threadId }) => ({ archivedThreadIds: [threadId] }),
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: 30,
+        deleteAfterDays: null,
+      });
+      await host.harness.runSchedule("retention");
+      const reads = host.harness.sdk.callsTo("threads.list") as [
+        { threadIds?: readonly string[] },
+      ][];
+      expect(
+        reads.filter(([args]) => args.threadIds === undefined),
+      ).toHaveLength(1);
+      expect(
+        reads.filter(([args]) => args.threadIds !== undefined),
+      ).toHaveLength(30);
+      expect(host.harness.sdk.callsTo("threads.archive")).toHaveLength(30);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
+  it("skips a group whose cascade gained a recent thread after the snapshot", async () => {
+    let snapshotTaken = false;
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: listRows(() => {
+            const rows = [
+              makeThreadResponse({ id: "thr_root", updatedAt: 1 }),
+              makeThreadResponse({ id: "thr_other", updatedAt: 1 }),
+            ];
+            if (snapshotTaken)
+              rows.push(
+                makeThreadResponse({
+                  id: "thr_new_child",
+                  parentThreadId: "thr_root",
+                  updatedAt: Date.now(),
+                }),
+              );
+            snapshotTaken = true;
+            return rows;
+          }),
+          experimental_listCascade: async ({ threadIds }) => ({
+            threads: threadIds.map((threadId) => ({
+              threadId,
+              cascadeThreadIds:
+                threadId === "thr_root" ? ["thr_new_child"] : [],
+            })),
+          }),
+          archive: async ({ threadId }) => ({ archivedThreadIds: [threadId] }),
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: 30,
+        deleteAfterDays: null,
+      });
+      await host.harness.runSchedule("retention");
+      expect(host.harness.sdk.callsTo("threads.archive")).toEqual([
+        [{ threadId: "thr_other" }],
+      ]);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
+  it("rereads every thread after a thread is created mid-sweep, so a new hidden side chat blocks its source", async () => {
+    const rows = [
+      makeThreadResponse({ id: "thr_a", updatedAt: 1 }),
+      makeThreadResponse({ id: "thr_b", updatedAt: 2 }),
+    ];
+    const sideChat = makeThreadResponse({
+      id: "thr_side_chat",
+      visibility: "hidden",
+      sourceThreadId: "thr_b",
+      lifecycleOwnerThreadId: "thr_b",
+      updatedAt: Date.now(),
+    });
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: listRows(() => rows),
+          experimental_listCascade: async (args) => noCascade(args),
+          archive: async ({ threadId }) => {
+            rows.push(sideChat);
+            await host.harness.emitThreadEvent("thread.created", {
+              thread: sideChat,
+            });
+            return { archivedThreadIds: [threadId] };
+          },
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: 30,
+        deleteAfterDays: null,
+      });
+      await host.harness.runSchedule("retention");
+      expect(host.harness.sdk.callsTo("threads.archive")).toEqual([
+        [{ threadId: "thr_a" }],
+      ]);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
+  it("reads every thread once per cold storage sweep and rechecks each thread by ID", async () => {
+    const rows = Array.from({ length: 30 }, (_, i) =>
+      makeThreadResponse({ id: `thr_${i}`, archivedAt: 1 }),
+    );
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: listRows(() => rows),
+          experimental_listCascade: async (args) => noCascade(args),
+          delete: async () => ({ ok: true }),
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: null,
+        coldStoreAfterDays: 30,
+        deleteAfterDays: null,
+      });
+      await host.harness.runSchedule("retention");
+      const reads = host.harness.sdk.callsTo("threads.list") as [
+        { threadIds?: readonly string[] },
+      ][];
+      expect(
+        reads.filter(([args]) => args.threadIds === undefined),
+      ).toHaveLength(1);
+      expect(
+        reads.filter(([args]) => args.threadIds !== undefined),
+      ).toHaveLength(30);
+      expect(host.harness.sdk.callsTo("threads.delete")).toHaveLength(30);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
+  it("rereads every thread after a thread is created mid-sweep, so a new fork keeps its source out of cold storage", async () => {
+    const rows = [
+      makeThreadResponse({ id: "thr_a", archivedAt: 1 }),
+      makeThreadResponse({ id: "thr_b", archivedAt: 2 }),
+    ];
+    const fork = makeThreadResponse({
+      id: "thr_fork",
+      sourceThreadId: "thr_b",
+      updatedAt: Date.now(),
+    });
+    const host = createFakePluginHost({
+      pluginId: "storage-retention",
+      sdk: {
+        threads: {
+          list: listRows(() => rows),
+          experimental_listCascade: async (args) => noCascade(args),
+          delete: async () => {
+            rows.push(fork);
+            await host.harness.emitThreadEvent("thread.created", {
+              thread: fork,
+            });
+            return { ok: true };
+          },
+        },
+      },
+    });
+    try {
+      plugin(host.bb);
+      await host.harness.callRpc("configure", {
+        archiveAfterDays: null,
+        coldStoreAfterDays: 30,
+        deleteAfterDays: null,
+      });
+      await host.harness.runSchedule("retention");
+      expect(host.harness.sdk.callsTo("threads.delete")).toEqual([
+        [{ threadId: "thr_a", childThreadsConfirmed: false }],
+      ]);
+    } finally {
+      await host.harness.dispose();
+    }
+  });
+
   it("stops a running batch after the plugin is disposed", async () => {
     let entered!: () => void;
     let release!: () => void;
@@ -880,10 +1112,11 @@ describe("retention plugin", () => {
       pluginId: "storage-retention",
       sdk: {
         threads: {
-          list: async () => [
+          list: listRows(() => [
             makeThreadResponse({ id: "thr_a", updatedAt: 1 }),
             makeThreadResponse({ id: "thr_b", updatedAt: 1 }),
-          ],
+          ]),
+          experimental_listCascade: async (args) => noCascade(args),
           archive: async () => {
             entered();
             await blocked;
