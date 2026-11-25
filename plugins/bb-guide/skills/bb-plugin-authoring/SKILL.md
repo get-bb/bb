@@ -35,7 +35,8 @@ the same change.
 - Read references/quickstart.md for the first plugin, manifest fields,
   branding, plugin ids, builds, installs, and dependencies.
 - Read references/distribution.md for exact API lookup, updates, Git or npm
-  release, multi-plugin repositories, custom marketplaces, and store text.
+  release, multi-plugin repositories, getting listed on the public
+  marketplace, custom marketplaces, and store text.
 
 ### Backend
 
@@ -138,7 +139,8 @@ the same change.
 - Use current names. Compatibility aliases can warn and can expire after one
   release. Removed APIs can throw.
 - Run bb plugin types when SDK declaration versions can drift.
-- Run bb plugin build before install, release, or marketplace submission.
+- Run bb plugin build before install, release, or publishing, and
+  bb plugin publish --check before a release meant for the public marketplace.
 
 ## Verification
 

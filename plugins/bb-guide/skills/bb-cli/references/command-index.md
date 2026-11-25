@@ -289,6 +289,7 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb plugin types`
 - `bb plugin migrate`
 - `bb plugin build`
+- `bb plugin publish`
 - `bb plugin dev`
 - `bb plugin reload`
 - `bb plugin rpc`

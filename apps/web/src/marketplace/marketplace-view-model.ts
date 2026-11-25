@@ -237,6 +237,38 @@ export function marketplaceRepositoryUrl(entry: MarketplaceV2Entry): string {
   return entry.source.git.url.replace(/\.git$/u, "");
 }
 
+export const MARKETPLACE_PUBLISH_PATH = "/marketplace/publish";
+
+export const MARKETPLACE_LISTING_REPORT_URL =
+  "https://getbb.app/marketplace/index/v1/report.json";
+
+export function marketplaceIsCommunityEntry(
+  entry: MarketplaceV2Entry,
+): boolean {
+  return !("bundled" in entry.source);
+}
+
+export function marketplacePublishableCategories(
+  manifest: MarketplaceV2Manifest,
+): MarketplaceV2Manifest["categories"] {
+  return manifest.categories.filter((category) => {
+    const entries = manifest.plugins.filter(
+      (entry) => entry.category === category.id,
+    );
+    return (
+      entries.length === 0 ||
+      entries.some((entry) => marketplaceIsCommunityEntry(entry))
+    );
+  });
+}
+
+export function marketplaceReportUrl(pluginId: string): string {
+  const url = new URL("https://github.com/get-bb/marketplace/issues/new");
+  url.searchParams.set("template", "report-plugin.yml");
+  url.searchParams.set("plugin", pluginId);
+  return url.toString();
+}
+
 export function marketplaceAuthorEntries(
   manifest: MarketplaceV2Manifest,
   github: string,

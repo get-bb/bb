@@ -9,7 +9,7 @@ import { makeTempDir } from "@bb/test-helpers";
 
 const skillRoot = fileURLToPath(
   new URL(
-    "../../../../plugins/bb-guide/skills/submit-a-plugin/",
+    "../../../../plugins/bb-guide/skills/publish-a-plugin/",
     import.meta.url,
   ),
 );
@@ -19,11 +19,9 @@ const deriveIdScriptPath = path.join(
   "scripts",
   "derive-plugin-id.mjs",
 );
-const skillReferencePaths = [
-  "marketplace-entry.md",
-  "plugin-release.md",
-  "pull-request.md",
-].map((name) => path.join(skillRoot, "references", name));
+const skillReferencePaths = ["listing.md", "plugin-release.md"].map((name) =>
+  path.join(skillRoot, "references", name),
+);
 
 async function readSkillTree(): Promise<string> {
   return (
@@ -42,7 +40,7 @@ async function deriveWithSkill(packageName: string): Promise<string> {
   }).trim();
 }
 
-describe("submit-a-plugin skill", () => {
+describe("publish-a-plugin skill", () => {
   it("derives dotted and underscored package ids with the product algorithm", async () => {
     for (const packageName of [
       "@acme/bb-plugin-release.notes",
@@ -77,10 +75,24 @@ describe("submit-a-plugin skill", () => {
   it("keeps release commands behind approval and disables npm lifecycle scripts", async () => {
     const skill = await readSkillTree();
 
-    expect(skill).toContain("A submission request does not approve a release.");
-    expect(skill).toContain("npm ci --ignore-scripts");
+    expect(skill).toContain("A listing request does not approve a release.");
+    expect(skill).toContain("bb plugin publish --check");
     expect(skill).toContain("npm pack --dry-run --ignore-scripts");
     expect(skill).toContain("npm publish --ignore-scripts");
     expect(skill).not.toContain("PLUGIN_DISPLAY_NAME");
+  });
+
+  it("publishes by topic, keyword, and release tag instead of a marketplace pull request", async () => {
+    const skill = await readSkillTree();
+
+    expect(skill).toContain("--add-topic bb-plugin");
+    expect(skill).toContain("bbMarketplace");
+    expect(skill).toContain(
+      "https://getbb.app/marketplace/index/v1/report.json",
+    );
+    expect(skill).toMatch(
+      /Do not open a pull request to\s+get-bb\/marketplace\./u,
+    );
+    expect(skill).not.toMatch(/entries\/<plugin-id>\.json|gh pr create/u);
   });
 });

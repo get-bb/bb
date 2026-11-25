@@ -1,6 +1,7 @@
 const MARKETPLACE_PATHS = [
   { prefix: "/marketplace/v1/", objectPrefix: "" },
   { prefix: "/marketplace/v2/", objectPrefix: "v2/" },
+  { prefix: "/marketplace/index/v1/", objectPrefix: "index/v1/" },
 ] as const;
 
 const MANIFEST_CACHE_CONTROL = "public, max-age=300, must-revalidate";

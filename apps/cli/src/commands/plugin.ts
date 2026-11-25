@@ -1915,6 +1915,48 @@ export function registerPluginCommands(
     );
 
   plugin
+    .command("publish [dir]")
+    .description(
+      "Check a plugin directory (default: cwd) against the public marketplace's listing rules — manifest, id, bbMarketplace category and screenshots, icon, PLUGIN_OVERVIEW.md, keywords, release tag, GitHub topic or npm tarball, and the live catalog — then print the exact steps to get listed. Listing is self-service: add the bb-plugin topic (GitHub) or keyword (npm), then push a semver tag or npm publish. Never pushes, tags, or publishes",
+    )
+    .requiredOption(
+      "--check",
+      "Run the checks (required; bb never publishes for you)",
+    )
+    .addOption(
+      new Option(
+        "--source <kind>",
+        "Check as a GitHub repository or an npm package (default: github when the repo has a github.com remote, else npm)",
+      ).choices(["github", "npm"]),
+    )
+    .option(
+      "--offline",
+      "Skip the live catalog, reserved ids, GitHub, and npm registry lookups",
+    )
+    .option("--json", "Output JSON")
+    .action(
+      action(
+        async (
+          dir: string | undefined,
+          opts: JsonOutputOptions & {
+            check: true;
+            source?: "github" | "npm";
+            offline?: boolean;
+          },
+        ) => {
+          const { runPublishCheckCommand } =
+            await import("../plugin-publish/command.js");
+          await runPublishCheckCommand({
+            directory: resolve(process.cwd(), dir ?? "."),
+            source: opts.source ?? null,
+            offline: opts.offline === true,
+            json: opts.json === true,
+          });
+        },
+      ),
+    );
+
+  plugin
     .command("dev [path]")
     .description(
       "Watch a plugin's sources: rebuild its frontend (unminified, for readable stack traces), host, and provider-bridge bundles when declared, then reload it on every change (Ctrl+C to stop)",

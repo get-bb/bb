@@ -8,7 +8,8 @@ plugins → BB guide. The plugin and all six settings default to enabled.
 - `bbCli`: include `bb-cli`.
 - `pluginAuthoring`: include `bb-plugin-authoring`.
 - `skillCreator`: include `skill-creator`.
-- `submitPlugin`: include `submit-a-plugin`.
+- `submitPlugin`: include `publish-a-plugin`. The key keeps its old name so
+  existing settings still apply.
 
 Use `bb plugin config bb-guide set <key> true|false` from the CLI, or
 `bb.sdk.plugins.updateSettings({ pluginId: "bb-guide", values: { ... } })`

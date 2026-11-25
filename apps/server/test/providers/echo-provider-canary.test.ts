@@ -612,8 +612,8 @@ describe("echo-provider canary: plugin install → server command → runtime �
     ).toEqual([
       "bb-cli",
       "bb-plugin-authoring",
+      "publish-a-plugin",
       "skill-creator",
-      "submit-a-plugin",
     ]);
     expect(command.instructions).toContain("bb status");
 
