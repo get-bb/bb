@@ -101,7 +101,10 @@ the failure reaches the workflow script. Retryability comes from an explicit
 SDK `retryable` marker when available or conservative overload, rate-limit,
 provider 5xx, and network-error signatures. Authentication, configuration,
 schema, and other deterministic failures are not retried. Retry attempts are
-persisted on the call so a plugin restart cannot reset the retry budget.
+persisted on the call so a plugin restart cannot reset the retry budget. A
+failure the provider retry plugin declined as `attempts-exhausted`,
+`beyond-maximum-wait`, or `pool-unavailable` is not retried, because a
+replacement worker would hit the same limit.
 
 Worker output is either the final assistant text or an Ajv-validated value
 submitted through `bb_workflow_result`. Structured workers receive two
