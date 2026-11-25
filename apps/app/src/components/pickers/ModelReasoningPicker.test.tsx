@@ -959,8 +959,8 @@ describe("ModelReasoningPicker", () => {
     expect(menu.className).toContain("overflow-hidden");
 
     const scrollers = [
-      ...(menu.className.includes("overflow-y-auto") ? [menu] : []),
-      ...menu.querySelectorAll<HTMLElement>("[class*='overflow-y-auto']"),
+      ...(menu.classList.contains("overflow-y-auto") ? [menu] : []),
+      ...menu.querySelectorAll<HTMLElement>(".overflow-y-auto"),
     ];
     expect(scrollers).toHaveLength(1);
 
@@ -979,9 +979,10 @@ describe("ModelReasoningPicker", () => {
     );
 
     expect(screen.getByRole("dialog").className).not.toContain("100dvh");
+    const models = await screen.findByRole("listbox", { name: "Models" });
     expect(
-      (await screen.findByRole("listbox", { name: "Models" })).className,
-    ).not.toContain("max-h-");
+      [...models.classList].some((name) => name.startsWith("max-h-")),
+    ).toBe(false);
   });
 
   it("commits a provider tab immediately and keeps its models selectable", async () => {

@@ -141,7 +141,7 @@ export function ModelReasoningMenu({
 
   return (
     <MenuHoverProvider>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden [html[data-bb-ios-text-scale]_&]:overflow-y-auto">
         <div
           ref={listRef}
           key={providerId || "no-provider"}
@@ -150,6 +150,7 @@ export function ModelReasoningMenu({
           aria-label={listboxId ? "Models" : undefined}
           className={cn(
             "min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-1 pt-0",
+            "[html[data-bb-ios-text-scale]_&]:max-h-none [html[data-bb-ios-text-scale]_&]:flex-none [html[data-bb-ios-text-scale]_&]:overflow-visible",
             !isCompactViewport && "max-h-64",
           )}
         >
@@ -270,7 +271,7 @@ export function ModelReasoningMenu({
                   if (option) onReasoningSelect(option.value);
                 }}
                 disabled={selectionBlocked}
-                className="flex gap-1"
+                className="flex gap-1 [html[data-bb-ios-text-scale]_&]:flex-wrap [html[data-bb-ios-text-scale]_&]:justify-start"
               >
                 {reasoningOptions.map((option) => (
                   <ToggleGroupItem
@@ -280,6 +281,7 @@ export function ModelReasoningMenu({
                     className={cn(
                       "h-6 min-w-0 flex-auto shrink-0 whitespace-nowrap rounded-sm px-1 text-xs font-normal shadow-none hover:bg-state-hover hover:text-foreground data-[state=on]:bg-state-active data-[state=on]:text-foreground data-[state=on]:hover:bg-state-active",
                       "max-md:pointer-coarse:h-9 max-md:pointer-coarse:text-sm",
+                      "[html[data-bb-ios-text-scale]_&]:h-auto [html[data-bb-ios-text-scale]_&]:min-h-9 [html[data-bb-ios-text-scale]_&]:min-w-max [html[data-bb-ios-text-scale]_&]:py-1",
                       LIST_HOVER_TRANSITION,
                     )}
                   >

@@ -6,30 +6,34 @@ import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-sty
 import { ComposerMaxHeightContext } from "@/components/promptbox/composer-max-height";
 import { composerRootWithin } from "@/lib/pane-composer-focus";
 import {
+  getMobileRecentRowHeight,
+  MINIMUM_MOBILE_RECENT_LEADING_SPACE_PX,
   MOBILE_RECENT_LABEL_HEIGHT_PX,
-  MOBILE_RECENT_ROW_HEIGHT_PX,
+  readMobileRecentScale,
 } from "./RootComposeMobileRecents";
 
 const COMPACT_HOME_CHROME_OFFSET_PX = 56;
 const COMPACT_HOME_COLUMN_CLASS = "mx-auto w-full max-w-[760px] px-4";
 const ROOT_COMPOSE_MAX_WIDTH_CLASS = "max-w-[760px]";
 const COMPACT_HOME_REST_VISIBLE_ROWS = 4.5;
-const COMPACT_HOME_REST_BAND_PX =
-  COMPACT_HOME_REST_VISIBLE_ROWS * MOBILE_RECENT_ROW_HEIGHT_PX +
-  MOBILE_RECENT_LABEL_HEIGHT_PX;
 
 export function getCompactHomeLeadingSpace({
   regionHeight,
   composerHeight,
+  recentScale,
 }: {
   regionHeight: number;
   composerHeight: number;
+  recentScale: number;
 }): number {
+  const restingBandHeight =
+    COMPACT_HOME_REST_VISIBLE_ROWS * getMobileRecentRowHeight(recentScale) +
+    MOBILE_RECENT_LABEL_HEIGHT_PX * recentScale;
   return Math.max(
-    MOBILE_RECENT_ROW_HEIGHT_PX,
+    MINIMUM_MOBILE_RECENT_LEADING_SPACE_PX,
     regionHeight -
       composerHeight -
-      COMPACT_HOME_REST_BAND_PX -
+      restingBandHeight -
       COMPACT_HOME_CHROME_OFFSET_PX,
   );
 }
@@ -87,17 +91,28 @@ function useCompactHomeMetrics(isCompact: boolean) {
       leadingSpacer.style.height = `${getCompactHomeLeadingSpace({
         regionHeight: region.offsetHeight,
         composerHeight,
+        recentScale: readMobileRecentScale(),
       })}px`;
       bottomSpacer.style.height = `${composerHeight}px`;
       composerFade.hidden =
         scrollViewport.scrollHeight <= scrollViewport.clientHeight;
     };
     measure();
-    if (typeof ResizeObserver === "undefined") return;
-    return observeSharedResize([region, composer, scrollContent], {
-      read: () => undefined,
-      write: measure,
+    const scaleObserver = new MutationObserver(measure);
+    scaleObserver.observe(document.documentElement, {
+      attributeFilter: ["data-bb-ios-text-scale"],
     });
+    const stopObservingResize =
+      typeof ResizeObserver === "undefined"
+        ? undefined
+        : observeSharedResize([region, composer, scrollContent], {
+            read: () => undefined,
+            write: measure,
+          });
+    return () => {
+      scaleObserver.disconnect();
+      stopObservingResize?.();
+    };
   }, [isCompact]);
 
   return {

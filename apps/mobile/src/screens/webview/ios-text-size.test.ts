@@ -16,19 +16,30 @@ describe("iOS WebView text size", () => {
     "maps native font scale %s to %s and %s",
     (fontScale, cssScale, cssAdjustment) => {
       const setProperty = vi.fn();
-      const toggleAttribute = vi.fn();
+      const setAttribute = vi.fn();
+      const removeAttribute = vi.fn();
 
       expect(
         runInNewContext(buildIosTextSizeScript(fontScale), {
           document: {
-            documentElement: { style: { setProperty }, toggleAttribute },
+            documentElement: {
+              style: { setProperty },
+              setAttribute,
+              removeAttribute,
+            },
           },
         }),
       ).toBe(true);
-      expect(toggleAttribute).toHaveBeenCalledWith(
-        "data-bb-ios-text-scale",
-        cssScale !== "1",
-      );
+      if (cssScale === "1") {
+        expect(removeAttribute).toHaveBeenCalledWith("data-bb-ios-text-scale");
+        expect(setAttribute).not.toHaveBeenCalled();
+      } else {
+        expect(setAttribute).toHaveBeenCalledWith(
+          "data-bb-ios-text-scale",
+          cssScale,
+        );
+        expect(removeAttribute).not.toHaveBeenCalled();
+      }
       expect(setProperty).toHaveBeenCalledWith("--bb-ios-font-scale", cssScale);
       expect(setProperty).toHaveBeenCalledWith(
         "--bb-ios-text-size-adjust",

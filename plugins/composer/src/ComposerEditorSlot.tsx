@@ -11,6 +11,8 @@ import { isNonImeKey } from "@/lib/ime-keyboard";
 export const COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY =
   "--composer-editor-available-height";
 
+const COMPACT_EDITOR_HEIGHT = "var(--compact-editor-height)";
+
 export type ComposerEditorLayout = "thread" | "root-compose";
 
 const COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT: Record<
@@ -52,13 +54,13 @@ export function ComposerEditorSlot({
         "w-full overflow-y-auto bg-transparent px-4 pb-1 pr-14 pt-3 outline-none",
         COARSE_POINTER_TEXT_BASE_CLASS,
         "leading-relaxed",
-        isCompactLayout && "h-12 overflow-hidden pb-0 pr-2 pt-0",
+        isCompactLayout && "overflow-hidden pb-0 pr-2 pt-0",
       )}
       style={{
-        minHeight: isCompactLayout ? "48px" : `${minHeight}px`,
-        height: isCompactLayout ? "48px" : undefined,
+        minHeight: isCompactLayout ? COMPACT_EDITOR_HEIGHT : `${minHeight}px`,
+        height: isCompactLayout ? COMPACT_EDITOR_HEIGHT : undefined,
         maxHeight: isCompactLayout
-          ? "48px"
+          ? COMPACT_EDITOR_HEIGHT
           : `min(${COMPOSER_EDITOR_MAX_HEIGHT_BY_LAYOUT[layout]}, var(${COMPOSER_EDITOR_AVAILABLE_HEIGHT_PROPERTY}, 100dvh))`,
       }}
     >

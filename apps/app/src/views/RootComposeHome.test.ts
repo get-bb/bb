@@ -1,30 +1,34 @@
 import { describe, expect, it } from "vitest";
 import { getCompactHomeLeadingSpace } from "./RootComposeHome";
-import {
-  MOBILE_RECENT_LABEL_HEIGHT_PX,
-  MOBILE_RECENT_ROW_HEIGHT_PX,
-} from "./RootComposeMobileRecents";
 
 describe("getCompactHomeLeadingSpace", () => {
   it("rests the list low so 4.5 rows show above the composer before scrolling", () => {
-    const restingBandPx =
-      4.5 * MOBILE_RECENT_ROW_HEIGHT_PX + MOBILE_RECENT_LABEL_HEIGHT_PX;
-
-    expect(
-      56 +
-        getCompactHomeLeadingSpace({
-          regionHeight: 852,
-          composerHeight: 188,
-        }),
-    ).toBe(852 - 188 - restingBandPx);
-  });
-
-  it("keeps one row of leading space when the region is too short for the band", () => {
     expect(
       getCompactHomeLeadingSpace({
-        regionHeight: 420,
+        regionHeight: 852,
         composerHeight: 188,
+        recentScale: 1,
       }),
-    ).toBe(MOBILE_RECENT_ROW_HEIGHT_PX);
+    ).toBe(314);
+  });
+
+  it("reserves room for larger rows and the heading", () => {
+    expect(
+      getCompactHomeLeadingSpace({
+        regionHeight: 852,
+        composerHeight: 188,
+        recentScale: 1.5,
+      }),
+    ).toBe(167);
+  });
+
+  it("keeps the minimum gap at the largest accessibility size", () => {
+    expect(
+      getCompactHomeLeadingSpace({
+        regionHeight: 852,
+        composerHeight: 188,
+        recentScale: 3.571,
+      }),
+    ).toBe(60);
   });
 });

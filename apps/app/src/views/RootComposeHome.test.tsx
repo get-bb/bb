@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useContext, useLayoutEffect, useRef } from "react";
 import { RootComposeHome } from "./RootComposeHome";
@@ -9,6 +9,7 @@ import { registerPaneComposerFocus } from "@/lib/pane-composer-focus";
 
 afterEach(() => {
   cleanup();
+  delete document.documentElement.dataset.bbIosTextScale;
   vi.restoreAllMocks();
 });
 
@@ -55,7 +56,7 @@ describe("RootComposeHome", () => {
     expect(viewport.contains(screen.getByTestId("recents"))).toBe(true);
   });
 
-  it("writes measured geometry directly before the compact home paints", () => {
+  it("adjusts the measured geometry when iOS Larger Text changes", async () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(
       function (this: HTMLElement) {
         if (this.dataset.testid === "root-compose-compact-home") return 852;
@@ -76,6 +77,12 @@ describe("RootComposeHome", () => {
     );
     expect(leadingSpacer.style.height).toBe("314px");
     expect(bottomSpacer.style.height).toBe("188px");
+
+    document.documentElement.dataset.bbIosTextScale = "3.571";
+    await waitFor(() => expect(leadingSpacer.style.height).toBe("60px"));
+
+    delete document.documentElement.dataset.bbIosTextScale;
+    await waitFor(() => expect(leadingSpacer.style.height).toBe("314px"));
   });
 
   it("caps the composer so a tall draft keeps it below the app chrome row", () => {

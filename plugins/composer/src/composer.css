@@ -65,14 +65,20 @@
   }
 }
 
-@container follow-up-composer style(--follow-up-composer-container-compact: true) {
-  [data-promptbox] {
-    --compact-editor-height: max(
-      3rem,
-      calc(var(--text-base) * 1.7 * var(--bb-ios-font-scale, 1))
-    );
-  }
+[data-promptbox] {
+  --compact-editor-height: max(
+    48px,
+    calc(
+      var(
+          --bb-composer-editor-base-font-size,
+          var(--bb-composer-editor-default-font-size, var(--text-sm))
+        ) *
+        1.7 * var(--bb-ios-font-scale, 1)
+    )
+  );
+}
 
+@container follow-up-composer style(--follow-up-composer-container-compact: true) {
   [data-promptbox] [data-promptbox-layout] {
     height: 100%;
   }
