@@ -234,7 +234,10 @@ describe("createAgentRuntime process lifecycle", () => {
   });
 
   it("fires onProcessExit when provider crashes", async () => {
-    const exitInfo = vi.fn();
+    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
+    const exited = new Promise<AgentRuntimeProcessExitInfo>((resolve) => {
+      exitInfo.mockImplementation(resolve);
+    });
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
@@ -245,14 +248,13 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.ensureProvider({ providerId: "fake" });
-    await waitForRuntimeState({
-      label: "provider process exit callback",
-      predicate: () => exitInfo.mock.calls.length === 1,
-    });
 
-    expect(exitInfo).toHaveBeenCalledWith(
-      expect.objectContaining({ providerId: "fake", code: 0, expected: false }),
-    );
+    expect(await exited).toMatchObject({
+      providerId: "fake",
+      code: 0,
+      expected: false,
+    });
+    expect(exitInfo).toHaveBeenCalledOnce();
     await runtime.shutdown();
   });
 
