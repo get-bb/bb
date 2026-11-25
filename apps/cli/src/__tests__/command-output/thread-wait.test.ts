@@ -164,21 +164,19 @@ describe("bb thread wait command output", () => {
   });
 
   it("bb thread wait --status idle keeps waiting on a failed thread whose retry will send", async () => {
-    const get = vi
-      .fn()
-      .mockResolvedValueOnce(threadWithStatus("thread-wait-retry", "error"))
-      .mockResolvedValue(threadWithStatus("thread-wait-retry", "idle"));
     stubServerApi({
-      "v1.threads.:id.$get": get,
+      "v1.threads.:id.$get": vi.fn(async () =>
+        threadWithStatus("thread-wait-retry", "error"),
+      ),
       "v1.threads.:id.queued-messages.$get": vi.fn(async () => [
         retryRow({ sendAt: Date.now() + 60_000 }),
       ]),
+      "v1.threads.:id.status.wait.$get": vi.fn(async () =>
+        Response.json(threadWithStatus("thread-wait-retry", "idle")),
+      ),
     });
 
-    await runCommand(
-      ["thread", "wait", "thread-wait-retry", "--poll-interval", "1ms"],
-      register,
-    );
+    await runCommand(["thread", "wait", "thread-wait-retry"], register);
 
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Thread thread-wait-retry reached status idle.",

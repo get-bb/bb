@@ -242,6 +242,7 @@ import {
   type ThreadImportResponse,
   type ThreadChildSummaryResponse,
   type ThreadEventWaitQuery,
+  type ThreadStatusWaitQuery,
   type ThreadEventsQuery,
   type ThreadMessageQuery,
   type ThreadMessageResponse,
@@ -381,6 +382,7 @@ import {
   systemAppUpdateApplyRequestSchema,
   systemAppUpdateQuerySchema,
   threadEventWaitQuerySchema,
+  threadStatusWaitQuerySchema,
   threadEventsQuerySchema,
   threadMessageQuerySchema,
   threadGetQuerySchema,
@@ -1921,6 +1923,19 @@ export const publicApiRoutes = {
         threadEventWaitQuerySchema,
       ),
       response: jsonResponse<ThreadEventRow | null>(),
+    }),
+    /**
+     * Long-polls for a change that can end a status wait: answers with the
+     * thread as soon as its status is not `notStatus` or its queued messages
+     * change, and with 204 when `waitMs` (at most 60000) passes first.
+     */
+    statusWait: defineRoute({
+      path: "/threads/:id/status/wait",
+      method: "get",
+      request: queryRequest<PathId, ThreadStatusWaitQuery>(
+        threadStatusWaitQuerySchema,
+      ),
+      response: jsonResponse<ThreadResponse | null>(),
     }),
     defaultExecutionOptions: defineRoute({
       path: "/threads/:id/default-execution-options",
