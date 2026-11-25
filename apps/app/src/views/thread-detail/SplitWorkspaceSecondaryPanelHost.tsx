@@ -41,7 +41,6 @@ import {
   RIGHT_PANEL_TOGGLE_SHORTCUT_HINT_CLASS,
 } from "@/components/secondary-panel/panelToggleControlState";
 import {
-  getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
   PANEL_RESIZE_HANDLE_LAYER_CLASS,
   PANEL_RESIZE_HIT_TARGET_CLASS,
@@ -215,7 +214,9 @@ export function SplitWorkspaceSecondaryPanelHost({
       <div
         ref={sizingRef}
         className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden"
-        style={getPanelCollapseTransitionStyle(model?.transitionsReady ?? true)}
+        data-panel-collapse-instant={
+          (model?.transitionsReady ?? true) ? undefined : ""
+        }
       >
         <div
           data-testid="split-workspace-panel-toggle"

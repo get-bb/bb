@@ -229,14 +229,11 @@ describe("usePanelResizeSnap", () => {
     "lostpointercapture",
   ])("flushes the last position before %s cleanup", (end) => {
     const h = setup();
-    h.grid.style.setProperty("--panel-collapse-duration", "220ms");
     h.down();
     h.move(450);
     h.move(440);
     h.onResize.mockImplementation(() => {
-      expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
-        "0ms",
-      );
+      expect(h.grid.hasAttribute("data-panel-collapse-instant")).toBe(true);
     });
     if (end === "buttons") h.move(440, 0);
     else if (end === "lostpointercapture")
@@ -255,11 +252,18 @@ describe("usePanelResizeSnap", () => {
     expect(h.onResize.mock.invocationCallOrder[0]).toBeLessThan(
       h.onDragging.mock.invocationCallOrder[1],
     );
-    expect(h.grid.style.getPropertyValue("--panel-collapse-duration")).toBe(
-      "220ms",
-    );
+    expect(h.grid.hasAttribute("data-panel-collapse-instant")).toBe(false);
     advanceFrame();
     expect(h.onResize).toHaveBeenCalledOnce();
+  });
+
+  it("keeps panel transitions instant after a drag that started while they were instant", () => {
+    const h = setup();
+    h.grid.setAttribute("data-panel-collapse-instant", "");
+    h.down();
+    h.move(450);
+    h.release();
+    expect(h.grid.hasAttribute("data-panel-collapse-instant")).toBe(true);
   });
 
   it("owns pointer input without starting the library drag session", () => {

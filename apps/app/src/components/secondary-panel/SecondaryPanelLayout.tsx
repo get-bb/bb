@@ -27,7 +27,6 @@ import {
   type PaneSecondaryPanelViewModel,
 } from "@/views/thread-detail/PaneContext";
 import {
-  getPanelCollapseTransitionStyle,
   PANEL_COLLAPSE_TRANSITION_CLASS,
   usePanelCollapseTransitionsReady,
 } from "./panelTransitionTokens";
@@ -360,10 +359,8 @@ export function SecondaryPanelLayout({
           data-split-resize-grid-root=""
           direction="horizontal"
           className="@container h-full min-w-0 flex-1"
-          style={{
-            overflow: "clip",
-            ...getPanelCollapseTransitionStyle(transitionsReady),
-          }}
+          style={{ overflow: "clip" }}
+          data-panel-collapse-instant={transitionsReady ? undefined : ""}
         >
           <Panel
             id={mainPanelId}
