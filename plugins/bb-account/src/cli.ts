@@ -192,7 +192,7 @@ export function registerAccountCli(args: {
               type: "string",
               placeholder: "url",
               description:
-                "getbb.app origin: https://getbb.app or https://vibecodethis.site (development builds also accept http://bb.localhost:<port>)",
+                "Account origin: https://getbb.app, https://vibecodethis.site, or HTTPS origins configured by the server operator in BB_ACCOUNT_TRUSTED_ORIGINS (development also accepts http://bb.localhost:<port>)",
             },
             json: JSON_OPTION,
           },

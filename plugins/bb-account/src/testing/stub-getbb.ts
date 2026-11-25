@@ -20,6 +20,7 @@ export interface StubRequest {
 export interface StubReply {
   status: number;
   body?: unknown;
+  headers?: Record<string, string>;
 }
 
 export type StubRoute = (
@@ -79,11 +80,14 @@ async function readBody(request: IncomingMessage): Promise<unknown> {
 
 function send(response: ServerResponse, reply: StubReply): void {
   if (reply.body === undefined) {
-    response.writeHead(reply.status);
+    response.writeHead(reply.status, reply.headers);
     response.end();
     return;
   }
-  response.writeHead(reply.status, { "content-type": "application/json" });
+  response.writeHead(reply.status, {
+    "content-type": "application/json",
+    ...reply.headers,
+  });
   response.end(JSON.stringify(reply.body));
 }
 

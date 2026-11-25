@@ -2,7 +2,7 @@ import { hostname } from "node:os";
 import type { BbPluginApi } from "@get-bb/plugin-sdk";
 import { AccountService } from "./account.js";
 import {
-  isAllowedBaseUrl,
+  createBaseUrlAllowed,
   resolveDefaultBaseUrl,
   type BaseUrlAllowed,
 } from "./base-url.js";
@@ -29,15 +29,12 @@ export interface BbAccountPluginOptions {
 }
 
 export function createBbAccountPlugin(
-  options: BbAccountPluginOptions = {
-    timing: DEFAULT_LINK_POLL_TIMING,
-    allowedBaseUrl: (origin) => isAllowedBaseUrl(origin, process.env),
-  },
+  options: Partial<BbAccountPluginOptions> = {},
 ) {
   return async function plugin(bb: BbPluginApi): Promise<void> {
     const baseUrls = {
       defaultBaseUrl: resolveDefaultBaseUrl(process.env),
-      allowed: options.allowedBaseUrl,
+      allowed: options.allowedBaseUrl ?? createBaseUrlAllowed(process.env),
     };
     let logins!: LinkLogins;
     const publish = () => {
@@ -56,7 +53,7 @@ export function createBbAccountPlugin(
       account,
       clientName: clientName(),
       log: bb.log,
-      timing: options.timing,
+      timing: options.timing ?? DEFAULT_LINK_POLL_TIMING,
       onChange: publish,
     });
 
