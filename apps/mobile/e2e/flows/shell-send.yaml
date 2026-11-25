@@ -16,6 +16,8 @@ env:
   METRO_URL: "http://127.0.0.1:8082"
   SERVER_URL: "http://127.0.0.1:41999"
 ---
+- evalScript: ${output.shellMessage = "Hello from the shell " + Date.now()}
+- clearState
 - runFlow: ../subflows/launch-app.yaml
 - runFlow: ../subflows/pair-direct-server.yaml
 # Pairing lands in the shell, which loads the page the server serves. The
@@ -61,15 +63,15 @@ env:
 - tapOn: ".*follow-up.*"
 - waitForAnimationToEnd:
     timeout: 5000
-- inputText: "hello from the shell"
+- inputText: "${output.shellMessage}"
 - takeScreenshot: shell-composer
 # Send with the button, not the keyboard's return: whether the return submits
 # depends on the composer's mode, and a draft left sitting in the box would
 # still satisfy a "the text is visible" assertion. Only the provider's echo
 # proves the message actually left the phone.
-- tapOn: ".*Submit.*"
+- runFlow: ../subflows/submit-follow-up.yaml
 - extendedWaitUntil:
-    visible: ".*Response to: hello from the shell.*"
+    visible: "Response to: ${output.shellMessage}"
     timeout: 90000
 - takeScreenshot: shell-sent
 

@@ -1,0 +1,13 @@
+appId: app.getbb.mobile
+---
+- extendedWaitUntil:
+    visible:
+      id: "delete"
+    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- tapOn:
+    text: 'Submit \(Enter\)'
+    enabled: true
+    above:
+      id: "delete"

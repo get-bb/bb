@@ -4,6 +4,7 @@ env:
   SERVER_URL: "http://127.0.0.1:41999"
 ---
 - evalScript: ${output.sidebarMessage = "Sidebar swipe after send " + Date.now()}
+- clearState
 - runFlow: ../subflows/launch-app.yaml
 - runFlow: ../subflows/pair-direct-server.yaml
 - runFlow:
@@ -36,14 +37,14 @@ env:
 - waitForAnimationToEnd:
     timeout: 5000
 - inputText: "${output.sidebarMessage}"
-- tapOn: ".*Submit.*"
+- runFlow: ../subflows/submit-follow-up.yaml
 - extendedWaitUntil:
-    visible: ".*Response to: ${output.sidebarMessage}.*"
+    visible: "Response to: ${output.sidebarMessage}"
     timeout: 90000
 - takeScreenshot: sidebar-after-send-before-swipe
 - swipe:
     from:
-      text: ".*Response to: ${output.sidebarMessage}.*"
+      text: "Response to: ${output.sidebarMessage}"
     direction: RIGHT
     duration: 500
 - takeScreenshot: sidebar-after-send-swipe
