@@ -1935,6 +1935,7 @@ describe("migrate", () => {
         steerActiveThreadOnEnter: true,
         terminalCopyOnSelect: true,
         confirmThreadArchive: true,
+        confirmDesktopQuit: true,
         showDiagnosticEvents: true,
         keepHistoryAfterContextClear: false,
         summarizeShellCommands: true,

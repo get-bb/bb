@@ -70,7 +70,7 @@ describe("searchSettings", () => {
       "AI services",
       "Appearance",
       "Archived threads",
-      "General › App links",
+      "General › Ask before quitting",
     ]);
   });
 
