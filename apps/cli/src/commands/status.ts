@@ -10,6 +10,7 @@ import {
   resolveContextSnapshot,
   type ContextSnapshot,
 } from "../context-env.js";
+import type { BbSdk } from "@bb/sdk";
 import { cliFetch, createCliBbSdk } from "../client.js";
 import { reportCommandResult } from "../command-result.js";
 import { getErrorMessage } from "./helpers.js";
@@ -52,6 +53,25 @@ interface StatusCommandOptions {
   json?: boolean;
 }
 
+async function fetchStatusWithEnvironment(args: {
+  sdk: BbSdk;
+  projectId: string | undefined;
+  threadId: string | undefined;
+}) {
+  const status = await args.sdk.status.get({
+    projectId: args.projectId,
+    threadId: args.threadId,
+  });
+  const environmentId = status.thread?.environmentId;
+  const environmentInfo = environmentId
+    ? await args.sdk.environments.get({ environmentId }).then(
+        (environment) => fetchEnvironmentInfo({ environment, sdk: args.sdk }),
+        () => null,
+      )
+    : null;
+  return { status, environmentInfo };
+}
+
 type ResolveServerUrl = () => string;
 type ResolveStatusContext = () => ContextSnapshot;
 
@@ -82,8 +102,25 @@ export function registerStatusCommand(
         let serverAvailable = false;
         let serverError: string | null = null;
 
+        const sdk = createCliBbSdk(getUrl());
+        const [configResult, pluginsResult, statusResult] =
+          await Promise.allSettled([
+            cliFetch(`${getUrl()}/api/v1/system/config`),
+            sdk.plugins.list(),
+            context.projectId || context.threadId
+              ? fetchStatusWithEnvironment({
+                  sdk,
+                  projectId: context.projectId,
+                  threadId: context.threadId,
+                })
+              : null,
+          ]);
+
         try {
-          const response = await cliFetch(`${getUrl()}/api/v1/system/config`);
+          if (configResult.status === "rejected") {
+            throw configResult.reason;
+          }
+          const response = configResult.value;
           if (response.ok) {
             const config = (await response.json()) as { dataDir?: unknown };
             const server = statusServerSchema.safeParse(config);
@@ -103,7 +140,10 @@ export function registerStatusCommand(
         }
 
         if (serverAvailable) {
-          const { plugins } = await createCliBbSdk(getUrl()).plugins.list();
+          if (pluginsResult.status === "rejected") {
+            throw pluginsResult.reason;
+          }
+          const { plugins } = pluginsResult.value;
           payload.pluginsNeedingAttention = plugins
             .filter(
               (p) =>
@@ -113,12 +153,15 @@ export function registerStatusCommand(
             .map((p) => ({ id: p.id, status: p.status }));
         }
 
-        if (serverError === null && (context.projectId || context.threadId)) {
-          const sdk = createCliBbSdk(getUrl());
-          const status = await sdk.status.get({
-            projectId: context.projectId,
-            threadId: context.threadId,
-          });
+        if (serverError === null && statusResult.status === "rejected") {
+          throw statusResult.reason;
+        }
+        if (
+          serverError === null &&
+          statusResult.status === "fulfilled" &&
+          statusResult.value
+        ) {
+          const { status, environmentInfo } = statusResult.value;
 
           if (status.project) {
             payload.project = {
@@ -129,14 +172,6 @@ export function registerStatusCommand(
           }
 
           if (status.thread) {
-            let environmentInfo: ThreadEnvironmentInfo | null = null;
-            if (status.thread.environmentId) {
-              environmentInfo = await fetchEnvironmentInfo({
-                environmentId: status.thread.environmentId,
-                sdk,
-              });
-            }
-
             payload.pendingTodos = status.pendingTodos;
             payload.thread = {
               id: status.thread.id,

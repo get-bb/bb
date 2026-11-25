@@ -379,27 +379,18 @@ export function registerShowCommand(
           });
         }
 
-        const fetchedPullRequest = thread.environmentId
-          ? await fetchPullRequest({
-              environmentId: thread.environmentId,
-              sdk,
-            })
-          : null;
-
-        const environmentInfo = thread.environmentId
-          ? await fetchEnvironmentInfo({
-              environmentId: thread.environmentId,
-              sdk,
-            })
-          : null;
-
-        const pendingTodos = await fetchThreadPendingTodos({
-          sdk,
-          threadId,
-        });
+        const pullRequestRead = thread.environmentId
+          ? fetchPullRequest({ environmentId: thread.environmentId, sdk })
+          : Promise.resolve(null);
+        const pendingTodosRead = fetchThreadPendingTodos({ sdk, threadId });
 
         if (opts.json) {
-          const environment = await getEnvironment();
+          const [environment, fetchedPullRequest, pendingTodos] =
+            await Promise.all([
+              getEnvironment(),
+              pullRequestRead,
+              pendingTodosRead,
+            ]);
           const jsonPayload: ThreadShowJsonPayload = {
             ...statusPayload,
             environment: threadShowEnvironmentJson(
@@ -421,6 +412,19 @@ export function registerShowCommand(
           outputJson(opts, jsonPayload);
           return;
         }
+
+        const [environmentInfo, fetchedPullRequest, pendingTodos] =
+          await Promise.all([
+            getEnvironment().then(
+              (environment) =>
+                environment === null
+                  ? null
+                  : fetchEnvironmentInfo({ environment, sdk }),
+              () => null,
+            ),
+            pullRequestRead,
+            pendingTodosRead,
+          ]);
 
         printThreadStatus(statusPayload, environmentInfo, fetchedPullRequest);
 
