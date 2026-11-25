@@ -433,6 +433,48 @@ describe("AddPluginDialog", () => {
     });
   });
 
+  it("confirms a BB Community listing's resolved source without claiming review", async () => {
+    const requests = stubFetch();
+    renderDialog({
+      entryId: "notes",
+      pluginId: "notes",
+      marketplace: "bb-community",
+      publisherLabel: "BB Community",
+      displayName: "Acme Notes",
+      icon: "Zap",
+      iconUrl: null,
+      iconTinted: false,
+      source: "git:https://github.com/acme/plugins.git@semver:^1.0.0",
+    });
+
+    await vi.waitFor(() => {
+      expect(screen.getByText("v1.2.3")).toBeTruthy();
+    });
+    expect(screen.getByText("a".repeat(40))).toBeTruthy();
+    expect(screen.getByText(/BB does not review its plugins/)).toBeTruthy();
+    expect(screen.queryByText(/third-party marketplace/)).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /install acme notes/i }),
+    );
+    await vi.waitFor(() => {
+      const post = requests.find(
+        (request) => request.url === "/api/v1/plugin-catalog/install",
+      );
+      expect(JSON.parse(String(post?.init?.body))).toEqual({
+        entryId: "notes",
+        marketplace: "bb-community",
+        confirmedSource: {
+          kind: "git",
+          url: "https://github.com/acme/plugins.git",
+          range: "^1.0.0",
+          resolvedTag: "v1.2.3",
+          resolvedCommit: "a".repeat(40),
+        },
+      });
+    });
+  });
+
   it("does not resolve a plan for an official catalog entry", async () => {
     const requests = stubFetch();
     renderDialog({

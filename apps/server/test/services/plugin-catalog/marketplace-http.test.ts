@@ -1,14 +1,58 @@
 import type { LookupAddress, LookupOptions } from "node:dns";
-import { createServer, request as httpRequest } from "node:http";
+import {
+  createServer,
+  request as httpRequest,
+  type IncomingHttpHeaders,
+  type RequestListener,
+} from "node:http";
 import type { AddressInfo } from "node:net";
+import { brotliCompressSync, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import {
   assertPublicMarketplaceAddress,
   assertPublicMarketplaceUrl,
+  boundedResponseBytes,
   boundedResponseJson,
   createPublicMarketplaceFetch,
   createPublicMarketplaceLookup,
+  type MarketplaceFetch,
+  type PublicMarketplaceFetchDeps,
 } from "../../../src/services/plugin-catalog/marketplace-http.js";
+
+async function withMarketplaceServer(
+  handler: RequestListener,
+  deps: Omit<PublicMarketplaceFetchDeps, "request">,
+  run: (fetchMarketplace: MarketplaceFetch) => Promise<void>,
+): Promise<void> {
+  const server = createServer(handler);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const port = (server.address() as AddressInfo).port;
+  try {
+    await run(
+      createPublicMarketplaceFetch({
+        ...deps,
+        request: (url, options, callback) =>
+          httpRequest(
+            { ...options, host: "127.0.0.1", port, path: url.pathname },
+            callback,
+          ),
+      }),
+    );
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+}
+
+const TEST_TIMEOUTS = { responseMs: 2_000, stallMs: 150 };
+const CATALOG_URL = "https://marketplace.test/marketplace.json";
+
+function getCatalog(fetchMarketplace: MarketplaceFetch): Promise<Response> {
+  return fetchMarketplace(CATALOG_URL, {
+    method: "GET",
+    headers: new Headers({ accept: "application/json" }),
+  });
+}
 
 describe("marketplace HTTP policy", () => {
   it.each([
@@ -130,5 +174,119 @@ describe("marketplace HTTP policy", () => {
       server.closeAllConnections();
       await new Promise<void>((resolve) => server.close(() => resolve()));
     }
+  });
+
+  it("keeps reading a slow body that keeps making progress", async () => {
+    const chunks = Array.from({ length: 12 }, (_, index) => `chunk-${index};`);
+    await withMarketplaceServer(
+      (_request, response) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        let index = 0;
+        const timer = setInterval(() => {
+          const chunk = chunks[index];
+          index += 1;
+          if (chunk === undefined) {
+            clearInterval(timer);
+            response.end();
+            return;
+          }
+          response.write(chunk);
+        }, 50);
+      },
+      { timeouts: TEST_TIMEOUTS },
+      async (fetchMarketplace) => {
+        const started = Date.now();
+        const response = await getCatalog(fetchMarketplace);
+        expect(await response.text()).toBe(chunks.join(""));
+        expect(Date.now() - started).toBeGreaterThan(TEST_TIMEOUTS.stallMs * 3);
+      },
+    );
+  });
+
+  it("aborts a body that stops sending data", async () => {
+    await withMarketplaceServer(
+      (_request, response) => {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.write('{"partial":');
+      },
+      { timeouts: TEST_TIMEOUTS },
+      async (fetchMarketplace) => {
+        const response = await getCatalog(fetchMarketplace);
+        await expect(response.text()).rejects.toMatchObject({
+          name: "TimeoutError",
+          message: `request timed out: no data received for ${TEST_TIMEOUTS.stallMs}ms`,
+        });
+      },
+    );
+  });
+
+  it("aborts a request whose response never starts", async () => {
+    await withMarketplaceServer(
+      () => {},
+      { timeouts: { responseMs: 100, stallMs: 5_000 } },
+      async (fetchMarketplace) => {
+        await expect(getCatalog(fetchMarketplace)).rejects.toMatchObject({
+          name: "TimeoutError",
+          message: "request timed out: no response within 100ms",
+        });
+      },
+    );
+  });
+
+  it.each([
+    ["gzip", (body: Buffer) => gzipSync(body)],
+    ["br", (body: Buffer) => brotliCompressSync(body)],
+  ] as const)("requests and decodes a %s body", async (encoding, encode) => {
+    const catalog = JSON.stringify({ plugins: ["a".repeat(10_000)] });
+    let requestHeaders: IncomingHttpHeaders = {};
+    await withMarketplaceServer(
+      (request, response) => {
+        requestHeaders = request.headers;
+        const body = encode(Buffer.from(catalog));
+        response.writeHead(200, {
+          "content-type": "application/json",
+          "content-encoding": encoding,
+          "content-length": String(body.byteLength),
+          etag: '"v1"',
+        });
+        response.end(body);
+      },
+      { timeouts: TEST_TIMEOUTS },
+      async (fetchMarketplace) => {
+        const response = await getCatalog(fetchMarketplace);
+        expect(response.headers.get("content-encoding")).toBeNull();
+        expect(response.headers.get("content-length")).toBeNull();
+        expect(response.headers.get("etag")).toBe('"v1"');
+        expect(await response.text()).toBe(catalog);
+      },
+    );
+    expect(requestHeaders["accept-encoding"]).toBe("gzip, deflate, br");
+  });
+
+  it("applies byte caps to the decompressed size", async () => {
+    const bomb = gzipSync(Buffer.alloc(4 * 1024 * 1024));
+    expect(bomb.byteLength).toBeLessThan(16 * 1024);
+    await withMarketplaceServer(
+      (_request, response) => {
+        response.writeHead(200, {
+          "content-encoding": "gzip",
+          "content-length": String(bomb.byteLength),
+        });
+        response.end(bomb);
+      },
+      { timeouts: TEST_TIMEOUTS, maxResponseBytes: 1024 * 1024 },
+      async (fetchMarketplace) => {
+        await expect(
+          boundedResponseBytes(
+            await getCatalog(fetchMarketplace),
+            256 * 1024,
+            "icon",
+          ),
+        ).rejects.toThrow(/icon exceeds 262144 bytes/u);
+        await expect(
+          (await getCatalog(fetchMarketplace)).text(),
+        ).rejects.toThrow(/marketplace response exceeds 1048576 bytes/u);
+      },
+    );
   });
 });
