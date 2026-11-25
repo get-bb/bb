@@ -36,6 +36,55 @@ describe("claude-code visibility raw events", () => {
     });
   });
 
+  it("classifies a replayed user prompt with string content as noise", () => {
+    expect(
+      claudeCodeVisibilityMetadata.describeRawEvent({
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: "thread-1",
+          message: {
+            type: "user",
+            message: { role: "user", content: "Reply only with ok." },
+            session_id: "session-1",
+            parent_tool_use_id: null,
+            uuid: "message-1",
+            isReplay: true,
+          },
+        },
+      } satisfies JsonRpcMessage),
+    ).toEqual({
+      kind: "sdk/user:text",
+      coverage: "noise",
+    });
+  });
+
+  it("keeps a string user message that is neither a replay nor a sub-agent prompt unknown", () => {
+    expect(
+      claudeCodeVisibilityMetadata.describeRawEvent({
+        jsonrpc: "2.0",
+        method: "sdk/message",
+        params: {
+          threadId: "thread-1",
+          message: {
+            type: "user",
+            message: {
+              role: "user",
+              content:
+                "<task-notification><event>result</event></task-notification>",
+            },
+            session_id: "session-1",
+            parent_tool_use_id: null,
+            uuid: "message-2",
+          },
+        },
+      } satisfies JsonRpcMessage),
+    ).toEqual({
+      kind: "sdk/user",
+      coverage: "unknown",
+    });
+  });
+
   it("classifies Claude stream ping events as noise", () => {
     expect(
       claudeCodeVisibilityMetadata.describeRawEvent({
