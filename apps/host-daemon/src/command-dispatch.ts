@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, stat } from "node:fs/promises";
 import path from "node:path";
 import { withVcsProcessPriority } from "@bb/process-utils";
 import { operationEnvironment } from "./operation-environment.js";
@@ -25,6 +25,7 @@ import type { AgentRuntime, AgentRuntimeBridgeLaunch } from "@bb/agent-runtime";
 import semver from "semver";
 import {
   ExpectedCommandDispatchError,
+  getErrorCode,
   resolveRuntimeBridgeLaunch,
   type CommandOf,
   type CommandDispatchOptions,
@@ -188,6 +189,25 @@ function throwExpectedWorkspacePathNotFoundOrRethrow(error: unknown): never {
     throw new ExpectedCommandDispatchError(error.code, error.message);
   }
   throw error;
+}
+
+async function isMissingWorkspaceError(
+  error: unknown,
+  workspacePath: string,
+): Promise<boolean> {
+  const code = getErrorCode(error);
+  if (code !== "missing_executable" && code !== "path_not_found") {
+    return false;
+  }
+  try {
+    return !(await stat(workspacePath)).isDirectory();
+  } catch (error) {
+    return (
+      error instanceof Error &&
+      "code" in error &&
+      (error.code === "ENOENT" || error.code === "ENOTDIR")
+    );
+  }
 }
 
 function providerCliEnvFromShellEnv(
@@ -525,21 +545,38 @@ const commandHandlers: CommandHandlerMap = {
     return {};
   },
   "thread.archive": async (command, options) => {
-    const entry = await requireResolvedWorkspaceForCommand({
-      environmentId: command.environmentId,
-      runtimeManager: options.runtimeManager,
-      workspaceContext: command.workspaceContext,
-    });
     const bridgeLaunch = await resolveRuntimeBridgeLaunch(
       command.bridgeLaunch,
       options,
     );
-    await entry.runtime.archiveThread({
-      threadId: command.threadId,
-      providerId: command.providerId,
-      providerThreadId: command.providerThreadId,
-      bridgeLaunch,
-    });
+    const archiveThread = (runtime: AgentRuntime) =>
+      runtime.archiveThread({
+        threadId: command.threadId,
+        providerId: command.providerId,
+        providerThreadId: command.providerThreadId,
+        bridgeLaunch,
+      });
+    try {
+      const entry = await requireResolvedWorkspaceForCommand({
+        environmentId: command.environmentId,
+        runtimeManager: options.runtimeManager,
+        workspaceContext: command.workspaceContext,
+      });
+      await archiveThread(entry.runtime);
+    } catch (error) {
+      if (
+        !(await isMissingWorkspaceError(
+          error,
+          command.workspaceContext.workspacePath,
+        ))
+      ) {
+        throw error;
+      }
+      await options.runtimeManager.withProviderMaintenanceRuntime(
+        { dataDir: options.dataDir },
+        archiveThread,
+      );
+    }
     return {};
   },
   "thread.unarchive": async (command, options) => {
@@ -756,6 +793,22 @@ export async function dispatchCommand<
       commandHandlers[command.type](command, options),
     );
   } catch (error) {
+    const workspaceContext =
+      "workspaceContext" in command
+        ? command.workspaceContext
+        : "resumeContext" in command
+          ? command.resumeContext.workspaceContext
+          : null;
+    if (
+      command.type !== "thread.archive" &&
+      workspaceContext !== null &&
+      (await isMissingWorkspaceError(error, workspaceContext.workspacePath))
+    ) {
+      throw new ExpectedCommandDispatchError(
+        "path_not_found",
+        `Workspace directory does not exist: ${workspaceContext.workspacePath}`,
+      );
+    }
     throwExpectedWorkspacePathNotFoundOrRethrow(error);
   }
 }

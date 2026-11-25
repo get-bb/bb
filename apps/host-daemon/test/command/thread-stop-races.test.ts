@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -23,6 +23,7 @@ import type {
   HostDaemonCommand,
   HostDaemonOnlineRpcResponseMessage,
 } from "@bb/host-daemon-contract";
+import { BRIDGE_JSON_RPC_ERRORS } from "@bb/provider-bridge-protocol";
 import { makeTempDir } from "@bb/test-helpers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { dispatchCommand } from "../../src/command-dispatch.js";
@@ -143,7 +144,9 @@ async function scriptedEchoDispatchLaunch(
   };
 }
 
-async function createRaceHarness(): Promise<RaceHarness> {
+async function createRaceHarness(
+  providerEnv: Record<string, string> = {},
+): Promise<RaceHarness> {
   const workspacePath = await makeTempDir("bb-stop-race-workspace-");
   const events: ThreadEvent[] = [];
   const record = createScriptedEchoRequestRecord();
@@ -162,7 +165,7 @@ async function createRaceHarness(): Promise<RaceHarness> {
     createRuntime: (options) => {
       runtime = createAgentRuntime({
         ...options,
-        env: { ...options.env, ...record.env },
+        env: { ...options.env, ...record.env, ...providerEnv },
       });
       return runtime;
     },
@@ -335,6 +338,160 @@ function createRaceRouter(harness: RaceHarness): CommandRouter {
     threadStorageRootPath: "/tmp/bb-stop-race-thread-storage",
   });
 }
+
+describe("deleted workspace commands", () => {
+  async function createReapedHarness(
+    scripted: ScriptedEchoLaunchScript = {},
+  ): Promise<RaceHarness> {
+    const harness = await createRaceHarness({
+      SCRIPTED_ECHO_OPTIONS: JSON.stringify(scripted),
+    });
+    harness.launch = await scriptedEchoDispatchLaunch({
+      scripted: { sessionRestorable: true, ...scripted },
+    });
+    await dispatchCommand(
+      threadStartCommand(harness, {
+        threadId: "thread-deleted-workspace",
+        inputText: "hello",
+      }),
+      harness.dispatchOptions,
+    );
+    await expect
+      .poll(() =>
+        harness.events.some((event) => event.type === "turn/completed"),
+      )
+      .toBe(true);
+    const result = await harness.manager.reapIdleProviderSessions({
+      idleForMs: 0,
+      nowMs: Date.now(),
+    });
+    expect(result.reapedSessions).toHaveLength(1);
+    await rm(harness.workspacePath, { recursive: true });
+    return harness;
+  }
+
+  it("identifies a deleted workspace instead of a missing bridge executable on submit", async () => {
+    const harness = await createReapedHarness();
+    const result = await routerCommand(
+      new CommandRouter(harness.dispatchOptions),
+      turnSubmitCommand(harness, {
+        threadId: "thread-deleted-workspace",
+        inputText: "hello",
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: "path_not_found",
+      errorMessage: expect.stringContaining(harness.workspacePath),
+    });
+  });
+
+  it("archives through the provider after its workspace is deleted", async () => {
+    const harness = await createReapedHarness();
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.archive",
+          bridgeLaunch: harness.launch,
+          environmentId: ENVIRONMENT_ID,
+          threadId: "thread-deleted-workspace",
+          providerId: "fake",
+          providerThreadId: "prov-1",
+          workspaceContext: { workspacePath: harness.workspacePath },
+        },
+        harness.dispatchOptions,
+      ),
+    ).resolves.toEqual({});
+    expect(harness.record.last("thread/archive")?.params).toMatchObject({
+      providerThreadId: "prov-1",
+    });
+  });
+
+  it("archives a deleted workspace without a cached environment", async () => {
+    const harness = await createReapedHarness();
+    const manager = new RuntimeManager({
+      createRuntime: (options) =>
+        createAgentRuntime({
+          ...options,
+          env: { ...options.env, ...harness.record.env },
+        }),
+    });
+    managers.push(manager);
+    await expect(
+      dispatchCommand(
+        {
+          type: "thread.archive",
+          bridgeLaunch: harness.launch,
+          environmentId: ENVIRONMENT_ID,
+          threadId: "thread-deleted-workspace",
+          providerId: "fake",
+          providerThreadId: "prov-1",
+          workspaceContext: { workspacePath: harness.workspacePath },
+        },
+        { ...harness.dispatchOptions, runtimeManager: manager },
+      ),
+    ).resolves.toEqual({});
+    expect(harness.record.last("thread/archive")?.params).toMatchObject({
+      providerThreadId: "prov-1",
+    });
+  });
+
+  it("preserves a missing executable error when the workspace exists", async () => {
+    const harness = await createRaceHarness();
+    harness.launch = await scriptedEchoDispatchLaunch({
+      scripted: {
+        failMethods: [
+          {
+            method: "thread/resume",
+            message: "provider executable unavailable",
+            code: BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE,
+          },
+        ],
+      },
+    });
+    const result = await routerCommand(
+      new CommandRouter(harness.dispatchOptions),
+      turnSubmitCommand(harness, {
+        threadId: "thread-missing-executable",
+        inputText: "hello",
+      }),
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: "missing_executable",
+      errorMessage: expect.stringContaining("provider executable unavailable"),
+    });
+  });
+
+  it("preserves a missing executable error from the maintenance archive runtime", async () => {
+    const harness = await createReapedHarness({
+      failMethods: [
+        {
+          method: "thread/archive",
+          message: "provider executable unavailable",
+          code: BRIDGE_JSON_RPC_ERRORS.MISSING_EXECUTABLE,
+        },
+      ],
+    });
+    const result = await routerCommand(
+      new CommandRouter(harness.dispatchOptions),
+      {
+        type: "thread.archive",
+        bridgeLaunch: harness.launch,
+        environmentId: ENVIRONMENT_ID,
+        threadId: "thread-deleted-workspace",
+        providerId: "fake",
+        providerThreadId: "prov-1",
+        workspaceContext: { workspacePath: harness.workspacePath },
+      },
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      errorCode: "missing_executable",
+      errorMessage: expect.stringContaining("provider executable unavailable"),
+    });
+  });
+});
 
 describe("thread.stop race semantics", () => {
   it("interrupts the turn of a submit that was still in flight when the stop arrived", async () => {
