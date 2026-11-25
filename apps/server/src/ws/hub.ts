@@ -179,6 +179,14 @@ function serializeServerMessage(message: ServerChangedMessage): string | null {
   return JSON.stringify(parseResult.data);
 }
 
+function encodeTerminalServerMessage(message: TerminalServerMessage): string {
+  return JSON.stringify(
+    message.type === "output"
+      ? message
+      : terminalServerMessageSchema.parse(message),
+  );
+}
+
 type SessionTimers = Map<string, ReturnType<typeof setTimeout>>;
 
 function cancelTimer(timers: SessionTimers, sessionId: string): void {
@@ -534,7 +542,7 @@ export class NotificationHub implements DbNotifier {
   ): void {
     this.sendOrQueueTerminalPayload(
       socket,
-      JSON.stringify(terminalServerMessageSchema.parse(message)),
+      encodeTerminalServerMessage(message),
     );
   }
 
@@ -551,7 +559,7 @@ export class NotificationHub implements DbNotifier {
       return;
     }
 
-    const payload = JSON.stringify(terminalServerMessageSchema.parse(message));
+    const payload = encodeTerminalServerMessage(message);
     for (const socket of [...sockets]) {
       this.sendOrQueueTerminalPayload(socket, payload);
     }
