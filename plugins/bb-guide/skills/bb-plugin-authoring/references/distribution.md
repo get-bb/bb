@@ -290,7 +290,7 @@ To update a listing, release a new version. Plugins that were added to
 get-bb/marketplace by pull request keep working; their authors update them the
 same way, by self-publishing from the same source or a repository of the same
 GitHub owner. The self-published listing then replaces the old entry; the old
-category, screenshots, and overview carry over only where the release has
+category, icon, screenshots, and overview carry over only where the release has
 none.
 
 ### Store listing text

@@ -21,7 +21,7 @@ An existing marketplace entry keeps working. Its author updates the listing
 (description, screenshots, category, version range) the same way: self-publish
 from the same repository or package, or from a repository of the same GitHub
 owner. The self-published listing replaces the old entry. Its category,
-screenshots, and overview carry over only where the release has none, so put
+icon, screenshots, and overview carry over only where the release has none, so put
 the current ones in the release. Do not open a pull request to
 get-bb/marketplace.
 

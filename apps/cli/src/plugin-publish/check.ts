@@ -1177,7 +1177,7 @@ function checkCatalogClaim(
     } else if (sameSource || sameOwner) {
       findings.info(
         "replaces-listing",
-        `"${id}" is already listed from ${describeCatalogSource(held.source)}. ${sameSource ? "It is the same source" : `It belongs to the same GitHub owner (${heldOwner})`}, so your self-published listing replaces it. The category, screenshots, and overview of the old entry carry over only where your release has none. No pull request to get-bb/marketplace is needed.`,
+        `"${id}" is already listed from ${describeCatalogSource(held.source)}. ${sameSource ? "It is the same source" : `It belongs to the same GitHub owner (${heldOwner})`}, so your self-published listing replaces it. The category, icon, screenshots, and overview of the old entry carry over only where your release has none. No pull request to get-bb/marketplace is needed.`,
       );
     } else {
       findings.error(

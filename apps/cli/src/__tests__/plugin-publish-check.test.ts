@@ -559,6 +559,10 @@ describe("bb plugin publish --check", () => {
       "warning:not-opted-in",
       "info:replaces-listing",
     ]);
+    expect(
+      mine.findings.find((finding) => finding.code === "replaces-listing")
+        ?.message,
+    ).toContain("category, icon, screenshots, and overview");
 
     world.responses.set(MARKETPLACE_CATALOG_URL, {
       status: 200,

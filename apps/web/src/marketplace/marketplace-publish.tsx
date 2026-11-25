@@ -220,8 +220,8 @@ export function PublicMarketplacePublishPage({
             Plugins added to the Marketplace by pull request keep working. To
             change your listing, release from the same repository or package, or
             from another repository you own. The new listing replaces the old
-            one; its category, screenshots, and overview carry over only where
-            your release has none. Each later release updates it again.
+            one; its category, icon, screenshots, and overview carry over only
+            where your release has none. Each later release updates it again.
           </p>
         </section>
 
