@@ -459,6 +459,24 @@ const commandHandlers: CommandHandlerMap = {
     await deleteThreadStorage(command, options);
     return result;
   },
+  "thread.voice": async (command, options) => {
+    const entry =
+      "options" in command
+        ? await ensureThreadRuntime(command, options)
+        : await options.runtimeManager.getOrAwait(command.environmentId);
+    if (!entry) {
+      if (command.command.action === "stop") return { sdp: null };
+      throw new Error("Voice session is no longer active");
+    }
+    if (!entry.runtime.voice)
+      throw new Error("Voice is unavailable for this provider runtime");
+    const result = await entry.runtime.voice({
+      threadId: command.threadId,
+      command: command.command,
+    });
+    await options.eventSink.flush();
+    return result;
+  },
   "thread.goal.clear": async (command, options) => {
     const entry = await ensureThreadRuntime(command, options);
     const result = await entry.runtime.clearThreadGoal({

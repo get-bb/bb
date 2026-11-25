@@ -138,6 +138,29 @@ function runCompaction(threadId) {
   }, COMPACTION_TURN_DELAY_MS);
 }
 
+function runVoiceHandoffTurn(threadId, text) {
+  turnCounter += 1;
+  const turnId = `turn-handoff-${turnCounter}`;
+  notify("turn/started", {
+    threadId,
+    turn: { id: turnId, status: "inProgress" },
+  });
+  notify("item/completed", {
+    threadId,
+    turnId,
+    item: {
+      type: "userMessage",
+      id: `handoff-${turnCounter}`,
+      clientId: null,
+      content: [{ type: "text", text, text_elements: [] }],
+    },
+  });
+  notify("turn/completed", {
+    threadId,
+    turn: { id: turnId, status: "completed" },
+  });
+}
+
 function runScriptedTurn(threadId, presetTurnId) {
   turnCounter += 1;
   const turnId = presetTurnId ?? `turn-fx-${turnCounter}`;
@@ -472,7 +495,13 @@ async function handleRequest(message) {
   }
   switch (method) {
     case "initialize":
-      respond(id, script?.initializeResult ?? {});
+      respond(
+        id,
+        script?.initializeResult ?? {
+          userAgent:
+            script?.initializeUserAgent ?? "codex_cli_rs/0.160.1 (test)",
+        },
+      );
       return;
     case "account/rateLimits/read":
       if (script?.rateLimitRead) {
@@ -878,6 +907,32 @@ async function handleRequest(message) {
     }
     case "thread/goal/get":
       respond(id, { goal: goalsByThreadId.get(params.threadId) ?? null });
+      return;
+    case "thread/realtime/start":
+      respond(id, {});
+      notify("thread/realtime/started", {
+        threadId: params.threadId,
+        realtimeSessionId: "native-voice",
+        version: "v3",
+      });
+      notify("thread/realtime/sdp", {
+        threadId: params.threadId,
+        sdp: "native-answer",
+      });
+      if (script?.voiceStartsTurn) runScriptedTurn(params.threadId);
+      if (script?.voiceHandoff) {
+        setTimeout(
+          () => runVoiceHandoffTurn(params.threadId, script.voiceHandoff),
+          50,
+        );
+      }
+      return;
+    case "thread/realtime/stop":
+      respond(id, {});
+      notify("thread/realtime/closed", {
+        threadId: params.threadId,
+        reason: null,
+      });
       return;
     case "thread/goal/clear":
       goalsByThreadId.delete(params.threadId);

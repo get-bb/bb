@@ -882,6 +882,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ContextCategory",
           "ContextEntry",
           "PluginProviderDeclaration",
+          "PluginProviderCapabilities.experimental_supportsThreadVoice",
           "AvailableModel",
           "AvailableModel.reasoningDiscovery",
           "ModelServiceTier",
@@ -1761,6 +1762,10 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Retry failed environment cleanup with recover: true after inspecting processes using the workspace",
         ],
         reference: [
+          "Negotiate native Codex realtime voice on an existing thread through experimental_voice; supply WebRTC SDP and renew or stop the call without opening a second provider connection",
+          "Check a thread's provider for capabilities.experimental_supportsThreadVoice before starting; providers declare it through PluginProviderCapabilities.experimental_supportsThreadVoice and starts on other providers fail before runtime setup",
+          "Native voice requires Codex 0.147.0 or newer, checked on the running app-server. Native handoffs use the settings Codex has applied (the active turn's, or the last turn Codex accepted), not queued, failed or unsent selections; runtime resume allows normal user approvals",
+          "Startup handoff instructions enter coding-thread history on its first step during the call. Codex adds its generic end notice on the first post-call step; instructions are not removed. Back-to-back calls without a step between them may retain earlier guidance, so callers must not assume isolated per-call instructions",
           "Normalize and resolve host paths with experimental_normalizeHostPath(path) and experimental_resolveHostPath({ rootPath, path }) from @get-bb/plugin-sdk; invalid paths return null",
           "Recognize drive roots (including C:) and UNC paths with either Windows separator, regardless of the server OS; reject rootless backslashes and drive-relative paths such as C:foo during resolution",
           "Join relative paths, obtain dirname/basename, derive a slash-separated relative path within a root, and create case-insensitive Windows comparison keys with the experimental host-path helpers; invalid absolute inputs return null",
@@ -1799,6 +1804,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "PluginBbSdk.threads.experimental_listCascade",
           "PluginBbSdk.threads.experimental_regenerateTitle",
           "PluginBbSdk.threads.experimental_headState",
+          "PluginBbSdk.threads.experimental_voice",
         ],
         firstParty: [
           "Account Pooler [Experimental]",

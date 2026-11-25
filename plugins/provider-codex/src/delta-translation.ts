@@ -51,6 +51,7 @@ import {
   type CodexGoalState,
 } from "./extension-kinds.js";
 import { codexVisibilityMetadata } from "./visibility.js";
+import { realtimeHandoffRequestText } from "./realtime-delegation.js";
 
 function assertNever(value: never): never {
   throw new Error(`Unexpected value: ${String(value)}`);
@@ -794,6 +795,11 @@ function translateCodexAsyncQuestion(item: unknown): ThreadDelta[] {
   ];
 }
 
+function realtimeHandoffRequestFromItem(item: unknown): string | null {
+  const parsed = codexHandledThreadItemSchema.safeParse(item);
+  return parsed.success ? realtimeHandoffRequestText(parsed.data) : null;
+}
+
 function translateCodexItemShape(
   item: unknown,
   state: CodexEventTranslationState,
@@ -1145,6 +1151,19 @@ export function translateCodexEventToDeltas(
       ];
     case "item/started":
     case "item/completed": {
+      const handoffRequest =
+        handledEvent.method === "item/completed"
+          ? realtimeHandoffRequestFromItem(handledEvent.params.item)
+          : null;
+      if (handoffRequest !== null) {
+        return [
+          {
+            kind: "input.provider",
+            text: handoffRequest,
+            providerTurnId: handledEvent.params.turnId,
+          },
+        ];
+      }
       const translation = translateCodexItemShape(
         handledEvent.params.item,
         state,

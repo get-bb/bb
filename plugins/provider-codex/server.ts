@@ -47,6 +47,7 @@ export default function plugin(bb: BbPluginApi) {
       supportsManualCompaction: true,
       supportsThreadArchive: true,
       supportsThreadRename: true,
+      experimental_supportsThreadVoice: true,
       permissionModes: ["accept-edits", "auto", "full"],
       reasoningLevels: [
         "none",

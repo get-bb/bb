@@ -15,6 +15,56 @@ Lifecycle:
   bb thread compact [id]                   Request compaction of an idle or errored thread's context
   bb thread clear [id]                     Clear model context for an idle or failed thread
   bb thread cancel-plan [id]               Exit the provider's active Plan mode
+  bb thread voice start [id] --sdp-file <path|-> [--session <uuid>] [--self] [--json]
+  bb thread voice keep-alive [id] --session <uuid> [--self] [--json]
+  bb thread voice stop [id] --session <uuid> [--self] [--json]
+
+  Voice uses Codex's native two-way realtime session on the existing thread.
+  A voice frontend supplies its own WebRTC SDP offer through the SDK or CLI.
+  These commands negotiate and manage the existing provider connection; they
+  do not record microphone input, play audio, or add built-in app controls.
+
+  SDK: `threads.experimental_voice({ threadId, command: { action: "start", sessionId, sdp } })`
+  and `threads.experimental_voice({ threadId, command: { action: "stop", sessionId } })`.
+  Clients renew a call lease at least every 60 seconds through
+  `bb thread voice keep-alive` or `threads.experimental_voice` with `action: "keepAlive"`.
+  Ending voice leaves coding work running. Stopping a session that already
+  ended, including after the provider session was released, succeeds without
+  resuming the provider; renewing an ended session fails. The Codex
+  `provider-codex/voice` extension state reports `closed` with a reason message
+  when the lease expires, Codex does not confirm a stop, or the provider session
+  is released or restarted; `error` marks a failed call.
+
+  Provider support is optional. `bb provider list --json` reports eligibility as
+  `capabilities.experimental_supportsThreadVoice`; starting voice on a thread
+  whose provider reports false fails before any runtime is prepared.
+
+  Optional start flags: --voice <name>, --context-file <path>, --no-context, and
+  --instructions-file <path>. The SDK start command accepts voice,
+  initialContext (at most 16,000 characters) and instructions (at most 8,000).
+  Supplying initialContext replaces native startup history with that reference;
+  an empty string supplies no history. Omitting it keeps provider defaults.
+  These values apply only at startup; core does not synthesize or append context.
+  Instructions enter the coding thread's history on its first step during voice;
+  Codex adds a generic end notice on the first post-call step rather than removing
+  them. Back-to-back calls without a step between them can retain earlier guidance.
+  Context files may be empty; input streams may be used once per command.
+  Native voice requires a verifiable Codex app-server version of at least 0.147.0.
+  Handoffs use the settings Codex has applied: the running turn's, or those of
+  the last turn Codex accepted. A queued request, or one whose turn failed to
+  start, may not have been applied; unsent composer selections never apply.
+
+  Native handoff requests appear as provider input on the existing coding turn.
+  The request is the voice model's interpretation of the task, not a verbatim
+  transcript. BB keeps the current request and excludes the surrounding spoken
+  transcript. An untitled thread uses that request for its normal title service
+  and a bounded text fallback; supplied and manually edited titles are preserved.
+  Explicit title regeneration still needs a stored task request, which native
+  handoffs do not create.
+
+  A thread allows one voice session at a time. Codex account/model access still
+  determines whether native realtime is available.
+
   bb thread clear-goal [id]                Clear the provider's Goal
     --self                                 Target current thread
 

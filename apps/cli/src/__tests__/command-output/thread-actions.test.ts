@@ -1,4 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import * as domain from "@bb/domain";
 import {
   setupCommandOutputTestEnvironment,
@@ -21,6 +24,105 @@ describe("bb thread action command output", () => {
 
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
+
+  it("passes voice startup files through the same SDK/server operation", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-voice-cli-"));
+    const sessionId = "11111111-1111-4111-8111-111111111111";
+    const post = vi.fn(async () => ({ sdp: "answer" }));
+    stubServerApi({ "v1.threads.:id.voice.$post": post });
+    try {
+      await writeFile(join(dir, "offer"), "offer");
+      await writeFile(join(dir, "context"), "Historical reference");
+      await writeFile(join(dir, "instructions"), "Native handoff instructions");
+      await runCommand(
+        [
+          "thread",
+          "voice",
+          "start",
+          "thread",
+          "--session",
+          sessionId,
+          "--sdp-file",
+          join(dir, "offer"),
+          "--voice",
+          "juniper",
+          "--context-file",
+          join(dir, "context"),
+          "--instructions-file",
+          join(dir, "instructions"),
+        ],
+        register,
+      );
+      expect(post).toHaveBeenCalledWith({
+        param: { id: "thread" },
+        json: {
+          action: "start",
+          sessionId,
+          sdp: "offer",
+          voice: "juniper",
+          initialContext: "Historical reference",
+          instructions: "Native handoff instructions",
+        },
+      });
+      await runCommand(
+        [
+          "thread",
+          "voice",
+          "start",
+          "thread",
+          "--session",
+          sessionId,
+          "--sdp-file",
+          join(dir, "offer"),
+          "--no-context",
+        ],
+        register,
+      );
+      expect(post).toHaveBeenLastCalledWith({
+        param: { id: "thread" },
+        json: { action: "start", sessionId, sdp: "offer", initialContext: "" },
+      });
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects conflicting startup input before reading stdin or contacting a provider", async () => {
+    const post = vi.fn();
+    stubServerApi({ "v1.threads.:id.voice.$post": post });
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "voice",
+          "start",
+          "thread",
+          "--sdp-file",
+          "-",
+          "--context-file",
+          "-",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "voice",
+          "start",
+          "thread",
+          "--sdp-file",
+          "offer",
+          "--no-context",
+          "--context-file",
+          "context",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(post).not.toHaveBeenCalled();
+  });
 
   function stubArchivedThread(threadId: string, archivedAt: number) {
     return vi.fn(async () =>

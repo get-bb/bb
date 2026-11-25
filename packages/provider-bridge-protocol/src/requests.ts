@@ -1,3 +1,4 @@
+import { threadVoiceCommandSchema } from "@bb/domain";
 import {
   clientTurnRequestIdSchema,
   dynamicToolSchema,
@@ -24,6 +25,7 @@ export const BRIDGE_REQUEST_METHODS = {
   threadNameSet: "thread/name/set",
   threadArchive: "thread/archive",
   threadUnarchive: "thread/unarchive",
+  threadVoice: "thread/voice",
   threadGoalClear: "thread/goal/clear",
   turnStart: "turn/start",
   turnSteer: "turn/steer",
@@ -99,6 +101,9 @@ export const threadDiscardParamsSchema = threadRefParams;
 export const threadArchiveParamsSchema = threadRefParams;
 export const threadUnarchiveParamsSchema = threadRefParams;
 export const threadGoalClearParamsSchema = threadRefParams;
+export const threadVoiceParamsSchema = threadRefParams.extend({
+  command: threadVoiceCommandSchema,
+});
 
 export const threadNameSetParamsSchema = z
   .object({

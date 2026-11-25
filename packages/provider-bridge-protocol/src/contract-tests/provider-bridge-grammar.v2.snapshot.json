@@ -38,6 +38,7 @@
     "input.provider": {
       "kind": "required",
       "text": "required",
+      "providerTurnId": "optional",
       "parentRef": "optional"
     },
     "item.close": {
@@ -302,6 +303,7 @@
     "sessionRestore": "default",
     "threadArchive": "default",
     "threadRename": "default",
+    "threadVoice": "default",
     "threadGoalClear": "default",
     "fork": "default",
     "approvalEnforcedBy": "default",
@@ -334,6 +336,7 @@
     "thread/start",
     "thread/stop",
     "thread/unarchive",
+    "thread/voice",
     "turn/start",
     "turn/steer"
   ],

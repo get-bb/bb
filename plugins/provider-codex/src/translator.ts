@@ -379,11 +379,15 @@ export type CodexEventTranslator = ReturnType<
   typeof createCodexEventTranslator
 >;
 
+const MAX_UNREQUESTED_NATIVE_VOICE_TURNS = 16;
+
 export function createCodexEventTranslator(
   options: CreateCodexEventTranslatorOptions,
 ) {
   const additionalWorkspaceWriteRoots = options.additionalWorkspaceWriteRoots;
   const eventTranslationState = createCodexEventTranslationState();
+  let nativeVoiceActive = false;
+  const unrequestedNativeVoiceTurnIds = new Set<string>();
   const nativeTurnStartClientRequestIdsByProviderThreadId = new Map<
     string,
     ClientTurnRequestId[]
@@ -811,6 +815,7 @@ export function createCodexEventTranslator(
       const clientRequestId =
         shiftNativeTurnStartClientRequestId(providerThreadId);
       if (clientRequestId === undefined) {
+        rememberUnrequestedNativeVoiceTurn(delta);
         return [delta];
       }
       return [
@@ -824,6 +829,46 @@ export function createCodexEventTranslator(
     }
 
     return [delta];
+  }
+
+  function rememberUnrequestedNativeVoiceTurn(
+    delta: Extract<ThreadDelta, { kind: "turn.open" }>,
+  ): void {
+    if (
+      !nativeVoiceActive ||
+      delta.parentRef !== undefined ||
+      delta.providerTurnId === undefined
+    ) {
+      return;
+    }
+    unrequestedNativeVoiceTurnIds.add(delta.providerTurnId);
+    if (
+      unrequestedNativeVoiceTurnIds.size > MAX_UNREQUESTED_NATIVE_VOICE_TURNS
+    ) {
+      const oldest = unrequestedNativeVoiceTurnIds.values().next().value;
+      if (oldest !== undefined) {
+        unrequestedNativeVoiceTurnIds.delete(oldest);
+      }
+    }
+  }
+
+  function admitNativeVoiceHandoffInput(delta: ThreadDelta): ThreadDelta[] {
+    if (delta.kind === "turn.boundary" && delta.providerTurnId !== undefined) {
+      unrequestedNativeVoiceTurnIds.delete(delta.providerTurnId);
+      return [delta];
+    }
+    if (delta.kind !== "input.provider") {
+      return [delta];
+    }
+    return delta.parentRef === undefined &&
+      delta.providerTurnId !== undefined &&
+      unrequestedNativeVoiceTurnIds.delete(delta.providerTurnId)
+      ? [delta]
+      : [];
+  }
+
+  function setNativeVoiceActive(active: boolean): void {
+    nativeVoiceActive = active;
   }
 
   function enqueuePendingDelegationTurnLink(args: {
@@ -1692,9 +1737,11 @@ export function createCodexEventTranslator(
       translateCodexEventToDeltas(event, eventTranslationState),
       providerThreadId,
     );
-    const translatedDeltas = parentLinkedDeltas.flatMap((delta) =>
-      attachAcceptedInputCorrelation(delta, providerThreadId),
-    );
+    const translatedDeltas = parentLinkedDeltas
+      .flatMap((delta) =>
+        attachAcceptedInputCorrelation(delta, providerThreadId),
+      )
+      .flatMap(admitNativeVoiceHandoffInput);
     const completedSubAgentDeltas =
       completeFinishedCodexSubAgentTurns(translatedDeltas);
     return reconcileRawCommandOutputLifecycle(
@@ -1717,6 +1764,7 @@ export function createCodexEventTranslator(
     openTurnFromStartResponse,
     prepareTurnStart: queueNativeTurnStartClientRequestId,
     prepareWorkspaceWriteGitRoots,
+    setNativeVoiceActive,
     translateEvent,
   };
 }

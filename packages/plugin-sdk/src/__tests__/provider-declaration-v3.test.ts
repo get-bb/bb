@@ -390,6 +390,36 @@ describe("provider declaration fields renamed in SDK 0.4.16", () => {
     ).toThrow(/internal_DO_NOT_USE_guidedSignIn must be a boolean/u);
   });
 
+  it("fills native thread voice eligibility as false and refuses a non-boolean", () => {
+    const capabilities = declaration().capabilities;
+    expect(
+      validatePluginProviderDeclaration(declaration()).capabilities
+        .experimental_supportsThreadVoice,
+    ).toBe(false);
+    expect(
+      validatePluginProviderDeclaration(
+        declaration({
+          capabilities: {
+            ...capabilities,
+            experimental_supportsThreadVoice: true,
+          },
+        }),
+      ).capabilities.experimental_supportsThreadVoice,
+    ).toBe(true);
+    expect(() =>
+      validatePluginProviderDeclaration(
+        declaration({
+          capabilities: {
+            ...capabilities,
+            experimental_supportsThreadVoice: "yes" as never,
+          },
+        }),
+      ),
+    ).toThrow(
+      /capabilities\.experimental_supportsThreadVoice must be a boolean/u,
+    );
+  });
+
   it("rejects an experimental_ key it has never read as unknown", () => {
     const stale = { ...declaration(), experimental_foo: true };
     expect(() => validatePluginProviderDeclaration(stale)).toThrow(

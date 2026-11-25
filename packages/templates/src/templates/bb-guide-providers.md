@@ -17,6 +17,8 @@ Providers are agent backends (e.g., codex, claude-code). Each supports different
                                           List models for a provider
 
 Use these before spawning threads if you are unsure which provider or model to use.
+`bb provider list --json` includes each provider's `capabilities`, including
+`experimental_supportsThreadVoice` for `bb thread voice` eligibility.
 `--host` is an alias for `--machine`. Machine and environment selectors are
 mutually exclusive because an environment already selects its machine. When no
 selector is supplied, both commands intentionally inspect the server machine.

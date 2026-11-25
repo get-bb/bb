@@ -1,3 +1,4 @@
+import { threadVoiceCommandSchema, threadVoiceResultSchema } from "@bb/domain";
 import {
   desktopBrowserBrokerChallengeSchema,
   desktopBrowserBrokerProofSchema,
@@ -374,6 +375,27 @@ export const threadStopCommandSchema = hostDaemonThreadTargetSchema
 const threadStorageDeleteCommandSchema = hostDaemonThreadTargetSchema.extend({
   type: z.literal("thread.storage.delete"),
 });
+
+const threadVoiceCommand = z.union([
+  hostDaemonThreadTargetSchema
+    .extend({
+      type: z.literal("thread.voice"),
+      command: threadVoiceCommandSchema.options[0],
+      options: runtimeThreadExecutionOptionsSchema,
+      bridgeLaunch: hostDaemonBridgeLaunchSchema,
+      resumeContext: turnResumeContextSchema,
+    })
+    .strict(),
+  hostDaemonThreadTargetSchema
+    .extend({
+      type: z.literal("thread.voice"),
+      command: z.union([
+        threadVoiceCommandSchema.options[1],
+        threadVoiceCommandSchema.options[2],
+      ]),
+    })
+    .strict(),
+]);
 
 const threadGoalClearCommandSchema = hostDaemonThreadTargetSchema
   .extend({
@@ -1565,6 +1587,15 @@ export const hostDaemonCommandRegistry = {
     retryable: false,
     flushEventsBeforeResult: true,
     envLane: null,
+  }),
+  "thread.voice": defineHostDaemonCommandDescriptor({
+    type: "thread.voice",
+    schema: threadVoiceCommand,
+    resultSchema: threadVoiceResultSchema,
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: "read",
   }),
   "thread.goal.clear": defineHostDaemonCommandDescriptor({
     type: "thread.goal.clear",

@@ -511,6 +511,7 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   },
   "thread.stop": { providerCheckpointId: null },
   "thread.storage.delete": { providerCheckpointId: null },
+  "thread.voice": { sdp: null },
   "thread.goal.clear": { cleared: true },
   "thread.plan.cancel": { cancelled: true },
   "thread.rename": {},
@@ -652,6 +653,12 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.command.initialContext":
+    "Omission keeps provider startup history; an explicit string replaces it, including an empty reference. The caller owns reference selection.",
+  "hostDaemonCommandSchema.command.instructions":
+    "Omission keeps provider handoff defaults; supplied startup instructions are bounded at the public boundary and follow Codex history semantics, not isolated call scope.",
+  "hostDaemonCommandSchema.command.voice":
+    "Omission keeps the provider default voice; supplied names are validated by the provider protocol.",
   "hostDaemonCommandSchema.resolution.description":
     "the interaction.resolve command's resolution is the persisted union, so it also admits the plugin_submitted arm and the description a plugin's describeSubmission returned. It never reaches the wire: a plugin interaction is settled in the server against its waiting requestInput promise and never queues a daemon command, so an older daemon never sees the field.",
   "hostDaemonCommandSchema.resolution.description.detail":
@@ -3837,5 +3844,34 @@ describe("daemon websocket message dispatch", () => {
     );
 
     expect(viaMessageSchemaCpuUs).toBeLessThan(viaMemberSchemaCpuUs * 4);
+  });
+});
+
+describe("voice launch payload boundaries", () => {
+  const target = {
+    type: "thread.voice",
+    environmentId: "env-voice",
+    threadId: "thread-voice",
+  };
+  const sessionId = "0958a8c8-9527-40ee-9358-ab17ed9e6f98";
+  for (const action of ["keepAlive", "stop"] as const) {
+    it(`accepts lightweight ${action} and rejects ignored launch fields`, () => {
+      const command = { ...target, command: { action, sessionId } };
+      expect(hostDaemonCommandSchema.parse(command)).toEqual(command);
+      for (const field of ["options", "bridgeLaunch", "resumeContext"]) {
+        expect(
+          hostDaemonCommandSchema.safeParse({ ...command, [field]: {} })
+            .success,
+        ).toBe(false);
+      }
+    });
+  }
+  it("requires launch setup when starting a voice session", () => {
+    expect(
+      hostDaemonCommandSchema.safeParse({
+        ...target,
+        command: { action: "start", sessionId, sdp: "offer" },
+      }).success,
+    ).toBe(false);
   });
 });

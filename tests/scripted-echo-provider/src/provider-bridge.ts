@@ -18,6 +18,7 @@ import {
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
+  threadVoiceParamsSchema,
   threadGoalClearParamsSchema,
   threadNameSetParamsSchema,
   threadResumeParamsSchema,
@@ -47,6 +48,7 @@ const scriptedMethodSchema = z.enum([
   "thread/archive",
   "thread/unarchive",
   "thread/name/set",
+  "thread/voice",
   "thread/goal/clear",
   "skills/configure",
 ]);
@@ -982,6 +984,7 @@ const handlers: Record<string, RequestHandler> = {
         sessionRestore: true,
         threadArchive: true,
         threadRename: true,
+        threadVoice: true,
         threadGoalClear: true,
         fork: "checkpoint",
         approvalEnforcedBy: processOptions.approvalEnforcedBy ?? "runtime",
@@ -1349,6 +1352,33 @@ const handlers: Record<string, RequestHandler> = {
     }
   },
 
+  [BRIDGE_REQUEST_METHODS.threadVoice]: (id, params) => {
+    const parsed = threadVoiceParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.threadVoice,
+        parsed.error.issues,
+      );
+      return;
+    }
+    const { command, threadId } = parsed.data;
+    if (command.action !== "keepAlive")
+      emitDeltas(threadId, [
+        {
+          kind: "extension.state",
+          extensionKind: "provider-codex/voice",
+          payload: {
+            sessionId: command.sessionId,
+            status: command.action === "start" ? "active" : "closed",
+            message: null,
+          },
+        },
+      ]);
+    io.sendResult(id, {
+      sdp: command.action === "start" ? "native-answer" : null,
+    });
+  },
   [BRIDGE_REQUEST_METHODS.threadGoalClear]: (id, params) => {
     const parsed = threadGoalClearParamsSchema.safeParse(params);
     if (!parsed.success) {

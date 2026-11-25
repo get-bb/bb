@@ -112,6 +112,7 @@ export {
   threadArchiveParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
+  threadVoiceParamsSchema,
   threadGoalClearParamsSchema,
   threadNameSetParamsSchema,
   threadResumeParamsSchema,

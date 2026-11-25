@@ -1465,6 +1465,13 @@ export interface PluginProviderCapabilities {
   /** The provider stores a thread name of its own, so BB forwards renames to
    * it. */
   supportsThreadRename: boolean;
+  /** Experimental: the provider's bridge can negotiate native realtime voice
+   * on an existing thread through `thread/voice`. BB refuses
+   * `threads.experimental_voice` starts for other providers before preparing
+   * a runtime. This is static eligibility only: the bridge's `threadVoice`
+   * handshake capability and the provider's own installed-version and
+   * account checks still decide whether a call starts. Defaults to `false`. */
+  experimental_supportsThreadVoice?: boolean;
   /** Permission modes the provider can actually run in. Non-empty, no
    * duplicates. */
   permissionModes: readonly PluginProviderPermissionMode[];

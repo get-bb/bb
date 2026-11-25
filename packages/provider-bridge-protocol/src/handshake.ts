@@ -26,6 +26,7 @@ export const bridgeCapabilitiesSchema = z
     sessionRestore: z.boolean().default(false),
     threadArchive: z.boolean().default(false),
     threadRename: z.boolean().default(false),
+    threadVoice: z.boolean().default(false),
     threadGoalClear: z.boolean().default(false),
     fork: providerForkSchema.default("none"),
     approvalEnforcedBy: z.enum(["runtime", "provider"]).default("runtime"),

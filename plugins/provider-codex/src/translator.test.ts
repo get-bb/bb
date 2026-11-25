@@ -731,6 +731,45 @@ describe("codex subagent activity correlation", () => {
     expect(harness.translate(completion)).toEqual([]);
   });
 
+  it("does not record native voice handoff input from nested agent turns", () => {
+    const harness = createHarness();
+    harness.translator.setNativeVoiceActive(true);
+    harness.translate(
+      subAgentActivity({ id: "subagent-call-1", kind: "started" }),
+    );
+    expect(harness.translate(childTurnStarted("child-turn-1"))).toContainEqual(
+      expect.objectContaining({
+        type: "turn/started",
+        parentToolCallId: expect.any(String),
+      }),
+    );
+    expect(
+      harness.translate(
+        codexEvent("item/completed", {
+          threadId: rootProviderThreadId,
+          turnId: "child-turn-1",
+          completedAtMs: 0,
+          item: {
+            type: "userMessage",
+            id: "nested-handoff",
+            clientId: null,
+            content: [
+              {
+                type: "text",
+                text: "<realtime_delegation>\n  <input>Summarize the subagent result</input>\n</realtime_delegation>",
+                text_elements: [],
+              },
+            ],
+          },
+        }),
+      ),
+    ).not.toContainEqual(
+      expect.objectContaining({
+        item: expect.objectContaining({ type: "userMessage" }),
+      }),
+    );
+  });
+
   it("materializes subagent activity as a nested delegation lifecycle", () => {
     const harness = createHarness();
 

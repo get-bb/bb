@@ -529,6 +529,7 @@ async function handleRequest(
           threadArchive: false,
           threadRename: false,
           threadGoalClear: false,
+          threadVoice: false,
           fork: "checkpoint",
           approvalEnforcedBy: "runtime",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
