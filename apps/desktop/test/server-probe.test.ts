@@ -215,7 +215,7 @@ describe("waitForCompatibleServer", () => {
         fetchImpl,
         intervalMs: 1,
         serverUrl: "http://127.0.0.1:65535",
-        timeoutMs: 100,
+        signal: new AbortController().signal,
       }),
     ).resolves.toEqual({
       dataDir: null,

@@ -111,11 +111,11 @@ import {
   reapStaleOwnedRuntime,
   writeOwnedRuntimePidFile,
 } from "./owned-runtime-supervisor.js";
+import { waitForOwnedRuntimeStartup } from "./owned-runtime-startup.js";
 import {
   probeBbServer,
   waitForCompatibleServer,
   type CompatibleServerProbeResult,
-  type ServerProbeResult,
 } from "./server-probe.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
 import {
@@ -302,8 +302,9 @@ import {
   ATTACH_PROBE_TIMEOUT_MS,
   DEFAULT_BB_SERVER_URL,
   PROCESS_LOG_LINE_LIMIT,
+  MACHINE_READY_TIMEOUT_MS,
+  OWNED_RUNTIME_SLOW_START_NOTICE_MS,
   STARTUP_POLL_INTERVAL_MS,
-  STARTUP_TIMEOUT_MS,
   type RuntimeOwnership,
   type WindowStateKey,
 } from "./types.js";
@@ -368,20 +369,6 @@ interface SendLogViewerSnapshotArgs {
 interface LoadLogViewerWindowArgs {
   logDir: string;
   preloadPath: string;
-}
-
-type StartupRaceResult =
-  | ProcessExitedStartupRaceResult
-  | ServerProbeStartupRaceResult;
-
-interface ProcessExitedStartupRaceResult {
-  exit: BbAppProcessExit;
-  kind: "process-exited";
-}
-
-interface ServerProbeStartupRaceResult {
-  kind: "server-probe";
-  result: ServerProbeResult;
 }
 
 interface ResolveDataDirFromEnvArgs {
@@ -2235,17 +2222,33 @@ async function loadWindowUrl(args: LoadWindowUrlArgs): Promise<void> {
   await desktopWindowFactory.loadUrl({ url: args.url });
 }
 
+const LOADING_VIEW_URL = createLocalViewUrl({
+  viewModel: {
+    kind: "loading",
+    message: "Starting local services and opening the bb workspace.",
+    title: "Opening bb",
+  },
+});
+
+const SLOW_START_VIEW_URL = createLocalViewUrl({
+  viewModel: {
+    kind: "loading",
+    message:
+      "bb may be upgrading its data after an update. On a large database or a busy computer this can take several minutes. bb opens when it is ready.",
+    title: "Still starting bb",
+  },
+});
+
 async function loadLoadingView(): Promise<void> {
   bbAppLoaded = false;
-  await loadWindowUrl({
-    url: createLocalViewUrl({
-      viewModel: {
-        kind: "loading",
-        message: "Starting local services and opening the bb workspace.",
-        title: "Opening bb",
-      },
-    }),
-  });
+  await loadWindowUrl({ url: LOADING_VIEW_URL });
+}
+
+async function loadSlowStartView(): Promise<void> {
+  if (currentWindowUrl !== LOADING_VIEW_URL) {
+    return;
+  }
+  await loadWindowUrl({ url: SLOW_START_VIEW_URL });
 }
 
 async function loadWindowsInstallerWaitView(): Promise<void> {
@@ -2270,7 +2273,7 @@ async function loadStartupError(args: LoadStartupErrorArgs): Promise<void> {
   await loadActionView({
     ...args,
     details:
-      args.actions.length === 0
+      args.actions.length === 0 || args.logs.length > 0
         ? `${args.details} Logs are under ${formatLogDirectory()}/.`
         : args.details,
   });
@@ -2724,6 +2727,11 @@ async function spawnOwnedRuntime(
   return { bbProcess, runtime };
 }
 
+const OWNED_RUNTIME_EXIT_ACTIONS: StartupAction[] = [
+  { id: "retry", label: "Try again" },
+  { id: "choose-server", label: "Choose server…" },
+];
+
 function reportOwnedRuntimeExit({ bbProcess, runtime }: OwnedRuntime): void {
   void bbProcess.exit.then((exit) => {
     if (quitting || currentRuntime !== runtime) {
@@ -2741,7 +2749,7 @@ function reportOwnedRuntimeExit({ bbProcess, runtime }: OwnedRuntime): void {
         exit,
       )}.`,
       logs: bbProcess.logs.text(),
-      actions: [],
+      actions: OWNED_RUNTIME_EXIT_ACTIONS,
       title: "bb stopped",
     });
   });
@@ -2778,13 +2786,16 @@ async function waitForOwnedRuntimeReady(
   const result = await Promise.race([
     bbProcess.ready.then(() => "ready" as const),
     new Promise<"timed-out">((resolveTimeout) => {
-      timer = setTimeout(() => resolveTimeout("timed-out"), STARTUP_TIMEOUT_MS);
+      timer = setTimeout(
+        () => resolveTimeout("timed-out"),
+        MACHINE_READY_TIMEOUT_MS,
+      );
     }),
   ]);
   clearTimeout(timer);
   if (result === "timed-out") {
     desktopLogger.warn(
-      `[desktop] bb-app did not report this computer connected within ${STARTUP_TIMEOUT_MS}ms; opening bb anyway`,
+      `[desktop] bb-app did not report this computer connected within ${MACHINE_READY_TIMEOUT_MS}ms; opening bb anyway`,
     );
   }
 }
@@ -2795,49 +2806,51 @@ async function startOwnedRuntime(
   const ownedRuntime = await spawnOwnedRuntime(args);
   const { bbProcess, runtime } = ownedRuntime;
 
-  const raceResult = await Promise.race<StartupRaceResult>([
-    waitForCompatibleServer({
-      intervalMs: STARTUP_POLL_INTERVAL_MS,
-      serverUrl: args.serverUrl,
-      timeoutMs: STARTUP_TIMEOUT_MS,
-    }).then(async (result) => {
+  const startup = await waitForOwnedRuntimeStartup({
+    exit: bbProcess.exit,
+    onSlowStart: () => {
+      desktopLogger.info(
+        `[desktop] bb-app is still starting after ${OWNED_RUNTIME_SLOW_START_NOTICE_MS}ms; waiting for it while the process runs`,
+      );
+      void loadSlowStartView();
+    },
+    slowStartNoticeMs: OWNED_RUNTIME_SLOW_START_NOTICE_MS,
+    waitForServer: async (signal) => {
+      const result = await waitForCompatibleServer({
+        intervalMs: STARTUP_POLL_INTERVAL_MS,
+        serverUrl: args.serverUrl,
+        signal,
+      });
       if (result.kind === "compatible") {
         await waitForOwnedRuntimeReady(bbProcess);
       }
-      return { kind: "server-probe", result };
-    }),
-    bbProcess.exit.then((exit) => ({
-      exit,
-      kind: "process-exited",
-    })),
-  ]);
+      return result;
+    },
+  });
 
-  if (raceResult.kind === "process-exited") {
+  if (startup.kind === "process-exited") {
     setCurrentRuntime(null);
     if (await waitForWindowsInstallerToFinish()) {
       return startOwnedRuntime(args);
     }
     await loadStartupError({
       details: `bb-app exited before the server was ready with ${formatExitResult(
-        raceResult.exit,
+        startup.exit,
       )}.`,
       logs: bbProcess.logs.text(),
-      actions: [],
+      actions: OWNED_RUNTIME_EXIT_ACTIONS,
       title: "Could not start bb",
     });
     return null;
   }
 
-  if (raceResult.result.kind === "compatible") {
+  if (startup.result.kind === "compatible") {
     reportOwnedRuntimeExit(ownedRuntime);
     return runtime;
   }
 
   await loadStartupError({
-    details:
-      raceResult.result.kind === "incompatible"
-        ? `Port ${args.serverUrl} is responding, but it does not look like bb: ${raceResult.result.reason}.`
-        : `Timed out waiting for bb at ${args.serverUrl}: ${raceResult.result.reason}.`,
+    details: `Port ${args.serverUrl} is responding, but it does not look like bb: ${startup.result.reason}.`,
     logs: bbProcess.logs.text(),
     actions: [],
     title: "Could not start bb",
