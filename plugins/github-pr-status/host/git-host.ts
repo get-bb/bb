@@ -888,13 +888,6 @@ export function preparedResult(result: HostPullRequestLookup): PreparedRead {
 }
 
 const MAX_DOCUMENT_READS = 25;
-const MAX_DOCUMENT_NODES = 500_000;
-
-function readNodes(target: ReadTarget): number {
-  return target.kind === "branch"
-    ? BRANCH_PULL_REQUESTS_PAGE * (1 + PULL_REQUEST_NODES)
-    : PULL_REQUEST_NODES;
-}
 
 const batches = new Map<string, QueuedRead[]>();
 const pendingReads = new Map<string, Promise<HostPullRequestLookup>>();
@@ -937,14 +930,12 @@ async function credentialKey(
     .digest("hex");
 }
 
-const REVIEW_REQUESTS_PAGE = 100;
 const CHECK_CONTEXTS_PAGE = 100;
 const BRANCH_PULL_REQUESTS_PAGE = 100;
-const PULL_REQUEST_NODES = REVIEW_REQUESTS_PAGE + 1 + CHECK_CONTEXTS_PAGE;
 
 function fields(cursor: string | null, mergeQueue: boolean): string {
   return `number title state url isDraft autoMergeRequest { enabledAt }${mergeQueue ? " isInMergeQueue" : ""}
-    baseRefName headRefName headRefOid updatedAt reviewDecision reviewRequests(first: ${REVIEW_REQUESTS_PAGE}) { totalCount }
+    baseRefName headRefName headRefOid updatedAt reviewDecision reviewRequests(first: 0) { totalCount }
     mergeStateStatus mergeable isCrossRepository headRepositoryOwner { login }
     commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: ${CHECK_CONTEXTS_PAGE}${cursor === null ? "" : `, after: ${JSON.stringify(cursor)}`}) {
       nodes { ... on CheckRun { name status conclusion detailsUrl startedAt
@@ -964,6 +955,9 @@ function selection(
   return `${alias}: repository(owner: ${JSON.stringify(target.owner)}, name: ${JSON.stringify(target.repository)}) {
     defaultBranchRef { name }
     pullRequests(headRefName: ${JSON.stringify(target.branch)}, first: ${BRANCH_PULL_REQUESTS_PAGE}, orderBy: {field: CREATED_AT, direction: DESC}) {
+      nodes { url state isCrossRepository headRepositoryOwner { login } }
+    }
+    newest: pullRequests(headRefName: ${JSON.stringify(target.branch)}, first: 1, orderBy: {field: CREATED_AT, direction: DESC}) {
       nodes { ${fields(null, mergeQueue)} }
     }
   }`;
@@ -1010,8 +1004,24 @@ async function decodeRead(
             : [];
         })
       : [];
-    raw = candidates.find((pr) => pr.state === "OPEN") ?? candidates[0] ?? null;
-    if (raw === null) return { outcome: "none" };
+    const match =
+      candidates.find((pr) => pr.state === "OPEN") ?? candidates[0] ?? null;
+    if (match === null) return { outcome: "none" };
+    const url = getString(match, "url");
+    if (url === null)
+      return {
+        outcome: "unavailable",
+        message: "GitHub returned an invalid pull request",
+      };
+    const newestNodes = asObject(raw.newest)?.nodes;
+    const newest = asObject(Array.isArray(newestNodes) ? newestNodes[0] : null);
+    if (newest === null || getString(newest, "url") !== url)
+      return enqueueRead(
+        { kind: "url", host: target.host, url, cursor: null },
+        entry.cwd,
+        entry.env,
+      );
+    raw = newest;
   }
   const commits = asObject(raw.commits);
   const nodes = Array.isArray(commits?.nodes) ? commits.nodes : [];
@@ -1132,24 +1142,8 @@ async function flushBatch(group: string): Promise<void> {
   const queued = batches.get(group);
   if (queued === undefined) return;
   batches.delete(group);
-  const chunks: QueuedRead[][] = [];
-  let nodes = 0;
-  for (const entry of queued) {
-    const entryNodes = readNodes(entry.target);
-    const current = chunks.at(-1);
-    if (
-      current === undefined ||
-      current.length === MAX_DOCUMENT_READS ||
-      nodes + entryNodes > MAX_DOCUMENT_NODES
-    ) {
-      chunks.push([entry]);
-      nodes = entryNodes;
-      continue;
-    }
-    current.push(entry);
-    nodes += entryNodes;
-  }
-  for (const entries of chunks) {
+  for (let start = 0; start < queued.length; start += MAX_DOCUMENT_READS) {
+    const entries = queued.slice(start, start + MAX_DOCUMENT_READS);
     const paused = pausedUntil.get(group) ?? 0;
     if (paused > Date.now()) {
       for (const entry of entries)
