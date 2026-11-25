@@ -5,12 +5,7 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style.js";
 import { ComposerMaxHeightContext } from "@/components/promptbox/composer-max-height";
 import { composerRootWithin } from "@/lib/pane-composer-focus";
-import {
-  getMobileRecentRowHeight,
-  MINIMUM_MOBILE_RECENT_LEADING_SPACE_PX,
-  MOBILE_RECENT_LABEL_HEIGHT_PX,
-  readMobileRecentScale,
-} from "./RootComposeMobileRecents";
+import { readMobileRecentMetrics } from "./RootComposeMobileRecents";
 
 const COMPACT_HOME_CHROME_OFFSET_PX = 56;
 const COMPACT_HOME_COLUMN_CLASS = "mx-auto w-full max-w-[760px] px-4";
@@ -20,17 +15,16 @@ const COMPACT_HOME_REST_VISIBLE_ROWS = 4.5;
 export function getCompactHomeLeadingSpace({
   regionHeight,
   composerHeight,
-  recentScale,
+  recents,
 }: {
   regionHeight: number;
   composerHeight: number;
-  recentScale: number;
+  recents: ReturnType<typeof readMobileRecentMetrics>;
 }): number {
   const restingBandHeight =
-    COMPACT_HOME_REST_VISIBLE_ROWS * getMobileRecentRowHeight(recentScale) +
-    MOBILE_RECENT_LABEL_HEIGHT_PX * recentScale;
+    COMPACT_HOME_REST_VISIBLE_ROWS * recents.rowHeight + recents.labelHeight;
   return Math.max(
-    MINIMUM_MOBILE_RECENT_LEADING_SPACE_PX,
+    recents.minimumLeadingSpace,
     regionHeight -
       composerHeight -
       restingBandHeight -
@@ -91,7 +85,7 @@ function useCompactHomeMetrics(isCompact: boolean) {
       leadingSpacer.style.height = `${getCompactHomeLeadingSpace({
         regionHeight: region.offsetHeight,
         composerHeight,
-        recentScale: readMobileRecentScale(),
+        recents: readMobileRecentMetrics(),
       })}px`;
       bottomSpacer.style.height = `${composerHeight}px`;
       composerFade.hidden =

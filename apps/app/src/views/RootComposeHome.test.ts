@@ -7,7 +7,7 @@ describe("getCompactHomeLeadingSpace", () => {
       getCompactHomeLeadingSpace({
         regionHeight: 852,
         composerHeight: 188,
-        recentScale: 1,
+        recents: { rowHeight: 60, labelHeight: 24, minimumLeadingSpace: 60 },
       }),
     ).toBe(314);
   });
@@ -17,7 +17,7 @@ describe("getCompactHomeLeadingSpace", () => {
       getCompactHomeLeadingSpace({
         regionHeight: 852,
         composerHeight: 188,
-        recentScale: 1.5,
+        recents: { rowHeight: 90, labelHeight: 36, minimumLeadingSpace: 60 },
       }),
     ).toBe(167);
   });
@@ -27,7 +27,11 @@ describe("getCompactHomeLeadingSpace", () => {
       getCompactHomeLeadingSpace({
         regionHeight: 852,
         composerHeight: 188,
-        recentScale: 3.571,
+        recents: {
+          rowHeight: 214.26,
+          labelHeight: 85.704,
+          minimumLeadingSpace: 60,
+        },
       }),
     ).toBe(60);
   });

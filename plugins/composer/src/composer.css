@@ -67,7 +67,7 @@
 
 [data-promptbox] {
   --compact-editor-height: max(
-    48px,
+    3rem,
     calc(
       var(
           --bb-composer-editor-base-font-size,

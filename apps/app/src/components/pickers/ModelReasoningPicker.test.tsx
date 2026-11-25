@@ -1399,6 +1399,32 @@ describe("ModelReasoningPicker", () => {
     expect(list.scrollTop).toBe(0);
   });
 
+  it("returns the scrollable drawer body to the first search result at large text sizes", async () => {
+    document.documentElement.dataset.bbIosTextScale = "3.571";
+    try {
+      renderPicker({ compact: true, modelOptions: manyCodexModels });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Provider, model and reasoning" }),
+      );
+
+      const list = await screen.findByRole("listbox", { name: "Models" });
+      const drawerBody = list.parentElement;
+      if (!drawerBody) throw new Error("Missing model picker body");
+      drawerBody.scrollTop = 120;
+
+      fireEvent.change(screen.getByPlaceholderText("Search models"), {
+        target: { value: "o4" },
+      });
+
+      expect(drawerBody.scrollTop).toBe(0);
+      expect(list.contains(screen.getByRole("option", { name: /o4/iu }))).toBe(
+        true,
+      );
+    } finally {
+      delete document.documentElement.dataset.bbIosTextScale;
+    }
+  });
+
   it("resets retained mobile browse state after the drawer closes", () => {
     const frames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {

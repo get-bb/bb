@@ -56,7 +56,6 @@ import {
 } from "./model-picker-menu";
 import { ModelReasoningMenu } from "./ModelReasoningMenuSplit";
 import { searchPickerOptions } from "@bb/fuzzy-match";
-import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 import { formatModelLoadErrorText } from "./model-load-error-message";
 import {
   useAppCommandContext,
@@ -257,7 +256,6 @@ export function ModelReasoningPicker({
     ? registeredToggleShortcut
     : null;
   const [searchQuery, setSearchQuery] = useState("");
-  const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
   const [activeIndex, setActiveIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const isSearching = searchQuery.trim().length > 0;
@@ -1155,7 +1153,7 @@ export function ModelReasoningPicker({
         ) : null}
 
         <ModelReasoningMenu
-          listRef={listRef}
+          searchQuery={searchQuery}
           providerId={activeProviderId}
           provider={activeProvider}
           providerLabel={activeProviderLabel}
@@ -1170,7 +1168,6 @@ export function ModelReasoningPicker({
           modelLoadFailed={activeModelLoadFailed}
           navRows={navRows}
           highlightedIndex={highlightedIndex}
-          isSearching={isSearching}
           showMoreModels={showMoreModels}
           onToggleMoreModels={toggleShowMoreModels}
           moreModelOptions={filteredMoreModelOptions}

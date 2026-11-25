@@ -51,24 +51,22 @@ import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
 import { useThreadListEntryStatus } from "@/hooks/useThreadListEntryStatus";
 import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 
-const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
-export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
-
-export const MINIMUM_MOBILE_RECENT_LEADING_SPACE_PX =
-  MOBILE_RECENT_ROW_HEIGHT_PX;
+const MOBILE_RECENT_ROW_HEIGHT_REM = 3.75;
+const MOBILE_RECENT_LABEL_HEIGHT_REM = 1.5;
 const MOBILE_RECENT_ROW_STYLE = {
-  height: `calc(${MOBILE_RECENT_ROW_HEIGHT_PX}px * max(1, var(--bb-ios-font-scale, 1)))`,
+  height: `calc(${MOBILE_RECENT_ROW_HEIGHT_REM}rem * max(1, var(--bb-ios-font-scale, 1)))`,
 };
 
-export function readMobileRecentScale(): number {
-  return Math.max(
-    1,
-    Number(document.documentElement.dataset.bbIosTextScale ?? 1),
-  );
-}
-
-export function getMobileRecentRowHeight(scale: number): number {
-  return MOBILE_RECENT_ROW_HEIGHT_PX * scale;
+export function readMobileRecentMetrics() {
+  const root = document.documentElement;
+  const rootFontSize = Number.parseFloat(getComputedStyle(root).fontSize) || 16;
+  const scale = Math.max(1, Number(root.dataset.bbIosTextScale) || 1);
+  const baseRowHeight = MOBILE_RECENT_ROW_HEIGHT_REM * rootFontSize;
+  return {
+    rowHeight: baseRowHeight * scale,
+    labelHeight: MOBILE_RECENT_LABEL_HEIGHT_REM * rootFontSize * scale,
+    minimumLeadingSpace: baseRowHeight,
+  };
 }
 
 type ThreadListEntryComparator = (
@@ -234,11 +232,7 @@ export function getMobileRecentAncestorIds({
 }
 
 function getFirstPaintMobileRecentRowCount(viewportHeight: number): number {
-  return (
-    Math.ceil(
-      viewportHeight / getMobileRecentRowHeight(readMobileRecentScale()),
-    ) + 1
-  );
+  return Math.ceil(viewportHeight / readMobileRecentMetrics().rowHeight) + 1;
 }
 
 export function getMobileRecentThreads({

@@ -1,10 +1,4 @@
-import {
-  Fragment,
-  useEffect,
-  useRef,
-  type ReactNode,
-  type RefObject,
-} from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
 import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import {
   DEFAULT_SERVICE_TIER,
@@ -29,6 +23,7 @@ import type {
   SessionOptionMenuSection,
 } from "./SessionOptionsMenu";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
+import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
@@ -54,7 +49,7 @@ const MENU_ROW_FOCUS_VISIBLE_CLASS =
 const REASONING_PLACEHOLDER_KEYS = ["low", "medium", "high"] as const;
 
 export interface ModelReasoningMenuProps {
-  listRef: RefObject<HTMLDivElement | null>;
+  searchQuery: string;
   providerId: string;
   provider: ProviderPickerOption | undefined;
   providerLabel: string;
@@ -67,7 +62,6 @@ export interface ModelReasoningMenuProps {
   modelLoadFailed: boolean;
   navRows: readonly ModelNavRow[];
   highlightedIndex: number;
-  isSearching: boolean;
   showMoreModels: boolean;
   onToggleMoreModels: () => void;
   moreModelOptions: readonly ModelPickerOption[];
@@ -91,7 +85,7 @@ export interface ModelReasoningMenuProps {
 }
 
 export function ModelReasoningMenu({
-  listRef,
+  searchQuery,
   providerId,
   provider,
   providerLabel,
@@ -104,7 +98,6 @@ export function ModelReasoningMenu({
   modelLoadFailed,
   navRows,
   highlightedIndex,
-  isSearching,
   showMoreModels,
   onToggleMoreModels,
   moreModelOptions,
@@ -127,6 +120,9 @@ export function ModelReasoningMenu({
   onStartHandoff,
 }: ModelReasoningMenuProps) {
   const isCompactViewport = useIsCompactViewport();
+  const bodyRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const listRef = useResetPickerScroll<HTMLDivElement>(searchQuery);
+  const isSearching = searchQuery.trim().length > 0;
   const brandPrefix = provider?.brandPrefix;
   const singleServiceTier =
     serviceTierOptions.length === 1 ? serviceTierOptions[0] : undefined;
@@ -141,7 +137,10 @@ export function ModelReasoningMenu({
 
   return (
     <MenuHoverProvider>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden [html[data-bb-ios-text-scale]_&]:overflow-y-auto">
+      <div
+        ref={bodyRef}
+        className="flex min-h-0 flex-1 flex-col overflow-hidden [html[data-bb-ios-text-scale]_&]:overflow-y-auto"
+      >
         <div
           ref={listRef}
           key={providerId || "no-provider"}

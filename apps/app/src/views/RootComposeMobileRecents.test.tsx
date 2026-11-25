@@ -147,6 +147,7 @@ function makeIdleThread(
 afterEach(() => {
   cleanup();
   delete document.documentElement.dataset.bbIosTextScale;
+  document.documentElement.style.removeProperty("font-size");
   vi.unstubAllGlobals();
   window.localStorage.clear();
   vi.useRealTimers();
@@ -155,12 +156,17 @@ afterEach(() => {
 
 describe("first-paint mobile recents", () => {
   it.each([
-    ["1", 16],
-    ["3.571", 6],
+    [16, "1", 16],
+    [16, "3.571", 6],
+    [20, "1", 13],
+    [20, "3.571", 5],
+    [32, "1", 9],
+    [32, "3.571", 4],
   ])(
-    "mounts only %s-scale viewport rows on the first commit",
-    (scale, count) => {
+    "mounts only viewport rows on the first commit at a %spx root and %s scale",
+    (rootFontSize, scale, count) => {
       vi.stubGlobal("innerHeight", 900);
+      document.documentElement.style.fontSize = `${rootFontSize}px`;
       document.documentElement.dataset.bbIosTextScale = scale;
       const threads = Array.from({ length: 20 }, (_, index) =>
         makeThread({ id: `thr_recent${index}` }),
