@@ -47,33 +47,43 @@ export class FileLockTimeoutError extends Error {
   }
 }
 
-export async function withFileLock<T>(args: {
+export async function acquireFileLock(args: {
   path: string;
   timeoutMs: number;
-  work: () => Promise<T>;
-}): Promise<T> {
+}): Promise<() => Promise<void>> {
   const nativeFileLocks = loadNativeFileLocks();
   await mkdir(dirname(args.path), { recursive: true });
   const handle = await open(args.path, "a+", 0o600);
-  let acquired = false;
   try {
     const deadline = performance.now() + args.timeoutMs;
-    for (;;) {
-      if (nativeFileLocks.tryLock(handle.fd)) {
-        acquired = true;
-        break;
-      }
+    while (!nativeFileLocks.tryLock(handle.fd)) {
       if (performance.now() >= deadline) {
         throw new FileLockTimeoutError(args.path);
       }
       await sleep(LOCK_RETRY_MS);
     }
-    return await args.work();
-  } finally {
+  } catch (error) {
+    await handle.close();
+    throw error;
+  }
+  return async () => {
     try {
-      if (acquired) nativeFileLocks.unlock(handle.fd);
+      nativeFileLocks.unlock(handle.fd);
     } finally {
       await handle.close();
     }
+  };
+}
+
+export async function withFileLock<T>(args: {
+  path: string;
+  timeoutMs: number;
+  work: () => Promise<T>;
+}): Promise<T> {
+  const release = await acquireFileLock(args);
+  try {
+    return await args.work();
+  } finally {
+    await release();
   }
 }
