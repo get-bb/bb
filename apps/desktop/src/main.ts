@@ -3082,9 +3082,6 @@ async function runDesktopApp(): Promise<void> {
     browserWindow.once("closed", () => {
       windowCrashRecoveries.delete(webContentsId);
     });
-    browserWindow.on("query-session-end", () =>
-      quitController.bypassConfirmation(),
-    );
     browserWindow.on("session-end", () => quitController.bypassConfirmation());
     if (desktopBrowserViewManager === null) {
       return;
