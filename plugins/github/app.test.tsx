@@ -139,4 +139,52 @@ describe("GitHub app navigation", () => {
     );
     slot.lifecycle.unmount();
   });
+  it("lists only the thread project's pull requests until another repository is chosen", async () => {
+    const pull = (repo: string, number: number, title: string) => ({
+      repo,
+      number,
+      kind: "pr",
+      title,
+      state: "OPEN",
+      author: "octocat",
+      labels: [],
+      assignees: [],
+      url: `https://github.com/${repo}/pull/${number}`,
+      body: "",
+      updatedAt: "2026-08-20T00:00:00.000Z",
+    });
+    const slot = renderSlot(
+      app.threadPanelActions[0]!,
+      { threadId: "thr-1", environment: null, params: null },
+      {
+        rpc: {
+          pullForThread: () => ({ pull: null }),
+          threadRepos: () => ({ repos: ["get-bb/bb"] }),
+          listItems: () => ({
+            items: [
+              pull("get-bb/bb", 1, "Own repository change"),
+              pull("acme/widgets", 2, "Other repository change"),
+            ],
+          }),
+          status: () => ({
+            ghOk: true,
+            ghState: "ready",
+            ghError: null,
+            repos: [
+              { repo: "acme/widgets", projectId: "proj-other" },
+              { repo: "get-bb/bb", projectId: "proj-1" },
+            ],
+            lastSyncedAt: null,
+          }),
+        },
+      },
+    );
+
+    await slot.findByText("Own repository change");
+    expect(slot.queryByText("Other repository change")).toBeNull();
+    expect(slot.getByRole("combobox", { name: "Repository" }).textContent).toBe(
+      "get-bb/bb",
+    );
+    slot.lifecycle.unmount();
+  });
 });

@@ -6,6 +6,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createFakePluginHost } from "@get-bb/plugin-sdk/testing";
@@ -298,6 +299,48 @@ describe("github plugin RPC behavior", () => {
         code: "invalid_input",
       });
     }
+  });
+
+  it("scopes a thread to every repository of its own project", async () => {
+    const checkout = (name: string, remote: string) => {
+      const path = join(binDir, name);
+      execFileSync("git", ["init", "-q", path]);
+      execFileSync("git", ["-C", path, "remote", "add", "origin", remote]);
+      return { type: "local_path", path };
+    };
+    const shared = checkout("shared", "git@github.com:acme/widgets.git");
+    const host = createFakePluginHost({
+      pluginId: "github",
+      settings: { extraRepos: "acme/extra" },
+      sdk: {
+        projects: {
+          list: async () => [
+            { id: "proj-first", sources: [shared] },
+            {
+              id: "proj-second",
+              sources: [
+                shared,
+                checkout("gadgets", "https://github.com/acme/gadgets.git"),
+              ],
+            },
+          ],
+        },
+        threads: {
+          get: async ({ threadId }: { threadId: string }) => ({
+            id: threadId,
+            projectId: threadId === "thr-second" ? "proj-second" : "proj-none",
+          }),
+        },
+      },
+    });
+    await plugin(host.bb);
+
+    await expect(
+      host.harness.callRpc("threadRepos", { threadId: "thr-second" }),
+    ).resolves.toEqual({ repos: ["acme/widgets", "acme/gadgets"] });
+    await expect(
+      host.harness.callRpc("threadRepos", { threadId: "thr-none" }),
+    ).resolves.toEqual({ repos: [] });
   });
 
   it("reports repositories, cached rows, and sync counts as JSON", async () => {
