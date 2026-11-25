@@ -118,3 +118,74 @@ it.skipIf(process.platform !== "linux").each([
     });
   },
 );
+
+it.skipIf(process.platform !== "linux")(
+  "refuses an unreadable process only when its mounts can reach the workspace",
+  async () => {
+    const uid = process.getuid!();
+    const ownMounts =
+      "22 1 253:0 / / rw,relatime - xfs /dev/vda1 rw\n" +
+      "30 22 0:40 / /tmp rw - tmpfs tmpfs rw\n";
+    const mountsByPid: Record<string, string | Error> = {
+      "401": ownMounts,
+      "402":
+        "900 800 0:60 / / rw - overlay overlay rw\n" +
+        "901 900 253:0 /home/user/workspace /app rw - xfs /dev/vda1 rw\n",
+      "403":
+        "910 810 0:61 / / rw - overlay overlay rw\n" +
+        "911 910 253:0 /home/user/other /data rw - xfs /dev/vda1 rw\n",
+      "404":
+        "920 820 0:62 / / rw - overlay overlay rw\n" +
+        "921 920 253:0 /home/user /home/user rw - xfs /dev/vda1 rw\n",
+      "405": Object.assign(new Error("denied"), { code: "EACCES" }),
+      "406":
+        "930 830 0:63 / / rw - overlay overlay rw\n" +
+        "931 930 0:40 / /tmp rw - tmpfs tmpfs rw\n",
+    };
+    vi.mocked(realpath).mockResolvedValue("/home/user/workspace");
+    vi.mocked(readdir).mockResolvedValue(Object.keys(mountsByPid) as never);
+    vi.mocked(readFile).mockImplementation(async (file) => {
+      const name = String(file);
+      if (name === "/proc/self/mountinfo") return ownMounts;
+      if (name.endsWith("/status"))
+        return `State:\tS\nUid:\t${uid}\t${uid}\t${uid}\t${uid}\n`;
+      if (name.endsWith("/mountinfo")) {
+        const mounts = mountsByPid[name.split("/")[2]!]!;
+        if (mounts instanceof Error) throw mounts;
+        return mounts;
+      }
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    });
+    vi.mocked(readlink).mockImplementation(async (file) => {
+      if (String(file) === "/proc/self/ns/mnt") return "mnt:[4026531841]";
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    });
+    expect(await inspectWorkspaceProcesses("/home/user/workspace")).toEqual({
+      supported: true,
+      pids: [],
+      unreadablePids: [402, 404, 405],
+    });
+  },
+);
+
+it.skipIf(process.platform !== "linux")(
+  "does not refuse for an unreadable process running under another effective UID",
+  async () => {
+    const uid = process.getuid!();
+    vi.mocked(realpath).mockResolvedValue("/workspace");
+    vi.mocked(readdir).mockResolvedValue(["501"] as never);
+    vi.mocked(readFile).mockImplementation(async (file) => {
+      if (String(file).endsWith("/status"))
+        return `State:\tS\nUid:\t${uid}\t0\t0\t0\n`;
+      throw Object.assign(new Error("denied"), { code: "EACCES" });
+    });
+    vi.mocked(readlink).mockRejectedValue(
+      Object.assign(new Error("denied"), { code: "EACCES" }),
+    );
+    expect(await inspectWorkspaceProcesses("/workspace")).toEqual({
+      supported: true,
+      pids: [],
+      unreadablePids: [],
+    });
+  },
+);

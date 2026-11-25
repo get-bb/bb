@@ -50,11 +50,155 @@ export async function inspectWorkspaceProcesses(
   return unsupported();
 }
 
+interface Mount {
+  id: string;
+  device: string;
+  root: string;
+  mountPoint: string;
+}
+
+interface FileLocation {
+  device: string;
+  path: string;
+}
+
+interface MountView {
+  namespace: string;
+  rootMountId: string | undefined;
+  workspace: FileLocation;
+}
+
+function unescapeMountField(value: string): string {
+  return value.replace(/\\([0-7]{3})/g, (_, octal: string) =>
+    String.fromCharCode(Number.parseInt(octal, 8)),
+  );
+}
+
+export function parseMountInfo(text: string): Mount[] | null {
+  const mounts: Mount[] = [];
+  for (const line of text.split("\n")) {
+    if (line === "") continue;
+    const [id, , device, root, mountPoint] = line.split(" ");
+    if (
+      id === undefined ||
+      !/^\d+$/.test(id) ||
+      device === undefined ||
+      !/^\d+:\d+$/.test(device) ||
+      root === undefined ||
+      mountPoint === undefined
+    )
+      return null;
+    mounts.push({
+      id,
+      device,
+      root: unescapeMountField(root),
+      mountPoint: unescapeMountField(mountPoint),
+    });
+  }
+  return mounts.length === 0 ? null : mounts;
+}
+
+function within(child: string, parent: string): boolean {
+  return parent === "/"
+    ? child.startsWith("/")
+    : child === parent || child.startsWith(parent + "/");
+}
+
+export function locateInMounts(
+  value: string,
+  mounts: Mount[],
+): FileLocation | null {
+  let best: Mount | null = null;
+  for (const mount of mounts)
+    if (
+      within(value, mount.mountPoint) &&
+      (best === null || mount.mountPoint.length >= best.mountPoint.length)
+    )
+      best = mount;
+  if (best === null) return null;
+  const rest =
+    best.mountPoint === "/"
+      ? value === "/"
+        ? ""
+        : value
+      : value.slice(best.mountPoint.length);
+  const prefix = best.root === "/" ? "" : best.root;
+  return { device: best.device, path: prefix + rest || "/" };
+}
+
+function rootMountId(mounts: Mount[]): string | undefined {
+  return mounts.filter((mount) => mount.mountPoint === "/").at(-1)?.id;
+}
+
+export function mountsExposeWorkspace(
+  mounts: Mount[],
+  workspace: FileLocation,
+): boolean {
+  return mounts.some(
+    (mount) =>
+      mount.device === workspace.device &&
+      (within(workspace.path, mount.root) ||
+        within(mount.root, workspace.path)),
+  );
+}
+
+async function ownMountView(workspace: string): Promise<MountView | null> {
+  try {
+    const namespace = await readlink("/proc/self/ns/mnt");
+    if (!/^mnt:\[\d+\]$/.test(namespace)) return null;
+    const mounts = parseMountInfo(
+      await readFile("/proc/self/mountinfo", "utf8"),
+    );
+    if (mounts === null) return null;
+    const location = locateInMounts(workspace, mounts);
+    return location === null
+      ? null
+      : { namespace, rootMountId: rootMountId(mounts), workspace: location };
+  } catch {
+    return null;
+  }
+}
+
+async function readProcessMounts(directory: string): Promise<Mount[] | null> {
+  return parseMountInfo(await readFile(`${directory}/mountinfo`, "utf8"));
+}
+
+async function uninspectableAwayFromWorkspace(
+  directory: string,
+  view: MountView,
+): Promise<boolean> {
+  const mounts = await readProcessMounts(directory);
+  if (mounts === null) return false;
+  return (
+    (view.rootMountId !== undefined &&
+      rootMountId(mounts) === view.rootMountId) ||
+    !mountsExposeWorkspace(mounts, view.workspace)
+  );
+}
+
+async function usesWorkspaceFromOtherNamespace(
+  directory: string,
+  paths: string[],
+  view: MountView,
+): Promise<boolean | null> {
+  const mounts = await readProcessMounts(directory);
+  if (mounts === null) return null;
+  return paths.some((value) => {
+    const location = locateInMounts(value.replace(/ \(deleted\)$/, ""), mounts);
+    return (
+      location !== null &&
+      location.device === view.workspace.device &&
+      within(location.path, view.workspace.path)
+    );
+  });
+}
+
 async function inspectLinux(
   workspacePath: string,
   uid: number,
 ): Promise<WorkspaceProcessInspection> {
   const workspace = await canonicalPath(path.resolve(workspacePath));
+  const view = await ownMountView(workspace);
   const pids: number[] = [];
   const unreadablePids: number[] = [];
   for (const entry of await readdir("/proc")) {
@@ -70,12 +214,39 @@ async function inspectLinux(
       }
       if (!uids.slice(1).some((value) => Number(value) === uid)) continue;
       if (/^State:\s+[ZX]/m.test(status)) continue;
-      const cwd = await readlink(`${directory}/cwd`);
-      const maps = await readFile(`${directory}/maps`, "utf8");
+      let cwd: string;
+      let maps: string;
+      try {
+        cwd = await readlink(`${directory}/cwd`);
+        maps = await readFile(`${directory}/maps`, "utf8");
+      } catch (error) {
+        if (missing(error)) throw error;
+        if (Number(uids[2]) !== uid) continue;
+        if (
+          view !== null &&
+          (await uninspectableAwayFromWorkspace(directory, view))
+        )
+          continue;
+        throw error;
+      }
       const mappedPaths = maps.split("\n").flatMap((line) => {
         const match = line.match(/^\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\/.*)$/);
         return match === null ? [] : [match[1]!];
       });
+      const namespace =
+        view === null
+          ? null
+          : await readlink(`${directory}/ns/mnt`).catch(() => null);
+      if (view !== null && namespace !== null && namespace !== view.namespace) {
+        const uses = await usesWorkspaceFromOtherNamespace(
+          directory,
+          [cwd, ...mappedPaths.map((value) => value.replace(/\\012/g, "\n"))],
+          view,
+        );
+        if (uses === null) unreadablePids.push(pid);
+        else if (uses) pids.push(pid);
+        continue;
+      }
       if (
         underWorkspace(cwd, workspace) ||
         mappedPaths.some((value) =>
