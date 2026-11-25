@@ -489,6 +489,28 @@ const commandHandlers: CommandHandlerMap = {
     await options.eventSink.flush();
     return { cancelled: true };
   },
+  "thread.background_task.stop": async (command, options) => {
+    const owners = options.runtimeManager.listThreadOwnerEntries(
+      command.threadId,
+    );
+    if (owners.length === 0) {
+      throw new ExpectedCommandDispatchError(
+        "unknown_thread_runtime",
+        `No provider runtime available for thread ${command.threadId}`,
+      );
+    }
+    for (const owner of owners) {
+      const result = await owner.runtime.stopBackgroundTask({
+        threadId: command.threadId,
+        itemId: command.itemId,
+      });
+      if (result.stopped) {
+        await options.eventSink.flush();
+        return result;
+      }
+    }
+    return { stopped: false };
+  },
   "thread.rename": async (command, options) => {
     const entry = await options.runtimeManager.getOrAwait(
       command.environmentId,

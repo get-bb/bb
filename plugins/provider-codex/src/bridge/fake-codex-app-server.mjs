@@ -63,6 +63,9 @@ const INTERRUPTIBLE_PROMPT_TEXT = "/wait-for-interrupt";
 
 const SUBAGENT_THEN_CRASH_PROMPT_TEXT = "/subagent-then-crash";
 
+const BACKGROUND_COMMAND_PROMPT_TEXT = "/background-command";
+const backgroundCommandsByProcessId = new Map();
+
 function firstInputText(input) {
   const first = Array.isArray(input) ? input[0] : undefined;
   return first && first.type === "text" ? first.text : undefined;
@@ -663,6 +666,39 @@ async function handleRequest(message) {
         setTimeout(() => process.exit(1), 20);
         return;
       }
+      if (firstInputText(params.input) === BACKGROUND_COMMAND_PROMPT_TEXT) {
+        turnCounter += 1;
+        const turnId = `turn-fx-${turnCounter}`;
+        const item = {
+          type: "commandExecution",
+          id: `exec-fx-${turnCounter}`,
+          command: "/bin/zsh -lc 'npm run dev'",
+          cwd: "/tmp",
+          processId: `proc-fx-${turnCounter}`,
+          source: "unifiedExecStartup",
+          status: "inProgress",
+          commandActions: [],
+          aggregatedOutput: null,
+          exitCode: null,
+          durationMs: null,
+        };
+        backgroundCommandsByProcessId.set(item.processId, {
+          threadId: params.threadId,
+          turnId,
+          item,
+        });
+        notify("turn/started", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "inProgress" },
+        });
+        notify("item/started", { threadId: params.threadId, turnId, item });
+        respond(id, {});
+        notify("turn/completed", {
+          threadId: params.threadId,
+          turn: { id: turnId, status: "completed" },
+        });
+        return;
+      }
       if (firstInputText(params.input) === LATE_TURN_START_PROMPT_TEXT) {
         turnCounter += 1;
         const turnId = `turn-fx-${turnCounter}`;
@@ -879,6 +915,29 @@ async function handleRequest(message) {
     case "thread/goal/get":
       respond(id, { goal: goalsByThreadId.get(params.threadId) ?? null });
       return;
+    case "thread/backgroundTerminals/terminate": {
+      if (script?.terminateFindsNoTerminal) {
+        respond(id, { terminated: false });
+        return;
+      }
+      const running = backgroundCommandsByProcessId.get(params.processId);
+      backgroundCommandsByProcessId.delete(params.processId);
+      respond(id, { terminated: running !== undefined });
+      if (running !== undefined) {
+        notify("item/completed", {
+          threadId: running.threadId,
+          turnId: running.turnId,
+          item: {
+            ...running.item,
+            status: "failed",
+            aggregatedOutput: "ready\n",
+            exitCode: -1,
+            durationMs: 5,
+          },
+        });
+      }
+      return;
+    }
     case "thread/goal/clear":
       goalsByThreadId.delete(params.threadId);
       if (script?.goalClearError) {

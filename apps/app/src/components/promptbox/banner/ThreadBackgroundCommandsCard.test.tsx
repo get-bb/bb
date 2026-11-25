@@ -76,6 +76,7 @@ describe("ThreadBackgroundCommandsCard", () => {
             ]}
             isExpanded={isExpanded}
             onToggle={() => setIsExpanded((value) => !value)}
+            onStop={() => {}}
           />
         </CompactViewportOverrideProvider>
       );
@@ -96,6 +97,64 @@ describe("ThreadBackgroundCommandsCard", () => {
     expect(setIntervalSpy).toHaveBeenCalledTimes(1);
   });
 
+  it("lists every command, the newest included, as a drawer row and offers Stop only where the provider can stop it", () => {
+    vi.stubGlobal("ResizeObserver", TestResizeObserver);
+    const onStop = vi.fn();
+    const devServer = backgroundCommandRow({
+      id: "bg-dev-server",
+      description: "Run the dev server",
+      startedAt: 1,
+      status: "pending",
+      stoppable: true,
+      taskStatus: "running",
+    });
+    const tests = backgroundCommandRow({
+      id: "bg-tests",
+      description: "Watch tests",
+      startedAt: 2,
+      status: "pending",
+      stoppable: false,
+      taskStatus: "running",
+    });
+    const logs = backgroundCommandRow({
+      id: "bg-logs",
+      description: "Tail the log",
+      startedAt: 3,
+      status: "pending",
+      stoppable: true,
+      taskStatus: "running",
+    });
+    render(
+      <CompactViewportOverrideProvider isCompactViewport={false}>
+        <ThreadBackgroundCommandsCard
+          commands={[devServer, tests, logs]}
+          isExpanded
+          onToggle={() => {}}
+          onStop={onStop}
+        />
+      </CompactViewportOverrideProvider>,
+    );
+
+    expect(
+      screen.getByRole("button", { name: "Running 3 background commands" }),
+    ).not.toBeNull();
+    expect(
+      screen
+        .getAllByRole("button", { name: /^Stop background command/ })
+        .map((button) => button.getAttribute("aria-label")),
+    ).toEqual([
+      "Stop background command: Run the dev server",
+      "Stop background command: Tail the log",
+    ]);
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Stop background command: Tail the log",
+      }),
+    );
+    expect(onStop).toHaveBeenCalledExactlyOnceWith(logs);
+  });
+
   it("uses the card width when a narrow composer sits in a wide viewport", () => {
     const description = "Poll all CI runs for batching head until completion";
     vi.stubGlobal("ResizeObserver", TestResizeObserver);
@@ -112,6 +171,7 @@ describe("ThreadBackgroundCommandsCard", () => {
           ]}
           isExpanded={false}
           onToggle={() => {}}
+          onStop={() => {}}
         />
       </CompactViewportOverrideProvider>,
     );
@@ -147,6 +207,7 @@ describe("ThreadBackgroundCommandsCard", () => {
             ]}
             isExpanded={isExpanded}
             onToggle={() => setIsExpanded((value) => !value)}
+            onStop={() => {}}
           />
         </CompactViewportOverrideProvider>
       );
@@ -184,6 +245,7 @@ describe("ThreadBackgroundCommandsCard", () => {
           ]}
           isExpanded={false}
           onToggle={() => {}}
+          onStop={() => {}}
         />
       </CompactViewportOverrideProvider>,
     );
@@ -221,10 +283,16 @@ describe("prompt-stack card bodies", () => {
           )}
           isExpanded={isExpanded}
           onToggle={() => setIsExpanded((value) => !value)}
+          onStop={() => {}}
         />
       );
     }
     render(<Card />);
+    expect(
+      screen.getByRole("button", {
+        name: "Running 3 background agents: Background agent 1",
+      }),
+    ).not.toBeNull();
     expect(screen.queryByText("Background agent 2")).toBeNull();
     expect(setInterval).not.toHaveBeenCalled();
 

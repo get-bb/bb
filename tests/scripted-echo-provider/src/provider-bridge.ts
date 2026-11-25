@@ -16,6 +16,7 @@ import {
   modelListParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
+  threadBackgroundTaskStopParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
   threadGoalClearParamsSchema,
@@ -48,6 +49,7 @@ const scriptedMethodSchema = z.enum([
   "thread/unarchive",
   "thread/name/set",
   "thread/goal/clear",
+  "thread/backgroundTask/stop",
   "skills/configure",
 ]);
 export const scriptedEchoOptionsSchema = z
@@ -489,6 +491,7 @@ function openBackgroundTask(session: Session, providerTurnId: string): void {
         taskStatus: "running",
         skipTranscript: false,
         foreground: false,
+        stoppable: true,
       },
       providerTurnId,
     },
@@ -1347,6 +1350,47 @@ const handlers: Record<string, RequestHandler> = {
         { kind: "thread.name", name: parsed.data.title },
       ]);
     }
+  },
+
+  [BRIDGE_REQUEST_METHODS.threadBackgroundTaskStop]: (id, params) => {
+    const parsed = threadBackgroundTaskStopParamsSchema.safeParse(params);
+    if (!parsed.success) {
+      invalidParams(
+        id,
+        BRIDGE_REQUEST_METHODS.threadBackgroundTaskStop,
+        parsed.error.issues,
+      );
+      return;
+    }
+    const { familyId, threadId } = parsed.data;
+    const open = openBackgroundTasks.get(threadId) ?? [];
+    const task = open.find((candidate) => candidate.familyId === familyId);
+    if (task === undefined) {
+      io.sendError(id, -32000, `Unknown background task: ${familyId}`);
+      return;
+    }
+    openBackgroundTasks.set(
+      threadId,
+      open.filter((candidate) => candidate !== task),
+    );
+    io.sendResult(id, {});
+    emitDeltas(threadId, [
+      {
+        kind: "item.close",
+        key: { providerItemId: task.providerItemId },
+        status: "interrupted",
+        item: {
+          type: "backgroundTask",
+          familyId,
+          taskType: "workflow",
+          description: "scripted background task",
+          status: "interrupted",
+          taskStatus: "stopped",
+          skipTranscript: false,
+          foreground: false,
+        },
+      },
+    ]);
   },
 
   [BRIDGE_REQUEST_METHODS.threadGoalClear]: (id, params) => {

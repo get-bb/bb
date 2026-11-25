@@ -118,6 +118,7 @@ import {
   useCreateThread,
   useCancelThreadPlan,
   useStopThread,
+  useStopThreadBackgroundTask,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useRestoreThreadEnvironment,
@@ -604,6 +605,7 @@ export function ThreadDetailPromptArea({
   );
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
+  const { mutate: stopBackgroundTask } = useStopThreadBackgroundTask();
   const unarchiveThread = useUnarchiveThread();
   const restoreThreadEnvironment = useRestoreThreadEnvironment();
   const createThread = useCreateThread();
@@ -2263,6 +2265,12 @@ export function ThreadDetailPromptArea({
           commands={activeBackgroundCommands}
           isExpanded={isBackgroundCommandsExpanded}
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
+          onStop={(row) =>
+            stopBackgroundTask({
+              threadId: thread.id,
+              itemId: row.itemId,
+            })
+          }
         />
         {shouldHideComposer ? null : activePromptModeCard}
         <ThreadTodoCard
@@ -2365,6 +2373,7 @@ export function ThreadDetailPromptArea({
     [
       queueExpanded,
       setQueueExpanded,
+      stopBackgroundTask,
       childThreadsBannerKey,
       contextBannerKey,
       isChildThreadsExpanded,

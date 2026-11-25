@@ -1,7 +1,7 @@
 ---
 kind: instruction
 title: bb Guide — Thread lifecycle
-summary: Command reference for retrying, stopping, archiving, clearing, compacting, and deleting threads.
+summary: Command reference for retrying, stopping, archiving, clearing, compacting, and deleting threads, and stopping single background tasks.
 intent: Document how agents recover and end threads.
 editingNotes: Keep flags accurate against the CLI implementation. Run the json-flag-enforcement and command-output tests after changes.
 ---
@@ -30,6 +30,18 @@ Lifecycle:
   with `provider_session_unavailable` (`details.reason` foreign, ambiguous, or
   invalid: the recorded provider session belongs to another thread or has no
   usable identity).
+
+Background tasks:
+
+  bb thread background-tasks list [id]     List running background commands and agents
+  bb thread background-tasks stop <task-id> [id]
+                                           Stop one background task
+    --self                                 Target current thread
+
+  Stopping a background task leaves the thread and its other tasks running;
+  `bb thread stop` ends them all. Only tasks listed as stoppable can be
+  stopped (Claude Code tasks are, and so are Codex commands still running
+  after their turn ends); the task's timeline row then settles as stopped.
 
   bb thread retry [id]                     Retry the thread's failed turn
     --self                                 Target current thread

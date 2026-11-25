@@ -53,6 +53,13 @@ export class RuntimeBackgroundWorkState {
     }));
   }
 
+  getOpenBackgroundTask(
+    threadId: string,
+    itemId: string,
+  ): ThreadEventBackgroundTaskItem | null {
+    return this.openWorkByThreadId.get(threadId)?.get(itemId)?.item ?? null;
+  }
+
   hasOpenThreadWork(threadId: string): boolean {
     return (this.openWorkByThreadId.get(threadId)?.size ?? 0) > 0;
   }

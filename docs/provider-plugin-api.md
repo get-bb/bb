@@ -260,6 +260,8 @@ semantics in [provider-bridge-protocol.md](provider-bridge-protocol.md),
 
 **Runtime → bridge**: `initialize`, `model/list`,
 `thread/{start,resume,fork,stop,discard,archive,unarchive,name/set,goal/clear}`,
+`thread/backgroundTask/stop` (only for a pending `backgroundTask` item the
+bridge marked `stoppable: true`),
 `turn/{start,steer}`, `skills/configure {roots}` (only when the handshake
 declares `skills.configure`),
 `provider/{health,usage,installation/status,installation/run}`.

@@ -563,6 +563,7 @@ export const timelineWorkflowWorkRowSchema = timelineWorkRowBaseSchema.extend({
   description: z.string(),
   model: z.string().nullable(),
   taskStatus: backgroundTaskStatusSchema,
+  stoppable: z.boolean(),
   workflow: workflowProgressSnapshotSchema.nullable(),
   usage: backgroundTaskUsageSchema.nullable(),
   summary: z.string().nullable(),

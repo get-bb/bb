@@ -567,6 +567,7 @@ function itemRecordMessages(
           model: null,
           status: itemStatusToExecStatus(item.status),
           taskStatus: item.taskStatus,
+          stoppable: item.stoppable === true,
           skipTranscript: item.skipTranscript,
           foreground: item.foreground,
           workflow: item.workflow ?? null,

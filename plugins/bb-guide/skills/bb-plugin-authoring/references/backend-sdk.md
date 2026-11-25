@@ -33,7 +33,7 @@ signatures (see "Looking up the exact API" in distribution.md).
   `reorder` `setGroupBoundary` `experimental_holdForEdit`
   `experimental_releaseEditHold`; `update` takes any of `input`, `sendAt`,
   `model`, `reasoningLevel`, `permissionMode`, `serviceTier`),
-  `tabs` (`get` `update`)
+  `tabs` (`get` `update`), `experimental_backgroundTasks` (`list` `stop`)
 - `threadSections`: `list` `create` `update` `delete`
 - `projects`: `list` `get` `create` `update` `delete` `reorder` `paths`
   `files` `fileContent` `branches` `commands` `defaultExecutionOptions`
@@ -276,6 +276,10 @@ states, plan prompt mode, model fallback, or context usage, use
 `threads.experimental_headState({ threadId })`: it reads their latest stored
 state without building a timeline window, so it stays cheap on threads with
 long turns.
+`threads.experimental_backgroundTasks.list({ threadId })` returns the
+thread's running background commands and agents, each with its timeline
+`itemId` and `stoppable`; `stop({ threadId, itemId })` stops one stoppable
+task and leaves the thread and its other tasks running.
 For raw history, `threads.events.list` defaults to ascending order and supports
 exclusive `afterSeq` / `beforeSeq` cursors, `order: "asc" | "desc"`, and a
 non-empty typed `types` array. Combine `order: "desc"` with `beforeSeq` to page

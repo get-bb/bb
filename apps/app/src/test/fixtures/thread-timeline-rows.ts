@@ -227,6 +227,7 @@ interface WorkflowRowArgs extends RowBaseOverrideArgs {
   sourceSeqEnd?: number;
   sourceSeqStart?: number;
   status?: TimelineRowStatus;
+  stoppable?: boolean;
   summary?: string | null;
   taskStatus?: TimelineWorkflowWorkRow["taskStatus"];
   taskType?: string;
@@ -949,6 +950,7 @@ export function workflowRow({
   sourceSeqStart,
   startedAt,
   status = "completed",
+  stoppable = false,
   summary = null,
   taskStatus = "completed",
   taskType = "local_workflow",
@@ -979,6 +981,7 @@ export function workflowRow({
     description,
     model,
     taskStatus,
+    stoppable,
     workflow,
     usage,
     summary,

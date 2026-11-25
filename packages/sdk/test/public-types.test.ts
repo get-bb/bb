@@ -410,6 +410,7 @@ type ExpectedThreadsKey =
   | "experimental_listCascade"
   | "experimental_listPluginMetadata"
   | "experimental_headState"
+  | "experimental_backgroundTasks"
   | "experimental_regenerateTitle"
   | "experimental_export"
   | "experimental_import"

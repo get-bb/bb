@@ -19,7 +19,6 @@ import {
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-  PromptStackCountSlot,
   PromptStackHoverChevron,
   useDisclosureFocusHandoff,
   AnimatedDisclosureBody,
@@ -109,13 +108,7 @@ function compactBackgroundActivityLabel(
   return `Running ${rows.length} background activities`;
 }
 
-function BackgroundActivitySummary({
-  row,
-  showDuration,
-}: {
-  row: TimelineWorkflowWorkRow;
-  showDuration: boolean;
-}) {
+function BackgroundActivitySummary({ row }: { row: TimelineWorkflowWorkRow }) {
   const display = backgroundActivityDisplay(row);
   const model = backgroundActivityModel(row);
   return (
@@ -145,12 +138,47 @@ function BackgroundActivitySummary({
           {model}
         </span>
       ) : null}
-      {showDuration ? (
-        <span
-          className={cn("shrink-0 tabular-nums", activityMetaClass("active"))}
-        >
-          <LiveDurationText startedAt={row.startedAt} />
-        </span>
+    </span>
+  );
+}
+
+function StopBackgroundActivityButton({
+  row,
+  onStop,
+}: {
+  row: TimelineWorkflowWorkRow;
+  onStop: (row: TimelineWorkflowWorkRow) => void;
+}) {
+  const label = backgroundActivityDisplay(row).label.toLowerCase();
+  return (
+    <button
+      type="button"
+      className="relative cursor-pointer rounded-sm text-muted-foreground underline decoration-transparent underline-offset-2 transition-colors after:absolute after:-inset-x-1.5 after:-inset-y-2 after:content-[''] hover:text-destructive-text hover:decoration-current focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      aria-label={`Stop ${label}: ${row.description}`}
+      onClick={() => onStop(row)}
+    >
+      Stop
+    </button>
+  );
+}
+
+function BackgroundActivityTrailing({
+  row,
+  onStop,
+}: {
+  row: TimelineWorkflowWorkRow;
+  onStop: (row: TimelineWorkflowWorkRow) => void;
+}) {
+  return (
+    <span className="flex shrink-0 items-center gap-1 whitespace-nowrap text-subtle-foreground">
+      <span className="tabular-nums">
+        <LiveDurationText startedAt={row.startedAt} />
+      </span>
+      {row.stoppable ? (
+        <>
+          <span aria-hidden="true">·</span>
+          <StopBackgroundActivityButton row={row} onStop={onStop} />
+        </>
       ) : null}
     </span>
   );
@@ -160,6 +188,7 @@ interface ThreadBackgroundCommandsCardProps {
   commands: TimelineWorkflowWorkRow[];
   isExpanded: boolean;
   onToggle: () => void;
+  onStop: (row: TimelineWorkflowWorkRow) => void;
 }
 
 function readIsCompactCard(width: number): boolean | null {
@@ -170,6 +199,7 @@ export function ThreadBackgroundCommandsCard({
   commands,
   isExpanded,
   onToggle,
+  onStop,
 }: ThreadBackgroundCommandsCardProps) {
   const isCompactViewport = useIsCompactViewport();
   const cardRef = useRef<HTMLElement>(null);
@@ -189,17 +219,15 @@ export function ThreadBackgroundCommandsCard({
   }, []);
   const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
     useDisclosureFocusHandoff(isExpanded, onToggle);
-  const primary = commands[0];
-  if (!primary) {
+  const newest = commands[0];
+  if (!newest) {
     return null;
   }
-  const others = commands.slice(1);
-  const hasMore = others.length > 0;
-  const useCompactSummary = isCompactCard ?? isCompactViewport;
-  const canExpand = hasMore || useCompactSummary;
-  const expandedRows = useCompactSummary ? commands : others;
-  const compactLabel = compactBackgroundActivityLabel(commands);
-  const primaryDisplay = backgroundActivityDisplay(primary);
+  const isCompact = isCompactCard ?? isCompactViewport;
+  const canExpand = commands.length > 1 || isCompact;
+  const summaryLabel = compactBackgroundActivityLabel(commands);
+  const showNewestInSummary = !isCompact && !isExpanded;
+  const newestDisplay = backgroundActivityDisplay(newest);
   const groupLabel = backgroundActivityGroupLabel(commands);
 
   return (
@@ -209,7 +237,12 @@ export function ThreadBackgroundCommandsCard({
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
     >
-      <div className="flex items-center">
+      <div
+        className={activityRowClass(
+          "active",
+          "flex items-center rounded-none p-0",
+        )}
+      >
         {canExpand ? (
           <button
             type="button"
@@ -217,53 +250,65 @@ export function ThreadBackgroundCommandsCard({
             aria-expanded={isExpanded}
             aria-controls={BODY_ID}
             aria-label={
-              useCompactSummary
-                ? compactLabel
-                : backgroundActivityAriaLabel(primary, groupLabel)
+              showNewestInSummary
+                ? `${summaryLabel}: ${newest.description}`
+                : summaryLabel
             }
             ref={triggerRef}
             onClick={onTriggerClick}
-            className={activityRowClass(
-              "active",
-              cn(
-                PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
-                PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
-              ),
+            className={cn(
+              PROMPT_STACK_CARD_HEADER_BUTTON_CLASS,
+              PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
             )}
           >
             <Icon
-              name={primaryDisplay.icon}
+              name={newestDisplay.icon}
               className={activityIconClass("active", "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            {useCompactSummary ? (
-              <>
-                <span className="min-w-0 flex-1 truncate text-left font-medium">
-                  {compactLabel}
-                </span>
-                <PromptStackHoverChevron isExpanded={isExpanded} />
-              </>
-            ) : (
-              <>
-                <BackgroundActivitySummary row={primary} showDuration={false} />
-                <PromptStackCountSlot count={commands.length} />
-              </>
-            )}
+            <span className="flex min-w-0 flex-1 items-center gap-1 text-left">
+              <span
+                className={cn(
+                  "min-w-0 truncate font-medium",
+                  showNewestInSummary && "shrink-0",
+                )}
+              >
+                {summaryLabel}
+              </span>
+              {showNewestInSummary ? (
+                <>
+                  <span
+                    aria-hidden="true"
+                    className={activityMetaClass("active")}
+                  >
+                    ·
+                  </span>
+                  <span
+                    className={cn(
+                      "min-w-0 truncate",
+                      activityMetaClass("active"),
+                    )}
+                    title={newest.description}
+                  >
+                    {newest.description}
+                  </span>
+                </>
+              ) : null}
+            </span>
+            <PromptStackHoverChevron isExpanded={isExpanded} />
           </button>
         ) : (
           <div
-            className={activityRowClass(
-              "active",
-              "flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground",
-            )}
-            aria-label={backgroundActivityAriaLabel(primary)}
+            className="flex min-h-8 w-full min-w-0 cursor-default items-center gap-1.5 rounded-none px-3 py-1.5 text-xs text-foreground"
+            aria-label={backgroundActivityAriaLabel(newest)}
           >
             <Icon
-              name={primaryDisplay.icon}
+              name={newestDisplay.icon}
               className={activityIconClass("active", "size-3.5 shrink-0")}
               aria-hidden="true"
             />
-            <BackgroundActivitySummary row={primary} showDuration />
+            <BackgroundActivitySummary row={newest} />
+            <BackgroundActivityTrailing row={newest} onStop={onStop} />
           </div>
         )}
       </div>
@@ -278,7 +323,7 @@ export function ThreadBackgroundCommandsCard({
           onCollapse={onCollapseClick}
         >
           <div className="flex flex-col gap-0.5 py-1">
-            {expandedRows.map((row) => {
+            {commands.map((row) => {
               const display = backgroundActivityDisplay(row);
               const model = backgroundActivityModel(row);
               return (
@@ -286,7 +331,7 @@ export function ThreadBackgroundCommandsCard({
                   key={row.id}
                   className={cn(
                     "flex min-w-0 gap-1.5 px-3 py-0.5 text-xs",
-                    useCompactSummary ? "items-start" : "items-center",
+                    isCompact ? "items-start" : "items-center",
                   )}
                 >
                   <span className="flex h-[1lh] shrink-0 items-center">
@@ -299,7 +344,7 @@ export function ThreadBackgroundCommandsCard({
                   <span
                     className={cn(
                       "min-w-0 flex-1 text-muted-foreground",
-                      useCompactSummary ? "line-clamp-2 break-all" : "truncate",
+                      isCompact ? "line-clamp-2 break-all" : "truncate",
                     )}
                     title={row.description}
                   >
@@ -313,11 +358,9 @@ export function ThreadBackgroundCommandsCard({
                       {model}
                     </span>
                   ) : null}
-                  <span className="shrink-0 whitespace-nowrap tabular-nums text-subtle-foreground">
-                    {isExpanded ? (
-                      <LiveDurationText startedAt={row.startedAt} />
-                    ) : null}
-                  </span>
+                  {isExpanded ? (
+                    <BackgroundActivityTrailing row={row} onStop={onStop} />
+                  ) : null}
                 </div>
               );
             })}

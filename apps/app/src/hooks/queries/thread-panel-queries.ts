@@ -455,5 +455,13 @@ export function useThreadTimelineTurnSummaryDetails(
       Boolean(identity.turnId),
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
+    placeholderData: (previous, previousQuery) => {
+      const previousKey = previousQuery?.queryKey;
+      return previousKey?.[1] === identity.threadId &&
+        previousKey[2] === identity.turnId &&
+        previousKey[5] === identity.itemId
+        ? previous
+        : undefined;
+    },
   });
 }
