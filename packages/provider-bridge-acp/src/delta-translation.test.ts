@@ -1676,6 +1676,88 @@ describe("acp delta translation (session title)", () => {
   });
 });
 
+describe("acp delta translation (OpenCode retry metadata, #7665)", () => {
+  const retryMeta = {
+    "opencode/retry": {
+      attempt: 2,
+      nextRetryAt: "2026-11-17T12:01:00.000Z",
+      error: {
+        type: "provider.rate-limit",
+        message: "Rate limit exceeded",
+        status: 429,
+      },
+    },
+  };
+  const retryDetail =
+    "OpenCode retry attempt 2, next at 2026-11-17T12:01:00.000Z: HTTP 429 Rate limit exceeded";
+
+  function translateUpdate(update: Record<string, unknown>) {
+    const translator = createAcpDeltaTranslator({ cwd: SESSION_CWD });
+    return translator.translateAcpEvent(updateEvent(update), {
+      threadId: THREAD_ID,
+    });
+  }
+
+  it("reports a retry-only notification as a provider error that will retry", () => {
+    expect(
+      translateUpdate({
+        sessionUpdate: "session_info_update",
+        _meta: retryMeta,
+      }),
+    ).toEqual([
+      {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: retryDetail,
+        willRetry: true,
+      },
+    ]);
+  });
+
+  it("keeps a title that arrives with retry metadata", () => {
+    expect(
+      translateUpdate({
+        sessionUpdate: "session_info_update",
+        title: "Probe",
+        _meta: retryMeta,
+      }),
+    ).toEqual([
+      { kind: "thread.name", name: "Probe", source: "agent" },
+      {
+        kind: "provider.error",
+        message: "Provider error",
+        detail: retryDetail,
+        willRetry: true,
+      },
+    ]);
+  });
+
+  it("reports nothing when the retry is cleared or malformed", () => {
+    expect(
+      translateUpdate({
+        sessionUpdate: "session_info_update",
+        _meta: { "opencode/retry": null },
+      }),
+    ).toEqual([]);
+    expect(
+      translateUpdate({
+        sessionUpdate: "session_info_update",
+        _meta: { "opencode/retry": { attempt: 1 } },
+      }),
+    ).toEqual([]);
+  });
+
+  it("assembles a retry into a provider/error event marked as retrying", () => {
+    const harness = createHarness();
+    const events = harness.translate(
+      updateEvent({ sessionUpdate: "session_info_update", _meta: retryMeta }),
+    );
+    expect(events).toMatchObject([
+      { type: "provider/error", detail: retryDetail, willRetry: true },
+    ]);
+  });
+});
+
 describe("acp delta translation (presentation)", () => {
   function itemDeltas(
     deltas: ReturnType<AcpDeltaTranslator["translateAcpEvent"]>,
