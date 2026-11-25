@@ -2,7 +2,6 @@ import { outputJson } from "../../command-result.js";
 import { Command } from "commander";
 import { threadStatusSchema, threadStatusValues } from "@bb/domain";
 import {
-  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   type ThreadWaitTarget,
   ThreadWaitTimeoutError,
   ThreadWaitUnreachableError,
@@ -13,7 +12,6 @@ import { durationHelp } from "../../duration.js";
 import { requireThreadId } from "../helpers.js";
 import {
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
-  parseThreadWaitPollIntervalMs,
   parseThreadWaitTimeoutMs,
   THREAD_WAIT_EXIT_CODE_INVALID_REQUEST,
   THREAD_WAIT_EXIT_CODE_TIMEOUT,
@@ -24,7 +22,6 @@ interface ThreadWaitCommandOptions {
   status?: string;
   event?: string;
   timeout?: string;
-  pollInterval?: string;
   json?: boolean;
 }
 
@@ -46,10 +43,6 @@ export function registerWaitCommand(
       "--timeout <duration>",
       `Timeout as ${durationHelp("s")} (default: ${DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS}s)`,
     )
-    .option(
-      "--poll-interval <duration>",
-      `Polling interval as ${durationHelp("ms")} (default: ${DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS}ms)`,
-    )
     .option("--json", "Print machine-readable JSON output")
     .action(
       action(async (id: string | undefined, opts: ThreadWaitCommandOptions) => {
@@ -57,11 +50,9 @@ export function registerWaitCommand(
         const threadId = requireThreadId(id);
         const target = parseThreadWaitTarget(opts);
         const timeoutMs = parseThreadWaitTimeoutMs(opts.timeout);
-        const pollIntervalMs = parseThreadWaitPollIntervalMs(opts.pollInterval);
         const waitArgs = {
           threadId,
           timeoutMs,
-          pollIntervalMs,
           ...(target.kind === "status"
             ? { status: target.status }
             : { event: target.eventType }),

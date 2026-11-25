@@ -833,7 +833,7 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
 
     const waiter = hub.registerThreadEventWaiter("thread-1", 10_000).promise;
     hub.notifyThread("thread-1", ["events-appended"]);
-    await expect(waiter).resolves.toBe(true);
+    await expect(waiter).resolves.toEqual(["events-appended"]);
     vi.advanceTimersByTime(1_000);
     expect(listSocket.messages).toHaveLength(3);
     expect(messagesOf(listSocket)[2]).toEqual({

@@ -12,6 +12,7 @@ import {
   PROMPT_HISTORY_ENTRY_LIMIT,
   threadEventTypeSchema,
   type Thread,
+  type ThreadChangeKind,
   type ThreadEventType,
 } from "@bb/domain";
 import {
@@ -71,6 +72,9 @@ import {
 } from "../path-list-policy.js";
 import { parseFileListLimit } from "../file-list-query.js";
 import { createThreadDerivedCache } from "../../services/threads/thread-derived-cache.js";
+import { toThreadResponseFromThread } from "../../services/threads/thread-runtime-display.js";
+
+const THREAD_WAIT_MAX_MS = 60_000;
 
 function parseThreadEventTypes(
   value: string | undefined,
@@ -389,7 +393,7 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     const afterSeq = parseOptionalInteger(query.afterSeq, "afterSeq");
     const waitMs = Math.min(
       parseOptionalInteger(query.waitMs, "waitMs") ?? 30_000,
-      60_000,
+      THREAD_WAIT_MAX_MS,
     );
     const parsedEventType = threadEventTypeSchema.safeParse(query.type);
     if (!parsedEventType.success) {
@@ -420,6 +424,33 @@ export function registerThreadDataRoutes(app: Hono, deps: AppDeps): void {
     }
 
     return context.json(match);
+  });
+
+  get(routes.statusWait, async (context, query) => {
+    const threadId = context.req.param("id");
+    const deadline =
+      Date.now() +
+      Math.min(parseInteger(query.waitMs, "waitMs"), THREAD_WAIT_MAX_MS);
+    let changes: readonly ThreadChangeKind[] | null = null;
+    while (true) {
+      const remaining = Math.max(0, deadline - Date.now());
+      const waiter = deps.hub.registerThreadEventWaiter(threadId, remaining);
+      try {
+        const thread = requirePublicThread(deps.db, threadId);
+        if (
+          thread.status !== query.notStatus ||
+          changes?.includes("queue-changed")
+        ) {
+          return context.json(toThreadResponseFromThread(deps, { thread }));
+        }
+        if (remaining === 0) {
+          return new Response(null, { status: 204 });
+        }
+        changes = await waiter.promise;
+      } finally {
+        waiter.cancel();
+      }
+    }
   });
 
   get(routes.defaultExecutionOptions, async (context) => {

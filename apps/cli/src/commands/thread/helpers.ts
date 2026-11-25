@@ -11,10 +11,7 @@ import {
   threadParentNotificationsSchema,
   type ThreadParentNotifications,
 } from "@bb/domain";
-import {
-  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
-  DEFAULT_THREAD_WAIT_TIMEOUT_MS,
-} from "@bb/sdk";
+import { DEFAULT_THREAD_WAIT_TIMEOUT_MS } from "@bb/sdk";
 import type { BbSdk } from "@bb/sdk/node";
 import { parseDurationMs } from "../../duration.js";
 
@@ -162,18 +159,6 @@ export function parseThreadWaitTimeoutMs(value: string | undefined): number {
     allowZero: true,
     defaultUnit: "s",
     label: "--timeout",
-    value,
-  });
-}
-
-export function parseThreadWaitPollIntervalMs(
-  value: string | undefined,
-): number {
-  if (value === undefined) return DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS;
-  return parseDurationMs({
-    allowZero: false,
-    defaultUnit: "ms",
-    label: "--poll-interval",
     value,
   });
 }
