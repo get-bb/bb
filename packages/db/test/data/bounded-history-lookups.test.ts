@@ -215,10 +215,13 @@ describe("history lookups bounded by existing indexes", () => {
       event(thread.id, 3, "client/turn/requested", {
         data: request("creq_23456789ac", { systemMessageKind: "notice" }),
       }),
-      event(thread.id, 4, "client/thread/start", { data: { input: [] } }),
+      event(thread.id, 4, "client/thread/start", {
+        data: { input: [{ type: "text", text: "Start", mentions: [] }] },
+      }),
       event(thread.id, 5, "client/turn/requested", {
         data: request("creq_23456789ad"),
       }),
+      event(thread.id, 6, "client/turn/start", { data: { input: [] } }),
     ]);
     const sequences = (order: "oldest" | "newest") =>
       listStoredTaskTurnRequestEvents(db, {

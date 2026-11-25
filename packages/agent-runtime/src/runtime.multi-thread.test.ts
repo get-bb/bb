@@ -81,6 +81,7 @@ describe("createAgentRuntime multi-thread routing", () => {
         false,
       );
       await runtime.runTurn({
+        additionalWorkspaceWriteRoots: [],
         clientRequestId: "creq_222222223a",
         threadId: "t-empty",
         input: [promptTextInput({ text: "First spoken request" })],
