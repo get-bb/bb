@@ -126,6 +126,7 @@ function useSettingsStoryState() {
   const [steerActiveThreadOnEnter, setSteerActiveThreadOnEnter] =
     useState(false);
   const [confirmThreadArchive, setConfirmThreadArchive] = useState(true);
+  const [confirmDesktopQuit, setConfirmDesktopQuit] = useState(true);
   const [keepHistoryAfterContextClear, setKeepHistoryAfterContextClear] =
     useState(false);
   const [summarizeShellCommands, setSummarizeShellCommands] = useState(true);
@@ -151,6 +152,8 @@ function useSettingsStoryState() {
     steerActiveThreadOnEnter,
     confirmThreadArchive,
     setConfirmThreadArchive,
+    confirmDesktopQuit,
+    setConfirmDesktopQuit,
     keepHistoryAfterContextClear,
     setKeepHistoryAfterContextClear,
     summarizeShellCommands,
@@ -204,6 +207,9 @@ function GeneralSettingsStory({
       <GeneralSettingsSection
         resumeThreadsAfterRestart={resumeThreadsAfterRestart}
         onResumeThreadsAfterRestartChange={setResumeThreadsAfterRestart}
+        confirmDesktopQuit={state.confirmDesktopQuit}
+        desktopQuitConfirmationAvailable={desktopBrowserAvailable}
+        onConfirmDesktopQuitChange={state.setConfirmDesktopQuit}
         confirmThreadArchive={state.confirmThreadArchive}
         onConfirmThreadArchiveChange={state.setConfirmThreadArchive}
         keepHistoryAfterContextClear={state.keepHistoryAfterContextClear}

@@ -7,6 +7,7 @@ import {
   type MachineEnvironmentList,
 } from "./api/machine-environment.js";
 import {
+  type DesktopQuitStatus,
   machineEnvironmentReplaceSchema,
   recordTelemetryEventRequestSchema,
   setAiServiceSelectionRequestSchema,
@@ -2056,6 +2057,12 @@ export const publicApiRoutes = {
       method: "get",
       request: noRequest(),
       response: jsonResponse<SystemMobileAppReleasesResponse>(),
+    }),
+    quitStatus: defineRoute({
+      path: "/system/quit-status",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<DesktopQuitStatus>(),
     }),
     config: defineRoute({
       path: "/system/config",

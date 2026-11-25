@@ -116,6 +116,13 @@ in `bb guide machines`; prefer `bb server access` for the route keys.
 - `confirmThreadArchive` (default true): set false to archive parent and child
   threads in the app without the confirmation popup; the toast still offers
   Undo. CLI and SDK archive calls are always non-interactive.
+- `confirmDesktopQuit` (default true; Settings → General → Ask before
+  quitting): asks before the desktop app quits while its bundled server has
+  working agents. The desktop reads it from its bundled server only, so set it
+  there; the switch shows only in desktop windows on that server. false (switch
+  off) quits without asking; the dialog's Don't ask again saves false too.
+  Cancel keeps the window and runtime. Logout, shutdown, and updater restarts
+  skip the dialog, and an attached server keeps running.
 - `terminalCopyOnSelect` (default true; Settings → General → Terminals → Copy
   on select) copies completed terminal selections exactly and shows "Selection
   copied". Text elsewhere in the app is unchanged. Set it with

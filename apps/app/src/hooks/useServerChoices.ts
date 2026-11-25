@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
+import { getBbDesktopInfo } from "@/lib/bb-desktop";
 import {
   getServerChoices,
   type AccountSignIn,
@@ -49,5 +50,16 @@ export function useServerChoices(): ServerChoicesState | null {
             accountSignIn: snapshot.accountSignIn,
           },
     [choices, snapshot],
+  );
+}
+
+export function useIsDesktopLocalServerActive(): boolean {
+  const choices = useServerChoices();
+  return (
+    getBbDesktopInfo() !== null &&
+    (choices?.servers.some(
+      (server) => server.active && server.kind === "local",
+    ) ??
+      false)
   );
 }

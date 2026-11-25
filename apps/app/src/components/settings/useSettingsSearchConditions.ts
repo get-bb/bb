@@ -4,6 +4,7 @@ import {
   useSystemConfig,
 } from "@/hooks/queries/system-queries";
 import { useLocalHostDaemonAccess } from "@/hooks/useHostDaemon";
+import { useIsDesktopLocalServerActive } from "@/hooks/useServerChoices";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { localhostLinkRewriteDescription } from "@/lib/localhost-link-rewrite-description";
 import { hasKeyedChoices, usePluginChoices } from "./PluginChoiceSettings";
@@ -21,6 +22,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     systemConfig?.performanceDiagnosticsAvailable ?? false;
   const pluginUpdatesEnabled = systemConfig?.experiments.pluginUpdates ?? false;
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
+  const desktopQuitConfirmationAvailable = useIsDesktopLocalServerActive();
   const [rewritesLocalhostLinks] = useState(
     () =>
       localhostLinkRewriteDescription(
@@ -46,6 +48,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
       ["cliCommand", cliCommandSupported],
       ["composers", hasComposers],
       ["desktopBrowser", desktopBrowserAvailable],
+      ["desktopQuitConfirmation", desktopQuitConfirmationAvailable],
       ["diffRenderers", hasDiffRenderers],
       ["fileOpeners", hasFileOpeners],
       ["filePreferences", hasFilePreferences],
@@ -66,6 +69,7 @@ export function useSettingsSearchConditions(): ReadonlySet<SettingsSearchConditi
     hasMarkdownRendererChoices,
     hasFileOpeners,
     desktopBrowserAvailable,
+    desktopQuitConfirmationAvailable,
     hasComposers,
     hasDiffRenderers,
     hasFilePreferences,

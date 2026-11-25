@@ -23,7 +23,10 @@ import {
 import { createBbDesktopApi } from "../test/bb-desktop-test-utils";
 import { getNativeShell, resetNativeShellForTests } from "./native-shell";
 import { getServerChoices, resetServerChoicesForTests } from "./server-choices";
-import { useServerChoices } from "../hooks/useServerChoices";
+import {
+  useIsDesktopLocalServerActive,
+  useServerChoices,
+} from "../hooks/useServerChoices";
 import { pluginSdkAppImplementation } from "./plugin-sdk-app-impl";
 
 const local: BbDesktopServerChoice = {
@@ -283,6 +286,29 @@ function PluginServers() {
     </>
   );
 }
+
+describe("useIsDesktopLocalServerActive", () => {
+  it("is true only while a desktop window shows the desktop's own server", async () => {
+    const desktop = installDesktop();
+    const { result } = renderHook(useIsDesktopLocalServerActive);
+    expect(result.current).toBe(false);
+    await act(() => desktop.respond(0, [local, studio]));
+    expect(result.current).toBe(true);
+    act(() =>
+      desktop.change([
+        { ...local, active: false },
+        { ...studio, active: true },
+      ]),
+    );
+    expect(result.current).toBe(false);
+  });
+
+  it("is false in the mobile app even when its active server is local", () => {
+    installMobile([{ ...local, id: "profile-1" }]);
+    const { result } = renderHook(useIsDesktopLocalServerActive);
+    expect(result.current).toBe(false);
+  });
+});
 
 describe("experimental_useServers", () => {
   it("reports experimental_hasServers exactly where the hook has a value", () => {

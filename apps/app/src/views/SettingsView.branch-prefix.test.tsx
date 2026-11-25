@@ -22,6 +22,9 @@ function renderSection(overrides?: {
     <GeneralSettingsSection
       resumeThreadsAfterRestart={false}
       onResumeThreadsAfterRestartChange={vi.fn()}
+      confirmDesktopQuit={true}
+      desktopQuitConfirmationAvailable={true}
+      onConfirmDesktopQuitChange={vi.fn()}
       confirmThreadArchive={true}
       onConfirmThreadArchiveChange={vi.fn()}
       keepHistoryAfterContextClear={false}

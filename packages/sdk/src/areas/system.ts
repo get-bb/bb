@@ -1,5 +1,6 @@
 import { mobileAppDownloads } from "@bb/domain";
 import type {
+  DesktopQuitStatus,
   MachineEnvironmentReplace,
   MachineEnvironmentSet,
   MachineEnvironmentList,
@@ -177,6 +178,7 @@ export interface SystemArea {
   ): Promise<MachineEnvironmentList>;
   aiServices(args?: SystemAiServicesArgs): Promise<SystemAiServicesResult>;
   attention(args?: SystemAttentionArgs): Promise<SystemAttentionResult>;
+  quitStatus(): Promise<DesktopQuitStatus>;
   config(args?: SystemConfigArgs): Promise<SystemConfigResult>;
   executionOptions(
     args?: SystemExecutionOptionsArgs,
@@ -406,6 +408,9 @@ export function createSystemArea(args: CreateSdkAreaArgs): SystemArea {
       return transport.readJson(
         transport.api.v1.settings.experiments.$put({ json: input }),
       );
+    },
+    async quitStatus() {
+      return transport.readJson(transport.api.v1.system["quit-status"].$get());
     },
     async updateGeneralSettings(input) {
       return transport.readJson(
