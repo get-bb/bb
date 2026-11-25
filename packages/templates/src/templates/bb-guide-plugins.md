@@ -260,8 +260,9 @@ and never uses the network; install its entries by bare name or qualified name
 (`bb plugin install docs` or `bb plugin install docs@bb-official`). An app
 update also updates the bundled copy.
 
-`bb-community` lists reviewed plugins that live outside the app bundle, read
-from https://getbb.app/marketplace/v2/marketplace.json at startup and every two
+`bb-community` lists public plugins that live outside the app bundle; BB does
+not review them. bb reads it from
+https://getbb.app/marketplace/v2/marketplace.json at startup and every two
 hours. Set BB_MARKETPLACE_URL (read at startup) to override the URL. An invalid
 manifest keeps the last valid catalog. `bb plugin search` shows install counts
 that bb measures through anonymous telemetry, so they undercount; third-party
@@ -282,7 +283,8 @@ Anyone can host a third-party marketplace:
 --subdirectory follows the same path rules as `bb plugin install
 --subdirectory`; bb reads marketplace.json and relative icons from that
 directory on every refresh. `source.git.subdir` in a catalog entry stays
-relative to the repository root.
+relative to the repository root. bb downloads an https icon once per URL, so
+publish a changed icon under a new URL.
 
 The manifest `name` is the marketplace identity; duplicates and the reserved
 `bb-official` and `bb-community` names are refused. Install an entry of a
@@ -298,9 +300,9 @@ Matches with different sources fail and list the id@marketplace choices. A
 plugin installed from any of those same-source listings counts as installed
 for all of them, and the store shows one listing with a picker for which
 marketplace to install from. Other source forms bypass
-catalog resolution. Before installing from a third-party marketplace, bb shows
-the marketplace, the entry's author, and the true source, including the exact
-release tag and commit a range lands on. `--yes` skips the prompt, not the
+catalog resolution. Before installing from bb-community or a third-party
+marketplace, bb shows the marketplace, the entry's author, and the true source,
+including the exact release tag and commit a range lands on. `--yes` skips the prompt, not the
 resolution, and the install is refused if the listing or resolved commit
 changes after confirmation. Settings → Plugin marketplaces manages the same
 list. To publish a marketplace, see the bb-plugin-authoring skill.

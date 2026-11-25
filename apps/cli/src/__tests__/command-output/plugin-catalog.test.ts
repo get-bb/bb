@@ -514,6 +514,40 @@ describe("bb plugin catalog", () => {
     expect(output).toContain(`resolves to commit: ${"b".repeat(40)}`);
   });
 
+  it("confirms a bb-community listing's resolved source like a third-party one", async () => {
+    const communityPlan = {
+      ...thirdPartyPlan,
+      marketplace: "bb-community",
+      marketplaceDisplayName: "BB Community",
+      publisherKey: "bb-community",
+      publisherLabel: "BB Community",
+      official: true,
+    };
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(json({ plan: communityPlan }))
+      .mockResolvedValueOnce(json({ ok: true, plugin: installedPlugin }));
+
+    await runCommand(
+      ["plugin", "install", "notes@bb-community", "--yes"],
+      register,
+    );
+
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      entryId: "notes",
+      marketplace: "bb-community",
+      confirmedSource: communityPlan.resolvedSource,
+    });
+    const output = collectLogPayloads(vi.mocked(console.log)).join("\n");
+    expect(output).toContain("Installing Acme Notes (notes@bb-community)");
+    expect(output).toContain(
+      "marketplace: BB Community — ships with BB, not reviewed by BB",
+    );
+    expect(output).toContain("author: Acme (https://github.com/acme)");
+    expect(output).toContain("resolves to tag: notes/v1.2.0");
+    expect(output).toContain(`resolves to commit: ${"b".repeat(40)}`);
+  });
+
   it("reports an npm listing by package and range", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock

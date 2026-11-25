@@ -910,7 +910,7 @@ export async function runStartupRecoverySweep(
   await runStartupRecoveryStep(deps, "environment-provider-lifecycle", () =>
     sweepProviderLifecycles(deps),
   );
-  await runStartupRecoveryStep(deps, "machine-provider-lifecycle", () =>
+  void runStartupRecoveryStep(deps, "machine-provider-lifecycle", () =>
     sweepMachineLifecycles(deps),
   );
 }

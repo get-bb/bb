@@ -831,16 +831,15 @@ function installPlanSummary(plan: PluginCatalogInstallPlan): string {
   if (plan.kind === "bundled") {
     return `Installing ${plan.displayName}, bundled with BB (${plan.source})`;
   }
-  if (plan.official) {
-    return `Installing ${plan.displayName} from the ${plan.marketplaceDisplayName} marketplace, reviewed by BB (${plan.source})`;
-  }
   const author =
     plan.author.url === null
       ? plan.author.name
       : `${plan.author.name} (${plan.author.url})`;
   return [
     `Installing ${plan.displayName} (${plan.entryId}@${plan.marketplace})`,
-    `  marketplace: ${plan.marketplaceDisplayName} — a third-party marketplace, not reviewed by BB`,
+    plan.official
+      ? `  marketplace: ${plan.marketplaceDisplayName} — ships with BB, not reviewed by BB`
+      : `  marketplace: ${plan.marketplaceDisplayName} — a third-party marketplace, not reviewed by BB`,
     `  author: ${author}`,
     ...resolvedSourceLines(plan.resolvedSource),
   ].join("\n");
@@ -1081,7 +1080,7 @@ export function registerPluginCommands(
   plugin
     .command("search <query>")
     .description(
-      "Search every plugin the store lists: the plugins bundled with the app, the reserved bb-community marketplace catalog BB reviews, and any third-party marketplace added on this host. The Marketplace column names the source; only bb-community is reviewed by BB",
+      "Search every plugin the store lists: the plugins bundled with the app, the reserved bb-community marketplace catalog, and any third-party marketplace added on this host. The Marketplace column names the source; BB does not review bb-community or third-party listings",
     )
     .option("--json", "Output JSON")
     .action(
@@ -1224,7 +1223,7 @@ export function registerPluginCommands(
   plugin
     .command("install <source>")
     .description(
-      "Install a catalog entry by name or <entry>@<marketplace>, a Git repository URL, a local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version>. A catalog entry from a third-party marketplace is not reviewed by BB, so its confirmation names the marketplace, the author, and the exact resolved source (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
+      "Install a catalog entry by name or <entry>@<marketplace>, a Git repository URL, a local path, builtin:<name>, git:<url>[@<ref|semver-range>], or npm:<name>@<version>. A catalog entry from bb-community or a third-party marketplace is not reviewed by BB, so its confirmation names the marketplace, the author, and the exact resolved source (managed sources validate engines ranges and build artifacts; bundled plugin ids are reserved)",
     )
     .option(
       "--subdirectory <path>",
@@ -1346,9 +1345,7 @@ export function registerPluginCommands(
                       ? {
                           entryId: intent.plan.entryId,
                           marketplace: intent.plan.marketplace,
-                          ...(intent.plan.official
-                            ? {}
-                            : { confirmedSource: intent.plan.resolvedSource }),
+                          confirmedSource: intent.plan.resolvedSource,
                         }
                       : { entryId: intent.plan.entryId },
                 };
