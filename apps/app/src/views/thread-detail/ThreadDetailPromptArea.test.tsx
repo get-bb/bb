@@ -2181,6 +2181,33 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
   });
 
+  it("creates the handoff of a child thread next to its source", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea({
+      thread: makeThread({
+        parentThreadId: "thr_coordinator",
+        parentNotifications: "stuck",
+        sectionId: "sec_work",
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parentThreadId: "thr_coordinator",
+          parentNotifications: "stuck",
+          sectionId: "sec_work",
+        }),
+      ),
+    );
+  });
+
   it("marks a supported handoff service tier explicit", async () => {
     mocks.promptDraft.text = "Keep going";
     mocks.serviceTier = "fast";

@@ -855,7 +855,15 @@ export function ThreadDetailPromptArea({
   const handoffSeed = useMemo<ThreadHandoffCreateSeed>(
     () => ({
       environmentId: thread.environmentId,
+      parent:
+        thread.parentThreadId === null
+          ? null
+          : {
+              threadId: thread.parentThreadId,
+              notifications: thread.parentNotifications,
+            },
       projectId: thread.projectId,
+      sectionId: thread.sectionId,
       sourceThreadId: thread.id,
       sourceThreadTitle: sourceThreadDisplayTitle,
     }),
@@ -863,7 +871,10 @@ export function ThreadDetailPromptArea({
       sourceThreadDisplayTitle,
       thread.environmentId,
       thread.id,
+      thread.parentNotifications,
+      thread.parentThreadId,
       thread.projectId,
+      thread.sectionId,
     ],
   );
   const beginHandoff = useCallback(
