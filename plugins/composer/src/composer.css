@@ -66,6 +66,13 @@
 }
 
 @container follow-up-composer style(--follow-up-composer-container-compact: true) {
+  [data-promptbox] {
+    --compact-editor-height: max(
+      3rem,
+      calc(var(--text-base) * 1.7 * var(--bb-ios-font-scale, 1))
+    );
+  }
+
   [data-promptbox] [data-promptbox-layout] {
     height: 100%;
   }
@@ -106,7 +113,7 @@
     [data-promptbox-main] {
     display: flex;
     align-items: center;
-    height: 3rem;
+    height: var(--compact-editor-height);
   }
 
   [data-promptbox][data-promptbox-collapsed]:not([data-promptbox-voice-active])
@@ -122,9 +129,9 @@
 
   [data-promptbox][data-promptbox-collapsed]:not([data-promptbox-voice-active])
     [data-promptbox-editor-scroll] {
-    height: 3rem !important;
-    min-height: 3rem !important;
-    max-height: 3rem !important;
+    height: var(--compact-editor-height) !important;
+    min-height: var(--compact-editor-height) !important;
+    max-height: var(--compact-editor-height) !important;
     overflow: hidden;
     padding-top: 0;
     padding-bottom: 0;

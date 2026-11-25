@@ -146,6 +146,32 @@
     --text-base: 1rem;
     --text-base--line-height: 1.5rem;
   }
+
+  :root[data-bb-ios-text-scale] {
+    --bb-ios-editor-base-size: var(--text-base);
+  }
+}
+
+:root[data-bb-ios-text-scale] [data-promptbox-editor-content] .ProseMirror {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  font-size: calc(
+    var(--bb-ios-editor-base-size, var(--text-sm)) * var(--bb-ios-font-scale)
+  );
+  position: relative;
+}
+
+:root[data-bb-ios-text-scale]
+  [data-promptbox-editor-content]
+  .ProseMirror
+  p.is-editor-empty:first-child::before {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 @layer components {
@@ -948,6 +974,8 @@
     text-size-adjust: 100%;
   }
   body {
+    -webkit-text-size-adjust: var(--bb-ios-text-size-adjust, 100%);
+    text-size-adjust: var(--bb-ios-text-size-adjust, 100%);
     @apply bg-background text-foreground;
     font-family: var(--font-sans);
   }

@@ -54,7 +54,8 @@ import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
 export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
 
-const MOBILE_RECENT_ROW_HEIGHT_CLASS = "h-15";
+const MOBILE_RECENT_ROW_HEIGHT_CLASS =
+  "h-[calc(var(--spacing)*15*max(1,var(--bb-ios-font-scale,1)))]";
 
 type ThreadListEntryComparator = (
   left: ThreadListEntry,
