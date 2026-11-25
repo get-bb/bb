@@ -619,12 +619,19 @@ function outputRuntimeSlots(inputs: Record<string, unknown>): string[] {
   return slots;
 }
 
+interface DynamicChunkImport {
+  file: string;
+  specifier: string;
+  slots: string[];
+}
+
 interface PluginAppOutputGraph {
   chunks: string[];
   entryChunks: string[];
   runtimeSlots: string[];
   chunkRuntimeSlots: string[];
   chunkCss: string[];
+  dynamicChunkImports: DynamicChunkImport[];
 }
 
 function pluginAppOutputGraph(
@@ -640,16 +647,20 @@ function pluginAppOutputGraph(
       info,
     ]),
   );
-  const entryClosure = new Set<string>();
-  const pending = [PLUGIN_APP_ENTRY_FILE];
-  for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
-    if (entryClosure.has(next)) continue;
-    entryClosure.add(next);
-    for (const imported of outputs.get(next)?.imports ?? []) {
-      if (imported.kind !== "import-statement" || imported.external) continue;
-      pending.push(stagePath(imported.path));
+  const staticClosure = (start: string): Set<string> => {
+    const closure = new Set<string>();
+    const pending = [start];
+    for (let next = pending.pop(); next !== undefined; next = pending.pop()) {
+      if (closure.has(next)) continue;
+      closure.add(next);
+      for (const imported of outputs.get(next)?.imports ?? []) {
+        if (imported.kind !== "import-statement" || imported.external) continue;
+        pending.push(stagePath(imported.path));
+      }
     }
-  }
+    return closure;
+  };
+  const entryClosure = staticClosure(PLUGIN_APP_ENTRY_FILE);
   const chunks = [...outputs.keys()]
     .filter(
       (file) =>
@@ -663,6 +674,35 @@ function pluginAppOutputGraph(
     if (!file.endsWith(".js")) continue;
     const target = entryClosure.has(file) ? runtimeSlots : chunkSlots;
     for (const slot of outputRuntimeSlots(info.inputs)) target.add(slot);
+  }
+  const dynamicChunkImports: DynamicChunkImport[] = [];
+  for (const [file, info] of outputs) {
+    if (!file.endsWith(".js")) continue;
+    for (const imported of info.imports) {
+      if (imported.kind !== "dynamic-import" || imported.external) continue;
+      const target = stagePath(imported.path);
+      const slots = new Set<string>();
+      for (const loaded of staticClosure(target)) {
+        for (const slot of outputRuntimeSlots(
+          outputs.get(loaded)?.inputs ?? {},
+        )) {
+          if (
+            HOST_LOADED_RUNTIME_SLOTS.includes(slot) &&
+            !runtimeSlots.has(slot)
+          )
+            slots.add(slot);
+        }
+      }
+      if (slots.size === 0) continue;
+      const fromImporter = relative(dirname(file), target).split(sep).join("/");
+      dynamicChunkImports.push({
+        file,
+        specifier: fromImporter.startsWith(".")
+          ? fromImporter
+          : `./${fromImporter}`,
+        slots: [...slots].sort(),
+      });
+    }
   }
   return {
     chunks,
@@ -678,7 +718,36 @@ function pluginAppOutputGraph(
           file.endsWith(".css"),
       )
       .sort(),
+    dynamicChunkImports,
   };
+}
+
+async function startChunkSlotsWithImports(
+  stageDir: string,
+  imports: readonly DynamicChunkImport[],
+): Promise<void> {
+  const byFile = new Map<string, DynamicChunkImport[]>();
+  for (const entry of imports) {
+    byFile.set(entry.file, [...(byFile.get(entry.file) ?? []), entry]);
+  }
+  for (const [file, entries] of byFile) {
+    const path = join(stageDir, file);
+    let source = await readFile(path, "utf8");
+    for (const { specifier, slots } of entries) {
+      const call = `import(${JSON.stringify(specifier)})`;
+      if (!source.includes(call)) {
+        throw new Error(
+          `${file} has no ${call} to start the host runtime slots ${slots.join(", ")} with`,
+        );
+      }
+      const starts = slots.map(
+        (slot) =>
+          `globalThis.__bbPluginRuntime?.loadRuntimeSlot?.(${JSON.stringify(slot)}).catch(() => {})`,
+      );
+      source = source.replaceAll(call, `(${starts.join(", ")}, ${call})`);
+    }
+    await writeFile(path, source);
+  }
 }
 
 interface PluginAppBuildResult {
@@ -752,6 +821,7 @@ export async function buildPluginApp(
       ],
     });
     const graph = pluginAppOutputGraph(bundle.metafile, rootDir, stageDir);
+    await startChunkSlotsWithImports(stageDir, graph.dynamicChunkImports);
 
     migrationWarnings = bundle.warnings
       .filter((warning) => warning.pluginName === "bb-plugin-runtime-shims")

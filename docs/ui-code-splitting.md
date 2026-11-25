@@ -134,6 +134,13 @@ compatibility. SDK component splits remain separate from this mechanism:
 runtime slots must be installed before a plugin module evaluates, while SDK
 components can load when rendered or warmed at idle.
 
+A chunk's shim awaits its host-loaded slots before the chunk evaluates, and it
+only runs once the chunk has downloaded. So the chunk's slot download does not
+wait behind the chunk, `bb plugin build` rewrites every dynamic import of a
+chunk to call `loadRuntimeSlot` for the host-loaded slots in that chunk's static
+import closure that the entry does not already load. The chunk and those slots
+download together, and the shim's later call joins the pending load.
+
 Splits defined by modules that load later (a route
 chunk, for example) join the queue and drain at the next idle period. Tests do
 not start the queue, so defining a split never triggers a speculative import

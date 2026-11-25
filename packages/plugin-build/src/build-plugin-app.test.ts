@@ -715,7 +715,7 @@ describe("plugin app runtime shim", () => {
     );
   }
 
-  it("splits a dynamic import into a chunk that loads its host slots when it first loads", async () => {
+  it("splits a dynamic import into a chunk whose host slots start loading with the import", async () => {
     const dir = await mkdtemp(join(tmpdir(), "bb-plugin-split-"));
     tempDirs.push(dir);
     await writeSplitFixture(dir, true);
@@ -753,7 +753,9 @@ describe("plugin app runtime shim", () => {
       clsx: { default: (...names: string[]) => names.join(" ") },
       async loadRuntimeSlot(slot: string) {
         loaded.push(slot);
-        runtime[slot] = { parsePatchFiles: (patch: string) => `parsed:${patch}` };
+        runtime[slot] = {
+          parsePatchFiles: (patch: string) => `parsed:${patch}`,
+        };
       },
     };
     const host = globalThis as { __bbPluginRuntime?: unknown };
@@ -763,9 +765,83 @@ describe("plugin app runtime shim", () => {
       const entry = await import(pathToFileURL(jsPath).href);
       expect(entry.default()).toBe("entry");
       expect(loaded).toEqual([]);
-      const panel = await entry.loadPanel();
+      const loading = entry.loadPanel();
+      expect(loaded).toEqual(["pierreDiffs"]);
+      const panel = await loading;
       expect(panel.Panel()).toBe("parsed:x");
       expect(loaded).toEqual(["pierreDiffs"]);
+    } finally {
+      host.__bbPluginRuntime = previous;
+    }
+  });
+
+  it("starts a nested chunk's host slots when another chunk imports it", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "bb-plugin-split-nested-"));
+    tempDirs.push(dir);
+    await writeFile(
+      join(dir, "package.json"),
+      JSON.stringify({
+        name: "bb-plugin-split-nested-fixture",
+        version: "0.0.0",
+        bb: {
+          name: "Nested split fixture",
+          description: "Loads a chunk from a chunk.",
+          branding: { icon: "Zap" },
+          server: "./server.ts",
+          app: "./app.tsx",
+        },
+      }),
+    );
+    await writeFile(
+      join(dir, "server.ts"),
+      "export default function plugin() {}\n",
+    );
+    await writeFile(
+      join(dir, "app.tsx"),
+      [
+        'export const loadOuter = () => import("./outer");',
+        "export default function App() { return null; }",
+        "",
+      ].join("\n"),
+    );
+    await writeFile(
+      join(dir, "outer.tsx"),
+      'export const loadInner = () => import("./inner");\n',
+    );
+    await writeFile(
+      join(dir, "inner.tsx"),
+      [
+        'import { parsePatchFiles } from "@pierre/diffs";',
+        'export const inner = () => parsePatchFiles("y");',
+        "",
+      ].join("\n"),
+    );
+
+    const { jsPath } = await buildPluginApp(
+      dir,
+      "0.9.0-test",
+      await testToolchain(),
+    );
+
+    const loaded: string[] = [];
+    const runtime: Record<string, unknown> = {
+      async loadRuntimeSlot(slot: string) {
+        loaded.push(slot);
+        runtime[slot] = {
+          parsePatchFiles: (patch: string) => `parsed:${patch}`,
+        };
+      },
+    };
+    const host = globalThis as { __bbPluginRuntime?: unknown };
+    const previous = host.__bbPluginRuntime;
+    host.__bbPluginRuntime = runtime;
+    try {
+      const entry = await import(pathToFileURL(jsPath).href);
+      const outer = await entry.loadOuter();
+      expect(loaded).toEqual([]);
+      const loadingInner = outer.loadInner();
+      expect(loaded).toEqual(["pierreDiffs"]);
+      expect((await loadingInner).inner()).toBe("parsed:y");
     } finally {
       host.__bbPluginRuntime = previous;
     }
