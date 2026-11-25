@@ -508,6 +508,7 @@ describe("ThreadPromptContextBanner", () => {
     expect(markup).toContain('aria-label="Needs input"');
     expect(markup).toContain('aria-label="Working"');
     expect(markup).toContain('data-icon="Loading"');
+    expect(markup).not.toContain("animate-spin");
   });
 
   it("counts a child waiting for a host as active banner work", () => {

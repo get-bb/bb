@@ -349,7 +349,7 @@ function ChildThreadsBody({
               <Icon
                 name="Loading"
                 className={cn(
-                  "size-3.5 shrink-0 animate-spin no-underline motion-reduce:animate-none",
+                  "size-3.5 shrink-0 no-underline",
                   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
                 )}
                 aria-label="Working"
