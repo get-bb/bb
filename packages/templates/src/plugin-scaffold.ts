@@ -1408,8 +1408,8 @@ reviewed by BB:
 2. Run \`bb plugin publish --check\`. It checks everything the marketplace
    checks and prints the exact next steps. It never pushes or publishes.
 3. GitHub: give the public repository the \`bb-plugin\` topic, then push a
-   release tag such as \`v0.1.0\`. npm: keep \`bb-plugin\` in \`keywords\`
-   and run \`npm publish\`.
+   release tag such as \`v0.1.0\` (the \`v\` is required). npm: keep
+   \`bb-plugin\` in \`keywords\` and run \`npm publish\`.
 
 The listing appears within about 30 minutes. To update it, release a new
 version the same way.

@@ -170,8 +170,9 @@ export function PublicMarketplacePublishPage({
                 </h3>
                 <p>
                   Give the public repository the <code>bb-plugin</code> topic,
-                  then push a semver tag. Forks and archived repositories are
-                  skipped.
+                  then push a semver tag that starts with <code>v</code>. Bare{" "}
+                  <code>1.0.0</code> tags are not listed. Forks and archived
+                  repositories are skipped.
                 </p>
                 <Command command="gh repo edit OWNER/REPO --add-topic bb-plugin" />
                 <Command command="git tag v1.0.0 && git push origin v1.0.0" />

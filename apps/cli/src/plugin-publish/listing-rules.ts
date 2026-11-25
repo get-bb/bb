@@ -466,16 +466,21 @@ export function overviewMarkdownProblems(text: string): string[] {
   return [...problems];
 }
 
-const STABLE_VERSION_PATTERN = /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
+const STABLE_VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u;
 
 export interface ReleaseTag {
   tag: string;
   version: string;
 }
 
-export function releaseTagVersion(tag: string, prefix: string): string | null {
-  if (!tag.startsWith(prefix)) return null;
-  const rest = tag.slice(prefix.length);
+export function releaseTagVersion(
+  tag: string,
+  prefix: string,
+  form: "release" | "bare" = "release",
+): string | null {
+  const head = form === "release" ? `${prefix}v` : prefix;
+  if (!tag.startsWith(head)) return null;
+  const rest = tag.slice(head.length);
   const match = STABLE_VERSION_PATTERN.exec(rest);
   if (match === null) return null;
   return `${match[1]}.${match[2]}.${match[3]}`;
@@ -494,10 +499,11 @@ export function compareVersions(left: string, right: string): number {
 export function releaseTags(
   tags: readonly string[],
   prefix: string,
+  form: "release" | "bare" = "release",
 ): ReleaseTag[] {
   return tags
     .flatMap((tag) => {
-      const version = releaseTagVersion(tag, prefix);
+      const version = releaseTagVersion(tag, prefix, form);
       return version === null ? [] : [{ tag, version }];
     })
     .sort((left, right) => compareVersions(right.version, left.version));

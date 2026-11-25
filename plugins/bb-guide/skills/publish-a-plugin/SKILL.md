@@ -57,7 +57,7 @@ Do not expose credentials, private URLs, or local secrets.
    - GitHub: add the `bb-plugin` topic
      (`gh repo edit OWNER/REPO --add-topic bb-plugin`), then push the commit
      and a new tag (`vX.Y.Z`, or `<dir>/vX.Y.Z` for a plugin in a
-     subdirectory).
+     subdirectory). The `v` is required; a bare `X.Y.Z` tag is never listed.
    - npm: keep `bb-plugin` in `keywords`, then `npm publish`.
 8. Wait for the next crawl, then confirm the listing (below).
 

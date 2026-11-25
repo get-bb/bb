@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  LISTING_REPORT_BUCKET_URL,
   LISTING_REPORT_URL,
   MARKETPLACE_CATALOG_URL,
   RESERVED_PLUGIN_IDS_URL,
@@ -166,18 +167,25 @@ describe("listing rules", () => {
   });
 
   it("picks stable release tags for a prefix, highest first", () => {
-    expect(
-      releaseTags(
-        ["v1.0.0", "1.2.0", "v1.10.0-beta.1", "notes/v2.0.0", "v01.0.0"],
-        "",
-      ).map((tag) => tag.tag),
-    ).toEqual(["1.2.0", "v1.0.0"]);
+    const tags = [
+      "v1.0.0",
+      "v1.2.0",
+      "1.3.0",
+      "v1.10.0-beta.1",
+      "v1.4.0+build.1",
+      "notes/v2.0.0",
+      "v01.0.0",
+    ];
+    expect(releaseTags(tags, "").map((tag) => tag.tag)).toEqual([
+      "v1.2.0",
+      "v1.0.0",
+    ]);
+    expect(releaseTags(tags, "", "bare").map((tag) => tag.tag)).toEqual([
+      "1.3.0",
+    ]);
     expect(
       releaseTags(["notes/v2.0.0", "notes/1.0.0", "v3.0.0"], "notes/"),
-    ).toEqual([
-      { tag: "notes/v2.0.0", version: "2.0.0" },
-      { tag: "notes/1.0.0", version: "1.0.0" },
-    ]);
+    ).toEqual([{ tag: "notes/v2.0.0", version: "2.0.0" }]);
   });
 });
 
@@ -400,6 +408,79 @@ describe("bb plugin publish --check", () => {
     });
     expect(tagged.nextSteps.join("\n")).toContain(
       "git push origin notes/v1.0.0",
+    );
+  });
+
+  it("reports a bare X.Y.Z tag as no-release-tag with a hint to tag vX.Y.Z", async () => {
+    await writePlugin(root);
+    await initRepo(root, "https://github.com/acme/bb-plugin-notes.git");
+    await git(root, "tag", "1.0.0");
+
+    const bareOnly = await runPublishCheck({
+      directory: root,
+      source: null,
+      offline: true,
+      environment: fakeEnvironment(world),
+    });
+    expect(bareOnly.ok).toBe(true);
+    expect(bareOnly.github).toMatchObject({ releaseTag: null, headTag: null });
+    const warning = bareOnly.findings.find(
+      (finding) => finding.code === "no-release-tag",
+    );
+    expect(warning?.message).toContain('1.0.0 has no "v"');
+    expect(warning?.message).toContain("Tag v1.0.0 instead.");
+    expect(bareOnly.nextSteps.join("\n")).toContain("git tag v1.0.0");
+
+    await git(root, "tag", "v0.9.0", "HEAD");
+    await writeFile(join(root, "notes.txt"), "x");
+    await git(root, "add", "-A");
+    await git(root, "commit", "-q", "-m", "next");
+    await git(root, "tag", "1.1.0");
+    const behind = await runPublishCheck({
+      directory: root,
+      source: null,
+      offline: true,
+      environment: fakeEnvironment(world),
+    });
+    expect(behind.github).toMatchObject({
+      releaseTag: "v0.9.0",
+      headTag: null,
+    });
+    expect(
+      behind.findings.find((finding) => finding.code === "no-release-tag")
+        ?.message,
+    ).toBe(
+      '1.1.0 has no "v". bb installs only tags named vX.Y.Z, so the crawler ignores it. Tag v1.1.0 instead. Until then the listing shows v0.9.0.',
+    );
+  });
+
+  it("falls back to the bucket URL for report.json until the index route deploys", async () => {
+    await writePlugin(root);
+    await initRepo(root, "https://github.com/acme/bb-plugin-notes.git");
+    world.responses.set(LISTING_REPORT_BUCKET_URL, {
+      status: 200,
+      body: {
+        generatedAt: "2026-11-25T23:00:00Z",
+        sources: {
+          "github:acme/bb-plugin-notes": {
+            status: "skipped",
+            reason: "no-release-tag",
+            checkedAt: "2026-11-25T23:00:00Z",
+          },
+        },
+      },
+    });
+
+    const report = await runPublishCheck({
+      directory: root,
+      source: null,
+      offline: false,
+      environment: fakeEnvironment(world),
+    });
+    expect(
+      report.findings.find((finding) => finding.code === "last-crawl")?.message,
+    ).toBe(
+      "The last crawl (2026-11-25T23:00:00Z) says: skipped, no-release-tag.",
     );
   });
 

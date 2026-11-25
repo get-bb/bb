@@ -54,10 +54,13 @@ The crawler lists the highest stable semver tag and reads every listing field
 from that tag. A prerelease tag, a branch, or the default branch is never
 listed.
 
-- A plugin at the repository root uses `vX.Y.Z` or `X.Y.Z`.
+- A plugin at the repository root uses `vX.Y.Z`.
 - A plugin in a subdirectory uses its directory name as a prefix:
   `notes/vX.Y.Z` for `plugins/notes`. The plugin id also works as a prefix
   (`<id>/vX.Y.Z`).
+- The `v` is required. bb installs only tags named `<prefix>vX.Y.Z`, so a
+  bare `1.2.3` or `notes/1.2.3` tag is never listed (`no-release-tag`). If the
+  repository already uses bare tags, add a `v` tag for the release.
 
 Create a new immutable tag for every release. After approval, add the topic
 once, then tag the release commit:

@@ -215,9 +215,11 @@ release, and refreshes the catalog about every 30 minutes. The
 Opt in one of two ways:
 
 - **GitHub:** give a public repository (not a fork, not archived) the topic
-  `bb-plugin`, and push a semver release tag. A root plugin uses `vX.Y.Z` or
-  `X.Y.Z`. A plugin in a subdirectory uses its directory name as a prefix:
-  `notes/v1.2.3` for `plugins/notes` (the plugin id works too). The crawler
+  `bb-plugin`, and push a semver release tag. A root plugin uses `vX.Y.Z`.
+  A plugin in a subdirectory uses its directory name as a prefix:
+  `notes/v1.2.3` for `plugins/notes` (the plugin id works too). The `v` is
+  required: bb installs only `v` tags, so a bare `1.2.3` tag is never listed
+  (`no-release-tag`). The crawler
   reads the plugins `.bb/plugins.json` lists, or the repository root when there
   is no such file. Prereleases, branches, and the default branch are never
   listed; every field is read from the highest stable tag.

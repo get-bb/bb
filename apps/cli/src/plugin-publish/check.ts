@@ -32,6 +32,8 @@ export const MARKETPLACE_CATALOG_URL =
   "https://getbb.app/marketplace/v2/marketplace.json";
 export const LISTING_REPORT_URL =
   "https://getbb.app/marketplace/index/v1/report.json";
+export const LISTING_REPORT_BUCKET_URL =
+  "https://getbb.app/marketplace/v1/index/v1/report.json";
 export const RESERVED_PLUGIN_IDS_URL =
   "https://raw.githubusercontent.com/get-bb/marketplace/main/reserved-plugin-ids.json";
 export const LISTING_REFRESH_MINUTES = 30;
@@ -798,12 +800,24 @@ async function checkGitHubSource(
         : [`${basename(subdir)}/`, ...(id === null ? [] : [`${id}/`])];
     let tagPrefix = prefixes[0] ?? "";
     let qualifying: ReleaseTag[] = [];
+    let bare: ReleaseTag[] = [];
     for (const prefix of prefixes) {
       const found = releaseTags(allTags, prefix);
       if (found.length > 0) {
         tagPrefix = prefix;
         qualifying = found;
+        bare = releaseTags(allTags, prefix, "bare");
         break;
+      }
+    }
+    if (qualifying.length === 0) {
+      for (const prefix of prefixes) {
+        const found = releaseTags(allTags, prefix, "bare");
+        if (found.length > 0) {
+          tagPrefix = prefix;
+          bare = found;
+          break;
+        }
       }
     }
     const atHead = await environment.run(
@@ -823,10 +837,33 @@ async function checkGitHubSource(
     const suggestedTag = `${tagPrefix}v${version.length > 0 ? version : "0.1.0"}`;
     const suggestedExists = allTags.includes(suggestedTag);
 
+    const bareAtHead =
+      headRelease === null
+        ? (bare.find((release) => headTags.has(release.tag)) ?? null)
+        : null;
+    const newestBare = bare[0] ?? null;
+    const bareHint = (release: ReleaseTag) =>
+      `${release.tag} has no "v". bb installs only tags named ${tagPrefix}vX.Y.Z, so the crawler ignores it. Tag ${tagPrefix}v${release.version} instead.`;
     if (latest === null) {
+      const ignored = bareAtHead ?? newestBare;
       findings.warning(
         "no-release-tag",
-        `No release tag yet. The crawler lists a GitHub plugin only from a tag named ${tagPrefix}vX.Y.Z or ${tagPrefix}X.Y.Z.`,
+        ignored === null
+          ? `No release tag yet. The crawler lists a GitHub plugin only from a tag named ${tagPrefix}vX.Y.Z.`
+          : bareHint(ignored),
+      );
+    } else if (bareAtHead !== null) {
+      findings.warning(
+        "no-release-tag",
+        `${bareHint(bareAtHead)} Until then the listing shows ${latest.tag}.`,
+      );
+    } else if (
+      newestBare !== null &&
+      compareVersions(newestBare.version, latest.version) > 0
+    ) {
+      findings.warning(
+        "no-release-tag",
+        `${bareHint(newestBare)} Until then the listing shows ${latest.tag}.`,
       );
     } else if (headRelease === null) {
       findings.warning(
@@ -1150,7 +1187,11 @@ async function reportLastCrawl(
   environment: PublishCheckEnvironment,
   sourceKey: string,
 ): Promise<void> {
-  const response = await environment.fetchJson(LISTING_REPORT_URL);
+  const primary = await environment.fetchJson(LISTING_REPORT_URL);
+  const response =
+    primary?.status === 200
+      ? primary
+      : await environment.fetchJson(LISTING_REPORT_BUCKET_URL);
   const report =
     response?.status === 200
       ? listingReportSchema.safeParse(response.body)
