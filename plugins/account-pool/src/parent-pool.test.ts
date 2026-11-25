@@ -153,4 +153,86 @@ describe("ParentAvailability", () => {
     await client.get();
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
+
+  function scriptedParent(answers: Array<"ok" | "timeout" | "down">): {
+    fetchImpl: typeof fetch;
+    calls: () => number;
+  } {
+    let call = 0;
+    const fetchImpl = vi.fn(async () => {
+      const answer = answers[Math.min(call, answers.length - 1)];
+      call += 1;
+      if (answer === "timeout") {
+        throw new DOMException(
+          "The operation was aborted due to timeout",
+          "TimeoutError",
+        );
+      }
+      if (answer === "down") return new Response(null, { status: 503 });
+      return Response.json({ claude: true, codex: false });
+    }) as unknown as typeof fetch;
+    return { fetchImpl, calls: () => call };
+  }
+
+  it("keeps the last good availability through one failed read and retries soon", async () => {
+    const parent = scriptedParent(["ok", "timeout", "ok"]);
+    let clock = 0;
+    const client = availability({
+      fetchImpl: parent.fetchImpl,
+      now: () => clock,
+    });
+    await expect(client.get()).resolves.toEqual({ claude: true, codex: false });
+    clock = 1_001;
+    await expect(client.get()).resolves.toEqual({ claude: true, codex: false });
+    expect(parent.calls()).toBe(2);
+    clock = 5_000;
+    await client.get();
+    expect(parent.calls()).toBe(2);
+    clock = 6_002;
+    await expect(client.get()).resolves.toEqual({ claude: true, codex: false });
+    expect(parent.calls()).toBe(3);
+  });
+
+  it("reports a parent that stays down as unavailable once the grace lapses", async () => {
+    const parent = scriptedParent(["ok", "down"]);
+    let clock = 0;
+    const client = availability({
+      fetchImpl: parent.fetchImpl,
+      now: () => clock,
+    });
+    await client.get();
+    clock = 1_001;
+    const firstFailure = clock;
+    while (clock < firstFailure + 60_000) {
+      await expect(client.get()).resolves.toEqual({
+        claude: true,
+        codex: false,
+      });
+      clock += 5_001;
+    }
+    await expect(client.get()).resolves.toEqual({
+      claude: false,
+      codex: false,
+    });
+    const callsWhenUnavailable = parent.calls();
+    clock += 900;
+    await client.get();
+    expect(parent.calls()).toBe(callsWhenUnavailable);
+  });
+
+  it("retries a failed first read soon instead of holding it for the ttl", async () => {
+    const parent = scriptedParent(["timeout", "ok"]);
+    let clock = 0;
+    const client = new ParentAvailability({
+      parent: { baseUrl: BASE_URL, token: TOKEN },
+      fetch: parent.fetchImpl,
+      now: () => clock,
+    });
+    await expect(client.get()).resolves.toEqual({
+      claude: false,
+      codex: false,
+    });
+    clock = 5_001;
+    await expect(client.get()).resolves.toEqual({ claude: true, codex: false });
+  });
 });
