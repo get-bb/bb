@@ -152,3 +152,41 @@ describe.skipIf(process.platform === "win32")("WorkspaceReads index copy", () =>
     expect(await untracked()).toMatchObject({ insertions: 2 });
   });
 });
+
+describe("WorkspaceReads index copy removal", () => {
+  async function readWithIndexCopy() {
+    const repo = await initRepo(await makeTempDir("bb-index-copy-remove-"));
+    const tempRoot = await makeTempDir("bb-index-copy-remove-temp-");
+    await fs.writeFile(path.join(repo, "README.md"), "edited\n");
+    const reads = new WorkspaceReads(repo, tempRoot);
+    expect(await changedFiles(reads)).toEqual(["M README.md"]);
+    expect(await fs.readdir(tempRoot)).toEqual([
+      expect.stringMatching(/^bb-index-copy-/u),
+    ]);
+    return { reads, tempRoot };
+  }
+
+  it("removes the index copy before dispose resolves", async () => {
+    const { reads, tempRoot } = await readWithIndexCopy();
+
+    await reads.dispose();
+
+    expect(await fs.readdir(tempRoot)).toEqual([]);
+  });
+
+  it("finishes dispose when the index copy cannot be removed", async () => {
+    const { reads, tempRoot } = await readWithIndexCopy();
+    const rm = vi.spyOn(fs, "rm").mockRejectedValue(
+      Object.assign(new Error("EPERM: operation not permitted, rmdir"), {
+        code: "EPERM",
+      }),
+    );
+
+    await expect(reads.dispose()).resolves.toBeUndefined();
+
+    expect(rm).toHaveBeenCalledWith(
+      expect.stringContaining(path.join(tempRoot, "bb-index-copy-")),
+      expect.objectContaining({ recursive: true, force: true }),
+    );
+  });
+});
