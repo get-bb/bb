@@ -1,7 +1,8 @@
-import { defineConfig } from "vitest/config";
+import { defineWorkspaceTestConfig } from "../../vitest.shared.js";
 
-export default defineConfig({
+export default defineWorkspaceTestConfig({
   test: {
+    name: "@bb/tunnel-client",
     ...(process.env.VITEST_MAX_WORKERS
       ? { maxWorkers: Number(process.env.VITEST_MAX_WORKERS) }
       : {}),
