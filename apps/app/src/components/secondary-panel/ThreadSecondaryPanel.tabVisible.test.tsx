@@ -53,7 +53,8 @@ function panel(activeTab: FixedPanelViewTab, isOpen: boolean) {
       <TooltipProvider>
         <PanelGroup direction="horizontal">
           <Panel id="main" order={1}>
-            main
+            <textarea aria-label="Message" />
+            <button>Other action</button>
           </Panel>
           <ThreadSecondaryPanel
             activeTab={activeTab}
@@ -88,4 +89,38 @@ it("reports the selected tab visible only while the panel is open, keeping it mo
   view.rerender(panel(info.tab, true));
   expect(screen.getByTestId("info").textContent).toBe("true");
   expect(screen.queryByTestId("diff")).toBeNull();
+});
+
+it("moves focus into the panel on opening and restores the previous control on closing", () => {
+  const view = render(panel(info.tab, false));
+  const composer = screen.getByRole("textbox", { name: "Message" });
+  composer.focus();
+
+  view.rerender(panel(info.tab, true));
+  const tab = screen.getByRole("button", { name: "Show info" });
+  const focusOnOpen = document.activeElement;
+  tab.focus();
+
+  view.rerender(panel(info.tab, false));
+  const focusOnClose = document.activeElement;
+
+  view.rerender(panel(info.tab, true));
+  expect([focusOnOpen, focusOnClose, document.activeElement]).toEqual([
+    tab,
+    composer,
+    tab,
+  ]);
+});
+
+it("does not steal focus on mount or when closing after focus has left the panel", () => {
+  const view = render(panel(info.tab, true));
+  expect(document.activeElement).toBe(document.body);
+  const composer = screen.getByRole("textbox", { name: "Message" });
+  composer.focus();
+  screen.getByRole("button", { name: "Show info" }).focus();
+  const otherAction = screen.getByRole("button", { name: "Other action" });
+  otherAction.focus();
+
+  view.rerender(panel(info.tab, false));
+  expect(document.activeElement).toBe(otherAction);
 });
