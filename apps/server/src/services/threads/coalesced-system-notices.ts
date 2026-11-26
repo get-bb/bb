@@ -1,5 +1,6 @@
 import {
   createQueuedThreadMessageInTransaction,
+  getThread,
   deleteCoalescedQueuedThreadMessageInTransaction,
   getPendingCoalescedQueuedThreadMessage,
   updateCoalescedQueuedThreadMessageInTransaction,
@@ -45,6 +46,13 @@ export function postCoalescedSystemNotice<State>(
   const sendAt = Date.now() + args.windowMs;
   const write = deps.db.transaction(
     (tx): CoalescedNoticeWrite => {
+      const thread = getThread(tx, args.threadId);
+      if (
+        thread === null ||
+        thread.archivedAt !== null ||
+        thread.deletedAt !== null
+      )
+        return { kind: "none" };
       const pending = getPendingCoalescedQueuedThreadMessage(tx, {
         coalesceKey: args.coalesceKey,
         threadId: args.threadId,
