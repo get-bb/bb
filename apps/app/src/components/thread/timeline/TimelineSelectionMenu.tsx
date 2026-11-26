@@ -279,6 +279,8 @@ export function TimelineSelectionMenu({
       <PopoverPrimitive.Portal container={container ?? undefined}>
         <PopoverPrimitive.Content
           {...portalScopeProps}
+          role="group"
+          aria-label="Selection actions"
           data-touch-selection-passthrough
           side={anchorSide}
           align="center"
