@@ -1,8 +1,10 @@
 import { Skeleton } from "./skeleton";
+import { useHostUiProps } from "../../lib/host-ui";
 
 export function DiffLoadingSkeleton() {
+  const hostUiProps = useHostUiProps();
   return (
-    <div className="space-y-1.5 px-3 py-3">
+    <div {...hostUiProps} className="space-y-1.5 px-3 py-3">
       <Skeleton className="h-3 w-full rounded-sm" />
       <Skeleton className="h-3 w-[96%] rounded-sm" />
       <Skeleton className="h-3 w-[93%] rounded-sm" />

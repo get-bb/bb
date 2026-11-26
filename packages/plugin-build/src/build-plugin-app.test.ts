@@ -318,19 +318,21 @@ describe("plugin app runtime shim", () => {
     expect(css).toContain(`${scope}.space-y-3`);
     expect(css).not.toContain(String.raw`:is(${scope} .group-has`);
     expect(css).toContain(
-      String.raw`${scope}.group-has-\[input\:checked\]\/host\:opacity-50:is(:where(.group\/host):has(:is(input:checked)) *)`,
+      String.raw`${scope}.group-has-\[input\:checked\]\/host\:opacity-50:where(:not([data-bb-host-owned])):is(:where(.group\/host):has(:is(input:checked)) *)`,
     );
     expect(css).toContain(
-      String.raw`.hover\:group-has-\[input\:checked\]\/host\:opacity-50:hover`,
+      String.raw`.hover\:group-has-\[input\:checked\]\/host\:opacity-50:where(:not([data-bb-host-owned])):hover`,
     );
     expect(css).toContain(
-      String.raw`${scope}.group-has-\[input\:checked\]\/host\:\[\&\>svg\]\:hidden:is(:where(.group\/host):has(:is(input:checked)) *)>svg`,
+      String.raw`${scope}.group-has-\[input\:checked\]\/host\:\[\&\>svg\]\:hidden:where(:not([data-bb-host-owned])):is(:where(.group\/host):has(:is(input:checked)) *)>svg`,
     );
     expect(css).toContain(`[data-scope-host] ${scope}`);
     expect(css).toContain(`[data-scope-host]~${scope}`);
-    expect(css).toContain(String.raw`${scope} .hover\:underline:hover`);
     expect(css).toContain(
-      String.raw`${scope}.has-\[\:focus\]\:opacity-50:has(:focus)`,
+      String.raw`${scope} .hover\:underline:where(:not([data-bb-host-owned])):hover`,
+    );
+    expect(css).toContain(
+      String.raw`${scope}.has-\[\:focus\]\:opacity-50:where(:not([data-bb-host-owned])):has(:focus)`,
     );
     expect(css).not.toContain(`${scope} .bb71-authored-decoration`);
     expect(css).not.toContain(`${scope}.bb71-authored-decoration`);
@@ -957,7 +959,9 @@ describe("plugin app runtime shim", () => {
     expect(minifiedJs).not.toContain("fixtureLocalResult");
     expect(minifiedJs).not.toContain("fixture-legal-comment");
     expect(minifiedJs).toContain("bb-minify");
-    expect(minifiedCss).toContain(".flex-col{flex-direction:column}");
+    expect(minifiedCss).toContain(
+      ".flex-col:where(:not([data-bb-host-owned])){flex-direction:column}",
+    );
     expect(minifiedCss).toContain(".bb71-authored{color:#ff69b4;margin:0}");
     expect(minifiedCss).not.toContain("\n  ");
 
@@ -968,7 +972,9 @@ describe("plugin app runtime shim", () => {
     const readableJs = await readFile(readable.jsPath, "utf8");
     const readableCss = await readFile(readable.cssPath, "utf8");
     expect(readableJs).toContain("fixtureLocalResult");
-    expect(readableCss).toMatch(/\.flex-col \{\n\s+flex-direction: column;/);
+    expect(readableCss).toMatch(
+      /\.flex-col:where\(:not\(\[data-bb-host-owned\]\)\) \{\n\s+flex-direction: column;/,
+    );
     expect(readableCss).toContain(".bb71-authored {");
     expect(readableJs.length).toBeGreaterThan(minifiedJs.length);
     expect(readableCss.length).toBeGreaterThan(minifiedCss.length);
@@ -1056,9 +1062,9 @@ describe("plugin app runtime shim", () => {
     );
     const css = await readFile(result.cssPath, "utf8");
 
-    expect(css).toContain(".tracking-widest{");
-    expect(css).toContain(".leading-loose{");
-    expect(css).toContain(".leading-tight{");
+    expect(css).toContain(".tracking-widest:where(");
+    expect(css).toContain(".leading-loose:where(");
+    expect(css).toContain(".leading-tight:where(");
     expect(css).not.toContain(".tracking-tighter{");
     expect(css).not.toContain(".tracking-normal{");
     expect(css).toMatch(/:root,:host\{[^}]*--tracking-widest:/);

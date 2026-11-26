@@ -87,6 +87,7 @@ import type {
   SessionOptionMenuSection,
 } from "./SessionOptionsMenu";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
+import { useHostUiProps } from "@/lib/host-ui";
 
 const NO_AGENT_SECTIONS: readonly SessionOptionMenuSection[] = [];
 function ignoreAgentOptionChange(): void {}
@@ -249,6 +250,7 @@ export function ModelReasoningPicker({
   disabled,
   handoff,
 }: ModelReasoningPickerProps) {
+  const hostUiProps = useHostUiProps();
   const isCompactViewport = useIsCompactViewport();
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -948,6 +950,7 @@ export function ModelReasoningPicker({
   ].join("");
   const trigger = (
     <Button
+      {...(className === undefined ? hostUiProps : {})}
       ref={triggerRef}
       type="button"
       variant="ghost"
@@ -971,7 +974,11 @@ export function ModelReasoningPicker({
         className,
       )}
     >
-      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={triggerTitle}>
+      <span
+        {...hostUiProps}
+        className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
+        title={triggerTitle}
+      >
         {showLoadingTrigger ? (
           <>
             {TriggerIcon ? (

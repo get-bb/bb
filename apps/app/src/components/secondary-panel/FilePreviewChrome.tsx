@@ -14,6 +14,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { TruncateStart } from "@bb/shared-ui/truncate-start";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
+import { useHostUiProps } from "@/lib/host-ui";
 
 export const FILE_PREVIEW_WRAPPER_STYLE = {
   "--md-content-w": "100cqi",
@@ -85,8 +86,10 @@ export function FilePreviewLoading({
   copyPath: string | null;
   showHeader?: boolean;
 }) {
+  const hostUiProps = useHostUiProps();
   return (
     <div
+      {...hostUiProps}
       role="status"
       aria-label="Loading file preview"
       className="@container/page min-h-full"

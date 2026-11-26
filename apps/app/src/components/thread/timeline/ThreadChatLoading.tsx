@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { ConversationTimeline } from "@/components/ui/conversation.js";
+import { useHostUiProps } from "@/lib/host-ui";
+import { PluginContent } from "@/components/plugin/PluginContent";
 
 export function ThreadTimelinePanelLoadingSkeleton() {
   return (
@@ -20,8 +22,10 @@ export function ThreadChatLoadingBody({
   leadingContent: ReactNode;
   variant: "full" | "compact" | "timeline";
 }) {
+  const hostUiProps = useHostUiProps();
   return (
     <div
+      {...hostUiProps}
       role="status"
       aria-label="Loading conversation"
       className={cn(
@@ -33,7 +37,9 @@ export function ThreadChatLoadingBody({
       )}
     >
       <ConversationTimeline>
-        {leadingContent}
+        {leadingContent == null ? null : (
+          <PluginContent>{leadingContent}</PluginContent>
+        )}
         <ThreadTimelinePanelLoadingSkeleton />
       </ConversationTimeline>
     </div>

@@ -9,6 +9,10 @@ const NESTED_STYLE_RULE_AT_RULES = new Set([
   "starting-style",
 ]);
 
+export const HOST_OWNED_ATTRIBUTE = "data-bb-host-owned";
+
+const UNLESS_HOST_OWNED = `:where(:not([${HOST_OWNED_ATTRIBUTE}]))`;
+
 interface Statement {
   prelude: string;
   body: string | null;
@@ -247,7 +251,9 @@ function scopeStatements(css: string, scope: string): string {
       }
 
       const nestedSibling = hasNestedSiblingRule(statement.body);
-      const originalSelectors = splitSelectorList(prelude);
+      const originalSelectors = splitSelectorList(prelude).map(
+        skipHostOwnedElements,
+      );
       const selectors = originalSelectors.flatMap((selector) =>
         nestedSibling || hasSiblingCombinator(selector)
           ? [`${scope} ${selector}`]
@@ -260,6 +266,45 @@ function scopeStatements(css: string, scope: string): string {
         .join("");
     })
     .join("");
+}
+
+function skipHostOwnedElements(selector: string): string {
+  const compound = classBearingCompound(selector);
+  if (compound === null) return selector;
+  return (
+    selector.slice(0, compound.insertAt) +
+    UNLESS_HOST_OWNED +
+    selector.slice(compound.insertAt)
+  );
+}
+
+function classBearingCompound(selector: string): { insertAt: number } | null {
+  let depth = 0;
+  let hasClass = false;
+  let pseudoElementAt: number | null = null;
+  for (let index = 0; index < selector.length; index += 1) {
+    const char = selector[index];
+    if (char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      index = findStringEnd(selector, index);
+      continue;
+    }
+    if (char === "(" || char === "[") depth += 1;
+    else if (char === ")" || char === "]") depth -= 1;
+    else if (depth > 0) continue;
+    else if (char === ".") hasClass = true;
+    else if (char === ":" && selector[index + 1] === ":") {
+      pseudoElementAt ??= index;
+      index += 1;
+    } else if (char === " " || char === ">" || char === "+" || char === "~") {
+      if (hasClass) return { insertAt: pseudoElementAt ?? index };
+      pseudoElementAt = null;
+    }
+  }
+  return hasClass ? { insertAt: pseudoElementAt ?? selector.length } : null;
 }
 
 function splitStatements(css: string): Statement[] {

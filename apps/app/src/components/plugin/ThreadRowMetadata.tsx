@@ -14,6 +14,7 @@ import {
   usePluginSlotKind,
   type PluginThreadRowMetadataSlot,
 } from "@/lib/plugin-slots";
+import { useHostUiProps } from "@/lib/host-ui";
 
 function sortThreadRowMetadata(
   slots: readonly PluginThreadRowMetadataSlot[],
@@ -47,6 +48,7 @@ function MountedThreadRowMetadata({
   slots: readonly PluginThreadRowMetadataSlot[];
 }) {
   const anchor = useRef<HTMLSpanElement>(null);
+  const hostUiProps = useHostUiProps();
   useRegisterLineThread(thread);
   const collected = useSyncExternalStore(
     collectedStore.subscribe,
@@ -64,6 +66,7 @@ function MountedThreadRowMetadata({
   }, []);
   return (
     <span
+      {...hostUiProps}
       ref={anchor}
       data-thread-row-metadata=""
       className="pointer-events-auto relative z-[31] hidden min-w-0 flex-1 items-center gap-2 overflow-hidden data-[has-items]:flex"

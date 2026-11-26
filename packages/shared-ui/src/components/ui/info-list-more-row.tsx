@@ -5,6 +5,7 @@ import {
   infoListIndentStyle,
 } from "./info-list-row";
 import { cn } from "../../lib/utils";
+import { useHostUiProps } from "../../lib/host-ui";
 
 export const INFO_LIST_CARET_CLASS = "size-3 shrink-0 transition-transform";
 
@@ -31,8 +32,9 @@ export function InfoListMoreRow({
   onToggle: () => void;
   depth?: number;
 }) {
+  const hostUiProps = useHostUiProps();
   return (
-    <li className="relative">
+    <li {...hostUiProps} className="relative">
       <InfoListIndentGuides depth={depth} />
       <button
         type="button"

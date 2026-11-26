@@ -13,6 +13,7 @@ import { promptMentionClipboardDataAttributes } from "@bb/client-core";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { useThreadRoutePath } from "@/components/thread/ThreadTitleMentions";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
+import { useHostUiProps } from "@/lib/host-ui";
 
 interface PromptMentionPillProps {
   interactive?: boolean;
@@ -138,6 +139,7 @@ export function PromptMentionPill({
     resource,
     serializedText,
   });
+  const hostUiProps = useHostUiProps();
   const iconClassName = "size-3.5 shrink-0 self-center text-muted-foreground";
   const labelNode = (
     <>
@@ -149,6 +151,7 @@ export function PromptMentionPill({
   if (!interactive) {
     return (
       <span
+        {...hostUiProps}
         className={mentionPillClassName(false)}
         {...clipboardAttributes}
         title={title}

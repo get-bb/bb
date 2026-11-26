@@ -38,4 +38,5 @@ export {
   dropHostProvidedTailwind,
   findUnnamedPluginRoots,
   keyPluginScopeOnAttribute,
+  scopePluginUtilities,
 } from "./scope-plugin-utilities.js";

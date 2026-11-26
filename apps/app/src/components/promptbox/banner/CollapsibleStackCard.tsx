@@ -3,6 +3,7 @@ import type { ExperimentalCollapsibleStackCardProps } from "@get-bb/plugin-sdk";
 import { pluginIconName } from "@/components/plugin/PluginIcon";
 import { CollapsibleActiveStackCard } from "@/components/promptbox/banner/CollapsibleActiveStackCard";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
+import { PluginContent } from "@/components/plugin/PluginContent";
 
 export function CollapsibleStackCard({
   label,
@@ -48,7 +49,7 @@ export function CollapsibleStackCard({
             }
       }
     >
-      {children}
+      <PluginContent>{children}</PluginContent>
     </CollapsibleActiveStackCard>
   );
 }

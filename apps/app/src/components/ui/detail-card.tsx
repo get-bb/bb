@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, type UIEventHandler } from "react";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useHostUiProps, usePluginContentProps } from "@/lib/host-ui";
 
 export const DETAIL_ROW_ICON_CLASS =
   "size-(--bb-detail-row-icon-size) min-h-0 min-w-0 shrink-0 text-subtle-foreground";
@@ -12,10 +13,13 @@ function DetailRowIconLabel({
   icon: IconName;
   children: ReactNode;
 }) {
+  const pluginContentProps = usePluginContentProps();
   return (
     <span className="flex items-center gap-1.5">
       <Icon name={icon} className={DETAIL_ROW_ICON_CLASS} />
-      <span className="min-w-0 truncate">{children}</span>
+      <span {...pluginContentProps} className="min-w-0 truncate">
+        {children}
+      </span>
     </span>
   );
 }
@@ -84,21 +88,29 @@ export function DetailRow({
   align = "center",
   children,
 }: DetailRowProps) {
+  const hostUiProps = useHostUiProps();
+  const pluginContentProps = usePluginContentProps();
   return (
     <div
+      {...hostUiProps}
       className={cn(
         DETAIL_GRID_CLASS,
         align === "center" ? "items-center py-0.5" : "py-0.5",
       )}
     >
-      <dt className={DETAIL_LABEL_CLASS}>
+      <dt
+        {...(icon === undefined ? pluginContentProps : {})}
+        className={DETAIL_LABEL_CLASS}
+      >
         {icon === undefined ? (
           label
         ) : (
           <DetailRowIconLabel icon={icon}>{label}</DetailRowIconLabel>
         )}
       </dt>
-      <dd className={DETAIL_VALUE_CLASS}>{children}</dd>
+      <dd {...pluginContentProps} className={DETAIL_VALUE_CLASS}>
+        {children}
+      </dd>
     </div>
   );
 }

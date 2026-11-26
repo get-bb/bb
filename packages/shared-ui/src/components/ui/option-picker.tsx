@@ -11,6 +11,7 @@ import {
 } from "./dropdown-menu";
 import { LIST_HOVER_TRANSITION } from "./motion";
 import { cn } from "../../lib/utils";
+import { useHostUiProps } from "../../lib/host-ui";
 import {
   OPTION_BASE_CLASS_NAME,
   OPTION_INTERACTIVE_CLASS_NAME,
@@ -76,6 +77,7 @@ export function OptionPicker<T extends string>({
   showChevronWhenDisabled,
   trigger: customTrigger,
 }: OptionPickerProps<T>) {
+  const hostUiProps = useHostUiProps();
   const selectedOption = options.find((option) => option.value === value);
   const selectedTone = displayOverride ? "default" : selectedOption?.tone;
   const selectedIsWarning = selectedTone === "warning";
@@ -94,6 +96,7 @@ export function OptionPicker<T extends string>({
 
   const trigger = customTrigger ?? (
     <Button
+      {...(className === undefined ? hostUiProps : {})}
       type="button"
       variant="ghost"
       size="sm"
@@ -110,7 +113,11 @@ export function OptionPicker<T extends string>({
         className,
       )}
     >
-      <span className={OPTION_TRIGGER_CONTENT_CLASS_NAME} title={selectedTitle}>
+      <span
+        {...hostUiProps}
+        className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
+        title={selectedTitle}
+      >
         {SelectedIcon ? <SelectedIcon className="size-3.5 shrink-0" /> : null}
         {selectedCompactLabel ? (
           <>

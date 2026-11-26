@@ -13,6 +13,7 @@ import { Skeleton } from "@bb/shared-ui/skeleton";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { DetailCard, DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
 import { useThreadState } from "@/lib/thread-state";
+import { useHostUiProps } from "@/lib/host-ui";
 import { ThreadInfoRows, ThreadInfoSections } from "./ThreadInfoSlots";
 
 const INFO_SCROLLBAR_IDLE_DELAY_MS = 600;
@@ -64,8 +65,10 @@ const SKELETON_ROWS = SKELETON_ROW_VALUE_WIDTHS.map((valueWidth, index) => (
 ));
 
 export function ThreadInfoSkeleton() {
+  const hostUiProps = useHostUiProps();
   return (
     <div
+      {...hostUiProps}
       role="status"
       aria-label="Loading thread info"
       className="flex min-h-0 flex-1 flex-col overflow-hidden"
@@ -78,8 +81,12 @@ export function ThreadInfoSkeleton() {
 const NO_DETAILS_MESSAGE = "No thread details available.";
 
 function ThreadInfoBody(props: ExperimentalThreadInfoProps) {
+  const hostUiProps = useHostUiProps();
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div
+      {...hostUiProps}
+      className="flex min-h-0 flex-1 flex-col overflow-hidden"
+    >
       <ThreadInfoCard>
         <div className="flex min-w-0 flex-col [&_[data-info-section]]:mt-3 [&_[data-info-section]]:border-t [&_[data-info-section]]:border-border [&_[data-info-section]]:pt-3">
           <div className="flex min-w-0 flex-col gap-1.5 [&:not(:has(dt))]:hidden [:not(:has([data-info-section]))>&]:border-b [:not(:has([data-info-section]))>&]:border-border [:not(:has([data-info-section]))>&]:pb-3">
@@ -103,10 +110,11 @@ export function ThreadInfo({
   environment,
 }: ExperimentalThreadTabProps) {
   const state = useThreadState(threadId);
+  const hostUiProps = useHostUiProps();
   if (state.status === "loading") return <ThreadInfoSkeleton />;
   if (state.status !== "ready") {
     return (
-      <div className="px-4 pt-1 text-sm text-muted-foreground">
+      <div {...hostUiProps} className="px-4 pt-1 text-sm text-muted-foreground">
         {NO_DETAILS_MESSAGE}
       </div>
     );

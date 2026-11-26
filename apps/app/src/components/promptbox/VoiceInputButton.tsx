@@ -6,6 +6,7 @@ import { Icon } from "@bb/shared-ui/icon";
 import { Popover, PopoverAnchor } from "@bb/shared-ui/popover";
 import { MicrophonePreferencesSplit } from "./MicrophonePreferencesSplit";
 import { MicrophonePreferencesPopoverContent } from "./MicrophonePreferencesPopoverContent";
+import { useHostUiProps } from "@/lib/host-ui";
 
 export function VoiceInputButton({
   warning,
@@ -18,11 +19,13 @@ export function VoiceInputButton({
   const visibleWarning = recoveredWarning === warning ? null : warning;
   const handleCaptureReady = () => setRecoveredWarning(warning);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const hostUiProps = useHostUiProps();
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverAnchor asChild>
         <span
+          {...(props.className === undefined ? hostUiProps : {})}
           className="relative inline-flex shrink-0"
           {...MicrophonePreferencesSplit.intentProps}
         >
@@ -64,6 +67,7 @@ export function VoiceInputButton({
                 {props.children}
                 {visibleWarning ? (
                   <span
+                    {...hostUiProps}
                     aria-hidden="true"
                     className="pointer-events-none absolute bottom-0 right-0 flex size-4 items-center justify-center rounded-full bg-background text-destructive"
                   >

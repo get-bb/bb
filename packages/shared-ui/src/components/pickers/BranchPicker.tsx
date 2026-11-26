@@ -24,6 +24,7 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "../ui/option-display";
 import { cn } from "../../lib/utils";
+import { useHostUiProps } from "../../lib/host-ui";
 import { searchPickerOptions } from "@bb/fuzzy-match";
 import { useResetPickerScroll } from "../ui/use-reset-picker-scroll";
 
@@ -202,6 +203,7 @@ export function BranchPicker({
   modal = false,
   popoverAlign = "start",
 }: BranchPickerProps) {
+  const hostUiProps = useHostUiProps();
   const [open, setOpen] = useState(defaultOpen);
   const [query, setQuery] = useState("");
   const optionsScrollRef = useResetPickerScroll<HTMLDivElement>(query);
@@ -280,6 +282,7 @@ export function BranchPicker({
     <Popover modal={modal} open={open} onOpenChange={updateOpen}>
       <PopoverTrigger asChild disabled={disabled}>
         <Button
+          {...(className === undefined ? hostUiProps : {})}
           type="button"
           variant={variant === "default" ? "outline" : "ghost"}
           size="sm"
@@ -304,6 +307,7 @@ export function BranchPicker({
         >
           {variant === "option" ? (
             <span
+              {...hostUiProps}
               className={OPTION_TRIGGER_CONTENT_CLASS_NAME}
               title={triggerTitle ?? triggerLabel}
             >
@@ -320,6 +324,7 @@ export function BranchPicker({
             </span>
           ) : (
             <span
+              {...hostUiProps}
               className="flex min-w-0 items-center overflow-hidden"
               title={triggerTitle ?? triggerLabel}
             >

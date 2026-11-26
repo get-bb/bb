@@ -39,6 +39,7 @@ import { sdk } from "@/lib/sdk";
 import { getThreadLocationPath, pathMentionResource } from "@bb/client-core";
 import { getThreadDisplayTitle } from "@/lib/thread-title";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useHostUiProps } from "@/lib/host-ui";
 
 type ThreadTitleMentionThread = Pick<
   ThreadListEntry,
@@ -960,6 +961,7 @@ function ResolvingThreadTitleMention({
 }: ResolvingThreadTitleMentionProps) {
   const resource = useRawThreadMentionResource(threadId);
   const unavailableIds = useUnavailableRawThreadMentionIds();
+  const hostUiProps = useHostUiProps();
   if (resource === null) {
     return renderFallbackPill ? (
       <PromptMentionPill
@@ -973,7 +975,9 @@ function ResolvingThreadTitleMention({
         serializedText={serializedText}
       />
     ) : (
-      <span className="truncate">{threadId}</span>
+      <span {...hostUiProps} className="truncate">
+        {threadId}
+      </span>
     );
   }
   return (
@@ -1030,6 +1034,7 @@ function ThreadTitleMentionsContent({
     ? use(ThreadTitleMentionResourcesContext)
     : EMPTY_TITLE_MENTION_RESOURCES;
   const segments = threadTitleTextSegments(title, resources);
+  const hostUiProps = useHostUiProps();
   const segmentOffsets: number[] = [];
   let offset = 0;
   for (const segment of segments) {
@@ -1047,7 +1052,11 @@ function ThreadTitleMentionsContent({
         threadId={segment.unresolvedThreadId}
       />
     ) : segment.resource === null || segment.serializedText === null ? (
-      <span key={`${index}:text`} className="truncate whitespace-pre">
+      <span
+        {...hostUiProps}
+        key={`${index}:text`}
+        className="truncate whitespace-pre"
+      >
         {highlightedText(segment.text, segmentOffset, highlightRanges)}
       </span>
     ) : (

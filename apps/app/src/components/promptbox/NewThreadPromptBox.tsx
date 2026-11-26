@@ -70,6 +70,7 @@ import {
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useSystemMachineProviders } from "@/hooks/queries/machine-provider-queries";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
+import { useHostUiProps } from "@/lib/host-ui";
 
 const NEW_THREAD_PROMPT_BOX_MIN_HEIGHT = 80;
 
@@ -283,9 +284,11 @@ const DefaultNewThreadComposer = memo(function DefaultNewThreadComposer({
     : execution.model.isLoading
       ? "Loading models..."
       : "Submit (Enter)";
+  const hostUiProps = useHostUiProps();
 
   return (
     <div
+      {...hostUiProps}
       data-app-composer=""
       data-app-composer-role="primary"
       data-promptbox-shell=""

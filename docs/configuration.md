@@ -1171,7 +1171,9 @@ The app requests each plugin's stylesheet with
 attribute named after the plugin, `data-bb-plugin-scope-<id>`, so style
 updates inside other plugins' UI, such as the sidebar and composer, skip that
 plugin's rules. The app adds the attribute to every element labeled
-`data-bb-plugin`, including ones a plugin creates itself. See
+`data-bb-plugin`, including ones a plugin creates itself. Plugin utilities never style the host
+components a plugin renders, so those keep the app's own responsive and
+touch-screen rules. See
 [Plugin Stylesheet Version Skew](debugging-and-qa.md#plugin-stylesheet-version-skew).
 
 SQLite WAL checkpoints for `bb.db` and plugin `data.db` files run off the

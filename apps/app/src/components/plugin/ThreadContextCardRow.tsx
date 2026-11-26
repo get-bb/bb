@@ -1,6 +1,7 @@
 import type { ExperimentalThreadContextCardRowProps } from "@get-bb/plugin-sdk";
 import { Icon } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useHostUiProps, usePluginContentProps } from "@/lib/host-ui";
 
 const ACTION_REVEAL_CLASS =
   "relative hover:[&_[data-thread-context-card-row-trailing]]:invisible has-[:focus-visible]:[&_[data-thread-context-card-row-trailing]]:invisible has-[[data-state=open]]:[&_[data-thread-context-card-row-trailing]]:invisible hover:[&_[data-thread-context-card-row-action]]:opacity-100 has-[:focus-visible]:[&_[data-thread-context-card-row-action]]:opacity-100 has-[[data-state=open]]:[&_[data-thread-context-card-row-action]]:opacity-100";
@@ -18,10 +19,15 @@ export function ThreadContextCardRow({
   action,
   onClick,
 }: ExperimentalThreadContextCardRowProps) {
+  const hostUiProps = useHostUiProps();
+  const pluginContentProps = usePluginContentProps();
   const content = (
     <>
       {leading !== undefined ? (
-        <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground max-md:pointer-coarse:size-4 [&>*]:max-h-full [&>*]:max-w-full">
+        <span
+          {...pluginContentProps}
+          className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground max-md:pointer-coarse:size-4 [&>*]:max-h-full [&>*]:max-w-full"
+        >
           {leading}
         </span>
       ) : icon !== undefined ? (
@@ -31,9 +37,12 @@ export function ThreadContextCardRow({
           aria-hidden
         />
       ) : null}
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span {...pluginContentProps} className="min-w-0 flex-1 truncate">
+        {label}
+      </span>
       {trailing === undefined ? null : (
         <span
+          {...pluginContentProps}
           data-thread-context-card-row-trailing=""
           className="ml-auto flex shrink-0 items-center gap-1 text-xs tabular-nums text-muted-foreground"
         >
@@ -45,6 +54,7 @@ export function ThreadContextCardRow({
   const interactive = onClick !== undefined && !disabled;
   return (
     <div
+      {...hostUiProps}
       data-thread-context-card-row-frame=""
       className={cn(
         "flex h-6.5 w-full min-w-0 items-center rounded-md max-md:pointer-coarse:h-9",
@@ -78,6 +88,7 @@ export function ThreadContextCardRow({
       )}
       {action === undefined ? null : (
         <span
+          {...pluginContentProps}
           data-thread-context-card-row-action=""
           className="absolute inset-y-0 right-0 flex items-center px-1 opacity-0 pointer-coarse:static pointer-coarse:opacity-100"
         >

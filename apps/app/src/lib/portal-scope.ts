@@ -1,5 +1,6 @@
 import { useContext } from "react";
 import { PluginContext } from "@/components/plugin/plugin-context";
+import { HOST_UI_ATTRIBUTE } from "./host-ui";
 
 type PluginScopeAttribute = `data-bb-plugin-scope-${string}`;
 
@@ -23,9 +24,16 @@ export function pluginRootProps(pluginId: string): PluginRootProps {
 
 export function usePortalScopeProps():
   | { "data-bb-portaled-overlay": "" }
-  | ({ "data-bb-portaled-overlay": "" } & PluginRootProps) {
+  | ({
+      "data-bb-portaled-overlay": "";
+      [HOST_UI_ATTRIBUTE]: "";
+    } & PluginRootProps) {
   const pluginId = useContext(PluginContext);
   return pluginId === null
     ? { "data-bb-portaled-overlay": "" }
-    : { "data-bb-portaled-overlay": "", ...pluginRootProps(pluginId) };
+    : {
+        "data-bb-portaled-overlay": "",
+        [HOST_UI_ATTRIBUTE]: "",
+        ...pluginRootProps(pluginId),
+      };
 }

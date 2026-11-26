@@ -11,6 +11,7 @@ import {
 } from "react";
 import { FilePreviewScrollPositionContext } from "./filePreviewScrollPositionContext";
 import { FilePreviewRenderPreviewContext } from "./filePreviewRenderPreviewContext";
+import { useHostUiProps, usePluginContentProps } from "@/lib/host-ui";
 import { Button } from "@bb/shared-ui/button";
 import {
   DropdownMenu,
@@ -527,6 +528,8 @@ export function FilePreview({
   }
 
   const renderPreview = useContext(FilePreviewRenderPreviewContext);
+  const hostUiProps = useHostUiProps();
+  const pluginContentProps = usePluginContentProps();
   const bodyViewMode: FilePreviewViewMode =
     toggleKind === null ? "preview" : viewMode;
   const customPreviewFile =
@@ -561,6 +564,7 @@ export function FilePreview({
 
   return (
     <div
+      {...hostUiProps}
       className={
         usesFullHeightLayout
           ? cn(
@@ -603,7 +607,7 @@ export function FilePreview({
         />
       ) : null}
       {renderPreview !== null && customPreviewFile !== null ? (
-        <div className="min-h-0 flex-1 overflow-hidden">
+        <div {...pluginContentProps} className="min-h-0 flex-1 overflow-hidden">
           {renderPreview(customPreviewFile)}
         </div>
       ) : (

@@ -16,6 +16,7 @@ import {
   SIDEBAR_SUCCESS_STATUS_DOT_CLASS,
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "@bb/shared-ui/sidebar-row-classes";
+import { useHostUiProps } from "@/lib/host-ui";
 
 const WORKING_ACTIVITY_ICONS = {
   workflow: "Workflow",
@@ -63,11 +64,13 @@ function PluginThreadRowStatusIndicator({
   status: PluginComposerThreadRowStatus;
   size: "default" | "compact";
 }) {
+  const hostUiProps = useHostUiProps();
   const iconSizeClass =
     size === "compact" ? "size-3.5" : SIDEBAR_STATUS_ICON_CLASS;
   if (status.tone === "running") {
     return (
       <span
+        {...hostUiProps}
         className={cn(
           "inline-flex items-center justify-center motion-safe:animate-pulse",
           iconSizeClass,
@@ -110,6 +113,7 @@ export function ThreadStatusGlyph({
   hideIdleDraftLabel = false,
   size = "default",
 }: PluginThreadStatusGlyphProps) {
+  const hostUiProps = useHostUiProps();
   const iconSizeClass =
     size === "compact" ? "size-3.5" : SIDEBAR_STATUS_ICON_CLASS;
   if (archived) {
@@ -187,6 +191,7 @@ export function ThreadStatusGlyph({
     case "unread-success":
       return (
         <span
+          {...hostUiProps}
           className={SIDEBAR_SUCCESS_STATUS_DOT_CLASS}
           aria-label={threadIndicatorLabel(indicator) ?? undefined}
         />

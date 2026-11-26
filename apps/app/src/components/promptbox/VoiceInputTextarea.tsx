@@ -9,6 +9,7 @@ import { transcribeVoiceInput } from "@/lib/api";
 import { WaveformVisualizer } from "./WaveformVisualizer";
 import { VoiceInputButton } from "./VoiceInputButton";
 import { FailedVoiceRecordings } from "./FailedVoiceRecordings";
+import { useHostUiProps } from "@/lib/host-ui";
 
 function appendTranscript(value: string, transcript: string): string {
   return value && !/\s$/.test(value)
@@ -57,6 +58,7 @@ export function VoiceInputTextarea({
   useEffect(() => {
     latestRef.current.onVoiceInputActiveChange?.(voice.isListening);
   }, [voice.isListening]);
+  const hostUiProps = useHostUiProps();
 
   return (
     <div className="relative">
@@ -81,7 +83,10 @@ export function VoiceInputTextarea({
         )}
       />
       {voice.isSupported ? (
-        <div className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center justify-end gap-2 *:pointer-events-auto">
+        <div
+          {...hostUiProps}
+          className="pointer-events-none absolute inset-x-1 bottom-1 flex items-center justify-end gap-2 *:pointer-events-auto"
+        >
           {voice.isListening ? (
             <>
               <Button

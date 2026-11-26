@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "host-ui",
+  "type": "registry:lib",
+  "title": "host-ui",
+  "description": "BB lib \"host-ui\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/lib/host-ui.ts",
+      "content": "export type HostUiProps = { \"data-bb-host-ui\"?: \"\" };\nexport type PluginContentProps = { \"data-bb-plugin-content\"?: \"\" };\n\nconst NO_PROPS = {};\n\nexport function useHostUiProps(): HostUiProps {\n  return NO_PROPS;\n}\n\nexport function usePluginContentProps(): PluginContentProps {\n  return NO_PROPS;\n}\n",
+      "type": "registry:lib",
+      "target": "lib/host-ui.ts"
+    }
+  ]
+}

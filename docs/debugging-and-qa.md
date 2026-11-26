@@ -1471,6 +1471,22 @@ attribute before the element is styled. Older tabs that send
 `css-scope=owned-root-v1` get the same selectors without the scope attribute,
 and tabs that send no scope get the original CSS.
 
+Plugin utilities skip host-owned elements. Every scoped plugin utility selector
+ends its class-bearing compound with `:where(:not([data-bb-host-owned]))`, so a
+host component a plugin renders keeps the app's own rules, including variants
+such as `pointer-coarse:`, `md:` and `hover:`, even when the plugin's stylesheet
+re-declares a base utility like `.absolute` or `.hidden` later at the same
+specificity. Host code marks ownership with two attributes from
+`apps/app/src/lib/host-ui.ts`, set only inside a plugin's area:
+`data-bb-host-ui` on the root of host UI (and on host portals), and
+`data-bb-plugin-content` on the host element that directly contains content the
+plugin passed in. The same document observer stamps `data-bb-host-owned` on
+every element from a `data-bb-host-ui` root down to the next
+`data-bb-plugin-content` element or plugin root, at any nesting depth. Elements
+that receive a plugin's `className` stay plugin-owned. To check an element, read
+`data-bb-host-owned` in the inspector and list the rules matching it; no
+`:where([data-bb-plugin-scope-…])` rule should match a host-owned element.
+
 To reproduce version skew, load the production main app in Chrome, restart
 the same isolated server on the branch without reloading the tab, and open
 Automations and Plugin Guide. Normal revision detection reloads the app automatically. To isolate a client

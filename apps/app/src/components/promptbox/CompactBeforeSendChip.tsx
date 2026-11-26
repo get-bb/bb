@@ -14,6 +14,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import { OptionPicker } from "@bb/shared-ui/option-picker";
 import { formatCompactTokenCount } from "@/components/thread/timeline/thread-context-window-usage";
+import { useHostUiProps } from "@/lib/host-ui";
 
 export interface CompactBeforeSendOffer {
   compactFirst: boolean;
@@ -44,11 +45,13 @@ function CompactBeforeSendToggle({
   tokens,
 }: CompactBeforeSendOffer) {
   const tokensLabel = formatCompactTokenCount(tokens);
+  const hostUiProps = useHostUiProps();
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
+            {...hostUiProps}
             type="button"
             variant="ghost"
             size="sm"
@@ -87,6 +90,7 @@ function CompactBeforeSendPicker({
   tokens,
 }: CompactBeforeSendOffer) {
   const tokensLabel = formatCompactTokenCount(tokens);
+  const hostUiProps = useHostUiProps();
   return (
     <OptionPicker<CompactBeforeSendChoice>
       label="Prompt cache expired"
@@ -117,6 +121,7 @@ function CompactBeforeSendPicker({
       ]}
       trigger={
         <Button
+          {...hostUiProps}
           type="button"
           variant="ghost"
           size="icon"

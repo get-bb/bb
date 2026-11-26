@@ -5,6 +5,7 @@ import {
   type Ref,
 } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
+import type { HostUiProps } from "@/lib/host-ui";
 
 import {
   CONTEXT_CARD_CLASS,
@@ -30,6 +31,7 @@ export interface PromptStackCardProps {
   rootRef?: Ref<HTMLElement>;
   style?: CSSProperties;
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
+  hostUiProps?: HostUiProps;
 }
 
 export function PromptStackCard({
@@ -39,10 +41,12 @@ export function PromptStackCard({
   rootRef,
   style,
   onKeyDown,
+  hostUiProps,
 }: PromptStackCardProps) {
   if (ariaLabel) {
     return (
       <section
+        {...hostUiProps}
         ref={rootRef}
         aria-label={ariaLabel}
         className={cn(BASE_CHROME, className)}
@@ -55,6 +59,7 @@ export function PromptStackCard({
   }
   return (
     <div
+      {...hostUiProps}
       ref={rootRef as Ref<HTMLDivElement>}
       className={cn(BASE_CHROME, className)}
       style={style}
