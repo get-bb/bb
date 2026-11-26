@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { HostPullRequestAction } from "../contract.js";
 import { installFakeGh, makeTempDir } from "../test/fake-gh.js";
@@ -258,6 +260,47 @@ describe("getPullRequestForCurrentBranch", () => {
       await expect(lookup()).resolves.toMatchObject({
         outcome: "unavailable",
       });
+    },
+  );
+
+  it.each(["https://github.com/acme/bb.git", "git@github.com:acme/bb.git"])(
+    "reads the pull request a refs/pull upstream names, even from a fork (origin %s)",
+    async (originUrl) => {
+      const gh = await installFakeGh({
+        "api graphql": {
+          resources: {
+            [PR_URL]: {
+              data: graphqlPr({
+                isCrossRepository: true,
+                headRepositoryOwner: { login: "contributor" },
+              }),
+            },
+          },
+        },
+      });
+      const cwd = await makeTempDir("bb-pr-ref-");
+      const git = promisify(execFile);
+      await git("git", ["init", "-q"], { cwd });
+      for (const [key, value] of [
+        ["remote.origin.url", originUrl],
+        ["branch.bb/pr-lookup.remote", "origin"],
+        ["branch.bb/pr-lookup.merge", "refs/pull/42/head"],
+      ])
+        await git("git", ["config", key, value], { cwd });
+
+      await expect(
+        getPullRequestForCurrentBranch({
+          cwd,
+          localBranch: "bb/pr-lookup",
+          refresh: false,
+        }),
+      ).resolves.toMatchObject({
+        outcome: "found",
+        pullRequest: { url: PR_URL },
+      });
+      expect((await gh.readCalls()).map((call) => call.slice(0, 2))).toEqual([
+        ["api", "graphql"],
+      ]);
     },
   );
 
