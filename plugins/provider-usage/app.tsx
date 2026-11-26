@@ -589,6 +589,10 @@ export function ProviderUsageStatusContent({
     ? providers.flatMap((provider) => provider.accounts)
     : (activeProvider?.accounts ?? []);
   const hasActiveUsage = hasReportedUsage(activeAccounts);
+  const hasUsageWindows = activeAccounts.some(
+    (account) =>
+      account.usage?.status === "ok" && account.usage.windows.length > 0,
+  );
   const unavailable = activeMachine?.error != null || snapshot.error !== null;
   const notice: CardNotice | null =
     activeMachine === null
@@ -879,6 +883,11 @@ export function ProviderUsageStatusContent({
         }
         className="min-h-0 overflow-y-auto p-2.5"
       >
+        {hasUsageWindows ? (
+          <p className="mb-2 text-2xs font-medium text-subtle-foreground">
+            Quota used
+          </p>
+        ) : null}
         {notice !== null && notice.kind !== "loading" ? (
           <UsageNotice
             notice={notice}
