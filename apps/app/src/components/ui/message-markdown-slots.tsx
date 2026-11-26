@@ -1,11 +1,14 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { PluginMessageDirectiveMessage } from "@get-bb/plugin-sdk";
 import { useAtomValue } from "jotai";
 import {
   codeFencePicksAtom,
   messageDirectivePicksAtom,
 } from "@/lib/plugin-choice-picks";
-import { useExclusiveBootState } from "@/lib/plugin-replacement-preference";
+import {
+  createRememberedAutomaticMap,
+  useExclusiveBootState,
+} from "@/lib/plugin-replacement-preference";
 import { usePluginFrontendsSettled } from "@/lib/plugin-frontend-boot-state";
 import {
   usePluginSlotKind,
@@ -13,6 +16,7 @@ import {
 } from "@/lib/plugin-slots";
 import {
   buildCodeFenceRendererRegistry,
+  codeFenceRendererKeys,
   CodeFenceRendererHost,
   CodeFenceRendererRegistryProvider,
   useCodeFenceRendererRegistry,
@@ -33,6 +37,10 @@ interface MessageDirectiveRegistryInputs {
   slots: readonly PluginMessageDirectiveSlot[];
   unclaimed: UnclaimedMessageDirectivePolicy;
 }
+
+const rememberedCodeFenceRenderers = createRememberedAutomaticMap(
+  "bb.code-fence-resolved",
+);
 
 let latestMessageDirectiveRegistry: {
   inputs: MessageDirectiveRegistryInputs;
@@ -80,14 +88,32 @@ export function MessageSlotRegistriesProvider({
     slots: messageDirectiveSlots,
     unclaimed: settled ? "literal" : "hold",
   });
+  const [rememberedCodeFenceKeys] = useState(() =>
+    rememberedCodeFenceRenderers.read(),
+  );
   const codeFenceRendererRegistry = useMemo(
     () =>
-      buildCodeFenceRendererRegistry(codeFenceRendererSlots, codeFencePicks, {
-        bbPluginIds,
-        settledOnce,
-      }),
-    [bbPluginIds, codeFencePicks, codeFenceRendererSlots, settledOnce],
+      buildCodeFenceRendererRegistry(
+        codeFenceRendererSlots,
+        codeFencePicks,
+        { bbPluginIds, settledOnce },
+        rememberedCodeFenceKeys,
+      ),
+    [
+      bbPluginIds,
+      codeFencePicks,
+      codeFenceRendererSlots,
+      rememberedCodeFenceKeys,
+      settledOnce,
+    ],
   );
+  useEffect(() => {
+    if (settledOnce) {
+      rememberedCodeFenceRenderers.write(
+        codeFenceRendererKeys(codeFenceRendererRegistry),
+      );
+    }
+  }, [codeFenceRendererRegistry, settledOnce]);
   return (
     <CodeFenceRendererRegistryProvider registry={codeFenceRendererRegistry}>
       <MessageDirectiveRegistryProvider registry={messageDirectiveRegistry}>

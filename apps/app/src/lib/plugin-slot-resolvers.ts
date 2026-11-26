@@ -310,22 +310,30 @@ export function resolveMessageDirectiveRegistry(
 
 export type ResolvedCodeFenceRenderer =
   | { status: "ok"; slot: PluginCodeFenceRendererSlot }
+  | { status: "loading" }
   | { status: "builtin" };
 
 export function resolveCodeFenceRendererRegistry(
   registrations: readonly PluginCodeFenceRendererSlot[],
   picks: Readonly<Record<string, string>>,
   boot: ExclusiveBootState,
+  remembered: Readonly<Record<string, string>>,
 ): ReadonlyMap<string, ResolvedCodeFenceRenderer> {
-  const resolved = new Map<string, ResolvedCodeFenceRenderer>();
-  for (const [language, claimants] of groupClaimants(
+  const claimantsByLanguage = groupClaimants(
     registrations,
     (registration) => registration.languages,
-  )) {
+  );
+  for (const language of Object.keys(remembered)) {
+    if (!claimantsByLanguage.has(language)) {
+      claimantsByLanguage.set(language, []);
+    }
+  }
+  const resolved = new Map<string, ResolvedCodeFenceRenderer>();
+  for (const [language, claimants] of claimantsByLanguage) {
     const renderer = resolveExclusive({
       claimants,
       pick: picks[language] ?? AUTOMATIC_REPLACEMENT_PROVIDER,
-      rememberedAutomatic: null,
+      rememberedAutomatic: remembered[language] ?? null,
       rule: REPLACEMENT_RULE,
       ...boot,
     });
@@ -333,7 +341,9 @@ export function resolveCodeFenceRendererRegistry(
       language,
       renderer.kind === "plugin"
         ? { status: "ok", slot: renderer.registration }
-        : { status: "builtin" },
+        : renderer.kind === "loading"
+          ? { status: "loading" }
+          : { status: "builtin" },
     );
   }
   return resolved;
