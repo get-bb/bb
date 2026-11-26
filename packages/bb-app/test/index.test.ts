@@ -33,6 +33,7 @@ import {
   createServerEnv,
   createHostDaemonJoinEnv,
   parseLauncherArgs,
+  preserveManagedTerminalCliEnv,
   readBbAppPackageVersion,
   resolveBbAppRuntimeState,
   resolveDataDir,
@@ -853,6 +854,146 @@ describe("bb-app launcher", () => {
 
     expect(exitCode).toBe(0);
     expect(readFileSync(cliThreadIdPath, "utf8")).toBe("thr_parent");
+  });
+
+  it("preserves the managed terminal's scoped server connection for the delegated CLI", async () => {
+    const dataDir = mkdtempSync(join(tmpdir(), "bb-app-managed-terminal-"));
+    writeFileSync(
+      join(dataDir, "config.json"),
+      JSON.stringify({
+        serverUrl: "https://stored.example.test",
+        machineCredential: "bbcm_machine",
+      }),
+      "utf8",
+    );
+    const managedTerminalEnv: NodeJS.ProcessEnv = {
+      BB_DATA_DIR: dataDir,
+      BB_ENVIRONMENT_ID: "env_managed",
+      BB_THREAD_ID: "thr_managed",
+      BB_THREAD_STORAGE: "/home/tester/.bb/thread-storage/thr_managed",
+      BB_SERVER_URL: "http://127.0.0.1:43187",
+      BB_CLI: process.execPath,
+    };
+
+    try {
+      const runtime = await resolveBbAppRuntimeState({
+        entrypointUrl: pathToFileURL("/repo/packages/bb-app/dist/bb-app.js")
+          .href,
+        env: managedTerminalEnv,
+        homeDir: "/home/tester",
+        options: { help: false },
+        serverUrlMode: "managed",
+      });
+      expect(runtime.env.BB_SERVER_URL).toBe("https://stored.example.test");
+      expect(runtime.env.BB_SERVER_HEADERS).toBe(
+        JSON.stringify({ "x-bb-connect-machine": "bbcm_machine" }),
+      );
+
+      const cliEnv = preserveManagedTerminalCliEnv({
+        env: runtime.env,
+        sourceEnv: managedTerminalEnv,
+      });
+      expect(cliEnv.BB_SERVER_URL).toBe("http://127.0.0.1:43187");
+      expect(cliEnv.BB_SERVER_HEADERS).toBeUndefined();
+
+      const outputPath = join(dataDir, "cli-connection.json");
+      const exitCode = await runBundledCliCommand({
+        args: [
+          "-e",
+          "require('node:fs').writeFileSync(process.argv[1], JSON.stringify({serverHeaders: process.env.BB_SERVER_HEADERS ?? null, serverUrl: process.env.BB_SERVER_URL ?? null, threadId: process.env.BB_THREAD_ID ?? null}))",
+          outputPath,
+        ],
+        context: { ...createTestStartContext(), dataDir },
+        env: cliEnv,
+      });
+
+      expect(exitCode).toBe(0);
+      expect(JSON.parse(readFileSync(outputPath, "utf8"))).toEqual({
+        serverHeaders: null,
+        serverUrl: "http://127.0.0.1:43187",
+        threadId: "thr_managed",
+      });
+    } finally {
+      rmSync(dataDir, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps the resolved machine configuration outside a managed terminal", () => {
+    const resolvedEnv: NodeJS.ProcessEnv = {
+      BB_SERVER_URL: "https://stored.example.test",
+      BB_SERVER_HEADERS: JSON.stringify({
+        "x-bb-connect-machine": "bbcm_machine",
+      }),
+    };
+    const threadContextEnv: NodeJS.ProcessEnv = {
+      BB_ENVIRONMENT_ID: "env_managed",
+      BB_THREAD_ID: "thr_managed",
+    };
+    const outsideManagedTerminal: NodeJS.ProcessEnv[] = [
+      {
+        BB_SERVER_URL: "http://127.0.0.1:43187",
+        BB_CLI: process.execPath,
+      },
+      {
+        ...threadContextEnv,
+        BB_SERVER_URL: "https://remote.example.test",
+        BB_CLI: process.execPath,
+      },
+      {
+        ...threadContextEnv,
+        BB_SERVER_URL: "ftp://127.0.0.1:43187",
+        BB_CLI: process.execPath,
+      },
+      {
+        ...threadContextEnv,
+        BB_SERVER_URL: "bb.example.test:43187",
+        BB_CLI: process.execPath,
+      },
+      {
+        ...threadContextEnv,
+        BB_SERVER_URL: "http://127.0.0.1:43187",
+      },
+      {
+        ...threadContextEnv,
+        BB_SERVER_URL: "http://127.0.0.1:43187",
+        BB_CLI: " ",
+      },
+    ];
+
+    for (const sourceEnv of outsideManagedTerminal) {
+      expect(
+        preserveManagedTerminalCliEnv({ env: resolvedEnv, sourceEnv }),
+      ).toBe(resolvedEnv);
+    }
+  });
+
+  it("preserves managed terminal server headers for every loopback server host", () => {
+    for (const serverUrl of [
+      "http://127.0.0.1:43187",
+      "http://127.0.0.2:43187",
+      "http://localhost:43187",
+      "http://[::1]:43187",
+    ]) {
+      const preserved = preserveManagedTerminalCliEnv({
+        env: {
+          BB_SERVER_URL: "https://stored.example.test",
+          BB_SERVER_HEADERS: JSON.stringify({
+            "x-bb-connect-machine": "bbcm_machine",
+          }),
+        },
+        sourceEnv: {
+          BB_ENVIRONMENT_ID: "env_managed",
+          BB_THREAD_ID: "thr_managed",
+          BB_SERVER_URL: serverUrl,
+          BB_SERVER_HEADERS: JSON.stringify({ authorization: "Bearer scoped" }),
+          BB_CLI: process.execPath,
+        },
+      });
+      expect(preserved.BB_SERVER_URL).toBe(serverUrl);
+      expect(preserved.BB_SERVER_HEADERS).toBe(
+        JSON.stringify({ authorization: "Bearer scoped" }),
+      );
+    }
   });
 
   it("rejects an invalid server bind host before launcher startup", async () => {
