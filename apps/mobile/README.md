@@ -485,6 +485,45 @@ add-root-cert`). Env: `BB_MOBILE_E2E_GATE_PORT` (42998),
   response because their URL stays the same. Concurrent 410 responses update
   the profile once.
 
+## Client certificates (Android)
+
+A Direct URL server behind a reverse proxy that asks for a TLS client
+certificate (mutual TLS) works with a certificate from the Android
+credential store, as in Chrome. Install the certificate in Settings →
+Security → Encryption & credentials → Install a certificate → VPN & app
+user certificate.
+
+- When the server asks for a certificate and this server has no saved
+  choice, the app opens the Android certificate picker. The choice is saved
+  for the server's host and port. If you cancel the picker, the app saves
+  "no certificate" and does not ask again.
+- Add server runs one TLS handshake (`prepare`) before the 8-second
+  `/health` probe, so the picker can stay open as long as you need. It also
+  clears an earlier "no certificate" answer for that host and port, so a
+  server that you declined by mistake asks again.
+- Long-press a Direct URL server in Settings → Servers to choose another
+  certificate or to stop using one. After the change, bb restarts. The
+  WebView keeps its open connections and TLS sessions, and Android has no
+  API that closes them, so without a restart the old setting stays in use
+  (Chrome also keeps a site's certificate until it restarts). Removing the
+  last server with that host and port forgets the choice.
+- If the saved certificate is removed from the device, the app asks again
+  on the next connection.
+- The local Expo module `modules/client-certificates` holds the choices
+  (SharedPreferences `bb_client_certificates`, `host:port` to alias). It
+  covers all three network paths:
+  - `fetch` (Expo's `expo/fetch` global: probe, SDK), React Native
+    networking and the realtime WebSocket get their OkHttp clients from
+    `OkHttpClientProvider.setOkHttpClientFactory`. Each call builds a new
+    client with its own cookie jar, as stock React Native does, and shares
+    the connection pool, the 10 MB `http-cache` and a TLS socket factory.
+    The socket factory's `X509KeyManager` resolves the alias during the TLS
+    handshake.
+  - The WebView gets the certificate through
+    `RNCWebViewClient.setClientCertRequestHandler`, a hook added by
+    `patches/react-native-webview@14.0.1.patch`.
+- iOS does not support client certificates yet.
+
 ## Push notifications and deep links
 
 Android disables Firebase Messaging auto-initialization and Analytics collection
