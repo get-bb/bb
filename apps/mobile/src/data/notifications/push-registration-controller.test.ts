@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { createPushRegistrationController } from "./push-registration-controller";
-import type { PushNotificationsModule } from "./push-registration";
+import type {
+  PushNotificationsModule,
+  PushPermissionState,
+} from "./push-registration";
 import { createMemoryPushStorage, createPushStore } from "./push-store";
 import type { PushSubscriptionsApi } from "./push-subscriptions-api";
 import { createDeferredPromise } from "@bb/test-helpers";
@@ -8,11 +11,12 @@ import { createDeferredPromise } from "@bb/test-helpers";
 function setup() {
   const store = createPushStore(createMemoryPushStorage());
   const tokenGate = createDeferredPromise<string>();
+  let permission: PushPermissionState = "granted";
   let tokenListener: ((deviceToken: string) => void) | null = null;
   const notifications: PushNotificationsModule = {
     projectId: "eas",
     platform: "android",
-    getPermission: async () => "granted",
+    getPermission: async () => permission,
     requestPermission: async () => "granted",
     getExpoPushToken: vi.fn(() => tokenGate.promise),
     unregisterDevicePushToken: vi.fn(async () => undefined),
@@ -46,6 +50,9 @@ function setup() {
     api,
     controller,
     tokenGate,
+    setPermission(next: PushPermissionState) {
+      permission = next;
+    },
     emitDeviceToken(deviceToken: string) {
       tokenListener?.(deviceToken);
     },
@@ -64,7 +71,7 @@ describe("createPushRegistrationController", () => {
     tokenGate.resolve("tok");
     expect(await first).toEqual({ action: "skipped", reason: "up-to-date" });
     expect(await second).toEqual({ action: "skipped", reason: "up-to-date" });
-    expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(2);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledOnce();
     expect(api.register).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot().byProfileId.p1).toMatchObject({
       syncing: false,
@@ -137,26 +144,62 @@ describe("createPushRegistrationController", () => {
     vi.mocked(notifications.getExpoPushToken).mockImplementationOnce(
       () => activeTokenGate.promise,
     );
-    const activeSync = controller.sync(profile);
+    emitDeviceToken("device-token-3");
     await vi.waitFor(() => {
       expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(3);
     });
-    emitDeviceToken("device-token-3");
+    emitDeviceToken("device-token-4");
     await tokenEvents.at(-1);
     expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(3);
     activeTokenGate.resolve("expo-token");
-    await activeSync;
+    await Promise.all(tokenEvents);
+  });
+
+  it("fetches the Expo push token once per device token, not on every resume sync", async () => {
+    const {
+      controller,
+      store,
+      notifications,
+      api,
+      tokenGate,
+      emitDeviceToken,
+    } = setup();
+    notifications.addTokenListener((deviceToken) => {
+      void controller.handleTokenRolled([profile], deviceToken);
+    });
+    store.setEnabled(profile.id, true);
+    tokenGate.resolve("expo-token");
+    await controller.sync(profile);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledOnce();
+
+    await Promise.all([
+      controller.refreshPermission().then(() => controller.sync(profile)),
+      controller.sync(profile),
+    ]);
+    await controller.sync(profile);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledOnce();
+    expect(api.register).toHaveBeenCalledOnce();
+
+    emitDeviceToken("device-token-2");
+    await vi.waitFor(() => {
+      expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(2);
+    });
+    await controller.sync(profile);
+    expect(notifications.getExpoPushToken).toHaveBeenCalledTimes(2);
   });
 });
 
 describe("device push token consent", () => {
   it("releases the Android token after OS permission is revoked without fetching a replacement", async () => {
-    const { controller, notifications, tokenGate } = setup();
+    const { controller, notifications, tokenGate, api, store, setPermission } =
+      setup();
     tokenGate.resolve("tok");
     await controller.setEnabled(profile, true);
-    notifications.getPermission = async () => "denied";
+    setPermission("denied");
     vi.mocked(notifications.getExpoPushToken).mockClear();
-    await controller.sync(profile);
+    expect(await controller.sync(profile)).toEqual({ action: "unregistered" });
+    expect(api.unregister).toHaveBeenCalledOnce();
+    expect(store.getRegistration(profile.id)).toBeNull();
     expect(notifications.getExpoPushToken).not.toHaveBeenCalled();
     expect(notifications.unregisterDevicePushToken).toHaveBeenCalledOnce();
   });

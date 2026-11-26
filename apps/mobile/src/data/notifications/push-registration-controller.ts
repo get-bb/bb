@@ -52,6 +52,17 @@ export function createPushRegistrationController(
   >();
   let permission: PushPermissionState | null = null;
   let lastDeviceToken: string | null = null;
+  let expoPushToken: string | null = null;
+  const syncDeps: PushSyncDeps = {
+    ...deps,
+    notifications: {
+      ...deps.notifications,
+      async getExpoPushToken(projectId) {
+        expoPushToken ??= await deps.notifications.getExpoPushToken(projectId);
+        return expoPushToken;
+      },
+    },
+  };
   let operations: Promise<void> = Promise.resolve();
 
   function enqueue<T>(operation: () => Promise<T>): Promise<T> {
@@ -71,6 +82,7 @@ export function createPushRegistrationController(
     ) {
       await deps.notifications.unregisterDevicePushToken();
       lastDeviceToken = null;
+      expoPushToken = null;
     }
   }
 
@@ -98,7 +110,7 @@ export function createPushRegistrationController(
   async function runSync(profile: PushSyncProfile): Promise<PushSyncOutcome> {
     patch(profile.id, { syncing: true, permission });
     return enqueue(async () => {
-      let outcome = await syncPushRegistration(deps, profile);
+      let outcome = await syncPushRegistration(syncDeps, profile);
       try {
         await releaseUnusedDeviceToken();
       } catch (error) {
@@ -177,6 +189,7 @@ export function createPushRegistrationController(
     async handleTokenRolled(profiles, deviceToken) {
       if (deviceToken === lastDeviceToken) return;
       lastDeviceToken = deviceToken;
+      expoPushToken = null;
       for (const profile of profiles) {
         if (!deps.store.getRegistration(profile.id)) continue;
         if (inFlight.has(profile.id)) continue;
