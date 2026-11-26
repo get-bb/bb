@@ -87,13 +87,19 @@ import {
   codexRateLimitReadResponseSchema,
 } from "../schemas.js";
 import {
+  codexCustomWorkspaceProfile,
+  codexPermissionProfileListSchema,
+  codexSandboxConfigSchema,
+  codexSandboxRequirementsSchema,
   resolveCodexInstructionOverrides,
+  resolveCodexSandboxControl,
   toCodexDynamicTools,
   toCodexPermissionSettings,
   toCodexServiceTier,
   toCodexUserInput,
   type BbThreadForkParams,
   type BbThreadStartParams,
+  type CodexSandboxControl,
   type CodexSessionOptions,
 } from "../session-params.js";
 import type { ThreadResumeParams } from "../generated/codex-app-server/schema/v2/ThreadResumeParams.js";
@@ -473,6 +479,7 @@ interface CodexBridgeSession {
   grantedWriteRoots: string[];
   environmentHash: string;
   turnPermissionSettings: ReturnType<typeof toCodexPermissionSettings>;
+  sandboxControl: CodexSandboxControl;
   openCodexTurnIds: Set<string>;
   responseOpenedTurns: Map<string, ResponseOpenedTurn>;
   unopenedCompactionDispatches: PendingCompactionDispatch[];
@@ -1150,6 +1157,45 @@ async function initializeChild(
   return version !== null && compareVersions(version, "0.145.0") >= 0;
 }
 
+const UNREAD_SANDBOX_CONTROL: CodexSandboxControl = {
+  kind: "sandbox",
+  workspaceNetworkAccess: false,
+};
+
+async function readCodexSandboxControl(
+  connection: CodexAppServerConnection,
+  cwd: string,
+): Promise<CodexSandboxControl> {
+  try {
+    const [config, requirements] = await Promise.all([
+      connection.request({
+        method: "config/read",
+        params: { cwd },
+        resultSchema: codexSandboxConfigSchema,
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      }),
+      connection.request({
+        method: "configRequirements/read",
+        resultSchema: codexSandboxRequirementsSchema,
+        timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+      }),
+    ]);
+    const profiles =
+      codexCustomWorkspaceProfile({ config, requirements }) === null
+        ? null
+        : await connection.request({
+            method: "permissionProfile/list",
+            params: { cwd },
+            resultSchema: codexPermissionProfileListSchema,
+            timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+          });
+    return resolveCodexSandboxControl({ config, requirements, profiles });
+  } catch (error) {
+    if (!(error instanceof CodexAppServerRpcError)) throw error;
+    return UNREAD_SANDBOX_CONTROL;
+  }
+}
+
 const codexThreadIdentityResultSchema = z
   .object({
     modelProvider: z.string().optional(),
@@ -1388,7 +1434,9 @@ async function constructThreadSession(
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
       gitWritableRoots: [],
       options: decoded.sessionOptions,
+      sandboxControl: UNREAD_SANDBOX_CONTROL,
     }),
+    sandboxControl: UNREAD_SANDBOX_CONTROL,
     openCodexTurnIds: new Set(),
     pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
@@ -1459,9 +1507,14 @@ async function constructThreadSession(
 
   try {
     const supportsAgentsEnabled = await initializeChild(connection);
+    session.sandboxControl = await readCodexSandboxControl(
+      connection,
+      args.cwd,
+    );
 
     const preparedGitRoots = translator.prepareWorkspaceWriteGitRoots({
       supportsAgentsEnabled,
+      sandboxControl: session.sandboxControl,
       command: {
         threadId: args.threadId,
         cwd: args.cwd,
@@ -1474,9 +1527,7 @@ async function constructThreadSession(
       options: decoded.sessionOptions,
     });
     const sharedConstructionParams = {
-      approvalPolicy: preparedGitRoots.permissionSettings.approvalPolicy,
-      approvalsReviewer: preparedGitRoots.permissionSettings.approvalsReviewer,
-      sandbox: preparedGitRoots.permissionSettings.sandbox,
+      ...preparedGitRoots.permissionSettings,
       cwd: args.cwd,
       ...instructionOverrides,
       model: decoded.sessionOptions.model ?? undefined,
@@ -1579,6 +1630,7 @@ async function constructThreadSession(
       additionalWorkspaceWriteRoots: decoded.additionalWorkspaceWriteRoots,
       gitWritableRoots,
       options: decoded.sessionOptions,
+      sandboxControl: session.sandboxControl,
     });
     session.grantedWriteRoots = [
       ...new Set([
@@ -1660,6 +1712,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     grantedWriteRoots: session.grantedWriteRoots,
     environmentHash: session.environmentHash,
     turnPermissionSettings: session.turnPermissionSettings,
+    sandboxControl: session.sandboxControl,
     openCodexTurnIds: new Set(),
     pendingChildRequests: new Map(),
     responseOpenedTurns: new Map(),
@@ -2278,6 +2331,7 @@ async function handleTurnStart(
           params.threadId,
         ),
         options: decoded.sessionOptions,
+        sandboxControl: session.sandboxControl,
       });
       const cyberAccessProgram = await resolveTurnCyberAccessProgram(
         session,
@@ -2293,9 +2347,7 @@ async function handleTurnStart(
           params: {
             threadId: codexThreadId,
             input: await resolveCodexSkillInput(session, input),
-            approvalPolicy: permissionSettings.approvalPolicy,
-            approvalsReviewer: permissionSettings.approvalsReviewer,
-            sandboxPolicy: permissionSettings.sandboxPolicy,
+            ...permissionSettings,
             model: decoded.sessionOptions.model ?? undefined,
             serviceTier: toCodexServiceTier(decoded.sessionOptions.serviceTier),
             ...(cyberAccessProgram === null ? {} : { cyberAccessProgram }),
@@ -2361,6 +2413,7 @@ async function handleTurnSteer(
         params.threadId,
       ),
       options: decoded.sessionOptions,
+      sandboxControl: session.sandboxControl,
     });
     if (
       !isDeepStrictEqual(session.turnPermissionSettings, permissionSettings)

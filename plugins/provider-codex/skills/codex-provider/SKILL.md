@@ -73,6 +73,22 @@ tool approvals, `{"action":"accept","content":{...}}` for forms,
 `{"action":"decline"}` / `{"action":"cancel"}`. Invalid responses never grant
 access. Stopping the turn answers the request with `cancel`.
 
+When Codex's configuration or `requirements.toml`/MDM requirements make a
+custom permission profile the default (`default_permissions`), bb runs Codex
+under that profile: workspace permissions select it, and bb adds the git paths
+a linked worktree needs to the profile's `filesystem` table. Full access selects
+`:danger-full-access` only when Codex's requirements allow it. Otherwise the
+turn fails and asks for workspace permissions. Codex before 0.142 does not
+report which profiles its requirements allow, so bb selects
+`:danger-full-access` and Codex enforces its requirements itself. Without a custom profile,
+workspace-scoped turns get network access by default, so commands can reach the
+bb server and the bb CLI works. Codex's own configuration overrides that
+default. If any Codex config layer (user, project, managed, or `-c`) sets
+`sandbox_workspace_write.network_access`, bb uses that value. If requirements
+manage the network or default to a built-in profile, bb uses Codex's value,
+which is off unless configured. If bb cannot read Codex's configuration,
+network access is off.
+
 Unlisted model IDs are accepted by this provider; acceptance does not establish
 account access. Inspect models on the actual execution host with
 `bb provider models codex` using the machine or environment selector.

@@ -379,3 +379,126 @@ it.each([false, true])(
   },
   15_000,
 );
+
+it("answers Codex sandbox reads a recording lacks without consuming its later config/read", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bb-replay-codex-sandbox-"));
+  for (const [direction, entries] of [
+    [
+      "bridge→provider",
+      [
+        { seq: 1, message: { jsonrpc: "2.0", id: 1, method: "initialize" } },
+        { seq: 3, message: { jsonrpc: "2.0", id: 2, method: "thread/start" } },
+        {
+          seq: 5,
+          message: { jsonrpc: "2.0", id: 3, method: "config/read", params: {} },
+        },
+      ],
+    ],
+    [
+      "provider→bridge",
+      [
+        { seq: 2, message: { jsonrpc: "2.0", id: 1, result: {} } },
+        {
+          seq: 4,
+          message: { jsonrpc: "2.0", id: 2, result: { marker: "thread" } },
+        },
+        {
+          seq: 6,
+          message: {
+            jsonrpc: "2.0",
+            id: 3,
+            result: { config: { model: "recorded-model" } },
+          },
+        },
+      ],
+    ],
+  ] as const) {
+    writeFileSync(
+      join(dir, `${direction}.ndjson`),
+      entries
+        .map(({ seq, message }) =>
+          JSON.stringify({
+            ts: seq,
+            run: 1,
+            seq,
+            dir: direction,
+            line: JSON.stringify(message),
+          }),
+        )
+        .join("\n") + "\n",
+    );
+  }
+  writeFileSync(join(dir, "cursor"), "end");
+  const child = spawn(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./replay-provider-child.mjs", import.meta.url)),
+      "--recording",
+      dir,
+      "--dialect",
+      "json-rpc",
+      "--state",
+      dir,
+    ],
+    { stdio: ["pipe", "pipe", "pipe"] },
+  );
+  const closed = once(child, "close");
+  let output = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+    output += chunk;
+  });
+  const send = (id: string, method: string, params?: object) =>
+    child.stdin.write(
+      `${JSON.stringify({ jsonrpc: "2.0", id, method, ...(params === undefined ? {} : { params }) })}\n`,
+    );
+  try {
+    send("init", "initialize");
+    await expect
+      .poll(() => output, { timeout: 10_000 })
+      .toContain('"id":"init"');
+    send("sandbox-config", "config/read", { cwd: dir });
+    send("sandbox-requirements", "configRequirements/read");
+    await expect
+      .poll(() => output)
+      .toContain(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "sandbox-config",
+          result: { config: {}, origins: {} },
+        }),
+      );
+    await expect
+      .poll(() => output)
+      .toContain(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "sandbox-requirements",
+          result: { requirements: null },
+        }),
+      );
+    send("start", "thread/start");
+    await expect
+      .poll(() => output)
+      .toContain(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "start",
+          result: { marker: "thread" },
+        }),
+      );
+    send("model-config", "config/read", {});
+    await expect
+      .poll(() => output)
+      .toContain(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: "model-config",
+          result: { config: { model: "recorded-model" } },
+        }),
+      );
+  } finally {
+    child.kill();
+    await closed;
+    rmSync(dir, { recursive: true, force: true });
+  }
+}, 15_000);

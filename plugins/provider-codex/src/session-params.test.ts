@@ -19,6 +19,10 @@ import {
   resolveCodexInstructionOverrides,
   toCodexDynamicTools,
   toCodexPermissionSettings,
+  codexPermissionProfileListSchema,
+  codexSandboxConfigSchema,
+  codexSandboxRequirementsSchema,
+  resolveCodexSandboxControl,
   toCodexServiceTier,
   toCodexThreadPermissionSettings,
   toCodexUserInput,
@@ -169,11 +173,23 @@ function createLinkedWorktreeFixture(): LinkedWorktreeFixture {
   };
 }
 
+const SANDBOX_CONTROL = {
+  kind: "sandbox",
+  workspaceNetworkAccess: true,
+} as const;
+
+const PROFILE_CONTROL = {
+  kind: "profile",
+  workspaceProfile: "sandboxed",
+  fullAccessAllowed: true,
+} as const;
+
 function workspaceConfigForCwd(args: {
   cwd: string;
 }): ReturnType<typeof buildCodexConfig> {
   return buildCodexConfig({
     supportsAgentsEnabled: true,
+    sandboxControl: SANDBOX_CONTROL,
     threadId: "bb-thread-1",
     additionalWorkspaceWriteRoots: [],
     gitWritableRoots: gitWritableRootsForWorkspace(args.cwd),
@@ -446,6 +462,7 @@ function permissionSettings(
     additionalWorkspaceWriteRoots,
     gitWritableRoots: [],
     options,
+    sandboxControl: SANDBOX_CONTROL,
   });
 }
 
@@ -454,7 +471,6 @@ describe("codex permission settings", () => {
     expect(permissionSettings(FULL_OPTIONS)).toEqual({
       approvalPolicy: "never",
       approvalsReviewer: "user",
-      sandbox: "danger-full-access",
       sandboxPolicy: { type: "dangerFullAccess" },
     });
     expect(
@@ -474,7 +490,7 @@ describe("codex permission settings", () => {
 
   it("maps deny escalation to no approval prompts while staying workspace-write", () => {
     expect(
-      toCodexThreadPermissionSettings(WORKSPACE_DENY_OPTIONS),
+      toCodexThreadPermissionSettings(WORKSPACE_DENY_OPTIONS, SANDBOX_CONTROL),
     ).toMatchObject({
       approvalPolicy: "never",
       sandbox: "workspace-write",
@@ -485,7 +501,6 @@ describe("codex permission settings", () => {
     expect(permissionSettings(WORKSPACE_ASK_OPTIONS)).toEqual({
       approvalPolicy: "on-request",
       approvalsReviewer: "user",
-      sandbox: "workspace-write",
       sandboxPolicy: {
         type: "workspaceWrite",
         writableRoots: [],
@@ -503,16 +518,72 @@ describe("codex permission settings", () => {
         "/repo/.git/objects",
         "/repo/.git/refs",
         "/repo/.git/logs",
-      ]).sandboxPolicy,
+      ]),
     ).toMatchObject({
-      type: "workspaceWrite",
-      writableRoots: [
-        "/repo/.git/worktrees/bb13",
-        "/repo/.git/objects",
-        "/repo/.git/refs",
-        "/repo/.git/logs",
-      ],
+      sandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: [
+          "/repo/.git/worktrees/bb13",
+          "/repo/.git/objects",
+          "/repo/.git/refs",
+          "/repo/.git/logs",
+        ],
+      },
     });
+  });
+
+  it("carries the resolved workspace network access into the sandbox policy", () => {
+    expect(
+      toCodexPermissionSettings({
+        additionalWorkspaceWriteRoots: [],
+        gitWritableRoots: [],
+        options: WORKSPACE_ASK_OPTIONS,
+        sandboxControl: { kind: "sandbox", workspaceNetworkAccess: false },
+      }),
+    ).toMatchObject({
+      sandboxPolicy: { type: "workspaceWrite", networkAccess: false },
+    });
+  });
+
+  it("selects the workspace permission profile instead of a sandbox policy", () => {
+    const settings = toCodexPermissionSettings({
+      additionalWorkspaceWriteRoots: ["/repo/.git/objects"],
+      gitWritableRoots: [],
+      options: WORKSPACE_ASK_OPTIONS,
+      sandboxControl: PROFILE_CONTROL,
+    });
+
+    expect(settings).toEqual({
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      permissions: "sandboxed",
+    });
+    expect(
+      toCodexThreadPermissionSettings(WORKSPACE_ASK_OPTIONS, PROFILE_CONTROL),
+    ).toEqual({
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      permissions: "sandboxed",
+    });
+  });
+
+  it("selects Codex's full-access profile when its requirements allow it", () => {
+    expect(
+      toCodexThreadPermissionSettings(FULL_OPTIONS, PROFILE_CONTROL),
+    ).toMatchObject({ permissions: ":danger-full-access" });
+  });
+
+  it("refuses full access when Codex requirements do not allow it", () => {
+    expect(() =>
+      toCodexPermissionSettings({
+        additionalWorkspaceWriteRoots: [],
+        gitWritableRoots: [],
+        options: FULL_OPTIONS,
+        sandboxControl: { ...PROFILE_CONTROL, fullAccessAllowed: false },
+      }),
+    ).toThrow(
+      'Codex requirements on this machine do not allow full access (:danger-full-access). Switch this thread to workspace permissions, which use the Codex permission profile "sandboxed".',
+    );
   });
 
   it("maps auto to automatic workspace review", () => {
@@ -530,6 +601,7 @@ describe("codex permission settings", () => {
 function configFor(options: CodexSessionOptions) {
   return buildCodexConfig({
     supportsAgentsEnabled: true,
+    sandboxControl: SANDBOX_CONTROL,
     threadId: "bb-thread-1",
     additionalWorkspaceWriteRoots: [],
     gitWritableRoots: [],
@@ -639,16 +711,162 @@ describe("buildCodexConfig", () => {
     ).toMatchObject({ model_reasoning_effort: "none" });
   });
 
+  it("adds workspace roots to the selected permission profile", () => {
+    const config = buildCodexConfig({
+      supportsAgentsEnabled: true,
+      sandboxControl: PROFILE_CONTROL,
+      threadId: "bb-thread-1",
+      additionalWorkspaceWriteRoots: ["/repo/.git/objects"],
+      gitWritableRoots: ["/repo/.git/worktrees/bb13"],
+      options: WORKSPACE_ASK_OPTIONS,
+    });
+
+    expect(config).toMatchObject({
+      "permissions.sandboxed.filesystem": {
+        "/repo/.git/objects": "write",
+        "/repo/.git/worktrees/bb13": "write",
+      },
+    });
+    expectWorkspaceWriteWritableRootsConfigAbsent(config);
+  });
+
   it("omits the writable-roots key for a full-access session", () => {
     expectWorkspaceWriteWritableRootsConfigAbsent(
       buildCodexConfig({
         supportsAgentsEnabled: true,
+        sandboxControl: SANDBOX_CONTROL,
         threadId: "bb-thread-1",
         additionalWorkspaceWriteRoots: ["/repo/.git/objects"],
         gitWritableRoots: [],
         options: FULL_OPTIONS,
       }),
     );
+  });
+});
+
+const userNetworkOrigin = {
+  "sandbox_workspace_write.network_access": {
+    name: { type: "user", file: "/home/user/.codex/config.toml" },
+  },
+};
+
+const BUILT_IN_PROFILES = {
+  data: [
+    { id: ":read-only", allowed: true },
+    { id: ":workspace", allowed: true },
+    { id: ":danger-full-access", allowed: false },
+    { id: "sandboxed", allowed: true },
+  ],
+};
+
+describe("resolveCodexSandboxControl", () => {
+  it.each([
+    {
+      name: "defaults to network access when Codex config leaves it unset",
+      config: { config: {}, origins: {} },
+      requirements: { requirements: null },
+      expected: { kind: "sandbox", workspaceNetworkAccess: true },
+    },
+    {
+      name: "keeps network off when Codex config turns it off",
+      config: {
+        config: { sandbox_workspace_write: { network_access: false } },
+        origins: userNetworkOrigin,
+      },
+      requirements: { requirements: null },
+      expected: { kind: "sandbox", workspaceNetworkAccess: false },
+    },
+    {
+      name: "keeps network on when Codex config turns it on",
+      config: {
+        config: { sandbox_workspace_write: { network_access: true } },
+        origins: userNetworkOrigin,
+      },
+      requirements: { requirements: null },
+      expected: { kind: "sandbox", workspaceNetworkAccess: true },
+    },
+    {
+      name: "uses Codex's default when requirements manage only the network",
+      config: { config: {}, origins: {} },
+      requirements: { requirements: { network: { enabled: false } } },
+      expected: { kind: "sandbox", workspaceNetworkAccess: false },
+    },
+    {
+      name: "uses Codex's default when requirements default to a built-in profile",
+      config: { config: {}, origins: {} },
+      requirements: { requirements: { defaultPermissions: ":workspace" } },
+      expected: { kind: "sandbox", workspaceNetworkAccess: false },
+    },
+    {
+      name: "ignores requirements that do not manage permissions",
+      config: { config: {}, origins: {} },
+      requirements: {
+        requirements: { allowedSandboxModes: ["workspace-write"] },
+      },
+      expected: { kind: "sandbox", workspaceNetworkAccess: true },
+    },
+  ])("$name", ({ config, requirements, expected }) => {
+    expect(
+      resolveCodexSandboxControl({
+        config: codexSandboxConfigSchema.parse(config),
+        requirements: codexSandboxRequirementsSchema.parse(requirements),
+        profiles: null,
+      }),
+    ).toEqual(expected);
+  });
+
+  it.each([
+    {
+      name: "the admin's required profile",
+      config: { config: { default_permissions: "personal" }, origins: {} },
+      requirements: { requirements: { defaultPermissions: "sandboxed" } },
+    },
+    {
+      name: "the user's configured profile",
+      config: { config: { default_permissions: "sandboxed" }, origins: {} },
+      requirements: { requirements: null },
+    },
+  ])("selects $name and reads whether full access is allowed", (scenario) => {
+    expect(
+      resolveCodexSandboxControl({
+        config: codexSandboxConfigSchema.parse(scenario.config),
+        requirements: codexSandboxRequirementsSchema.parse(
+          scenario.requirements,
+        ),
+        profiles: codexPermissionProfileListSchema.parse(BUILT_IN_PROFILES),
+      }),
+    ).toEqual({
+      kind: "profile",
+      workspaceProfile: "sandboxed",
+      fullAccessAllowed: false,
+    });
+  });
+
+  it("leaves full access to Codex when its profile list predates allowed (Codex 0.136-0.141)", () => {
+    expect(
+      resolveCodexSandboxControl({
+        config: codexSandboxConfigSchema.parse({
+          config: { default_permissions: "sandboxed" },
+          origins: {},
+        }),
+        requirements: codexSandboxRequirementsSchema.parse({
+          requirements: null,
+        }),
+        profiles: codexPermissionProfileListSchema.parse({
+          data: [
+            { id: ":read-only", description: null },
+            { id: ":workspace", description: null },
+            { id: ":danger-full-access", description: null },
+            { id: "sandboxed", description: null },
+          ],
+          nextCursor: null,
+        }),
+      }),
+    ).toEqual({
+      kind: "profile",
+      workspaceProfile: "sandboxed",
+      fullAccessAllowed: true,
+    });
   });
 });
 
