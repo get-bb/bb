@@ -482,6 +482,7 @@ const GH_NO_PULL_REQUEST_PATTERN = /no pull requests found for branch/iu;
 type PullRequestTargetLookup =
   | { outcome: "current-branch" }
   | { outcome: "upstream-branch"; selector: string }
+  | { outcome: "pull-request-ref"; url: string }
   | Extract<HostPullRequestLookup, { outcome: "unavailable" }>;
 
 interface GitRemoteRepository {
@@ -649,6 +650,24 @@ function getPullRequestTarget(
   const remote = config.get(`${branchConfigPrefix}.remote`) ?? "";
   const remoteRef = config.get(`${branchConfigPrefix}.merge`) ?? "";
   const remoteBranchPrefix = "refs/heads/";
+  const pullRequestNumber = /^refs\/pull\/([1-9]\d*)\/head$/u.exec(
+    remoteRef,
+  )?.[1];
+  if (remote && remote !== "." && pullRequestNumber !== undefined) {
+    const repository = parseGitRemoteRepository(
+      config.get(`remote.${remote}.url`) ?? remote,
+    );
+    if (!repository) {
+      return gitUpstreamLookupUnavailable(
+        "Could not safely resolve the configured upstream repository",
+        "the pull request upstream must use a supported GitHub remote URL",
+      );
+    }
+    return {
+      outcome: "pull-request-ref",
+      url: `https://${repository.host}/${repository.owner}/${repository.repository}/pull/${pullRequestNumber}`,
+    };
+  }
   if (!remote || remote === "." || !remoteRef.startsWith(remoteBranchPrefix)) {
     return { outcome: "current-branch" };
   }
@@ -713,7 +732,10 @@ function parseGhRepoOverride(value: string): GitRemoteRepository | null {
 function resolveBranchReadTarget(
   localBranch: string,
   config: Map<string, string>,
-  target: Exclude<PullRequestTargetLookup, { outcome: "unavailable" }>,
+  target: Extract<
+    PullRequestTargetLookup,
+    { outcome: "current-branch" | "upstream-branch" }
+  >,
 ): Extract<ReadTarget, { kind: "branch" }> | null {
   const branchKey = `branch.${localBranch}`;
   const remotes: {
@@ -790,6 +812,8 @@ export async function prepareCurrentBranchRead(
     return preparedResult(branchConfig);
   const target = getPullRequestTarget(args.localBranch, branchConfig.config);
   if (target.outcome === "unavailable") return preparedResult(target);
+  if (target.outcome === "pull-request-ref")
+    return prepareUrlRead(target.url, args.cwd);
   const branchTarget = resolveBranchReadTarget(
     args.localBranch,
     branchConfig.config,
