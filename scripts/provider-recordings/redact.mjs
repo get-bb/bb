@@ -102,6 +102,9 @@ const GROK_SYNTHETIC_QUESTION_TEXTS = new Set([
   "PREVIEW_ALPHA",
   "PREVIEW_BETA",
 ]);
+const GROK_SYNTHETIC_ANSWER_VALUES = new Set(["Alpha"]);
+const GROK_SYNTHETIC_PLAN_TEXT =
+  "# Hello function\n\n1. Add hello.\n2. Add a focused test.";
 const GROK_SYNTHETIC_SUBAGENT_PROMPTS = new Set([
   'Use send_subagent_message with subagent_id="child-alpha", delivery="interject", and text exactly "CHILD_MESSAGE 😀 مراجعة". Send it only to that child, then return the tool result.',
   'Use kill_command_or_subagent with task_ids=["child-alpha"] to cancel only that child. Do not cancel the parent session or any sibling. Return the tool result.',
@@ -210,7 +213,8 @@ function redactAllStrings(value) {
 
 function redactUserContent(value) {
   if (typeof value === "string") {
-    return GROK_SYNTHETIC_SUBAGENT_MESSAGES.has(value)
+    return GROK_SYNTHETIC_SUBAGENT_MESSAGES.has(value) ||
+      value === GROK_SYNTHETIC_PLAN_TEXT
       ? value
       : "REDACTED_TEXT";
   }
@@ -336,17 +340,78 @@ function redactQuestionList(questions, redactedQuestions) {
   }
 }
 
-function redactGrokQuestionPayloads(parsed, redacted) {
-  if (
-    parsed === null ||
-    typeof parsed !== "object" ||
-    Array.isArray(parsed) ||
-    redacted === null ||
-    typeof redacted !== "object" ||
-    Array.isArray(redacted)
-  ) {
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function redactPlanText(value) {
+  return value === GROK_SYNTHETIC_PLAN_TEXT ? value : "REDACTED_TEXT";
+}
+
+function redactAnswerValue(value) {
+  if (typeof value === "string") {
+    return GROK_SYNTHETIC_ANSWER_VALUES.has(value) ||
+      GROK_SYNTHETIC_QUESTION_TEXTS.has(value)
+      ? value
+      : "REDACTED_TEXT";
+  }
+  if (Array.isArray(value)) return value.map(redactAnswerValue);
+  return value;
+}
+
+function rewriteRedactedKeys(source, target, redactEntry) {
+  if (!isRecord(source) || !isRecord(target)) return;
+  const next = {};
+  for (const [key, value] of Object.entries(source)) {
+    next[redactQuestionText(key)] = redactEntry(value);
+  }
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, next);
+}
+
+function redactAnnotation(value) {
+  if (!isRecord(value)) return value;
+  const annotation = { ...value };
+  if (typeof annotation.notes === "string") {
+    annotation.notes = GROK_SYNTHETIC_QUESTION_TEXTS.has(annotation.notes)
+      ? annotation.notes
+      : "REDACTED_TEXT";
+  }
+  if (typeof annotation.preview === "string") {
+    annotation.preview = redactQuestionText(annotation.preview);
+  }
+  return annotation;
+}
+
+function redactGrokAcceptedAnswers(result, redactedResult) {
+  if (!isRecord(result) || !isRecord(redactedResult)) return;
+  if (result.outcome !== "accepted") return;
+  if (!isRecord(result.answers) && !isRecord(result.annotations)) return;
+  rewriteRedactedKeys(result.answers, redactedResult.answers, redactAnswerValue);
+  rewriteRedactedKeys(
+    result.annotations,
+    redactedResult.annotations,
+    redactAnnotation,
+  );
+}
+
+function redactPlanApproval(payload, redactedPayload) {
+  const subject = payload.subject;
+  const redactedSubject = redactedPayload.subject;
+  if (!isRecord(subject) || subject.kind !== "plan" || !isRecord(redactedSubject)) {
     return;
   }
+  if (typeof subject.plan === "string") {
+    redactedSubject.plan = redactPlanText(subject.plan);
+  }
+  if (typeof payload.reason === "string") {
+    redactedPayload.reason = redactPlanText(payload.reason);
+  }
+}
+
+function redactGrokQuestionPayloads(parsed, redacted) {
+  if (!isRecord(parsed) || !isRecord(redacted)) return;
+  redactGrokAcceptedAnswers(parsed.result, redacted.result);
   const params = parsed.params;
   const redactedParams = redacted.params;
   if (
@@ -366,17 +431,12 @@ function redactGrokQuestionPayloads(parsed, redacted) {
   if (parsed.method !== "interaction/request") return;
   const payload = params.payload;
   const redactedPayload = redactedParams.payload;
-  if (
-    payload === null ||
-    typeof payload !== "object" ||
-    Array.isArray(payload) ||
-    payload.kind !== "user_question" ||
-    redactedPayload === null ||
-    typeof redactedPayload !== "object" ||
-    Array.isArray(redactedPayload)
-  ) {
+  if (!isRecord(payload) || !isRecord(redactedPayload)) return;
+  if (payload.kind === "approval") {
+    redactPlanApproval(payload, redactedPayload);
     return;
   }
+  if (payload.kind !== "user_question") return;
   redactQuestionList(payload.questions, redactedPayload.questions);
 }
 

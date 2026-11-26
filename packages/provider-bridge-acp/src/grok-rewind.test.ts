@@ -5,6 +5,7 @@ import {
   decodeGrokRewindExecuteResult,
   decodeGrokRewindPoints,
   selectGrokRewindPoint,
+  selectGrokTurnCheckpointId,
 } from "./grok-rewind.js";
 
 function point(promptIndex: number, preview = `Prompt ${promptIndex}`) {
@@ -21,8 +22,8 @@ function executeResult(targetPromptIndex = 1) {
   return {
     success: true,
     target_prompt_index: targetPromptIndex,
-    mode: "all",
-    reverted_files: ["rewind-probe.txt"],
+    mode: "conversation_only",
+    reverted_files: [],
     clean_files: [],
     conflicts: [],
     prompt_text: "Change rewind-probe.txt",
@@ -61,7 +62,7 @@ describe("Grok rewind protocol", () => {
     expect(() => selectGrokRewindPoint([point(1)], "1.5")).toThrow(/invalid/i);
   });
 
-  it("builds exact all-mode execute params", () => {
+  it("builds conversation-only execute params for a fork", () => {
     expect(
       buildGrokRewindExecuteParams({
         sessionId: "session-1",
@@ -70,9 +71,16 @@ describe("Grok rewind protocol", () => {
     ).toEqual({
       sessionId: "session-1",
       targetPromptIndex: 7,
-      mode: "all",
+      mode: "conversation_only",
       force: true,
     });
+  });
+
+  it("stamps the next rewind point and leaves a tip unstamped", () => {
+    expect(selectGrokTurnCheckpointId([point(0), point(1)], 0)).toBe("1");
+    expect(selectGrokTurnCheckpointId([point(0)], 0)).toBeUndefined();
+    expect(selectGrokTurnCheckpointId([point(0), point(1)], 1)).toBeUndefined();
+    expect(selectGrokTurnCheckpointId([], 0)).toBeUndefined();
   });
 
   it("accepts an exact successful result", () => {
@@ -89,6 +97,8 @@ describe("Grok rewind protocol", () => {
         conflicts: [{ conflict_type: "modified_externally" }],
       },
       executeResult(0),
+      { ...executeResult(), mode: "all" },
+      { ...executeResult(), reverted_files: ["rewind-probe.txt"] },
     ]) {
       expect(() =>
         assertGrokRewindExecuted(decodeGrokRewindExecuteResult(result), "1"),

@@ -126,6 +126,7 @@ import {
   decodeGrokRewindExecuteResult,
   decodeGrokRewindPoints,
   selectGrokRewindPoint,
+  selectGrokTurnCheckpointId,
 } from "../grok-rewind.js";
 import {
   buildGrokInterjectParams,
@@ -3901,14 +3902,11 @@ async function grokTurnCheckpoint(
   ) {
     throw new Error("Grok session was replaced before checkpoint discovery");
   }
-  const latest = points.reduce(
-    (current, point) =>
-      current === undefined || point.prompt_index > current.prompt_index
-        ? point
-        : current,
-    undefined as (typeof points)[number] | undefined,
+  const completedPromptIndex = points.reduce(
+    (max, point) => Math.max(max, point.prompt_index),
+    -1,
   );
-  return latest === undefined ? undefined : String(latest.prompt_index);
+  return selectGrokTurnCheckpointId(points, completedPromptIndex);
 }
 
 function finishTurn(
@@ -5548,7 +5546,7 @@ async function handleRequest(
           threadArchive: false,
           threadRename: false,
           threadGoalClear: false,
-          fork: "tip",
+          fork: "checkpoint",
           approvalEnforcedBy: "runtime",
           grammarVersions: [THREAD_DELTA_GRAMMAR_V3, THREAD_DELTA_GRAMMAR_V3],
           steerMode: "queue",

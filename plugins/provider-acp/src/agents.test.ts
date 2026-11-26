@@ -310,7 +310,7 @@ describe("acpProviderDeclaration", () => {
     );
 
     expect(byId.get("acp-cursor")?.capabilities.fork).toBe("none");
-    expect(byId.get("acp-grok")?.capabilities.fork).toBe("tip");
+    expect(byId.get("acp-grok")?.capabilities.fork).toBe("checkpoint");
     expect(byId.get("acp-opencode")?.capabilities.fork).toBe("tip");
     expect(byId.get("acp-cursor")?.experimental_bridgeOptions).toMatchObject({
       acpDialect: "cursor",

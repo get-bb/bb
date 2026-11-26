@@ -991,4 +991,185 @@ describe("Grok recording redaction", () => {
       redacted,
     );
   });
+
+  it("redacts plan subjects and keeps the synthetic plan", () => {
+    const root = tempRoot();
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const second = join(root, "second");
+    const synthetic =
+      "# Hello function\n\n1. Add hello.\n2. Add a focused test.";
+    writeRecording(input, [
+      {
+        jsonrpc: "2.0",
+        method: "interaction/request",
+        params: {
+          payload: {
+            kind: "approval",
+            subject: {
+              kind: "plan",
+              itemId: "grok-plan-tool-call",
+              plan: synthetic,
+              planFilePath: null,
+            },
+            reason: synthetic,
+            availableDecisions: ["allow_once", "deny"],
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "interaction/request",
+        params: {
+          payload: {
+            kind: "approval",
+            subject: {
+              kind: "plan",
+              itemId: "private-plan",
+              plan: "Ship the private migration",
+              planFilePath: null,
+            },
+            reason: "private reviewer note",
+            availableDecisions: ["allow_once", "deny"],
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "_x.ai/exit_plan_mode",
+        params: { planContent: synthetic },
+      },
+    ]);
+
+    redact(input, output);
+    const redacted = readFileSync(
+      join(output, "provider→bridge.ndjson"),
+      "utf8",
+    );
+    expect(redacted).not.toContain("Ship the private migration");
+    expect(redacted).not.toContain("private reviewer note");
+    expect(readMessages(output)).toEqual([
+      {
+        jsonrpc: "2.0",
+        method: "interaction/request",
+        params: {
+          payload: {
+            kind: "approval",
+            subject: {
+              kind: "plan",
+              itemId: "grok-plan-tool-call",
+              plan: synthetic,
+              planFilePath: null,
+            },
+            reason: synthetic,
+            availableDecisions: ["allow_once", "deny"],
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "interaction/request",
+        params: {
+          payload: {
+            kind: "approval",
+            subject: {
+              kind: "plan",
+              itemId: "private-plan",
+              plan: "REDACTED_TEXT",
+              planFilePath: null,
+            },
+            reason: "REDACTED_TEXT",
+            availableDecisions: ["allow_once", "deny"],
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "_x.ai/exit_plan_mode",
+        params: { planContent: synthetic },
+      },
+    ]);
+    redact(output, second);
+    expect(readFileSync(join(second, "provider→bridge.ndjson"), "utf8")).toBe(
+      redacted,
+    );
+  });
+
+  it("redacts returned question answers and keeps the synthetic fixture", () => {
+    const root = tempRoot();
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const second = join(root, "second");
+    writeRecording(input, [
+      {
+        jsonrpc: "2.0",
+        id: 1001,
+        result: {
+          outcome: "accepted",
+          answers: { "Choose synthetic option": "Alpha" },
+          annotations: {
+            "Choose synthetic option": { preview: "PREVIEW_ALPHA" },
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 1002,
+        result: {
+          outcome: "accepted",
+          answers: { "confidential customer question": "Ship the secret" },
+          annotations: {
+            "confidential customer question": {
+              notes: "private user feedback",
+              preview: "SELECT * FROM secrets",
+            },
+          },
+        },
+      },
+    ]);
+
+    redact(input, output);
+    const redacted = readFileSync(
+      join(output, "provider→bridge.ndjson"),
+      "utf8",
+    );
+    expect(redacted).toContain("Choose synthetic option");
+    expect(redacted).toContain("Alpha");
+    expect(redacted).toContain("PREVIEW_ALPHA");
+    expect(redacted).not.toContain("confidential customer question");
+    expect(redacted).not.toContain("Ship the secret");
+    expect(redacted).not.toContain("private user feedback");
+    expect(redacted).not.toContain("SELECT * FROM secrets");
+    expect(readMessages(output)).toEqual([
+      {
+        jsonrpc: "2.0",
+        id: 1001,
+        result: {
+          outcome: "accepted",
+          answers: { "Choose synthetic option": "Alpha" },
+          annotations: {
+            "Choose synthetic option": { preview: "PREVIEW_ALPHA" },
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 1002,
+        result: {
+          outcome: "accepted",
+          answers: { REDACTED_TEXT: "REDACTED_TEXT" },
+          annotations: {
+            REDACTED_TEXT: {
+              notes: "REDACTED_TEXT",
+              preview: "REDACTED_TEXT",
+            },
+          },
+        },
+      },
+    ]);
+    redact(output, second);
+    expect(readFileSync(join(second, "provider→bridge.ndjson"), "utf8")).toBe(
+      redacted,
+    );
+  });
 });

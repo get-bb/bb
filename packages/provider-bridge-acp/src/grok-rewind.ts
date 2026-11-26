@@ -78,15 +78,27 @@ export function buildGrokRewindExecuteParams(params: {
 }): {
   sessionId: string;
   targetPromptIndex: number;
-  mode: "all";
+  mode: "conversation_only";
   force: true;
 } {
   return {
     sessionId: params.sessionId,
     targetPromptIndex: checkpointIndex(params.checkpointId),
-    mode: "all",
+    mode: "conversation_only",
     force: true,
   };
+}
+
+export function selectGrokTurnCheckpointId(
+  points: readonly GrokRewindPoint[],
+  completedPromptIndex: number,
+): string | undefined {
+  if (!Number.isSafeInteger(completedPromptIndex) || completedPromptIndex < 0) {
+    return undefined;
+  }
+  const boundaryIndex = completedPromptIndex + 1;
+  const boundary = points.find((point) => point.prompt_index === boundaryIndex);
+  return boundary === undefined ? undefined : String(boundary.prompt_index);
 }
 
 export function decodeGrokRewindExecuteResult(
@@ -114,7 +126,12 @@ export function assertGrokRewindExecuted(
       `Grok rewind returned stale target ${result.target_prompt_index}; expected ${promptIndex}`,
     );
   }
-  if (result.mode !== "all") {
+  if (result.mode !== "conversation_only") {
     throw new Error(`Grok rewind returned unexpected mode ${result.mode}`);
+  }
+  if (result.reverted_files.length > 0) {
+    throw new Error(
+      "Grok rewind reverted files during a conversation-only fork",
+    );
   }
 }

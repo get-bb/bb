@@ -86,6 +86,27 @@ function questionId(index: number): string {
   return `question-${index + 1}`;
 }
 
+function otherOptionLabel(question: GrokQuestion): string | undefined {
+  return question.options.find((option) =>
+    option.label.toLowerCase().startsWith("other"),
+  )?.label;
+}
+
+function selectedWithFreeText(
+  question: GrokQuestion,
+  selected: readonly string[],
+  freeText: string | undefined,
+): string[] {
+  const text = freeText?.trim();
+  if (text === undefined || text.length === 0) return [...selected];
+  const other = otherOptionLabel(question);
+  if (other === undefined) return [...selected];
+  if (!question.multiSelect) {
+    return selected.length === 0 ? [other] : [...selected];
+  }
+  return selected.includes(other) ? [...selected] : [...selected, other];
+}
+
 export function buildGrokQuestionPlan(
   request: GrokQuestionRequest,
 ): AcpElicitationPlan {
@@ -138,18 +159,24 @@ export function grokQuestionResponse(
 
   request.questions.forEach((question, index) => {
     const answer = resolution.answers[questionId(index)] ?? { selected: [] };
+    const selected = selectedWithFreeText(
+      question,
+      answer.selected,
+      answer.freeText,
+    );
     answers[question.question] = question.multiSelect
-      ? answer.selected
-      : (answer.selected[0] ?? "");
+      ? selected
+      : (selected[0] ?? "");
 
     const annotation: { notes?: string; preview?: string } = {};
-    if (answer.freeText !== undefined) {
-      annotation.notes = answer.freeText;
+    const notes = answer.freeText?.trim();
+    if (notes !== undefined && notes.length > 0) {
+      annotation.notes = notes;
     }
-    const preview = answer.selected
+    const preview = selected
       .map(
-        (selected) =>
-          question.options.find((option) => option.label === selected)?.preview,
+        (value) =>
+          question.options.find((option) => option.label === value)?.preview,
       )
       .find((value) => value !== undefined);
     if (preview !== undefined) {

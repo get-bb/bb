@@ -136,7 +136,7 @@ describe("Grok question adapter", () => {
         question: "Выберите стек 😀",
         options: [
           { label: "TypeScript", description: "詳細な選択肢" },
-          { label: "Other (please specify)" },
+          { label: "Other (please specify)", preview: "OTHER_PREVIEW" },
         ],
         multiSelect: false,
       },
@@ -151,7 +151,7 @@ describe("Grok question adapter", () => {
         kind: "user_answer",
         answers: {
           "question-1": {
-            selected: ["Other (please specify)"],
+            selected: [],
             freeText: "Rust и مراجعة 😀",
           },
         },
@@ -161,8 +161,70 @@ describe("Grok question adapter", () => {
       outcome: "accepted",
       answers: { "Выберите стек 😀": "Other (please specify)" },
       annotations: {
-        "Выберите стек 😀": { notes: "Rust и مراجعة 😀" },
+        "Выберите стек 😀": {
+          notes: "Rust и مراجعة 😀",
+          preview: "OTHER_PREVIEW",
+        },
       },
+    });
+  });
+
+  it("keeps an explicit choice and appends Other for multi-select free text", () => {
+    const single = requestWith([
+      {
+        question: "Choose one",
+        options: [{ label: "TypeScript" }, { label: "Other..." }],
+        multiSelect: false,
+      },
+    ]);
+    const singlePlan = buildGrokQuestionPlan(single);
+    if (singlePlan.kind !== "questions") return;
+    expect(
+      grokQuestionResponse(
+        single,
+        mappableResponse(
+          singlePlan.toResponse({
+            kind: "user_answer",
+            answers: {
+              "question-1": {
+                selected: ["TypeScript"],
+                freeText: "also Rust",
+              },
+            },
+          }),
+        ),
+      ),
+    ).toEqual({
+      outcome: "accepted",
+      answers: { "Choose one": "TypeScript" },
+      annotations: { "Choose one": { notes: "also Rust" } },
+    });
+
+    const multi = requestWith([
+      {
+        question: "Choose extras",
+        options: [{ label: "Logo" }, { label: "Other (please specify)" }],
+        multiSelect: true,
+      },
+    ]);
+    const multiPlan = buildGrokQuestionPlan(multi);
+    if (multiPlan.kind !== "questions") return;
+    expect(
+      grokQuestionResponse(
+        multi,
+        mappableResponse(
+          multiPlan.toResponse({
+            kind: "user_answer",
+            answers: {
+              "question-1": { selected: ["Logo"], freeText: "a custom mark" },
+            },
+          }),
+        ),
+      ),
+    ).toEqual({
+      outcome: "accepted",
+      answers: { "Choose extras": ["Logo", "Other (please specify)"] },
+      annotations: { "Choose extras": { notes: "a custom mark" } },
     });
   });
 

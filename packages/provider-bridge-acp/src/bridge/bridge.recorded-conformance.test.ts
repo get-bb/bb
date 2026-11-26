@@ -229,9 +229,11 @@ it("replays Grok checkpoint rewind with exact identity and checkpoint outcomes",
     expect.objectContaining({
       type: "turn/completed",
       status: "completed",
-      providerCheckpointId: "0",
     }),
   );
+  expect(
+    run.events.find((event) => event.type === "turn/completed"),
+  ).not.toHaveProperty("providerCheckpointId");
   const providerRequests = readFileSync(
     join(recordingDir, "bridge→provider.ndjson"),
     "utf8",
@@ -247,7 +249,7 @@ it("replays Grok checkpoint rewind with exact identity and checkpoint outcomes",
   ).toMatchObject({
     sessionId: "grok-fork-child-1",
     targetPromptIndex: 0,
-    mode: "all",
+    mode: "conversation_only",
     force: true,
   });
   expect(

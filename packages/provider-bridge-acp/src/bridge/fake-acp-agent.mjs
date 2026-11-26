@@ -2042,6 +2042,16 @@ async function handleMessage(message) {
         process.exit(7);
       }
       const targetPromptIndex = message.params?.targetPromptIndex;
+      const requestedMode = [
+        "all",
+        "conversation_only",
+        "files_only",
+        "code_only",
+      ].includes(message.params?.mode)
+        ? message.params.mode
+        : "all";
+      const revertedFiles =
+        requestedMode === "conversation_only" ? [] : ["rewind-probe.txt"];
       const target = grokRewindPoints.find(
         (point) => point.prompt_index === targetPromptIndex,
       );
@@ -2052,7 +2062,7 @@ async function handleMessage(message) {
           result: {
             success: false,
             target_prompt_index: targetPromptIndex,
-            mode: "all",
+            mode: requestedMode,
             reverted_files: [],
             clean_files: [],
             conflicts: [],
@@ -2076,8 +2086,8 @@ async function handleMessage(message) {
         result: {
           success: true,
           target_prompt_index: responseTarget,
-          mode: "all",
-          reverted_files: ["rewind-probe.txt"],
+          mode: requestedMode,
+          reverted_files: revertedFiles,
           clean_files: [],
           conflicts: [],
           prompt_text: target?.prompt_preview ?? "",

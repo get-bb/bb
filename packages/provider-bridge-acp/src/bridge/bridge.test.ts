@@ -763,7 +763,7 @@ describe("acp bridge", () => {
     });
     expect((await waitForResponse(initializeId)).result).toMatchObject({
       protocolVersion: PROVIDER_BRIDGE_PROTOCOL_VERSION,
-      capabilities: { fork: "tip", approvalEnforcedBy: "runtime" },
+      capabilities: { fork: "checkpoint", approvalEnforcedBy: "runtime" },
     });
 
     const modelListId = sendModelList({
@@ -6227,8 +6227,10 @@ describe("acp bridge", () => {
     );
     expect(threadEventsOfType("turn/completed").at(-1)).toMatchObject({
       status: "completed",
-      providerCheckpointId: "0",
     });
+    expect(threadEventsOfType("turn/completed").at(-1)).not.toHaveProperty(
+      "providerCheckpointId",
+    );
     await completeTurnWith(
       source.providerThreadId,
       "second checkpoint",
@@ -6238,8 +6240,10 @@ describe("acp bridge", () => {
     );
     expect(threadEventsOfType("turn/completed").at(-1)).toMatchObject({
       status: "completed",
-      providerCheckpointId: "1",
     });
+    expect(threadEventsOfType("turn/completed").at(-1)).not.toHaveProperty(
+      "providerCheckpointId",
+    );
 
     const forkId = sendRequest("thread/fork", {
       threadId: "thread-grok-checkpoint-fork",
@@ -6260,7 +6264,7 @@ describe("acp bridge", () => {
         ?.params,
     ).toMatchObject({
       targetPromptIndex: 0,
-      mode: "all",
+      mode: "conversation_only",
       force: true,
     });
     expect(
@@ -6290,8 +6294,8 @@ describe("acp bridge", () => {
     );
     expect(childCompletion).toMatchObject({
       status: "completed",
-      providerCheckpointId: "0",
     });
+    expect(childCompletion).not.toHaveProperty("providerCheckpointId");
   });
 
   it("rejects an invalid Grok checkpoint without reporting an identity", async () => {
