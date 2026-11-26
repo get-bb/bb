@@ -24,5 +24,6 @@ export {
 export {
   PLUGIN_APP_COMPONENT_FIELDS,
   registeredComponents,
+  registrationComponents,
   type PluginAppComponentPath,
 } from "./plugin-app-component-fields.js";

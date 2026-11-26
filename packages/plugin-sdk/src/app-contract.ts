@@ -6158,11 +6158,6 @@ export interface ExperimentalServers {
 }
 
 /**
- * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
- * the real implementation and `satisfies` this interface; `bb plugin build`
- * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
- */
-/**
  * A component that `experimental_lazy` loads from a separate chunk. Pass it
  * straight to a slot's `component` so bb can see that it is lazy: hosts load
  * it before they reveal it, and bb downloads it once startup settles.
@@ -6170,6 +6165,11 @@ export interface ExperimentalServers {
  */
 export type ExperimentalLazyComponent<P> = (props: P) => ReactNode;
 
+/**
+ * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
+ * the real implementation and `satisfies` this interface; `bb plugin build`
+ * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
+ */
 export interface PluginSdkApp {
   /**
    * Load a component from a separate chunk instead of the plugin's startup
@@ -6178,7 +6178,7 @@ export interface PluginSdkApp {
    * settles, so a surface opened later renders in its first frame. A host that
    * stacks entries (Info rows and sections, context card rows, the rail,
    * settings sections) reveals an entry only after the entries above it are
-   * ready, and a page waits for the lazy parts of the plugin that owns it. A
+   * ready, and a plugin's own page waits for the lazy parts it shows. A
    * chunk that fails to load crashes only its slot, which reaches `onCrash`
    * like any render error. Call it once at module scope, never during render.
    * Experimental: see docs/api_to_audit.md.

@@ -278,7 +278,7 @@ function makeDeps(initial: PluginFrontendCandidate[] = []): TestReconcileDeps {
     flushSlotBatch: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
-    pageOwnerPluginId: () => null,
+    restoredLazyParts: () => [],
     whenScreenPainted: () => Promise.resolve(),
   };
 }

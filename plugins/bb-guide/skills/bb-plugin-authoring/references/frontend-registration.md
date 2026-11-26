@@ -176,8 +176,10 @@ export default definePluginApp((app) => {
 - Hosts that stack entries (Info rows and sections, context card rows, the
   rail, settings sections) show an entry only once the entries above it are
   ready, holding them at most 3 seconds behind a slow one, which then appears
-  in its place when it loads. A plugin that owns the page
-  (its panel or its settings page) loads its lazy parts before the page shows.
+  in its place when it loads. Lazy parts on the screen bb restores
+  (your panel or settings page, the open right-panel tab, Info sections when
+  Info is open) start loading as soon as your plugin registers, and your
+  panel or settings page shows once the parts on it load.
 - A chunk that fails to load crashes only its slot, which reaches `onCrash`.
 - Wrapping the lazy component in your own function hides it from hosts; pass
   it directly. Plain `React.lazy` still works but suspends after the host has

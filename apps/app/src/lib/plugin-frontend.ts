@@ -1,5 +1,4 @@
 import * as voiceInputTextarea from "@bb/shared-ui/voice-input-textarea";
-import { getRouteOwnerPluginId } from "./route-paths";
 import * as react from "react";
 import * as reactDom from "react-dom";
 import * as reactDomClient from "react-dom/client";
@@ -60,7 +59,15 @@ import {
   warmPluginRuntimeGroups,
 } from "./plugin-runtime-groups";
 import { queueSplitPreload } from "./split-prefetch";
-import { loadLazyPartsIn, ORDERED_REVEAL_BOUND_MS } from "./lazy-parts";
+import { loadLazyComponents, ORDERED_REVEAL_BOUND_MS } from "./lazy-parts";
+import {
+  holdsPage,
+  namesPlugin,
+  restoredLazyParts,
+  restoredPartComponents,
+  type RestoredLazyPart,
+} from "./restored-lazy-parts";
+import { readStoredPanelTabs } from "./fixed-panel-tabs-state";
 import { whenScreenPainted } from "./screen-paint";
 import {
   pluginSdkAppImplementation,
@@ -452,7 +459,7 @@ export interface PluginFrontendReconcileDeps {
   flushSlotBatch: () => void;
   warn: (message: string) => void;
   priorityPluginIds: () => readonly string[];
-  pageOwnerPluginId: () => string | null;
+  restoredLazyParts: () => readonly RestoredLazyPart[];
   whenScreenPainted: () => Promise<void>;
   mountTimeoutMs?: number;
   cssReadyTimeoutMs?: number;
@@ -854,10 +861,19 @@ function isCandidateApplied(
   );
 }
 
-function loadingLazyParts(
+function startRestoredLazyParts(
+  parts: readonly RestoredLazyPart[],
+  pluginId: string,
   registrations: ReturnType<typeof collectPluginAppRegistrations>,
 ): Promise<void> | null {
-  const loading = loadLazyPartsIn(registrations);
+  const pageComponents: unknown[] = [];
+  const shownComponents: unknown[] = [];
+  for (const part of parts) {
+    const components = restoredPartComponents(part, pluginId, registrations);
+    (holdsPage(part) ? pageComponents : shownComponents).push(...components);
+  }
+  void loadLazyComponents(shownComponents);
+  const loading = loadLazyComponents(pageComponents);
   if (loading === null) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
@@ -903,8 +919,8 @@ async function reconcileCandidate(
     );
   if (candidate.bundle.cssUrl !== null)
     deps.prefetchCss(candidate.bundle.cssUrl);
-  const ownsPage = deps.pageOwnerPluginId() === pluginId;
-  if (ownsPage) {
+  const restoredParts = deps.restoredLazyParts();
+  if (restoredParts.some((part) => namesPlugin(part, pluginId))) {
     for (const url of candidate.bundle.lazyChunkUrls) deps.prefetchModule(url);
   }
   let record = await importAttempt();
@@ -978,11 +994,15 @@ async function reconcileCandidate(
     return;
   }
 
+  const restoredPage = startRestoredLazyParts(
+    restoredParts,
+    pluginId,
+    collected,
+  );
   const generation = (state.generationByPluginId.get(pluginId) ?? 0) + 1;
   state.generationByPluginId.set(pluginId, generation);
   await applyCssBeforePublish(pluginId, candidate.bundle.cssUrl, deps);
-  const lazyParts = ownsPage ? loadingLazyParts(collected) : null;
-  if (lazyParts !== null) await lazyParts;
+  if (restoredPage !== null) await restoredPage;
   const replacesActiveGeneration = state.activeGenerations.has(pluginId);
   const cssRelease =
     collected.contentScripts.length > 0 ? deps.retainCss(pluginId) : null;
@@ -1133,7 +1153,8 @@ const browserReconcileDeps: PluginFrontendReconcileDeps = {
   prefetchModule: prefetchPluginModule,
   retainCss: retainPluginCss,
   priorityPluginIds: () => frontendPriorityPluginIds(window.location.pathname),
-  pageOwnerPluginId: () => getRouteOwnerPluginId(window.location.pathname),
+  restoredLazyParts: () =>
+    restoredLazyParts(window.location.pathname, readStoredPanelTabs),
   whenScreenPainted: whenScreenPainted,
   resetCrashedSlots: resetCrashedPluginSlots,
   setRegistrations: setPluginSlotRegistrations,

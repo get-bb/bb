@@ -1,9 +1,13 @@
 import { nanoid } from "nanoid";
 import {
   buildFixedPanelTabId,
+  EMPTY_FIXED_PANEL_TABS_STATE,
+  getFixedPanelTabsStateStorageKey,
   isFixedPanelTabsStateStorageKey,
+  parseFixedPanelTabsState,
   shouldPruneStoredFixedPanelTabsState,
   type BrowserFixedPanelTab,
+  type FixedPanelTabsState,
 } from "@bb/client-core";
 import { getLocalStorage } from "./browser-storage";
 
@@ -78,6 +82,17 @@ export function createBrowserFixedPanelTab({
     title: null,
     url,
   };
+}
+
+export function readStoredPanelTabs(threadId: string): FixedPanelTabsState {
+  return parseFixedPanelTabsState({
+    initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
+    now: Date.now(),
+    storedValue:
+      getLocalStorage()?.getItem(
+        getFixedPanelTabsStateStorageKey({ threadId }),
+      ) ?? null,
+  });
 }
 
 export function pruneFixedPanelTabsStorage({

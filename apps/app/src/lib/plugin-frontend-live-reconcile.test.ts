@@ -49,7 +49,7 @@ function deps(
     flushSlotBatch: () => {},
     warn: () => {},
     priorityPluginIds: () => [],
-    pageOwnerPluginId: () => null,
+    restoredLazyParts: () => [],
     whenScreenPainted: () => Promise.resolve(),
   };
 }
