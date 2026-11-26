@@ -734,6 +734,113 @@ describe.sequential("watchWorkspaceStatus", () => {
     }
   });
 
+  it("drops events under Git ignored directories created after the watch started", async () => {
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
+    await fs.writeFile(path.join(repoPath, ".gitignore"), "dist/\n", "utf8");
+    await runGit({ args: ["add", ".gitignore"], cwd: repoPath });
+    await runGit({ args: ["commit", "-m", "Ignore dist"], cwd: repoPath });
+    const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
+      await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
+    const changes: WorkspaceStatusChangeEvent[] = [];
+    const stopWatching = watchWorkspaceStatus(repoPath, {
+      onChange: (change) => {
+        changes.push(change);
+      },
+      onWatchError: ignoreWatchError,
+    });
+
+    try {
+      await ready;
+      for (let write = 0; write < 10; write += 1) {
+        const outputPath = path.join(repoPath, "dist", "chunks", "a.js");
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(outputPath, `${write}\n`, "utf8");
+        emitWorkspaceRootEvents([
+          { path: path.join(repoPath, "dist"), type: "create" },
+          { path: outputPath, type: "update" },
+        ]);
+        await sleep(100);
+      }
+      await fs.mkdir(path.join(repoPath, "src"));
+      await fs.writeFile(path.join(repoPath, "src", "new.ts"), "x\n", "utf8");
+      await fs.appendFile(path.join(repoPath, "README.md"), "edit\n", "utf8");
+      emitWorkspaceRootEvents([
+        { path: path.join(repoPath, "src", "new.ts"), type: "create" },
+        { path: path.join(repoPath, "README.md"), type: "update" },
+      ]);
+      await vi.waitFor(
+        () => {
+          expect(changes.at(-1)?.changedPaths).toContain(
+            path.join(repoPath, "README.md"),
+          );
+        },
+        { timeout: WATCH_TEST_TIMEOUT_MS },
+      );
+      await ensureCallCountStays(() => changes.length, changes.length);
+      expect(changes).toEqual([
+        {
+          changedPaths: [
+            path.join(repoPath, "README.md"),
+            path.join(repoPath, "src", "new.ts"),
+          ],
+          changeKinds: ["workspace-content-changed"],
+        },
+      ]);
+    } finally {
+      await stopWatching();
+    }
+  });
+
+  it("classifies late directories with the ignore rules of their own nested repository", async () => {
+    const repoPath = await initRepo(
+      await fs.realpath(await makeTempDir("bb-workspace-repo-")),
+    );
+    await fs.writeFile(path.join(repoPath, ".gitignore"), "dist/\n", "utf8");
+    await runGit({ args: ["add", ".gitignore"], cwd: repoPath });
+    await runGit({ args: ["commit", "-m", "Ignore dist"], cwd: repoPath });
+    const childPath = path.join(repoPath, "vendor", "child");
+    await fs.mkdir(childPath, { recursive: true });
+    await initRepo(childPath);
+    await fs.writeFile(path.join(childPath, ".gitignore"), "out/\n", "utf8");
+    await runGit({ args: ["add", ".gitignore"], cwd: childPath });
+    await runGit({ args: ["commit", "-m", "Ignore out"], cwd: childPath });
+    const { emitWorkspaceRootEvents, ready, watchWorkspaceStatus } =
+      await importWatchWorkspaceStatusWithManualWorkspaceEvents(repoPath);
+    const changes: WorkspaceStatusChangeEvent[] = [];
+    const stopWatching = watchWorkspaceStatus(repoPath, {
+      onChange: (change) => {
+        changes.push(change);
+      },
+      onWatchError: ignoreWatchError,
+    });
+
+    try {
+      await ready;
+      const childDistPath = path.join(childPath, "dist", "a.js");
+      const childOutPath = path.join(childPath, "out", "a.js");
+      for (const filePath of [childDistPath, childOutPath]) {
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        await fs.writeFile(filePath, "x\n", "utf8");
+      }
+      emitWorkspaceRootEvents([
+        { path: childDistPath, type: "create" },
+        { path: childOutPath, type: "create" },
+      ]);
+      await waitForCallCount(() => changes.length, 1, WATCH_TEST_TIMEOUT_MS);
+      await ensureCallCountStays(() => changes.length, 1);
+      expect(changes).toEqual([
+        {
+          changedPaths: [childDistPath],
+          changeKinds: ["workspace-content-changed"],
+        },
+      ]);
+    } finally {
+      await stopWatching();
+    }
+  });
+
   it("falls back to a live root watch when Git ignored directory discovery fails", async () => {
     const repoPath = await initRepo(
       await fs.realpath(await makeTempDir("bb-workspace-repo-")),

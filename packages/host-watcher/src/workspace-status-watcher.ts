@@ -135,10 +135,12 @@ class WorkspaceStatusWatcher {
     if (this.disposed || this.subscriptions.has(rootPath)) {
       return;
     }
-    const { failures, ignore } = await resolveWorkspaceRootIgnores({
-      cwd: this.args.cwd,
-      gitRoot: this.gitWorkspace,
-    });
+    const { dropIgnoredPaths, failures, ignore } =
+      await resolveWorkspaceRootIgnores({
+        cwd: this.args.cwd,
+        gitRoot: this.gitWorkspace,
+        rootPath,
+      });
     if (this.disposed) {
       return;
     }
@@ -149,6 +151,7 @@ class WorkspaceStatusWatcher {
       });
     }
     this.startWatchSubscription({
+      dropIgnoredPaths,
       kind: "workspace-root",
       options: { ignore },
       rootPath,
@@ -165,7 +168,7 @@ class WorkspaceStatusWatcher {
       retryDelayMs: this.args.retryDelayMs,
       maxRetryDelayMs: this.args.maxRetryDelayMs,
       onEvents: (events) => {
-        this.handleWorkspaceEvents(spec, events);
+        void this.handleWorkspaceEvents(spec, events);
       },
       onReady: spec.kind === "workspace-root" ? this.args.onReady : undefined,
       onDroppedEvents: () => {
@@ -179,10 +182,10 @@ class WorkspaceStatusWatcher {
     subscription.start();
   }
 
-  private handleWorkspaceEvents(
+  private async handleWorkspaceEvents(
     spec: WatchSubscriptionSpec,
     events: ParcelWatcherEventBatch,
-  ): void {
+  ): Promise<void> {
     if (events.length === 0) {
       return;
     }
@@ -190,7 +193,13 @@ class WorkspaceStatusWatcher {
     if (!changeEvent) {
       return;
     }
-    for (const changedPath of changeEvent.changedPaths) {
+    const changedPaths = spec.dropIgnoredPaths
+      ? await spec.dropIgnoredPaths(changeEvent.changedPaths)
+      : changeEvent.changedPaths;
+    if (this.disposed || changedPaths.length === 0) {
+      return;
+    }
+    for (const changedPath of changedPaths) {
       this.changedPaths.add(changedPath);
     }
     for (const changeKind of changeEvent.changeKinds) {
@@ -199,7 +208,7 @@ class WorkspaceStatusWatcher {
     const repositoryCreated =
       spec.kind === "workspace-root" &&
       spec.options?.ignore?.includes(".git") !== true &&
-      changeEvent.changedPaths.some((changedPath) =>
+      changedPaths.some((changedPath) =>
         isPathInsideDotGit(spec.rootPath, changedPath),
       );
     if (repositoryCreated) {
