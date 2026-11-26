@@ -733,6 +733,7 @@ export default async function plugin(bb: BbPluginApi) {
        PRIMARY KEY (repo, kind, number)
      )`,
     `ALTER TABLE items ADD COLUMN assignees TEXT NOT NULL DEFAULT '[]'`,
+    `CREATE INDEX items_kind_state_updated ON items (kind, state, updated_at)`,
   ]);
 
   function parseStringArray(raw: unknown): string[] {
@@ -765,6 +766,7 @@ export default async function plugin(bb: BbPluginApi) {
     query?: string;
     state?: "open" | "closed";
     assignee?: string;
+    limit?: number;
   }): CachedItem[] {
     const clauses: string[] = [];
     const params: unknown[] = [];
@@ -794,8 +796,10 @@ export default async function plugin(bb: BbPluginApi) {
       params.push(like, like, like);
     }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+    const limit = options.limit === undefined ? "" : "LIMIT ?";
+    if (options.limit !== undefined) params.push(options.limit);
     const rows = db
-      .prepare(`SELECT * FROM items ${where} ORDER BY updated_at DESC`)
+      .prepare(`SELECT * FROM items ${where} ORDER BY updated_at DESC ${limit}`)
       .all(...params) as Record<string, unknown>[];
     return rows.map(rowToItem);
   }
@@ -1577,13 +1581,13 @@ export default async function plugin(bb: BbPluginApi) {
   });
 
   function mentionItems(kind: "issue" | "pr", query: string) {
-    return listCachedItems({ kind, query, state: "open" })
-      .slice(0, 8)
-      .map((item) => ({
+    return listCachedItems({ kind, query, state: "open", limit: 8 }).map(
+      (item) => ({
         id: `${item.repo}#${item.number}`,
         title: `#${item.number} ${item.title}`,
         subtitle: item.repo,
-      }));
+      }),
+    );
   }
 
   function parseMentionId(itemId: string): { repo: string; number: number } {
