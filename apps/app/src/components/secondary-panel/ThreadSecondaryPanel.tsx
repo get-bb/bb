@@ -302,6 +302,36 @@ export function ThreadSecondaryPanel({
     panelId: resizablePanelId,
     renderAsDrawer,
   });
+  const wasOpenRef = useRef(isOpen);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    if (wasOpenRef.current === isOpen) return;
+    wasOpenRef.current = isOpen;
+    const panel = panelRef.current;
+    if (panel === null) return;
+    const activeElement = panel.ownerDocument.activeElement;
+    if (isOpen) {
+      if (
+        activeElement instanceof HTMLElement &&
+        activeElement !== panel.ownerDocument.body &&
+        !panel.contains(activeElement)
+      ) {
+        returnFocusRef.current = activeElement;
+      }
+      panel
+        .querySelector<HTMLElement>(
+          'button[aria-pressed="true"], button[data-panel-new-tab]',
+        )
+        ?.focus({ preventScroll: true });
+    } else if (
+      (panel.contains(activeElement) ||
+        activeElement === panel.ownerDocument.body) &&
+      returnFocusRef.current?.isConnected &&
+      !returnFocusRef.current.closest("[inert]")
+    ) {
+      returnFocusRef.current.focus({ preventScroll: true });
+    }
+  }, [isOpen, panelRef]);
   const hasPanelExpandedRef = useRef(false);
   useLayoutEffect(() => {
     hasPanelExpandedRef.current = false;
@@ -375,6 +405,12 @@ export function ThreadSecondaryPanel({
       event.currentTarget.contains(previousTarget)
     ) {
       return;
+    }
+    if (
+      previousTarget instanceof HTMLElement &&
+      previousTarget !== event.currentTarget.ownerDocument.body
+    ) {
+      returnFocusRef.current = previousTarget;
     }
     onPanelFocus();
   };
