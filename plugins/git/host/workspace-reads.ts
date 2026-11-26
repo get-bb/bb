@@ -237,7 +237,7 @@ interface IndexCopy {
 
 function removeTempDir(dir: string): Promise<void> {
   return fs
-    .rm(dir, { recursive: true, force: true, maxRetries: 5 })
+    .rm(dir, { recursive: true, force: true, maxRetries: 2 })
     .catch(() => undefined);
 }
 
