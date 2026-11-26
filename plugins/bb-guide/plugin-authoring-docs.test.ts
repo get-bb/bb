@@ -4,16 +4,8 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 
-const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
-
-const SKILL_ROOT = join(
-  REPO_ROOT,
-  "plugins/bb-guide/skills/bb-plugin-authoring/",
-);
-
-const SDK_DECLARATIONS = join(
-  REPO_ROOT,
-  "packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts",
+const SKILL_ROOT = fileURLToPath(
+  new URL("./skills/bb-plugin-authoring/", import.meta.url),
 );
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {
@@ -24,6 +16,14 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
   module: ts.ModuleKind.NodeNext,
   moduleResolution: ts.ModuleResolutionKind.NodeNext,
 };
+
+const SDK_DECLARATIONS =
+  ts.resolveModuleName(
+    "@get-bb/plugin-sdk",
+    fileURLToPath(import.meta.url),
+    COMPILER_OPTIONS,
+    ts.sys,
+  ).resolvedModule?.resolvedFileName ?? "@get-bb/plugin-sdk";
 
 const FIELD_DOCUMENTED_TYPES = [
   "PluginAppBuilder",

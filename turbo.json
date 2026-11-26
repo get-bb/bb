@@ -823,7 +823,6 @@
         "bb-plugin-bb-guide#generate:api-index",
         "//#ensure-native-modules",
         "@get-bb/plugin-sdk#build",
-        "@get-bb/plugin-sdk#build:types",
         "topo"
       ],
       "inputs": [
