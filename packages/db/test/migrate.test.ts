@@ -20,6 +20,7 @@ import {
   dropThreadSearchOrderIndex,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
+  dropProviderModelCatalogEmptyReasoningColumn,
   dropThreadRunStateTables,
   dropServerAccessRouteTables,
   dropThreadStatusChangedAtColumn,
@@ -385,6 +386,7 @@ function dropRewindAddedTables(db: DbConnection): void {
   dropSteerActiveThreadOnEnterColumn(db);
   dropOnboardingCompletedAtColumn(db);
   dropThreadSearchOrderIndex(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   db.$client.prepare("ALTER TABLE threads DROP COLUMN visibility").run();
   db.$client.exec("DROP INDEX IF EXISTS `threads_origin_plugin_archived_idx`");
   db.$client.prepare("ALTER TABLE threads DROP COLUMN origin_plugin_id").run();
@@ -786,6 +788,7 @@ function rewindEnvironmentProvisioningMigration(db: DbConnection): void {
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
   rewindThreadPurgeStartedColumn(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_insert");
   db.$client.exec("DROP TRIGGER IF EXISTS threads_lifecycle_owner_immutable");
@@ -847,6 +850,7 @@ function dropQueuedMessageAttemptColumns(db: DbConnection): void {
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
   rewindThreadPurgeStartedColumn(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   const columns = db.$client
     .prepare<[], TableInfoRow>("PRAGMA table_info(queued_thread_messages)")
@@ -940,6 +944,7 @@ function rewindMachineProvidersMigration(db: DbConnection): void {
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
   rewindThreadPurgeStartedColumn(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   db.$client.exec("DROP TABLE IF EXISTS ui_preference_defaults");
   const queuedDispatchOrigin = db.$client
@@ -2755,6 +2760,7 @@ describe("migrate", () => {
       dropEnvironmentHoldColumns(db);
       dropThreadSearchOrderIndex(db);
       rewindThreadPurgeStartedColumn(db);
+      dropProviderModelCatalogEmptyReasoningColumn(db);
       dropQueuedMessageSourcesAndCompactFirstColumns(db);
       restoreDiffViewedFilesTable(db);
       db.$client
@@ -3602,6 +3608,7 @@ describe("migrate", () => {
       dropEnvironmentHoldColumns(db);
       dropThreadSearchOrderIndex(db);
       rewindThreadPurgeStartedColumn(db);
+      dropProviderModelCatalogEmptyReasoningColumn(db);
       dropQueuedMessageSourcesAndCompactFirstColumns(db);
       db.$client.prepare("DROP INDEX projects_deleted_idx").run();
       db.$client.prepare("ALTER TABLE projects DROP COLUMN deleted_at").run();
@@ -4030,6 +4037,7 @@ describe("migrate", () => {
       dropEnvironmentHoldColumns(db);
       dropThreadSearchOrderIndex(db);
       rewindThreadPurgeStartedColumn(db);
+      dropProviderModelCatalogEmptyReasoningColumn(db);
       dropQueuedMessageSourcesAndCompactFirstColumns(db);
 
       expect(() => migrate(db)).not.toThrow();

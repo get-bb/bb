@@ -50,6 +50,7 @@ export function replaceStoredProviderModelCatalog(
           fingerprint: row.fingerprint,
           modelsJson: row.modelsJson,
           selectedOnlyModelsJson: row.selectedOnlyModelsJson,
+          emptyReasoningCheckedAtJson: row.emptyReasoningCheckedAtJson,
           fetchedAt: row.fetchedAt,
         },
       })

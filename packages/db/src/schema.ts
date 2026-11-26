@@ -1325,6 +1325,9 @@ export const providerModelCatalogs = sqliteTable(
     fingerprint: text("fingerprint").notNull(),
     modelsJson: text("models_json").notNull(),
     selectedOnlyModelsJson: text("selected_only_models_json").notNull(),
+    emptyReasoningCheckedAtJson: text("empty_reasoning_checked_at_json")
+      .notNull()
+      .default("{}"),
     fetchedAt: integer("fetched_at").notNull(),
   },
   (table) => [

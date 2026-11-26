@@ -2405,6 +2405,7 @@ describe("slow query index plans", () => {
         fingerprint: "catalog-prune-plan",
         modelsJson: "[]",
         selectedOnlyModelsJson: "[]",
+        emptyReasoningCheckedAtJson: "{}",
         fetchedAt: 20_000,
       },
       pruneWorkspaceRowsFetchedBefore,

@@ -26,6 +26,7 @@ import {
   dropThreadSearchOrderIndex,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
+  dropProviderModelCatalogEmptyReasoningColumn,
   dropThreadRunStateTables,
   dropServerAccessRouteTables,
   dropThreadStatusChangedAtColumn,
@@ -145,6 +146,7 @@ it.each([false, true])(
       dropEnvironmentHoldColumns(db);
       dropThreadSearchOrderIndex(db);
       rewindThreadPurgeStartedColumn(db);
+      dropProviderModelCatalogEmptyReasoningColumn(db);
       dropQueuedMessageSourcesAndCompactFirstColumns(db);
       migrate(db);
       migrate(db);

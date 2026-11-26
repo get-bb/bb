@@ -702,6 +702,7 @@ function seedProviderModelCatalogs(
             fingerprint: `${providerId}-${scopeIndex}`,
             modelsJson,
             selectedOnlyModelsJson: "[]",
+            emptyReasoningCheckedAtJson: "{}",
             fetchedAt: now - scopeIndex * DAY_MS,
           },
           pruneWorkspaceRowsFetchedBefore: null,

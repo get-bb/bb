@@ -11,6 +11,7 @@ import {
   dropThreadSearchOrderIndex,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
+  dropProviderModelCatalogEmptyReasoningColumn,
   dropThreadRunStateTables,
   dropServerAccessRouteTables,
   restoreDiffViewedFilesTable,
@@ -35,6 +36,7 @@ function databaseBeforeHandoff(
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
   rewindThreadPurgeStartedColumn(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   db.$client.pragma("foreign_keys = OFF");
   const insert = db.$client.prepare(

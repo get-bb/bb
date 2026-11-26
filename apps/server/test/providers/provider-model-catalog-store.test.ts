@@ -38,6 +38,7 @@ import { setPluginAgentContributions } from "../../src/services/plugins/plugin-a
 const BASE_NOW = 1_800_000_000_000;
 const SECOND = 1_000;
 const MINUTE = 60 * SECOND;
+const DAY = 24 * 60 * MINUTE;
 const SETTLED = "Provider model catalog refresh settled";
 
 type ListModelsCommand = Extract<
@@ -122,6 +123,52 @@ function setupCatalogHost(
 
 function modelIds(response: { models: readonly { model: string }[] }) {
   return response.models.map((model) => model.model);
+}
+
+function reasoningEfforts(response: {
+  models: readonly {
+    supportedReasoningEfforts: readonly { reasoningEffort: string }[];
+  }[];
+}) {
+  return response.models.map((model) =>
+    model.supportedReasoningEfforts.map((effort) => effort.reasoningEffort),
+  );
+}
+
+function probeRequests(host: ReturnType<typeof setupCatalogHost>) {
+  return host
+    .listRequests()
+    .filter((command) => command.selectedModel !== undefined);
+}
+
+async function refreshCatalog(host: ReturnType<typeof setupCatalogHost>) {
+  const fullRequests = () =>
+    host
+      .listRequests()
+      .filter((command) => command.selectedModel === undefined);
+  const before = fullRequests().length;
+  await host.read("codex");
+  await vi.waitFor(() => expect(fullRequests()).toHaveLength(before + 1));
+  await settleTimers();
+}
+
+function answerEmptyThenProbe(host: ReturnType<typeof setupCatalogHost>) {
+  const probe: { efforts: ("low" | "medium" | "high")[] } = { efforts: [] };
+  host.setAnswer((command) =>
+    catalogAnswer(
+      modelList("a").map((model) => ({
+        ...model,
+        reasoningDiscovery: command.selectedModel ? "known" : "unknown",
+        supportedReasoningEfforts: command.selectedModel
+          ? probe.efforts.map((reasoningEffort) => ({
+              reasoningEffort,
+              description: reasoningEffort,
+            }))
+          : [],
+      })),
+    ),
+  );
+  return probe;
 }
 
 function registerCatalogProbe(
@@ -375,6 +422,130 @@ describe("provider model catalog store", () => {
       host.clock.now += 31 * SECOND;
       await host.read("codex", undefined, "a");
       expect(host.listRequests()).toHaveLength(2);
+    });
+  });
+
+  it("probes a model with known empty reasoning again once that result is a day old", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-recheck-empty" });
+      const probe = answerEmptyThenProbe(host);
+      await host.read("codex");
+      expect(
+        (await host.read("codex", undefined, "a")).models[0],
+      ).toMatchObject({
+        reasoningDiscovery: "known",
+        supportedReasoningEfforts: [],
+      });
+      expect(host.listRequests()).toHaveLength(2);
+
+      host.clock.now += DAY - MINUTE;
+      await host.read("codex");
+      await vi.waitFor(() => expect(host.listRequests()).toHaveLength(3));
+      await settleTimers();
+      expect(
+        (await host.read("codex", undefined, "a")).models[0]
+          ?.reasoningDiscovery,
+      ).toBe("known");
+      expect(host.listRequests()).toHaveLength(3);
+
+      probe.efforts = ["low", "high"];
+      host.clock.now += 2 * MINUTE;
+      await host.read("codex");
+      await vi.waitFor(() => expect(host.listRequests()).toHaveLength(4));
+      await settleTimers();
+      expect((await host.read("codex")).models[0]).toMatchObject({
+        reasoningDiscovery: "unknown",
+        supportedReasoningEfforts: [],
+      });
+      const result = await host.read("codex", undefined, "a");
+      expect(reasoningEfforts(result)).toEqual([["low", "high"]]);
+      expect(host.listRequests()).toHaveLength(5);
+    });
+  });
+
+  it("keeps the probe's check time in SQLite and rechecks a stored probe result a day after it or a day after the first refresh of a row without a check time", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-recheck-stored" });
+      const probe = answerEmptyThenProbe(host);
+      await host.read("codex");
+      await host.read("codex", undefined, "a");
+      expect(probeRequests(host)).toHaveLength(1);
+
+      host.clock.now += 60 * MINUTE;
+      installCatalogStore(harness, { clock: host.clock });
+      expect(
+        (await host.read("codex", undefined, "a")).models[0]
+          ?.reasoningDiscovery,
+      ).toBe("known");
+      expect(probeRequests(host)).toHaveLength(1);
+
+      host.clock.now += DAY;
+      installCatalogStore(harness, { clock: host.clock });
+      await host.read("codex", undefined, "a");
+      expect(probeRequests(host)).toHaveLength(2);
+
+      harness.db.$client
+        .prepare(
+          "UPDATE provider_model_catalogs SET empty_reasoning_checked_at_json = '{}' WHERE host_id = ?",
+        )
+        .run(host.hostId);
+      host.clock.now += 2 * MINUTE;
+      installCatalogStore(harness, { clock: host.clock });
+      await refreshCatalog(host);
+      expect(
+        (await host.read("codex", undefined, "a")).models[0]
+          ?.reasoningDiscovery,
+      ).toBe("known");
+      expect(probeRequests(host)).toHaveLength(2);
+
+      probe.efforts = ["high"];
+      host.clock.now += DAY;
+      await refreshCatalog(host);
+      const result = await host.read("codex", undefined, "a");
+      expect(reasoningEfforts(result)).toEqual([["high"]]);
+      expect(probeRequests(host)).toHaveLength(3);
+    });
+  });
+
+  it("never probes a model that the full list itself reports with no reasoning levels", async () => {
+    await withTestHarness(async (harness) => {
+      const host = setupCatalogHost(harness, { id: "host-listed-empty" });
+      host.setAnswer((command) =>
+        catalogAnswer(
+          modelList("a").map((model) => ({
+            ...model,
+            supportedReasoningEfforts: command.selectedModel
+              ? [{ reasoningEffort: "high", description: "High" }]
+              : [],
+          })),
+        ),
+      );
+      await host.read("codex");
+      await host.read("codex", undefined, "a");
+
+      host.clock.now += DAY;
+      await refreshCatalog(host);
+      await host.read("codex", undefined, "a");
+
+      harness.db.$client
+        .prepare(
+          "UPDATE provider_model_catalogs SET empty_reasoning_checked_at_json = '{}' WHERE host_id = ?",
+        )
+        .run(host.hostId);
+      host.clock.now += DAY;
+      installCatalogStore(harness, { clock: host.clock });
+      const result = await host.read("codex", undefined, "a");
+      await vi.waitFor(() => expect(host.listRequests()).toHaveLength(3));
+      await settleTimers();
+      expect(result.models[0]).toMatchObject({
+        reasoningDiscovery: "known",
+        supportedReasoningEfforts: [],
+      });
+      expect(
+        (await host.read("codex", undefined, "a")).models[0]
+          ?.supportedReasoningEfforts,
+      ).toEqual([]);
+      expect(probeRequests(host)).toHaveLength(0);
     });
   });
 

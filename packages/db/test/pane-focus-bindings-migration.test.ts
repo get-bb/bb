@@ -23,6 +23,7 @@ import {
   dropThreadSearchOrderIndex,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
+  dropProviderModelCatalogEmptyReasoningColumn,
   dropThreadRunStateTables,
   dropServerAccessRouteTables,
   dropThreadStatusChangedAtColumn,
@@ -81,6 +82,7 @@ function upgradeDatabase(overrides: AppKeybindingOverrides | undefined) {
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
   rewindThreadPurgeStartedColumn(db);
+  dropProviderModelCatalogEmptyReasoningColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   db.$client
     .prepare("DELETE FROM __drizzle_migrations WHERE created_at >= ?")

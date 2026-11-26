@@ -1,0 +1,1 @@
+ALTER TABLE `provider_model_catalogs` ADD `empty_reasoning_checked_at_json` text DEFAULT '{}' NOT NULL;
