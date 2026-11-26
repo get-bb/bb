@@ -44,7 +44,7 @@ export const MACOS_TITLE_BAR_TRAILING_TOGGLE_CLASS =
 export const MACOS_TITLE_BAR_PINNED_TOGGLE_CLASS =
   "right-[calc(var(--bb-title-bar-trailing-edge-gap)_-_var(--bb-window-frame-lip))] [&_button]:w-(--bb-title-bar-control-size)";
 export const MACOS_TITLE_BAR_CONTROL_SIZE_CLASS =
-  "[&_button]:h-(--bb-title-bar-control-size) [&_[data-tab-pill]]:h-(--bb-title-bar-control-size)";
+  "[&_button:not([data-tab-pill-close])]:h-(--bb-title-bar-control-size) [&_[data-tab-pill]]:h-(--bb-title-bar-control-size)";
 export const MACOS_TITLE_BAR_BAND_CLASS = `${MACOS_TITLE_BAR_ROW_CLASS} box-content pb-px`;
 export const MACOS_TITLE_BAR_COLLAPSED_SIDEBAR_RESERVE_CLASS =
   "pl-[calc(var(--bb-window-title-bar-controls-end)_+_12px_-_var(--bb-window-card-collapsed-left)_-_1rem)]";

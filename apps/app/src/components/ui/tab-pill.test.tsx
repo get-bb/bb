@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MACOS_TITLE_BAR_CONTROL_SIZE_CLASS } from "@/lib/bb-desktop";
 import { TabPill } from "./tab-pill";
 
 afterEach(cleanup);
@@ -94,6 +95,54 @@ describe("TabPill", () => {
     expect(
       closeButton.classList.contains("max-md:pointer-coarse:min-w-9"),
     ).toBe(true);
+    expect(closeButton.classList.contains("max-md:pointer-coarse:left-0")).toBe(
+      true,
+    );
+    expect(
+      closeButton.firstElementChild?.classList.contains(
+        "max-md:pointer-coarse:size-7",
+      ),
+    ).toBe(true);
+  });
+
+  it("excludes the close button from macOS title-bar control height sizing", () => {
+    const { container } = render(
+      <div className={MACOS_TITLE_BAR_CONTROL_SIZE_CLASS}>
+        <button type="button">New tab</button>
+        <TabPill
+          label="Terminal"
+          title="Terminal"
+          isActive
+          onSelect={vi.fn()}
+          closeAction={{
+            closeLabel: "Close Terminal",
+            onClose: vi.fn(),
+          }}
+        />
+      </div>,
+    );
+
+    const selectors = MACOS_TITLE_BAR_CONTROL_SIZE_CLASS.split(/\s+/)
+      .filter((token) => token.startsWith("[&_") && token.includes("]:"))
+      .map((token) =>
+        token.slice(3, token.lastIndexOf("]:")).replaceAll("_", " "),
+      );
+    expect(selectors.length).toBeGreaterThan(0);
+
+    const matched = new Set(
+      selectors.flatMap((selector) =>
+        Array.from(container.querySelectorAll(selector)),
+      ),
+    );
+    expect(matched.has(screen.getByRole("button", { name: "New tab" }))).toBe(
+      true,
+    );
+    expect(matched.has(screen.getByRole("button", { name: "Terminal" }))).toBe(
+      true,
+    );
+    expect(
+      matched.has(screen.getByRole("button", { name: "Close Terminal" })),
+    ).toBe(false);
   });
 
   it("separates an enlarged coarse-pointer close target from the label", () => {
