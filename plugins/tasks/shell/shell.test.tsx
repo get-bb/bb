@@ -3,11 +3,17 @@ import type {
   PluginCommandContext,
 } from "@get-bb/plugin-sdk";
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { loadPluginApp, renderSlot } from "@get-bb/plugin-sdk/testing/app";
 import { experimental_makeActionContext } from "@get-bb/plugin-sdk/testing";
-import { labelsByProject, makeTask } from "../test-fixtures.js";
+import { labelsByProject, makeTask, rpcInput } from "../test-fixtures.js";
 import type { Task } from "../shared/contract.js";
 import { PROJECTS_TAG, commentsTag } from "../shared/tags";
 
@@ -772,6 +778,52 @@ describe("tasks app shell", () => {
     await slot.findByText("Couldn't load tasks");
     expect(slot.queryByText("Scope truth")).toBeNull();
     expect(slot.queryByText("No agents working right now")).toBeNull();
+  });
+
+  it("shows the same active count in the sidebar and the Active view", async () => {
+    const activeSolo = makeTask({
+      id: "01HZT5ZZZZZZZZZZZZZZZZZZT5",
+      key: "TSK-18",
+      number: 18,
+      status: "in_progress",
+      title: "Solo active",
+    });
+    const idleParent = makeTask({
+      id: "01HZT6ZZZZZZZZZZZZZZZZZZT6",
+      key: "TSK-16",
+      number: 16,
+      title: "Idle parent",
+    });
+    const activeChild = makeTask({
+      id: "01HZT7ZZZZZZZZZZZZZZZZZZT7",
+      key: "TSK-17",
+      number: 17,
+      parentTaskId: idleParent.id,
+      status: "in_progress",
+      title: "Active child",
+    });
+    const rpc = seededRpc({
+      listLabels: () => ({ labels: [] }),
+      listAllTasks: (raw: unknown) => {
+        if (rpcInput(raw).activeOnly === true) {
+          return { tasks: [activeSolo, activeChild] };
+        }
+        return { tasks: [activeSolo, idleParent, activeChild] };
+      },
+    });
+    const navSlot = renderSlot(
+      navigationRegistration,
+      { subPath: "active" },
+      {
+        rpc,
+      },
+    );
+    const activeButton = (await navSlot.findByText("Active")).closest("button");
+    expect(activeButton).toBeTruthy();
+    expect(await within(activeButton!).findByText("2")).toBeTruthy();
+
+    const slot = renderSlot(app.navPanels[0]!, { subPath: "active" }, { rpc });
+    expect(await slot.findByText("2 tasks")).toBeTruthy();
   });
 
   it("shows the empty state and opens the New project dialog", async () => {

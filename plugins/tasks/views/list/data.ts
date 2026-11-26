@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   experimental_useRpcKeyedQuery,
   experimental_useRpcMutation,
@@ -20,12 +20,6 @@ import {
   type TaskThread,
 } from "../../shared/contract.js";
 
-interface ListTaskFilters {
-  statuses: readonly TaskStatus[];
-  priorities: readonly TaskPriority[];
-  labelIds: readonly string[] | null;
-}
-
 export interface TaskEdit {
   status?: TaskStatus;
   priority?: TaskPriority;
@@ -43,28 +37,6 @@ export function applyEdit(task: Task, edit: TaskEdit): Task {
   };
 }
 
-export function matchesFilters(
-  task: Task,
-  statuses: readonly TaskStatus[],
-  priorities: readonly TaskPriority[],
-  labelIds: readonly string[],
-): boolean {
-  return (
-    (statuses.length === 0 || statuses.includes(task.status)) &&
-    (priorities.length === 0 || priorities.includes(task.priority)) &&
-    (labelIds.length === 0 || task.labelIds.some((id) => labelIds.includes(id)))
-  );
-}
-
-export function matchesSearch(task: Task, search: string): boolean {
-  const needle = search.trim().toLowerCase();
-  if (needle === "") return true;
-  return (
-    task.key.toLowerCase().includes(needle) ||
-    task.title.toLowerCase().includes(needle)
-  );
-}
-
 export function widestKeysByPrefix(tasks: readonly Task[]): string[] {
   const widest = new Map<string, string>();
   for (const task of tasks) {
@@ -77,74 +49,57 @@ export function widestKeysByPrefix(tasks: readonly Task[]): string[] {
   return [...widest.values()];
 }
 
-export function listTasksQuery(
-  projectId: string | null,
-  activeOnly: boolean,
-  filters: ListTaskFilters,
-): TasksInput<"listAllTasks"> {
-  return {
-    ...(projectId === null ? {} : { projectId }),
-    ...(filters.statuses.length > 0 ? { statuses: [...filters.statuses] } : {}),
-    ...(filters.priorities.length > 0
-      ? { priorities: [...filters.priorities] }
-      : {}),
-    ...(filters.labelIds !== null ? { labelIds: [...filters.labelIds] } : {}),
-    activeOnly,
-    parentTaskId: null,
-  };
-}
+const NO_TASKS: readonly Task[] = [];
 
-function mergeOpenFirst(open: readonly Task[], closed: readonly Task[]) {
+function mergeById(...lists: readonly (readonly Task[] | undefined)[]) {
   const byId = new Map<string, Task>();
-  for (const task of open) byId.set(task.id, task);
-  for (const task of closed) byId.set(task.id, task);
+  for (const list of lists) {
+    for (const task of list ?? []) byId.set(task.id, task);
+  }
   return [...byId.values()];
 }
 
-export function useListTasks(
-  projectId: string | null,
-  activeOnly: boolean,
-  filters: ListTaskFilters,
-) {
-  const query = listTasksQuery(projectId, activeOnly, filters);
-  const single = filters.statuses.length > 0 || activeOnly;
-  const openInput = { ...query, statuses: [...OPEN_TASK_STATUSES] };
-  const closedInput = { ...query, statuses: [...CLOSED_TASK_STATUSES] };
-  const all = useTasksQuery("listAllTasks", query, selectTasks, {
-    enabled: single,
+export function useListTasks(projectId: string | null, activeOnly: boolean) {
+  const scope = projectId === null ? {} : { projectId };
+  const openInput = { ...scope, statuses: [...OPEN_TASK_STATUSES] };
+  const closedInput = { ...scope, statuses: [...CLOSED_TASK_STATUSES] };
+  const open = useTasksQuery("listAllTasks", openInput, selectTasks);
+  const closed = useTasksQuery("listAllTasks", closedInput, selectTasks);
+  const activeInput = { ...scope, activeOnly: true };
+  const active = useTasksQuery("listAllTasks", activeInput, selectTasks, {
+    enabled: activeOnly,
   });
-  const open = useTasksQuery("listAllTasks", openInput, selectTasks, {
-    enabled: !single,
-  });
-  const closed = useTasksQuery("listAllTasks", closedInput, selectTasks, {
-    enabled: !single,
-  });
-  const merged = useMemo(
+  const activeTasks = activeOnly ? active.data : NO_TASKS;
+  const data = useMemo(
     () =>
-      open.data === undefined
+      open.data === undefined || activeTasks === undefined
         ? undefined
-        : closed.data === undefined
-          ? open.data
-          : mergeOpenFirst(open.data, closed.data),
-    [open.data, closed.data],
+        : mergeById(open.data, closed.data, activeTasks),
+    [open.data, closed.data, activeTasks],
   );
-  const current = single ? all.data : merged;
-  const isLoading = single ? all.isLoading : open.isLoading || closed.isLoading;
-  const [previous, setPrevious] = useState<Task[] | undefined>(undefined);
-  if (current !== undefined && current !== previous) setPrevious(current);
-  const reads = single ? [query] : [openInput, closedInput];
+  const activeIds = useMemo(
+    (): ReadonlySet<string> | null =>
+      activeOnly ? new Set((activeTasks ?? []).map((task) => task.id)) : null,
+    [activeOnly, activeTasks],
+  );
   const { refresh: refreshOpen } = open;
   const { refresh: refreshClosed } = closed;
-  const refreshOpenFirst = useCallback(() => {
+  const { refresh: refreshActive } = active;
+  const refresh = useCallback(() => {
     refreshOpen();
     refreshClosed();
-  }, [refreshOpen, refreshClosed]);
+    if (activeOnly) refreshActive();
+  }, [refreshOpen, refreshClosed, refreshActive, activeOnly]);
   return {
-    data: current ?? (isLoading ? previous : undefined),
-    error: single ? all.error : (open.error ?? closed.error),
-    isLoading,
-    reads,
-    refresh: single ? all.refresh : refreshOpenFirst,
+    data,
+    activeIds,
+    error: open.error ?? closed.error ?? (activeOnly ? active.error : null),
+    isLoading:
+      open.isLoading || closed.isLoading || (activeOnly && active.isLoading),
+    reads: activeOnly
+      ? [openInput, closedInput, activeInput]
+      : [openInput, closedInput],
+    refresh,
   };
 }
 

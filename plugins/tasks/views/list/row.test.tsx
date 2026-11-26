@@ -34,7 +34,10 @@ Element.prototype.scrollIntoView ??= () => {};
 
 const app = await loadPluginApp(() => import("../../app"));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  localStorage.clear();
+});
 
 const PROJECT_ID = "01HZZZZZZZZZZZZZZZZZZZZZP1";
 
@@ -320,5 +323,67 @@ describe("list search and key column", () => {
     fireEvent.change(search, { target: { value: "ops" } });
     await waitFor(() => expect(slot.queryByText("AGENTS-223")).toBeNull());
     expect(sizedKeys()).toEqual(["AGENTS-223", "OPS-1"]);
+  });
+});
+
+describe("sub-task nesting", () => {
+  const parent = task({
+    id: "01HZT1ZZZZZZZZZZZZZZZZZZT1",
+    number: 1,
+    title: "Parent",
+  });
+  const child = task({
+    id: "01HZT1ZZZZZZZZZZZZZZZZZZT2",
+    number: 12,
+    parentTaskId: parent.id,
+    status: "done",
+    title: "Needle",
+  });
+  const toggle = (row: HTMLElement, name: RegExp) =>
+    within(row).getByRole<HTMLButtonElement>("button", { name });
+  const childRow = (slot: ReturnType<typeof renderList>) =>
+    slot.container.querySelector(`[data-task-key="${child.key}"]`);
+
+  it("starts collapsed and remembers a parent the user expanded", async () => {
+    const slot = renderList([parent, child]);
+    const row = await rowFor(slot, parent.key);
+    expect(within(row).getByText("1/1")).toBeTruthy();
+    expect(childRow(slot)).toBeNull();
+    fireEvent.click(toggle(row, /Expand sub-tasks/));
+    expect((await rowFor(slot, child.key)).className).toContain("pl-9");
+    cleanup();
+
+    const reopened = renderList([parent, child]);
+    const reopenedRow = await rowFor(reopened, parent.key);
+    expect(await rowFor(reopened, child.key)).toBeTruthy();
+    fireEvent.click(toggle(reopenedRow, /Collapse sub-tasks/));
+    await waitFor(() => expect(childRow(reopened)).toBeNull());
+  });
+
+  it("opens a collapsed parent while searching without changing its saved state", async () => {
+    const slot = renderList([parent, child]);
+    await rowFor(slot, parent.key);
+    expect(childRow(slot)).toBeNull();
+    const search = slot.getByRole("searchbox", { name: "Search tasks" });
+    fireEvent.change(search, { target: { value: "needle" } });
+    await rowFor(slot, child.key);
+    const parentRow = await rowFor(slot, parent.key);
+    expect(parentRow.className).toContain("opacity-50");
+    expect(slot.getByText("1 task")).toBeTruthy();
+    const locked = toggle(parentRow, /Collapse sub-tasks/);
+    expect(locked.disabled).toBe(true);
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() => expect(childRow(slot)).toBeNull());
+  });
+
+  it("sizes the key column from sub-task keys too", async () => {
+    const slot = renderList([parent, child]);
+    await rowFor(slot, parent.key);
+    expect(
+      Array.from(
+        slot.container.querySelectorAll<HTMLElement>("[data-key-sizer]"),
+        (element) => element.dataset.keySizer,
+      ),
+    ).toEqual([child.key]);
   });
 });
