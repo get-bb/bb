@@ -64,6 +64,39 @@ describe("foreign DOM mutation guard", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it.each([null, undefined])(
+    "preserves native append behavior for a %s insertBefore reference",
+    (reference) => {
+      const warn = vi
+        .spyOn(console, "warn")
+        .mockImplementation(() => undefined);
+      const parent = document.createElement("div");
+      const existing = document.createElement("span");
+      const nativeInserted = document.createElement("b");
+      parent.appendChild(existing);
+
+      expect(
+        Reflect.apply(parent.insertBefore, parent, [nativeInserted, reference]),
+      ).toBe(nativeInserted);
+
+      installForeignDomMutationGuard();
+      const guardedInserted = document.createElement("i");
+      expect(
+        Reflect.apply(parent.insertBefore, parent, [
+          guardedInserted,
+          reference,
+        ]),
+      ).toBe(guardedInserted);
+      expect([...parent.childNodes]).toEqual([
+        existing,
+        nativeInserted,
+        guardedInserted,
+      ]);
+      expect(foreignDomMutationCount()).toBe(0);
+      expect(warn).not.toHaveBeenCalled();
+    },
+  );
+
   it("suppresses replaceChild when the node it would replace has moved away", () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const parent = document.createElement("div");
