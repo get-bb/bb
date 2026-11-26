@@ -104,6 +104,7 @@ interface ThreadStorageFilePreviewTabContentProps {
 
 function filePreviewQueryProps(query: UseQueryResult<FilePreview>) {
   return {
+    contentUpdatedAt: query.dataUpdatedAt,
     error: query.error,
     filePreview: query.data,
     isLoading: query.isLoading,

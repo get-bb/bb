@@ -4,7 +4,7 @@ import {
   type FilePreviewState,
   type TextFilePreviewKind,
 } from "./FilePreview";
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { BbSourceCodeSplit } from "@/components/code/BbSourceCodeSplit";
 import { hashSourceContents } from "@/components/code/source-code-budget";
 import { useRequestPierreWorkerPool } from "@/lib/pierre-worker-pool-gate";
@@ -27,6 +27,7 @@ const GENERIC_HTML_IFRAME_SANDBOX = "allow-scripts";
 
 interface SecondaryPanelFilePreviewProps {
   activePath: string;
+  contentUpdatedAt?: number;
   copyPath?: string | null;
   error?: Error | null;
   filePreview: FilePreview | undefined;
@@ -173,6 +174,7 @@ function resolveSecondaryPanelFilePreviewState({
 
 export function SecondaryPanelFilePreview({
   activePath,
+  contentUpdatedAt,
   copyPath = null,
   error,
   filePreview,
@@ -199,6 +201,22 @@ export function SecondaryPanelFilePreview({
     isLoading,
     lineRange,
   });
+  const versionedMarkdownLinkRouting = useMemo(() => {
+    const localImage = markdownLinkRouting?.localImage;
+    if (localImage === undefined || contentUpdatedAt === undefined) {
+      return markdownLinkRouting;
+    }
+    return {
+      ...markdownLinkRouting,
+      localImage: {
+        ...localImage,
+        resolveSrc: (...args: Parameters<typeof localImage.resolveSrc>) => {
+          const [url, fragment] = localImage.resolveSrc(...args).split("#");
+          return `${url}${url.includes("?") ? "&" : "?"}v=${contentUpdatedAt}${fragment === undefined ? "" : `#${fragment}`}`;
+        },
+      },
+    };
+  }, [contentUpdatedAt, markdownLinkRouting]);
   return (
     <FilePreviewSurface
       path={activePath}
@@ -221,7 +239,7 @@ export function SecondaryPanelFilePreview({
       onRefresh={onRefresh}
       isRefreshing={isRefreshing}
       markdownLinkRouting={
-        state.kind === "ready" ? markdownLinkRouting : undefined
+        state.kind === "ready" ? versionedMarkdownLinkRouting : undefined
       }
       statusLabel={statusLabel}
       state={state}

@@ -1,6 +1,21 @@
+// @vitest-environment jsdom
+
 import type { ReactElement } from "react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQuery,
+  type UseQueryResult,
+} from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   HostFilePreviewTabContent,
   HostScopedFilePreviewTabContent,
@@ -8,15 +23,24 @@ import {
   ThreadStorageFilePreviewTabContent,
   WorkspaceFilePreviewTabContent,
 } from "./ThreadSecondaryPanelTabContent";
-import type { FilePreview } from "@bb/client-core";
+import type { FilePreview, TextFilePreview } from "@bb/client-core";
 
 const projectPreviewQuery = vi.hoisted(() =>
   vi.fn<
-    (_projectId: string, path: string) => ReturnType<typeof previewQuery>
+    (
+      _projectId: string,
+      path: string,
+    ) => Pick<
+      UseQueryResult<FilePreview>,
+      "data" | "error" | "isFetching" | "isLoading" | "refetch"
+    >
   >(),
 );
 
-function markdownPreview(path: string, url = `/content/${path}`): FilePreview {
+function markdownPreview(
+  path: string,
+  url = `/content/${path}`,
+): TextFilePreview {
   return {
     kind: "text",
     content: [
@@ -92,6 +116,55 @@ function renderImageSources(element: ReactElement): Map<string, string> {
 }
 
 describe("secondary-panel Markdown image routing", () => {
+  afterEach(() => cleanup());
+
+  it("reloads local Markdown images after manual and background preview refetches even when the text is unchanged", async () => {
+    const preview = markdownPreview("docs/readme.md");
+    preview.content += "\n\n![remote](https://example.com/chart.png)";
+    const queryClient = new QueryClient();
+    projectPreviewQuery.mockImplementation(() =>
+      useQuery<FilePreview>({
+        queryKey: ["image-refresh"],
+        queryFn: async () => preview,
+        initialData: preview,
+        initialDataUpdatedAt: 1,
+        staleTime: Infinity,
+      }),
+    );
+    try {
+      render(
+        <QueryClientProvider client={queryClient}>
+          <ProjectFilePreviewTabContent
+            activePath="docs/readme.md"
+            environmentId={null}
+            hostId="host_preview"
+            isPanelOpen
+            lineRange={null}
+            projectId="proj_preview"
+            rootPath="/workspace"
+          />
+        </QueryClientProvider>,
+      );
+      const imageSource = () =>
+        screen.getByRole("img", { name: "relative" }).getAttribute("src");
+      const initialSource = imageSource();
+      fireEvent.click(screen.getByRole("button", { name: "Refresh file" }));
+      await waitFor(() => expect(imageSource()).not.toBe(initialSource));
+      const refreshedSource = imageSource();
+      await queryClient.invalidateQueries({ queryKey: ["image-refresh"] });
+      await waitFor(() => expect(imageSource()).not.toBe(refreshedSource));
+      expect(
+        screen.getByRole("img", { name: "remote" }).getAttribute("src"),
+      ).toBe("https://example.com/chart.png");
+      expect(queryClient.getQueryData(["image-refresh"])).toBe(preview);
+    } finally {
+      queryClient.clear();
+      projectPreviewQuery.mockImplementation((_projectId, path) =>
+        previewQuery(path),
+      );
+    }
+  });
+
   it("routes workspace images when the preview caller supplies no routing", () => {
     const imageSrc = renderImageSources(
       <WorkspaceFilePreviewTabContent
