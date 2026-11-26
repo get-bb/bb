@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
+    globalSetup: ["@get-bb/plugin-sdk/testing/vitest-global-setup"],
     silent: "passed-only",
     testTimeout: 15_000,
     name: "bb-plugin-github",

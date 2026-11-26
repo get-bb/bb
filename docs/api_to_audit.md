@@ -2910,6 +2910,42 @@ Docs: `testing.md`.
    falls back when no closing tag matches. Decide whether a full parser is
    owed before the scan is a promise.
 
+## `experimental_sandboxTempDir` (`@get-bb/plugin-sdk/testing/vitest-global-setup`)
+
+The subpath's default export is a Vitest `globalSetup` that calls
+`experimental_sandboxTempDir()`. It points `TMPDIR`, `TEMP` and `TMP` at a
+fresh `bb-vt-*` directory under `os.tmpdir()`. Its teardown restores the three
+variables, awaits each `beforeRemove(sandboxPath)` callback, and deletes the
+directory. Teardown runs in Vitest's main process. Vitest stops workers with
+SIGTERM, so worker `exit` handlers never run; deleting the sandbox from the
+main process still removes what workers leave in `os.tmpdir()`, including the
+`createFakePluginHost` storage root. Nested setups in one process share one
+sandbox through a `Symbol.for` key on `globalThis`, and the last teardown
+removes it.
+
+Core uses the same path. The root `vitest.global-tmpdir.ts`, which
+`defineWorkspaceTestConfig` installs for workspace suites, calls
+`experimental_sandboxTempDir({ beforeRemove: killProcessesReferencingPath })`.
+34 of the 41 forkable first-party plugins in `scripts/forkable-plugins.json`
+name the subpath in `test.globalSetup`. Composer, Conductor, Navigation, PDF
+preview, Plugin API tester, Scheduled send and Server switcher have test suites
+that do not yet.
+
+Docs: `testing.md`.
+
+**Audit before stabilizing.**
+
+1. **Runner coupling.** The default export follows Vitest's `globalSetup`
+   contract. Decide whether other runners need an entry, or whether the named
+   function is enough for them.
+2. **Removal failures.** Teardown throws when the sandbox cannot be deleted
+   after retries, which fails the run. On Windows a lingering child process
+   can hold a file open. Decide whether the SDK should sweep such processes
+   itself, as core's `beforeRemove` does, instead of leaving it to callers.
+3. **Path length.** The sandbox adds `bb-vt-XXXXXX` to every temp path, which
+   counts toward Windows' 260-character limit. Confirm that the prefix stays
+   short enough for git-heavy suites.
+
 ## `experimental_trackChildProcesses`, `experimental_createProcessLifeline` and `experimental_createDescendantPipe` (`@get-bb/plugin-sdk/testing`)
 
 Test fixtures for observing processes by handle instead of by PID. A PID check

@@ -457,7 +457,7 @@ describe("plugin install sources", () => {
 
 async function createPluginInstallFixture() {
   const db = createMigratedConnection();
-  const workDir = await mkdtemp(join(tmpdir(), "bb-plugin-install-"));
+  const workDir = await mkdtemp(join(tmpdir(), "bbpi-"));
   const dataDir = join(workDir, "data");
   const counters = { materializationCount: 0 };
   const service = createPluginService({

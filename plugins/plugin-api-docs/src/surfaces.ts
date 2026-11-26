@@ -2034,6 +2034,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "experimental_trackChildProcesses",
           "experimental_createProcessLifeline",
           "experimental_createDescendantPipe",
+          "experimental_sandboxTempDir",
           "experimental_makePanelController",
           "experimental_makeActionContext",
           "PluginContextStaleError",

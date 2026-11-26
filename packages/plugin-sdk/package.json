@@ -1,6 +1,6 @@
 {
   "name": "@get-bb/plugin-sdk",
-  "version": "0.6.205",
+  "version": "0.6.206",
   "license": "MIT",
   "homepage": "https://github.com/get-bb/bb#readme",
   "bugs": {
@@ -140,6 +140,12 @@
       "types": "./bundled-types/bb-plugin-sdk-testing-host.d.ts",
       "import": "./dist/testing/host.js",
       "default": "./dist/testing/host.js"
+    },
+    "./testing/vitest-global-setup": {
+      "source": "./src/testing/vitest-global-setup.ts",
+      "types": "./bundled-types/bb-plugin-sdk-testing-vitest-global-setup.d.ts",
+      "import": "./dist/testing/vitest-global-setup.js",
+      "default": "./dist/testing/vitest-global-setup.js"
     },
     "./internal/rpc-tags": {
       "source": "./src/internal/rpc-tags.ts",

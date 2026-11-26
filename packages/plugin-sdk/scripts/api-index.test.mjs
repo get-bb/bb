@@ -22,7 +22,8 @@ async function declaredExports(declarationFile) {
       .split(",")
       .map((name) => name.trim())
       .filter(Boolean)
-      .map((name) => name.split(/\s+as\s+/u).at(-1));
+      .map((name) => name.split(/\s+as\s+/u).at(-1))
+      .filter((name) => name !== "default");
     (match[1] === undefined ? declared.values : declared.types).push(...names);
   }
   return {

@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: { tsconfigPaths: true },
   test: {
+    globalSetup: ["@get-bb/plugin-sdk/testing/vitest-global-setup"],
     name: "bb-plugin-theme-preview",
     testTimeout: 20_000,
     include: ["**/*.test.{ts,tsx}"],

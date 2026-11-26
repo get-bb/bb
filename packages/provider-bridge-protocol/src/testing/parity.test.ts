@@ -1,4 +1,10 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -430,5 +436,49 @@ it("reports the exit and stderr when the bridge keeps crashing before initialize
     expect(fixture.launches()).toBe(2);
   } finally {
     fixture.cleanup();
+  }
+});
+
+it("removes the replay's state and workspace dirs when prepareState throws", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "bb-parity-setup-throws-test-"));
+  const seen: string[] = [];
+  try {
+    writeLane(dir, "runtime→bridge", [
+      {
+        seq: 1,
+        line: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "thread/start",
+          params: {},
+        }),
+      },
+    ]);
+    writeLane(dir, "bridge→runtime", []);
+    await expect(
+      replayRecording({
+        recordingDir: dir,
+        providerId: "test-provider",
+        bridge: {
+          command: process.execPath,
+          args: ["-e", ""],
+          cwd: dir,
+          env: {},
+        },
+        createAssembler: () => ({ assembleMessage: () => [] }),
+        profile: {
+          dialect: "json-rpc",
+          env: () => ({}),
+          prepareState: ({ stateDir, workspaceDir }) => {
+            seen.push(stateDir, workspaceDir);
+            throw new Error("prepareState failed");
+          },
+        },
+      }),
+    ).rejects.toThrow("prepareState failed");
+    expect(seen).toHaveLength(2);
+    expect(seen.filter((path) => existsSync(path))).toEqual([]);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
   }
 });

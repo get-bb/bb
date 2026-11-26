@@ -15,7 +15,7 @@ import {
   experimental_BbHttpError,
   type PluginCliRegistration,
 } from "@get-bb/plugin-sdk";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, onTestFinished, vi } from "vitest";
 import {
   createFakePluginHost,
   experimental_createDescendantPipe,
@@ -2800,6 +2800,7 @@ describe("legacy import", () => {
   it("ingests legacy rows, moves environment into agent execution, and imports scripts once", async () => {
     const db = createTestDb();
     const pluginDataDir = await mkdtemp(join(tmpdir(), "bb-auto-plugin-"));
+    onTestFinished(() => rm(pluginDataDir, { recursive: true, force: true }));
     await mkdir(join(pluginDataDir, "import"), { recursive: true });
     await writeFile(
       join(pluginDataDir, "import", "legacy-automations.json"),

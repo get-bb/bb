@@ -1,6 +1,12 @@
 import { spawnHostProcess as spawn } from "@bb/process-utils";
 import type { ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
@@ -90,6 +96,24 @@ function defaultNodeArgs(bootstrapPath: string, modulePath: string): string[] {
   return isTypeScriptPath(modulePath) ? ["--import", tsxSpecifier()] : [];
 }
 
+const defaultDataDirs = new Set<string>();
+
+function removeDefaultDataDirs(): void {
+  for (const dir of defaultDataDirs) {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {}
+  }
+  defaultDataDirs.clear();
+}
+
+function createDefaultDataDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "bb-parity-data-"));
+  if (defaultDataDirs.size === 0) process.once("exit", removeDefaultDataDirs);
+  defaultDataDirs.add(dir);
+  return dir;
+}
+
 export function resolveProviderBridgeLaunch(
   options: ResolveProviderBridgeLaunchOptions,
 ): ProviderBridgeLaunch {
@@ -100,8 +124,7 @@ export function resolveProviderBridgeLaunch(
   }
   const bootstrapPath =
     options.bootstrapPath ?? resolveProviderBridgeBootstrapPath();
-  const dataDir =
-    options.dataDir ?? mkdtempSync(join(tmpdir(), "bb-parity-data-"));
+  const dataDir = options.dataDir ?? createDefaultDataDir();
   return {
     command: process.execPath,
     args: [
@@ -379,45 +402,50 @@ async function replayRecordingAttempt(
   const profile = options.profile ?? DEFAULT_REPLAY_PROFILE;
   const recording = readBridgeRecording(options.recordingDir);
 
-  const stateDir = mkdtempSync(join(tmpdir(), "bb-parity-replay-"));
-  const workspaceDir = realpathSync(
-    mkdtempSync(join(tmpdir(), "bb-parity-ws-")),
-  );
-  const replayCommand = [
-    process.execPath,
-    REPLAY_CHILD_PATH,
-    "--recording",
-    resolve(options.recordingDir),
-    "--dialect",
-    profile.dialect,
-    "--state",
-    stateDir,
-  ];
-  const cursorPath = join(stateDir, "cursor");
-  const setCursor = (position: { run: number; seq: number } | "end"): void => {
-    writeFileSync(
-      cursorPath,
-      position === "end" ? "end" : `${position.run} ${position.seq}`,
-    );
-  };
-  const wrapperPath = join(stateDir, "replay-provider.mjs");
-  writeFileSync(
-    wrapperPath,
-    [
-      "#!/usr/bin/env node",
-      `process.argv.splice(2, 0, ${JSON.stringify(replayCommand.slice(2)).slice(1, -1)});`,
-      `await import(${JSON.stringify(pathToFileURL(REPLAY_CHILD_PATH).href)});`,
-      "",
-    ].join("\n"),
-    { mode: 0o755 },
-  );
-
-  profile.prepareState?.({ recording, stateDir, workspaceDir });
-  const launch = options.bridge;
-  const releaseStartup = await acquireReplayStartup();
+  const ownedDirs: string[] = [];
+  let releaseStartup = (): void => {};
   let spawnedChild: ChildProcess | undefined;
   let childEnded: Promise<void> | undefined;
   try {
+    const stateDir = mkdtempSync(join(tmpdir(), "bb-parity-replay-"));
+    ownedDirs.push(stateDir);
+    const createdWorkspaceDir = mkdtempSync(join(tmpdir(), "bb-parity-ws-"));
+    ownedDirs.push(createdWorkspaceDir);
+    const workspaceDir = realpathSync(createdWorkspaceDir);
+    const replayCommand = [
+      process.execPath,
+      REPLAY_CHILD_PATH,
+      "--recording",
+      resolve(options.recordingDir),
+      "--dialect",
+      profile.dialect,
+      "--state",
+      stateDir,
+    ];
+    const cursorPath = join(stateDir, "cursor");
+    const setCursor = (
+      position: { run: number; seq: number } | "end",
+    ): void => {
+      writeFileSync(
+        cursorPath,
+        position === "end" ? "end" : `${position.run} ${position.seq}`,
+      );
+    };
+    const wrapperPath = join(stateDir, "replay-provider.mjs");
+    writeFileSync(
+      wrapperPath,
+      [
+        "#!/usr/bin/env node",
+        `process.argv.splice(2, 0, ${JSON.stringify(replayCommand.slice(2)).slice(1, -1)});`,
+        `await import(${JSON.stringify(pathToFileURL(REPLAY_CHILD_PATH).href)});`,
+        "",
+      ].join("\n"),
+      { mode: 0o755 },
+    );
+
+    profile.prepareState?.({ recording, stateDir, workspaceDir });
+    const launch = options.bridge;
+    releaseStartup = await acquireReplayStartup();
     const child: ChildProcess = spawn(launch.command, launch.args, {
       cwd: launch.cwd,
       env: {
@@ -815,7 +843,7 @@ async function replayRecordingAttempt(
       await childEnded;
     }
     releaseStartup();
-    for (const directory of [stateDir, workspaceDir]) {
+    for (const directory of ownedDirs) {
       await rm(directory, {
         force: true,
         maxRetries: REPLAY_CLEANUP_RETRIES,
