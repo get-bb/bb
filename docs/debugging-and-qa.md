@@ -1128,9 +1128,9 @@ build. Built source servers load bundled plugins from
 adding a bundled plugin. The launcher sets `BB_BUILD_TOOLCHAIN` (Node, OS, and
 architecture) to partition Turbo cache entries; do not set it yourself.
 
-App production builds cache React Compiler transforms under
-`<git-common-dir>/bb-cache/react-compiler`, shared across worktrees; delete it
-while no build runs to clear it. `BABEL_SHOW_CONFIG_FOR` and
+App builds, the app dev server, and app tests cache React Compiler transforms
+under `<git-common-dir>/bb-cache/react-compiler`, shared across worktrees;
+delete it while none of them runs to clear it. `BABEL_SHOW_CONFIG_FOR` and
 `ENABLE_REACT_COMPILER_TIMINGS=1` bypass that cache. Use
 `pnpm exec turbo run build --filter=@bb/app --force` to rebuild without Turbo's
 whole-task cache.

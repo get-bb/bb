@@ -73,16 +73,17 @@ export function compilerCacheNamespace(identity: {
   return digest(JSON.stringify({ schema: 1, ...identity }));
 }
 
-export async function cachedReactCompiler(cacheDirectory?: string): Promise<
+async function cachedBabel(
+  cacheDirectory: string | undefined,
+  options: Parameters<typeof babel>[0],
+): Promise<
   Awaited<ReturnType<typeof babel>> & {
     api: {
       compilerCache: { hits: number; misses: number };
     };
   }
 > {
-  const plugin = await babel({
-    presets: [reactCompilerPreset({ panicThreshold: "all_errors" })],
-  });
+  const plugin = await babel(options);
   const transform = plugin.transform;
   if (!transform || typeof transform === "function") {
     throw new Error("Expected the Babel plugin's filtered transform hook");
@@ -107,12 +108,13 @@ export async function cachedReactCompiler(cacheDirectory?: string): Promise<
   const configResolved = plugin.configResolved;
   const root = resolve(fileURLToPath(new URL("../../", import.meta.url)));
   let cache: { directory: string; namespace: string } | null = null;
+  let building = false;
   let warned = false;
   const stats = { hits: 0, misses: 0 };
   plugin.configResolved = async function (this: void, config: ResolvedConfig) {
     await configResolved.call(this, config);
+    building = config.command === "build";
     if (
-      config.command !== "build" ||
       process.env.ENABLE_REACT_COMPILER_TIMINGS === "1" ||
       process.env.BABEL_SHOW_CONFIG_FOR
     )
@@ -230,7 +232,7 @@ export async function cachedReactCompiler(cacheDirectory?: string): Promise<
         await (
           typeof buildEnd === "function" ? buildEnd : buildEnd.handler
         ).apply(this, args);
-      if (cache)
+      if (cache && building)
         console.info(
           `React Compiler cache: ${stats.hits} hits, ${stats.misses} misses`,
         );
@@ -238,12 +240,18 @@ export async function cachedReactCompiler(cacheDirectory?: string): Promise<
   };
 }
 
-export function testReactCompiler() {
+export function cachedReactCompiler(cacheDirectory?: string) {
+  return cachedBabel(cacheDirectory, {
+    presets: [reactCompilerPreset({ panicThreshold: "all_errors" })],
+  });
+}
+
+export function testReactCompiler(cacheDirectory?: string) {
   const preset = reactCompilerPreset();
   const pluginSources = resolve(
     fileURLToPath(new URL("../../plugins/", import.meta.url)),
   ).replaceAll("\\", "/");
-  return babel({
+  return cachedBabel(cacheDirectory, {
     presets: [
       {
         ...preset,
