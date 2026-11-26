@@ -88,6 +88,7 @@ export const FUZZY_MATCH_QUERY_MAX_LENGTH = 256;
 
 const STRUCTURED_QUERY_SEGMENT_MAX_COUNT = 8;
 const IMPLICIT_DIRECTORY_QUERY_MIN_LENGTH = 2;
+const FZF_MAX_SCORE_PER_QUERY_CHAR = 32;
 
 enum PathIntentRank {
   PlainFzf = 0,
@@ -549,9 +550,10 @@ function isOnlyPathSeparators(query: string): boolean {
   return query.length > 0 && query.split("/").every((segment) => !segment);
 }
 
-function rankPlainQueryMatches<T>(
+function getPlainFzfMatches<T>(
   items: readonly NormalizedPathItem<T>[],
   query: string,
+  relevanceBonus: number,
 ): RankedPathMatch<T>[] {
   const tiebreakers: Tiebreaker<NormalizedPathItem<T>>[] = [
     byPathStartAsc,
@@ -566,22 +568,86 @@ function rankPlainQueryMatches<T>(
 
   const matches: FzfResultItem<NormalizedPathItem<T>>[] = matcher.find(query);
 
-  return matches
-    .map((match) => ({
-      item: match.item.item,
-      path: match.item.path,
-      positions: [...match.positions].sort((left, right) => left - right),
-      score:
-        getRankedScore(PathIntentRank.PlainFzf, match.score) +
-        getPathRelevanceBonus(match.item.path, query),
-      start: match.start,
+  return matches.map((match) => ({
+    item: match.item.item,
+    path: match.item.path,
+    positions: [...match.positions].sort((left, right) => left - right),
+    score:
+      getRankedScore(PathIntentRank.PlainFzf, match.score) + relevanceBonus,
+    start: match.start,
+  }));
+}
+
+function getMaxFzfScore(query: string): number {
+  return query.length * FZF_MAX_SCORE_PER_QUERY_CHAR;
+}
+
+function getMaxStructuredPathScore(query: string): number {
+  return getRankedScore(
+    PathIntentRank.StructuredPath,
+    2 * getMaxFzfScore(query) +
+      STRUCTURED_QUERY_SEGMENT_MAX_COUNT *
+        PATH_INTENT_SCORE.consecutiveSegment +
+      PATH_INTENT_SCORE.leafSegment,
+  );
+}
+
+function isRankedAboveScore<T>(
+  matches: readonly RankedPathMatch<T>[],
+  limit: number,
+  score: number,
+): boolean {
+  const limitMatch = matches[limit - 1];
+  return limitMatch !== undefined && limitMatch.score > score;
+}
+
+function rankWithPlainQueryMatches<T>(
+  items: readonly NormalizedPathItem<T>[],
+  query: string,
+  limit: number,
+  higherTierMatches: readonly RankedPathMatch<T>[],
+): RankedPathMatch<T>[] {
+  const candidates = items
+    .map((item) => ({
+      item,
+      relevanceBonus: getPathRelevanceBonus(item.path, query),
     }))
-    .sort(compareRankedMatches);
+    .sort((left, right) => right.relevanceBonus - left.relevanceBonus);
+  const maxFzfScore = getMaxFzfScore(query);
+  let topMatches = mergeRankedMatches(higherTierMatches).slice(0, limit);
+
+  let groupStart = 0;
+  while (groupStart < candidates.length) {
+    const { relevanceBonus } = candidates[groupStart];
+    if (isRankedAboveScore(topMatches, limit, relevanceBonus + maxFzfScore)) {
+      break;
+    }
+    let groupEnd = groupStart + 1;
+    while (
+      groupEnd < candidates.length &&
+      candidates[groupEnd].relevanceBonus === relevanceBonus
+    ) {
+      groupEnd += 1;
+    }
+    const groupMatches = getPlainFzfMatches(
+      candidates.slice(groupStart, groupEnd).map((candidate) => candidate.item),
+      query,
+      relevanceBonus,
+    );
+    topMatches = mergeRankedMatches(groupMatches.concat(topMatches)).slice(
+      0,
+      limit,
+    );
+    groupStart = groupEnd;
+  }
+
+  return topMatches;
 }
 
 function rankPathQueryMatches<T>(
   items: readonly NormalizedPathItem<T>[],
   query: string,
+  limit: number,
 ): RankedPathMatch<T>[] {
   if (isOnlyPathSeparators(query)) {
     return [];
@@ -593,20 +659,35 @@ function rankPathQueryMatches<T>(
       return mergeRankedMatches(exactPrefixMatches);
     }
 
-    const structuredMatches = getStructuredPathMatches(items, query);
     if (exactPrefixMatches.length > 0) {
-      return mergeRankedMatches(exactPrefixMatches.concat(structuredMatches));
+      const rankedExactPrefixMatches = mergeRankedMatches(exactPrefixMatches);
+      if (
+        isRankedAboveScore(
+          rankedExactPrefixMatches,
+          limit,
+          getMaxStructuredPathScore(query),
+        )
+      ) {
+        return rankedExactPrefixMatches;
+      }
+      return mergeRankedMatches(
+        exactPrefixMatches.concat(getStructuredPathMatches(items, query)),
+      );
     }
 
-    return mergeRankedMatches(
-      rankPlainQueryMatches(items, query).concat(structuredMatches),
+    return rankWithPlainQueryMatches(
+      items,
+      query,
+      limit,
+      getStructuredPathMatches(items, query),
     );
   }
 
-  return mergeRankedMatches(
-    rankPlainQueryMatches(items, query).concat(
-      getDirectorySegmentPrefixPathMatches(items, query),
-    ),
+  return rankWithPlainQueryMatches(
+    items,
+    query,
+    limit,
+    getDirectorySegmentPrefixPathMatches(items, query),
   );
 }
 
@@ -845,7 +926,7 @@ export function fuzzyMatchPaths<T>(
   }
 
   return rankedMatchesToFuzzyMatches(
-    rankPathQueryMatches(normalizedItems, normalizedQuery),
+    rankPathQueryMatches(normalizedItems, normalizedQuery, args.limit),
     args.limit,
   );
 }
