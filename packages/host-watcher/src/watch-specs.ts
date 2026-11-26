@@ -8,6 +8,7 @@ import type {
 import type { WorkspaceStatusChangeEvent } from "./watch-status-types.js";
 
 export interface WatchSubscriptionSpec {
+  dropIgnoredPaths?: (changedPaths: string[]) => Promise<string[]>;
   includeSharedGitRefs?: boolean;
   kind: "common-dir" | "git-dir" | "workspace-root";
   options?: ParcelWatcherSubscribeOptions;
