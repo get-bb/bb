@@ -60,6 +60,7 @@ export const claudeThreadStartParamsSchema = z.object({
   disable1MContext: z.boolean(),
   artifactsEnabled: z.boolean(),
   sandboxEnabled: z.boolean(),
+  codeModeEnabled: z.boolean(),
   fullAccessApprovalsEnabled: z.boolean(),
   commandDescriptionsEnabled: z.boolean().optional(),
   memoryEnabled: z.boolean().optional(),

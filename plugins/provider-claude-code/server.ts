@@ -53,6 +53,13 @@ export default function plugin(bb: BbPluginApi) {
         "Run Bash commands in Claude Code's sandbox in Accept Edits and Approve for me modes. Turn off to use Claude Code's own command approvals and sandbox settings instead.",
       default: true,
     },
+    codeModeEnabled: {
+      type: "boolean",
+      label: "Code Mode (experimental)",
+      description:
+        "Start new Claude Code threads in Claude Code's experimental Code Mode, where Claude writes JavaScript that makes several tool calls in one step. Needs Claude Code 2.1.323 or later, an Opus 5.5, Sonnet 5.5, Haiku 5.5 or Fable 5.2 model, and the Anthropic API. bb's sandbox covers only shell commands run from that code. Claude in Chrome is unavailable in Code Mode. Existing threads keep their mode, and Code Mode threads stay on a supported model.",
+      default: false,
+    },
     fullAccessApprovalsEnabled: {
       type: "boolean",
       label: "Approvals in Full Access",
@@ -131,6 +138,7 @@ export default function plugin(bb: BbPluginApi) {
         disable1MContext: context.settings.disable1MContext === true,
         artifactsEnabled: context.settings.artifactsEnabled === true,
         sandboxEnabled: context.settings.sandboxEnabled !== false,
+        codeModeEnabled: context.settings.codeModeEnabled === true,
         fullAccessApprovalsEnabled:
           context.settings.fullAccessApprovalsEnabled === true,
         commandDescriptionsEnabled:

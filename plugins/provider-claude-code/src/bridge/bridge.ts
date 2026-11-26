@@ -65,6 +65,7 @@ import {
   type SdkSessionOptions,
 } from "./sdk-session.js";
 import { MissingClaudeCliError } from "./missing-cli-error.js";
+import { readClaudeSessionCodeMode } from "./session-code-mode.js";
 import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
 import {
   createClaudeCodeBridgeModelListMemo,
@@ -1083,6 +1084,7 @@ function nextSessionSerial(): number {
 
 function toSessionConstructionConfig(
   params: SessionConstructionParams,
+  codeMode: boolean,
 ): SessionConstructionConfig {
   return {
     config: params.config,
@@ -1099,6 +1101,7 @@ function toSessionConstructionConfig(
       permissionScope: params.permissionScope,
       plugins: params.plugins,
       sandboxEnabled: params.sandboxEnabled,
+      codeMode,
     },
   };
 }
@@ -1469,12 +1472,13 @@ function buildSessionTrackingHooks(
 
 function buildTrackedSessionOptions(
   params: SessionConstructionParams,
+  codeMode: boolean,
   env: NodeJS.ProcessEnv,
   threadIdRef: ThreadIdRef,
 ): SdkSessionOptions {
   const sessionOptions = buildSessionOptions(
     {
-      ...toSessionConstructionConfig(params).sessionOptions,
+      ...toSessionConstructionConfig(params, codeMode).sessionOptions,
       ...toInitialLiveSessionSettings(params),
       permissionMode: params.approvedPlanPermissionMode,
     },
@@ -2497,11 +2501,17 @@ function attachThreadSession(
   id: string | number,
   params: SessionConstructionParams,
   providerThreadId: string,
-  resume: boolean,
+  launch: { resume: boolean; codeMode: boolean },
 ): void {
+  const { resume, codeMode } = launch;
   const threadIdRef = { current: params.threadId };
   const env = buildSessionEnv(readConfigEnvOverrides(params.config));
-  const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
+  const sessionOptions = buildTrackedSessionOptions(
+    params,
+    codeMode,
+    env,
+    threadIdRef,
+  );
   if (!resume) {
     sessionOptions.sessionId = providerThreadId;
   }
@@ -2521,7 +2531,7 @@ function attachThreadSession(
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
     providerThreadId,
-    sessionConstructionConfig: toSessionConstructionConfig(params),
+    sessionConstructionConfig: toSessionConstructionConfig(params, codeMode),
     sessionOptions,
     threadIdRef,
   });
@@ -2546,7 +2556,10 @@ async function handleThreadStart(
     });
   }
 
-  attachThreadSession(id, params, randomUUID(), false);
+  attachThreadSession(id, params, randomUUID(), {
+    resume: false,
+    codeMode: params.codeModeEnabled,
+  });
 }
 
 async function handleThreadResume(
@@ -2563,7 +2576,21 @@ async function handleThreadResume(
     );
     return;
   }
-  const sessionConstructionConfig = toSessionConstructionConfig(params);
+  const attached = threadAttachments.get(threadId);
+  const codeMode =
+    attached?.providerThreadId === requestedProviderThreadId
+      ? attached.sessionConstructionConfig.sessionOptions.codeMode
+      : await readClaudeSessionCodeMode({
+          configDirectory: claudeConfigDirectory(
+            buildSessionEnv(readConfigEnvOverrides(params.config)),
+            params.cwd,
+          ),
+          sessionId: requestedProviderThreadId,
+        });
+  const sessionConstructionConfig = toSessionConstructionConfig(
+    params,
+    codeMode,
+  );
 
   const existing = threadAttachments.get(threadId);
   const existingSession = existing?.residentSession;
@@ -2611,7 +2638,10 @@ async function handleThreadResume(
     });
   }
 
-  attachThreadSession(id, params, requestedProviderThreadId, true);
+  attachThreadSession(id, params, requestedProviderThreadId, {
+    resume: true,
+    codeMode,
+  });
 }
 
 async function handleThreadFork(
@@ -2629,13 +2659,14 @@ async function handleThreadFork(
     });
   }
 
+  const configDirectory = claudeConfigDirectory(
+    buildSessionEnv(readConfigEnvOverrides(params.config)),
+    params.cwd,
+  );
   let forkedProviderThreadId: string;
   try {
     forkedProviderThreadId = await forkClaudeSession({
-      configDirectory: claudeConfigDirectory(
-        buildSessionEnv(readConfigEnvOverrides(params.config)),
-        params.cwd,
-      ),
+      configDirectory,
       sourceSessionId: params.sourceProviderThreadId,
       upToMessageId: params.sourceProviderCheckpointId,
     });
@@ -2645,7 +2676,13 @@ async function handleThreadFork(
     return;
   }
 
-  attachThreadSession(id, params, forkedProviderThreadId, true);
+  attachThreadSession(id, params, forkedProviderThreadId, {
+    resume: true,
+    codeMode: await readClaudeSessionCodeMode({
+      configDirectory,
+      sessionId: forkedProviderThreadId,
+    }),
+  });
 }
 
 async function toClaudeSessionParams(

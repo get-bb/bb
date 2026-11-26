@@ -610,6 +610,7 @@ describe("thread runtime config", () => {
       expect(claudeCode.options.providerOptions).toEqual({
         artifactsEnabled: false,
         chromeEnabled: false,
+        codeModeEnabled: false,
         commandDescriptionsEnabled: false,
         disable1MContext: false,
         fullAccessApprovalsEnabled: false,
