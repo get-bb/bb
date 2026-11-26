@@ -813,17 +813,7 @@ export async function prepareCurrentBranchRead(
   const target = getPullRequestTarget(args.localBranch, branchConfig.config);
   if (target.outcome === "unavailable") return preparedResult(target);
   if (target.outcome === "pull-request-ref")
-    return prepareRead(
-      {
-        kind: "url",
-        host: new URL(target.url).hostname,
-        url: target.url,
-        cursor: null,
-      },
-      args.cwd,
-      sanitizeInheritedChildProcessEnv({ env: process.env }),
-      args.refresh,
-    );
+    return prepareUrlRead(target.url, args.cwd);
   const branchTarget = resolveBranchReadTarget(
     args.localBranch,
     branchConfig.config,
