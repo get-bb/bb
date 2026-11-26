@@ -82,6 +82,7 @@ const linearApiKeySetting = {
 
 interface RenderSidebarOptions {
   activePluginId?: string | null;
+  backTo?: string | null;
   pluginSettingSearch?: Partial<SettingsSidebarPluginSettingSearch>;
 }
 
@@ -99,6 +100,7 @@ function LocationProbe() {
 
 function renderSidebar({
   activePluginId = null,
+  backTo = null,
   pluginSettingSearch,
 }: RenderSidebarOptions = {}) {
   return render(
@@ -107,7 +109,7 @@ function renderSidebar({
       <AppCommandProvider>
         <SidebarProvider>
           <SettingsSidebarContent
-            backTo={null}
+            backTo={backTo}
             isResizing={false}
             navigation={{
               activePluginId,
@@ -153,6 +155,14 @@ describe("SettingsSidebarContent plugin navigation", () => {
     expect(
       screen.getByRole("link", { name: "Linear" }).getAttribute("aria-current"),
     ).toBe("page");
+  });
+
+  it("keeps the Settings section label and accessible name when rendered with a back row", () => {
+    renderSidebar({ backTo: "/" });
+    expect(screen.getByRole("region", { name: "Settings" })).toBe(
+      screen.getByTestId("settings-sidebar-body"),
+    );
+    expect(screen.getByText("Settings")).toBeTruthy();
   });
 });
 

@@ -170,7 +170,7 @@ Slot props contracts (versioned, additive-only):
   for example a list of the panel's items. BB renders it in the same section
   sidebar as Settings, Plugins and Skills: it keeps the navigation rail, top
   chrome and resize handle, and in the Top list layout adds a "Back to app"
-  row and the panel title. Back to app (Escape) returns to the last app page,
+  row. Back to app (Escape) returns to the last app page,
   so call `preventDefault()` on Escape your own UI handles. Navigate with
   `useBbNavigate()`; on compact screens BB closes the drawer when the sidebar
   navigates. Other routes keep their usual sidebar. A throw shows a crash

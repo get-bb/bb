@@ -560,7 +560,7 @@ describe("navigation panel sidebar composition", () => {
       "/plugins/home/home/dashboard",
     );
   });
-  it("gives the panel sidebar the same row back to the app as Settings in the top list layout", async () => {
+  it("gives the panel sidebar the back row without a redundant title label in the top list layout while preserving its accessible name", async () => {
     await registerNavigationPlugin();
     const store = createStore();
     store.set(sidebarNavigationProviderAtom, "navigation/top-list");
@@ -573,10 +573,20 @@ describe("navigation panel sidebar composition", () => {
     expect(
       screen.getByRole("link", { name: "Back to app" }).getAttribute("href"),
     ).toBe("/");
-    expect(screen.getByText("Home")).toBeTruthy();
+    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.getByRole("region", { name: "Home" })).toBe(
+      screen.getByTestId("plugin-sidebar-body"),
+    );
     expect(
       screen.getByRole("navigation", { name: "Home navigation" }).textContent,
     ).toBe("home:inbox");
+  });
+  it("exposes the panel title as the sidebar region accessible name in the rail layout", () => {
+    render(panelSidebarTree({ target: panelSidebar("inbox") }));
+    expect(screen.queryByText("Home")).toBeNull();
+    expect(screen.getByRole("region", { name: "Home" })).toBe(
+      screen.getByTestId("plugin-sidebar-body"),
+    );
   });
   it("keeps the scoped body during compact drawer closing and restores native navigation after settling", () => {
     vi.useFakeTimers();

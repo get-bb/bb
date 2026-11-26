@@ -1090,7 +1090,7 @@ export interface PluginNavPanelRegistration {
    * Sidebar shown instead of the thread list while this panel's route is
    * active, in the same section sidebar as Settings, Plugins and Skills. BB
    * keeps the navigation rail, top chrome and resize handle; in the top-list
-   * layout it adds a "Back to app" row and the panel title, and Back to app
+   * layout it adds a "Back to app" row, and Back to app
    * (Escape) returns to the last app page. Receives the page's current
    * subPath. Other routes keep their usual sidebar. A crash shows a crash
    * notice until the subPath or plugin generation changes.

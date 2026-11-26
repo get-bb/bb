@@ -105,6 +105,7 @@ export function SectionSidebar({
   headerSlot,
   isResizing,
   onResizeMouseDown,
+  showTitleLabel = true,
   testIdPrefix,
   title,
 }: {
@@ -113,13 +114,15 @@ export function SectionSidebar({
   headerSlot?: ReactNode;
   isResizing: boolean;
   onResizeMouseDown: (event: ReactMouseEvent<HTMLDivElement>) => void;
+  showTitleLabel?: boolean;
   testIdPrefix: string;
   title: string;
 }) {
   const isFramed = useIsSidebarFramed();
   const closeOnMobile = useCloseMobileSidebar();
   return (
-    <div
+    <section
+      aria-label={title}
       data-testid={`${testIdPrefix}-sidebar-body`}
       className="flex min-h-0 min-w-0 flex-1 flex-col"
     >
@@ -151,7 +154,7 @@ export function SectionSidebar({
               "pb-[max(0px,calc(var(--bb-app-chrome-row-height)/2_-_1px_-_var(--bb-sidebar-row-height)/2))]",
           )}
         >
-          {backTo === null ? null : (
+          {backTo === null || !showTitleLabel ? null : (
             <SectionSidebarLabel>{title}</SectionSidebarLabel>
           )}
           <RouteNavigationCallbackContext.Provider value={closeOnMobile}>
@@ -164,6 +167,6 @@ export function SectionSidebar({
         isResizing={isResizing}
         onMouseDown={onResizeMouseDown}
       />
-    </div>
+    </section>
   );
 }
