@@ -7,7 +7,6 @@ export {
 } from "./LaunchSplash";
 export { PaletteProvider, ServerPaletteSync } from "./PaletteProvider";
 export { ProfilesProvider, useProfiles } from "./ProfilesProvider";
-export { ThreadOpenSignalHandler } from "./ThreadOpenSignalHandler";
 export { ShareIntentHandler } from "./ShareIntentHandler";
 export { useAppBoot } from "./useAppBoot";
 export {

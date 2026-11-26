@@ -10,6 +10,7 @@ import {
   type NativeScreen,
   type NativeCapability,
   type NativeShellHandshake,
+  type PageCapability,
   type SafeAreaInsets,
   type ShellToPageEvent,
 } from "@bb/mobile-bridge";
@@ -141,6 +142,12 @@ export function canOpenNativeScreen(): boolean {
 
 export function shellReportReady(path: string): void {
   getNativeShell()?.post({ type: "ready", path });
+}
+
+export function shellReportCapabilities(
+  capabilities: readonly PageCapability[],
+): void {
+  getNativeShell()?.post({ type: "capabilities", capabilities });
 }
 
 export function shellReportPath(title: string, path: string): void {

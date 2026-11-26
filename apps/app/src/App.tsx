@@ -22,7 +22,7 @@ import { QuickCreateProjectProvider } from "./hooks/useQuickCreateProject";
 import { RouteNavigationProvider } from "./components/ui/app-route-anchor";
 import { RouteNavigationIndicator } from "./components/ui/route-navigation-indicator";
 import { AppNavigationUrlHost } from "./lib/url-open-routing";
-import { NativeShellReporter } from "./lib/native-shell";
+import { NativeShellNavigator, NativeShellReporter } from "./lib/native-shell";
 import { UiPreferencesSync } from "@/lib/ui-preferences/UiPreferencesSync";
 import { AppFileExternalNavigationHost } from "./components/plugin/AppFileExternalNavigationHost";
 import { pluginDetailKeyFromRoute } from "./components/plugin/plugin-detail-key";
@@ -485,6 +485,7 @@ export function App() {
             <AppFileExternalNavigationHost>
               <HashNavigationScroll />
               <NativeShellReporter />
+              <NativeShellNavigator />
               <UiPreferencesSync />
               <Routes>
                 <Route

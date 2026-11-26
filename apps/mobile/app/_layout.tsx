@@ -13,7 +13,6 @@ import {
   ServerPaletteSync,
   QuickActionsHandler,
   ShareIntentHandler,
-  ThreadOpenSignalHandler,
   useAppBoot,
 } from "@/app-shell";
 import { PushNotificationsHost } from "@/notifications";
@@ -43,7 +42,6 @@ export default function RootLayout() {
                   <ServerPaletteSync />
                   <SheetProvider>
                     <RootNavigator />
-                    <ThreadOpenSignalHandler />
                     <ShareIntentHandler />
                     <QuickActionsHandler />
                     <PushNotificationsHost />

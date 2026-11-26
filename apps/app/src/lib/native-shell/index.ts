@@ -7,4 +7,5 @@ export {
   shellOpenNative,
   shellSetBadge,
 } from "./native-shell";
+export { NativeShellNavigator } from "./NativeShellNavigator";
 export { NativeShellReporter } from "./NativeShellReporter";

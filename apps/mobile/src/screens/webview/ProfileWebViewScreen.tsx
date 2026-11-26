@@ -15,6 +15,7 @@ import {
 import {
   useCallback,
   useEffect,
+  useEffectEvent,
   useMemo,
   useRef,
   useState,
@@ -35,6 +36,7 @@ import {
   isShellNavigation,
   resolveOpenWindowAction,
   resolveShellLoadPath,
+  resolveShellOpen,
   resolveShellScreenState,
   revealsShellFailure,
   SHELL_ORIGIN_WHITELIST,
@@ -71,31 +73,25 @@ export function ProfileWebViewScreen() {
   const requestedProfileId = firstParam(params.profileId);
   const requestedPath = firstParam(params.path);
 
-  useEffect(() => {
-    if (requestedProfileId === undefined) return;
-    if (activeProfile?.id === requestedProfileId) return;
-    if (!profiles.some((profile) => profile.id === requestedProfileId)) return;
-    void setActiveProfile(requestedProfileId);
-  }, [activeProfile?.id, profiles, requestedProfileId, setActiveProfile]);
-
   const profile = activeProfile;
   const session = connection?.session ?? IDLE_SESSION;
   const webViewRef = useRef<WebView>(null);
   const canGoBack = useRef(false);
+  const pageNavigates = useRef(false);
   const [load, setLoad] = useState<ShellLoadPhase>({ kind: "loading" });
   const [reloadKey, setReloadKey] = useState(0);
+  const [openPath, setOpenPath] = useState<string | null>(null);
   const [visited, setVisited] = useState<{
     scope: string;
     path: string;
   } | null>(null);
 
   const loadScope =
-    profile === null
-      ? null
-      : `${profile.id}#${profile.serverUrl}#${requestedPath ?? ""}`;
+    profile === null ? null : `${profile.id}#${profile.serverUrl}`;
 
   useEffect(() => {
     canGoBack.current = false;
+    pageNavigates.current = false;
   }, [loadScope, reloadKey]);
 
   useFocusEffect(
@@ -116,12 +112,12 @@ export function ProfileWebViewScreen() {
   const sourceUrl = useMemo(() => {
     if (profile === null) return null;
     const path = resolveShellLoadPath({
+      openPath,
       visitedPath:
         visited !== null && visited.scope === loadScope ? visited.path : null,
-      requestedPath,
     });
     return buildShellUrl(profile.serverUrl, path);
-  }, [loadScope, profile, requestedPath, visited]);
+  }, [loadScope, openPath, profile, visited]);
 
   const rememberPath = useCallback(
     (path: string) => {
@@ -146,10 +142,14 @@ export function ProfileWebViewScreen() {
   const bridge = useShellBridge(webViewRef, {
     onReady: (path) => {
       setLoad({ kind: "ready" });
+      setOpenPath(null);
       revealApp();
       rememberPath(path);
     },
     onPath: rememberPath,
+    onCapabilities: (capabilities) => {
+      pageNavigates.current = capabilities.includes("navigate");
+    },
     onOpenNative: (screen) => {
       if (screen === "device-settings") openDeviceSettings();
       if (screen === "add-server") router.push("/settings/servers/add");
@@ -164,6 +164,40 @@ export function ProfileWebViewScreen() {
       });
     },
   });
+
+  const openRequest = useEffectEvent(
+    (profileId: string | undefined, path: string | undefined) => {
+      const switchingProfile =
+        profileId !== undefined &&
+        profileId !== activeProfile?.id &&
+        profiles.some((candidate) => candidate.id === profileId);
+      if (switchingProfile) void setActiveProfile(profileId);
+      if (path === undefined || path.length === 0) return;
+      const action = resolveShellOpen({
+        switchingProfile,
+        load,
+        pageNavigates: pageNavigates.current,
+      });
+      if (action === "navigate") {
+        bridge.send({ type: "navigate", path });
+        rememberPath(path);
+        return;
+      }
+      setOpenPath(path);
+      if (switchingProfile) return;
+      setLoad({ kind: "loading" });
+      setReloadKey((value) => value + 1);
+    },
+  );
+
+  useEffect(() => {
+    if (status !== "ready") return;
+    if (requestedProfileId === undefined && requestedPath === undefined) {
+      return;
+    }
+    router.setParams({ profileId: undefined, path: undefined });
+    openRequest(requestedProfileId, requestedPath);
+  }, [requestedPath, requestedProfileId, router, status]);
 
   const servers = useMemo(
     () => bridgeServersForProfiles(profiles, activeProfile?.id ?? null),
@@ -428,6 +462,9 @@ export function ProfileWebViewScreen() {
                 }
               }
         }
+        onLoadStart={() => {
+          pageNavigates.current = false;
+        }}
         onNavigationStateChange={(state) => {
           canGoBack.current = state.canGoBack;
           const path = shellPathFromUrl(state.url, profile.serverUrl);

@@ -6,6 +6,7 @@ export {
 } from "./shell-url";
 export {
   resolveShellLoadPath,
+  resolveShellOpen,
   resolveShellScreenState,
   revealsShellFailure,
   shouldReloadForSession,
