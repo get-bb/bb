@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { ExperimentalThreadInfoProps } from "@get-bb/plugin-sdk";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
@@ -12,59 +11,65 @@ type ThreadInfoRegistration =
   | PluginSlotSnapshot["threadInfoRows"][number]
   | PluginSlotSnapshot["threadInfoSections"][number];
 
-function sortThreadInfoEntries<Entry extends ThreadInfoRegistration>(
-  entries: readonly Entry[],
-): Entry[] {
-  return entries
+function useRevealedThreadInfoEntries<Entry extends ThreadInfoRegistration>(
+  registrations: readonly Entry[],
+): { entries: readonly Entry[]; pending: boolean } {
+  const sorted = registrations
     .map((entry, index) => ({ entry, index }))
     .sort((left, right) =>
       compareGroupedPlacement(left.entry, left.index, right.entry, right.index),
     )
     .map(({ entry }) => entry);
+  const entries = useOrderedReveal(sorted, PLUGIN_SLOT_REVEAL);
+  return { entries, pending: entries.length < sorted.length };
 }
 
 export function ThreadInfoRows(props: ExperimentalThreadInfoProps) {
-  const threadInfoRows = usePluginSlotKind("threadInfoRows");
-  return useOrderedReveal(
-    sortThreadInfoEntries(threadInfoRows),
-    PLUGIN_SLOT_REVEAL,
-  ).map(({ pluginId, id, generation, component: Component }) => (
-    <PluginSlotMount
-      key={`${pluginId}/${id}/${generation}/${props.threadId}`}
-      pluginId={pluginId}
-      slotKind="threadInfoRow"
-      slotId={id}
-      instanceId={props.threadId}
-      crashFallback={null}
-    >
-      <Suspense fallback={PENDING_ENTRY}>
-        <Component {...props} />
-      </Suspense>
-    </PluginSlotMount>
-  ));
+  const { entries, pending } = useRevealedThreadInfoEntries(
+    usePluginSlotKind("threadInfoRows"),
+  );
+  return (
+    <>
+      {entries.map(({ pluginId, id, generation, component: Component }) => (
+        <PluginSlotMount
+          key={`${pluginId}/${id}/${generation}/${props.threadId}`}
+          pluginId={pluginId}
+          slotKind="threadInfoRow"
+          slotId={id}
+          instanceId={props.threadId}
+          crashFallback={null}
+        >
+          <Component {...props} />
+        </PluginSlotMount>
+      ))}
+      {pending ? PENDING_ENTRY : null}
+    </>
+  );
 }
 
 export function ThreadInfoSections(props: ExperimentalThreadInfoProps) {
-  const threadInfoSections = usePluginSlotKind("threadInfoSections");
-  return useOrderedReveal(
-    sortThreadInfoEntries(threadInfoSections),
-    PLUGIN_SLOT_REVEAL,
-  ).map(({ pluginId, id, generation, component: Component }) => (
-    <InfoSectionCollapseIdContext.Provider
-      key={`${pluginId}/${id}/${generation}/${props.threadId}`}
-      value={`${pluginId}/${id}`}
-    >
-      <PluginSlotMount
-        pluginId={pluginId}
-        slotKind="threadInfoSection"
-        slotId={id}
-        instanceId={props.threadId}
-        crashFallback={null}
-      >
-        <Suspense fallback={PENDING_ENTRY}>
-          <Component {...props} />
-        </Suspense>
-      </PluginSlotMount>
-    </InfoSectionCollapseIdContext.Provider>
-  ));
+  const { entries, pending } = useRevealedThreadInfoEntries(
+    usePluginSlotKind("threadInfoSections"),
+  );
+  return (
+    <>
+      {entries.map(({ pluginId, id, generation, component: Component }) => (
+        <InfoSectionCollapseIdContext.Provider
+          key={`${pluginId}/${id}/${generation}/${props.threadId}`}
+          value={`${pluginId}/${id}`}
+        >
+          <PluginSlotMount
+            pluginId={pluginId}
+            slotKind="threadInfoSection"
+            slotId={id}
+            instanceId={props.threadId}
+            crashFallback={null}
+          >
+            <Component {...props} />
+          </PluginSlotMount>
+        </InfoSectionCollapseIdContext.Provider>
+      ))}
+      {pending ? PENDING_ENTRY : null}
+    </>
+  );
 }

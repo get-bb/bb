@@ -53,12 +53,15 @@ import {
   type CollectedSidebarFooterItem,
   type CollectedSidebarNavigationRegistration,
   type CollectedThreadContextCardSectionRegistration,
+  collectPluginAppRegistrations,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 const coreMessageMetadata = collectCoreContributionSlots(
   coreMessageTime,
   "messageMetadata",
 );
+export const coreThreadInfoRegistrations =
+  collectPluginAppRegistrations(coreThreadInfo);
 const coreTabs = collectCoreContributionSlots(coreThreadInfo, "tabs");
 const coreThreadInfoRows = collectCoreContributionSlots(
   coreThreadInfo,

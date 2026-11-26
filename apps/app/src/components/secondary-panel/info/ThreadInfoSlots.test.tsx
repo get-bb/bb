@@ -10,6 +10,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { settleLazyModules } from "@/test/lazy-modules";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
 import { InfoSection } from "./info-list";
 import { ThreadInfoRows, ThreadInfoSections } from "./ThreadInfoSlots";
@@ -64,9 +65,9 @@ function registerEarlierPlugin() {
   );
 }
 
-function renderInfo() {
+async function renderInfo() {
   const { wrapper: Wrapper } = createQueryClientTestHarness();
-  return render(
+  const view = render(
     <Wrapper>
       <MemoryRouter>
         <dl>
@@ -84,6 +85,8 @@ function renderInfo() {
       </MemoryRouter>
     </Wrapper>,
   );
+  await settleLazyModules();
+  return view;
 }
 
 afterEach(() => {
@@ -95,7 +98,7 @@ afterEach(() => {
 });
 
 describe("thread Info slots", () => {
-  it("places rows and sections by group, then order, earlier registration first on a tie", () => {
+  it("places rows and sections by group, then order, earlier registration first on a tie", async () => {
     registerEarlierPlugin();
     setPluginSlotRegistrations(
       "demo",
@@ -122,7 +125,7 @@ describe("thread Info slots", () => {
         ],
       }),
     );
-    renderInfo();
+    await renderInfo();
 
     expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
       [
@@ -141,7 +144,7 @@ describe("thread Info slots", () => {
     expect(screen.getByText("Plugin between for thr_1")).toBeTruthy();
   });
 
-  it("drops only a crashing plugin row or section", () => {
+  it("drops only a crashing plugin row or section", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
     registerEarlierPlugin();
     setPluginSlotRegistrations(
@@ -153,7 +156,7 @@ describe("thread Info slots", () => {
         ],
       }),
     );
-    renderInfo();
+    await renderInfo();
 
     expect(screen.getAllByRole("term").map((term) => term.textContent)).toEqual(
       ["Alpha first", "Alpha second", "Alpha later"],
@@ -162,7 +165,7 @@ describe("thread Info slots", () => {
     expect(screen.queryByText(/demo/)).toBeNull();
   });
 
-  it("collapses each section on its own, keyed by registration", () => {
+  it("collapses each section on its own, keyed by registration", async () => {
     registerEarlierPlugin();
     setPluginSlotRegistrations(
       "demo",
@@ -177,7 +180,7 @@ describe("thread Info slots", () => {
         ],
       }),
     );
-    renderInfo();
+    await renderInfo();
 
     fireEvent.click(screen.getByRole("button", { name: /^Plugin/ }));
 

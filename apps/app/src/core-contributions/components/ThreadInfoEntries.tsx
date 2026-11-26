@@ -22,10 +22,10 @@ import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { InfoListRow, InfoRowTime } from "@bb/shared-ui/info-list-row";
 import { OptionPicker } from "@bb/shared-ui/option-picker";
 import { ThreadUnarchiveButton } from "@bb/shared-ui/thread-unarchive-button";
-import DirectoryRow from "./directory-row";
-import EnvironmentRow from "./environment-row";
-import ParentRow from "./parent-row";
-import ThreadStorageSection from "./thread-storage-section";
+import DirectoryRow from "../thread-info/directory-row";
+import EnvironmentRow from "../thread-info/environment-row";
+import ParentRow from "../thread-info/parent-row";
+import ThreadStorageSection from "../thread-info/thread-storage-section";
 
 const PARENT_NOTIFICATIONS_OPTIONS = [
   {

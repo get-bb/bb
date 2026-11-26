@@ -1,52 +1,54 @@
-import { lazy, type ComponentType } from "react";
 import {
   experimental_THREAD_INFO_ROW_GROUPS as ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS as SECTION_GROUPS,
 } from "@get-bb/plugin-sdk";
-import type {
-  ExperimentalThreadInfoProps,
-  ExperimentalThreadTabProps,
-} from "@get-bb/plugin-sdk";
+import type { ExperimentalThreadTabProps } from "@get-bb/plugin-sdk";
 import {
   definePluginApp,
+  experimental_lazy,
   experimental_ThreadInfo as ThreadInfo,
 } from "@get-bb/plugin-sdk/app";
 
-type InfoComponents = (typeof import("./thread-info/components"))["default"];
+const loadEntries = () => import("./components/ThreadInfoEntries");
 
-let componentsPromise: Promise<InfoComponents> | null = null;
-
-function loadComponents(): Promise<InfoComponents> {
-  componentsPromise ??= import("./thread-info/components").then(
-    (module) => module.default,
-  );
-  return componentsPromise;
-}
-
-function lazyComponent<Name extends keyof InfoComponents>(name: Name) {
-  const Lazy = lazy(async () => {
-    const component: ComponentType<ExperimentalThreadInfoProps> = (
-      await loadComponents()
-    )[name];
-    return { default: component };
-  });
-  return function LazyInfoEntry(props: ExperimentalThreadInfoProps) {
-    return <Lazy {...props} />;
-  };
-}
-
-const ParentRow = lazyComponent("ParentRow");
-const ParentNotificationsRow = lazyComponent("ParentNotificationsRow");
-const ProjectRow = lazyComponent("ProjectRow");
-const EnvironmentRow = lazyComponent("EnvironmentRow");
-const EnvironmentProvisioningFailureRow = lazyComponent(
-  "EnvironmentProvisioningFailureRow",
+const ParentRow = experimental_lazy(() =>
+  loadEntries().then((module) => ({ default: module.default.ParentRow })),
 );
-const DirectoryRow = lazyComponent("DirectoryRow");
-const ArchivedRow = lazyComponent("ArchivedRow");
-const ChildThreadsSection = lazyComponent("ChildThreadsSection");
-const ForksSection = lazyComponent("ForksSection");
-const ThreadStorageSection = lazyComponent("ThreadStorageSection");
+const ParentNotificationsRow = experimental_lazy(() =>
+  loadEntries().then((module) => ({
+    default: module.default.ParentNotificationsRow,
+  })),
+);
+const ProjectRow = experimental_lazy(() =>
+  loadEntries().then((module) => ({ default: module.default.ProjectRow })),
+);
+const EnvironmentRow = experimental_lazy(() =>
+  loadEntries().then((module) => ({ default: module.default.EnvironmentRow })),
+);
+const EnvironmentProvisioningFailureRow = experimental_lazy(() =>
+  loadEntries().then((module) => ({
+    default: module.default.EnvironmentProvisioningFailureRow,
+  })),
+);
+const DirectoryRow = experimental_lazy(() =>
+  loadEntries().then((module) => ({ default: module.default.DirectoryRow })),
+);
+const ArchivedRow = experimental_lazy(() =>
+  loadEntries().then((module) => ({ default: module.default.ArchivedRow })),
+);
+const ChildThreadsSection = experimental_lazy(() =>
+  loadEntries().then((module) => ({
+    default: module.default.ChildThreadsSection,
+  })),
+);
+const ForksSection = experimental_lazy(() =>
+  loadEntries().then((module) => ({ default: module.default.ForksSection })),
+);
+const ThreadStorageSection = experimental_lazy(() =>
+  loadEntries().then((module) => ({
+    default: module.default.ThreadStorageSection,
+  })),
+);
 
 function InfoTab(props: ExperimentalThreadTabProps) {
   return <ThreadInfo {...props} />;
