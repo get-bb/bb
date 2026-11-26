@@ -89,6 +89,7 @@ import {
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
+import { useHostUiProps } from "@/lib/host-ui";
 
 const THREAD_DETAIL_COMPOSER_ID = "thread-detail-follow-up-composer";
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
@@ -528,6 +529,7 @@ export function ThreadScreen({
     enabled: timelineEnabled,
     threadId: thread.id,
   });
+  const hostUiProps = useHostUiProps();
   const systemConfigQuery = useSystemConfig();
   const transcriptCenteredMinWidth =
     useThreadContextCardTranscriptCenteredMinWidth();
@@ -690,6 +692,7 @@ export function ThreadScreen({
     case "page":
       return (
         <div
+          {...hostUiProps}
           data-thread-window=""
           className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
         >
@@ -739,11 +742,16 @@ export function ThreadScreen({
       return (
         <WithoutThreadContextCard>
           {presentation.layout === "contained" ? (
-            <div className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3">
+            <div
+              {...hostUiProps}
+              className="min-h-0 flex-1 overflow-y-auto bg-background px-2 pb-3 pt-3"
+            >
               {surface}
             </div>
           ) : (
-            <div className="bg-background px-2 pb-3 pt-3">{surface}</div>
+            <div {...hostUiProps} className="bg-background px-2 pb-3 pt-3">
+              {surface}
+            </div>
           )}
         </WithoutThreadContextCard>
       );
@@ -761,6 +769,7 @@ function ThreadScreenPanelShell({
   surface: ReactNode;
   threadId: string;
 }) {
+  const hostUiProps = useHostUiProps();
   const { layout, measure, tone } = presentation;
   const surfaceClassName = tone === "sidebar" ? "bg-sidebar" : "bg-background";
   const maxWidthClassName = measure === "page" ? "max-w-[760px]" : "max-w-none";
@@ -773,6 +782,7 @@ function ThreadScreenPanelShell({
   if (layout === "document") {
     return (
       <div
+        {...hostUiProps}
         key={threadId}
         data-thread-window=""
         data-surface-tone={tone}
@@ -793,6 +803,7 @@ function ThreadScreenPanelShell({
   }
   return (
     <div
+      {...hostUiProps}
       data-thread-window=""
       data-surface-tone={tone}
       className="flex min-h-0 flex-1 flex-col"

@@ -74,6 +74,7 @@ import {
   PROMPT_CONTEXT_BANNER_COLLAPSED_HEIGHT,
   PROMPT_STACK_TRACK_CLASS,
 } from "@/components/promptbox/banner/PromptStackCard";
+import { useHostUiProps } from "@/lib/host-ui";
 
 type PromptBoxWithScrollAnchorProps = ComponentProps<typeof ComposerBox> & {
   scrollToBottomOnSubmit?: boolean;
@@ -198,6 +199,40 @@ type FollowUpPromptBoxWithComposerProps = Omit<
 > & {
   composer: FollowUpComposerProps;
 };
+
+function ComposerHandoffBanner({
+  onExit,
+  disabled,
+}: {
+  onExit: () => void;
+  disabled: boolean;
+}) {
+  const hostUiProps = useHostUiProps();
+  return (
+    <div
+      {...hostUiProps}
+      className="flex min-h-7 items-center gap-1.5 text-xs text-subtle-foreground"
+    >
+      <Icon
+        name="MessageSquarePlus"
+        className="size-3.5 shrink-0"
+        aria-hidden
+      />
+      <span>Handoff to new thread</span>
+      <Button
+        type="button"
+        size="icon"
+        variant="ghost"
+        className="ml-auto size-6 shrink-0 text-subtle-foreground"
+        onClick={onExit}
+        disabled={disabled}
+        aria-label="Exit handoff"
+      >
+        <Icon name="X" className="size-3" aria-hidden />
+      </Button>
+    </div>
+  );
+}
 
 function FollowUpPromptBoxStackOnly({
   stack,
@@ -788,25 +823,10 @@ function FollowUpPromptBoxWithComposer({
         onCollapse={isCompactViewport ? undefined : collapseWidePromptBox}
         handoff={
           execution.handoff?.active ? (
-            <div className="flex min-h-7 items-center gap-1.5 text-xs text-subtle-foreground">
-              <Icon
-                name="MessageSquarePlus"
-                className="size-3.5 shrink-0"
-                aria-hidden
-              />
-              <span>Handoff to new thread</span>
-              <Button
-                type="button"
-                size="icon"
-                variant="ghost"
-                className="ml-auto size-6 shrink-0 text-subtle-foreground"
-                onClick={execution.handoff.onExit}
-                disabled={executionControlsDisabled}
-                aria-label="Exit handoff"
-              >
-                <Icon name="X" className="size-3" aria-hidden />
-              </Button>
-            </div>
+            <ComposerHandoffBanner
+              onExit={execution.handoff.onExit}
+              disabled={executionControlsDisabled}
+            />
           ) : null
         }
         executionControls={executionControls}

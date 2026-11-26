@@ -119,12 +119,12 @@ describe("buildPluginApp", () => {
 
     const css = await readFile(result.cssPath, "utf8");
     expect(css).toContain(".line-clamp-3");
-    expect(css).toMatch(/\.bg-background\s*\{[^}]*var\(--background\)/);
+    expect(css).toMatch(/\.bg-background[^{}]*\{[^}]*var\(--background\)/);
     expect(css).toMatch(
-      /\.text-muted-foreground\s*\{[^}]*var\(--muted-foreground\)/,
+      /\.text-muted-foreground[^{}]*\{[^}]*var\(--muted-foreground\)/,
     );
-    expect(css).toMatch(/\.rounded-lg\s*\{[^}]*var\(--radius\)/);
-    expect(css).toMatch(/\.text-sm\s*\{[^}]*var\(--text-sm/);
+    expect(css).toMatch(/\.rounded-lg[^{}]*\{[^}]*var\(--radius\)/);
+    expect(css).toMatch(/\.text-sm[^{}]*\{[^}]*var\(--text-sm/);
     expect(css).toContain("--text-sm:.8125rem");
     expect(css).toContain(".animate-in");
     expect(css).toContain(".fade-in-0");

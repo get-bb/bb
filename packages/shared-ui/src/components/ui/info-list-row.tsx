@@ -8,6 +8,7 @@ import {
 } from "./dropdown-menu";
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "./hover-reveal";
 import { cn } from "../../lib/utils";
+import { useHostUiProps, usePluginContentProps } from "../../lib/host-ui";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 import { TruncateStart } from "./truncate-start";
 
@@ -113,9 +114,12 @@ export function InfoListRow({
   depth = 0,
   expanded,
 }: InfoListRowProps) {
+  const hostUiProps = useHostUiProps();
+  const pluginContentProps = usePluginContentProps();
   const primary =
     target === null ? (
       <span
+        {...pluginContentProps}
         title={title}
         className="min-w-0 truncate text-xs leading-5 text-foreground"
       >
@@ -129,6 +133,7 @@ export function InfoListRow({
       })
     ) : (
       <button
+        {...pluginContentProps}
         type="button"
         title={title}
         aria-expanded={expanded}
@@ -140,6 +145,7 @@ export function InfoListRow({
     );
   return (
     <li
+      {...hostUiProps}
       className={cn(INFO_LIST_ROW_CLASS, selected && "bg-state-active")}
       style={infoListIndentStyle(depth)}
       aria-current={selected ? "true" : undefined}
@@ -149,6 +155,7 @@ export function InfoListRow({
         <Tooltip>
           <TooltipTrigger asChild>
             <span
+              {...pluginContentProps}
               role="img"
               aria-label={leadingLabel}
               className={cn(INFO_LIST_LEADING_CLASS, "relative z-10")}
@@ -159,7 +166,9 @@ export function InfoListRow({
           <TooltipContent>{leadingLabel}</TooltipContent>
         </Tooltip>
       ) : (
-        <span className={INFO_LIST_LEADING_CLASS}>{leading}</span>
+        <span {...pluginContentProps} className={INFO_LIST_LEADING_CLASS}>
+          {leading}
+        </span>
       )}
       <span className="flex min-w-0 flex-1 items-center gap-1 pr-2">
         {primary}
@@ -174,7 +183,13 @@ export function InfoListRow({
         actions={actions}
         menuTitle={title ?? "Actions"}
       />
-      {trailing}
+      {trailing !== undefined && Object.keys(pluginContentProps).length > 0 ? (
+        <span {...pluginContentProps} className="contents">
+          {trailing}
+        </span>
+      ) : (
+        trailing
+      )}
     </li>
   );
 }

@@ -15,6 +15,7 @@ import { enrichGitDiffFileForContext } from "@bb/shared-ui/git-diff/parsing";
 import { useResolvedCodeThemePair } from "@/lib/code-theme";
 import { usePreferredTheme } from "@/hooks/useTheme";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useHostUiProps } from "@/lib/host-ui";
 import type { BbDiffProps } from "./code-rendering";
 
 const DIFF_VIEW_STYLE = {
@@ -128,6 +129,7 @@ function BbDiff({
   );
   const options = usePierreStrictModeRecoveryOptions(baseOptions);
   const isWorkerPoolReady = useRequirePierreWorkerPool();
+  const hostUiProps = useHostUiProps();
   if (!isWorkerPoolReady) {
     return <DiffLoadingSkeleton />;
   }
@@ -139,7 +141,11 @@ function BbDiff({
       onPointerMoveCapture={lineSelectionActions.onPointerMoveCapture}
       onPointerUpCapture={lineSelectionActions.onPointerUpCapture}
     >
-      <div className="w-full max-w-full" style={DIFF_VIEW_STYLE}>
+      <div
+        {...hostUiProps}
+        className="w-full max-w-full"
+        style={DIFF_VIEW_STYLE}
+      >
         <PierreWorkerPoolBoundary>
           <DiffView
             fileDiff={resolvedFile}

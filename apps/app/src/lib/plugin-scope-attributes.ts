@@ -1,4 +1,5 @@
 import { pluginIdSchema } from "@bb/domain";
+import { markHostOwnedElements } from "./host-ui";
 import { pluginScopeAttribute } from "./portal-scope";
 
 const PLUGIN_NAME_ATTRIBUTE = "data-bb-plugin";
@@ -49,7 +50,10 @@ export function keepPluginScopeAttributes(): void {
         continue;
       }
       for (const node of record.addedNodes) {
-        if (node instanceof Element) addScopeAttributesWithin(node);
+        if (node instanceof Element) {
+          addScopeAttributesWithin(node);
+          markHostOwnedElements(node);
+        }
       }
     }
   });
@@ -61,4 +65,5 @@ export function keepPluginScopeAttributes(): void {
     attributeFilter: [PLUGIN_NAME_ATTRIBUTE],
   });
   addScopeAttributesWithin(document.documentElement);
+  markHostOwnedElements(document.documentElement);
 }

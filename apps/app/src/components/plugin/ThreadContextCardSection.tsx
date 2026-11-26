@@ -7,6 +7,7 @@ import {
   type InfoSectionCollapse,
 } from "@/components/secondary-panel/info/info-list";
 import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preference-atom";
+import { useHostUiProps, usePluginContentProps } from "@/lib/host-ui";
 
 const collapsedSectionsAtom = createSyncedPreferenceAtom(
   "threadContextCard.collapsedSections",
@@ -44,8 +45,10 @@ function FoldableThreadContextCardSection({
 }: ExperimentalInfoSectionProps & { sectionKey: string }) {
   const collapse = useThreadContextCardSectionCollapse(sectionKey);
   const bodyId = useId();
+  const hostUiProps = useHostUiProps();
+  const pluginContentProps = usePluginContentProps();
   return (
-    <section aria-label={heading.label} className="min-w-0">
+    <section {...hostUiProps} aria-label={heading.label} className="min-w-0">
       <InfoSectionHeading
         {...heading}
         collapse={collapse}
@@ -53,7 +56,7 @@ function FoldableThreadContextCardSection({
         className={THREAD_CONTEXT_CARD_SECTION_HEADING_CLASS}
       />
       {collapse.collapsed ? null : (
-        <div id={bodyId}>
+        <div {...pluginContentProps} id={bodyId}>
           <ThreadContextCardSectionScopeContext.Provider value={null}>
             {children}
           </ThreadContextCardSectionScopeContext.Provider>

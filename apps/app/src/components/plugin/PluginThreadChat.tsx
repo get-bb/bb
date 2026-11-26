@@ -60,6 +60,7 @@ import {
   type ThreadScreenPresentation,
 } from "@/views/thread-detail/ThreadScreen";
 import { openThread } from "@/lib/split-layout/openThread";
+import { useHostUiProps } from "@/lib/host-ui";
 
 const NO_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
   [];
@@ -307,12 +308,13 @@ function PluginThreadChatBody({
     hasComposer && environment?.isGitRepo === true ? environment.id : null,
   );
 
+  const hostUiProps = useHostUiProps();
   const isThreadMissing =
     threadQuery.error instanceof BbHttpError &&
     threadQuery.error.status === 404;
   if (isThreadMissing) {
     return (
-      <EmptyStatePanel className="m-2 rounded-lg">
+      <EmptyStatePanel {...hostUiProps} className="m-2 rounded-lg">
         This thread is no longer available.
       </EmptyStatePanel>
     );

@@ -1,7 +1,5 @@
 import { useMemo } from "react";
 import type { PermissionMode } from "@bb/domain";
-import { LIST_HOVER_TRANSITION } from "@bb/shared-ui/motion";
-import { cn } from "@bb/shared-ui/lib/utils";
 import { OptionPicker, type PickerOption } from "@bb/shared-ui/option-picker";
 
 type PermissionModeOption = PickerOption<PermissionMode>;
@@ -80,7 +78,7 @@ export function PermissionModePicker({
       value={value}
       options={compactOptions}
       onChange={onChange}
-      className={cn(LIST_HOVER_TRANSITION, className)}
+      className={className}
       caretClassName="text-subtle-foreground/75"
       contentClassName="max-w-72"
       muted={muted}

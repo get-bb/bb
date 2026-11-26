@@ -10,6 +10,7 @@ import {
 } from "@bb/shared-ui/activity-row-styles";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { cn } from "@bb/shared-ui/lib/utils";
+import { useHostUiProps } from "@/lib/host-ui";
 import {
   PROMPT_STACK_DISCLOSURE_TRIGGER_CLASS,
   PromptStackHoverChevron,
@@ -62,8 +63,10 @@ export function CollapsibleActiveStackCard({
   const activity = isActive ? "active" : "pending";
   const { triggerRef, collapseRef, onTriggerClick, onCollapseClick } =
     useDisclosureFocusHandoff(isExpanded, onToggle);
+  const hostUiProps = useHostUiProps();
   return (
     <PromptStackCard
+      hostUiProps={hostUiProps}
       ariaLabel={cardAriaLabel}
       className="overflow-hidden"
       style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}

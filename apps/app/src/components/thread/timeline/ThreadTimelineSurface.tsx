@@ -19,6 +19,7 @@ import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import { TimelineReasoningExpansionProvider } from "./TimelineReasoningExpansion.js";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
+import { PluginContent } from "@/components/plugin/PluginContent";
 import type {
   ThreadTimelineForkMessageHandler,
   ThreadTimelineEditMessageHandler,
@@ -198,7 +199,9 @@ export function ThreadTimelineSurface({
   return (
     <TimelineReasoningExpansionProvider key={threadId}>
       <ConversationTimeline className="flex-1">
-        {leadingContent}
+        {leadingContent == null ? null : (
+          <PluginContent>{leadingContent}</PluginContent>
+        )}
         {showLoadOlderRows ? (
           <LoadOlderMessages
             key={`context-boundary:${contextBoundarySeq}`}

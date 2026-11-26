@@ -6,6 +6,8 @@ import {
   InfoListMoreRow,
 } from "@bb/shared-ui/info-list-more-row";
 import { useScopedInfoSectionCollapse } from "./useInfoSectionCollapse";
+import { useHostUiProps, usePluginContentProps } from "@/lib/host-ui";
+import { PluginContent } from "@/components/plugin/PluginContent";
 
 function InfoCountPill({ count }: { count: number }) {
   return (
@@ -70,9 +72,9 @@ export function InfoSectionHeading({
             {countPill}
           </>
         )}
-        {collapsed ? null : accessory}
+        {collapsed ? null : <PluginContent>{accessory}</PluginContent>}
       </div>
-      {collapsed ? null : trailing}
+      {collapsed ? null : <PluginContent>{trailing}</PluginContent>}
     </div>
   );
 }
@@ -90,14 +92,20 @@ export function InfoSection({
   const scopedCollapse = useScopedInfoSectionCollapse();
   const resolvedCollapse = collapse ?? scopedCollapse;
   const collapsed = resolvedCollapse?.collapsed ?? false;
+  const hostUiProps = useHostUiProps();
+  const pluginContentProps = usePluginContentProps();
   return (
-    <section data-info-section="" className="min-w-0">
+    <section {...hostUiProps} data-info-section="" className="min-w-0">
       <InfoSectionHeading
         {...heading}
         collapse={resolvedCollapse}
         bodyId={bodyId}
       />
-      {collapsed ? null : <div id={bodyId}>{children}</div>}
+      {collapsed ? null : (
+        <div {...pluginContentProps} id={bodyId}>
+          {children}
+        </div>
+      )}
     </section>
   );
 }
@@ -118,8 +126,14 @@ export function InfoList<T>({
   const [isExpanded, setIsExpanded] = useState(false);
   const canToggle = infoListCollapses(items.length, limit);
   const visibleItems = canToggle && !isExpanded ? items.slice(0, limit) : items;
+  const hostUiProps = useHostUiProps();
+  const pluginContentProps = usePluginContentProps();
   return (
-    <ul className="relative m-0 list-none p-0 max-md:pointer-coarse:[--text-xs--line-height:1.125rem] max-md:pointer-coarse:[--text-xs:0.8125rem]">
+    <ul
+      {...hostUiProps}
+      {...pluginContentProps}
+      className="relative m-0 list-none p-0 max-md:pointer-coarse:[--text-xs--line-height:1.125rem] max-md:pointer-coarse:[--text-xs:0.8125rem]"
+    >
       {visibleItems.map((item) => (
         <Fragment key={getKey(item)}>{renderItem(item)}</Fragment>
       ))}

@@ -130,6 +130,10 @@
       "type": "registry:ui"
     },
     {
+      "name": "host-ui",
+      "type": "registry:lib"
+    },
+    {
       "name": "hover-card",
       "type": "registry:ui"
     },

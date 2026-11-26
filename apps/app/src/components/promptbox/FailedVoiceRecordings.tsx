@@ -8,6 +8,7 @@ import {
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
 import type { FailedVoiceRecording } from "@/lib/voice-recording-store";
+import { useHostUiProps } from "@/lib/host-ui";
 
 interface FailedVoiceRecordingsProps {
   recordings: readonly FailedVoiceRecording[];
@@ -30,6 +31,7 @@ export function FailedVoiceRecordings({
   onDownload,
   onDiscard,
 }: FailedVoiceRecordingsProps) {
+  const hostUiProps = useHostUiProps();
   return (
     <TooltipProvider delayDuration={300}>
       <div
@@ -41,6 +43,7 @@ export function FailedVoiceRecordings({
             recording.errorMessage ?? "Transcription did not finish";
           return (
             <div
+              {...hostUiProps}
               key={recording.id}
               role="group"
               aria-label="Voice input failed"

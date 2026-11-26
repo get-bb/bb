@@ -1,5 +1,11 @@
 # Host frontend components
 
+Host components keep bb's own styles inside your plugin: your plugin's copy of
+a Tailwind utility is skipped on elements a host component renders, so it
+cannot override bb's responsive or touch-screen variants there. Content you
+pass in (children, labels, slots) and a `className` prop, where one exists,
+still take your plugin's utilities.
+
 Host components:
 
 - `ThreadChat` — bb's complete chat surface for an existing thread, rendered

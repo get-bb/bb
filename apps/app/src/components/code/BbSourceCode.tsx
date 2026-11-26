@@ -38,6 +38,7 @@ import {
   type SourceCodeTruncation,
 } from "./source-code-budget";
 import type { BbSourceCodeProps } from "./code-rendering";
+import { useHostUiProps } from "@/lib/host-ui";
 
 interface SourceCodeWorkerPoolStats {
   managerState: "waiting" | "initializing" | "initialized";
@@ -531,9 +532,11 @@ function SourceCodeViewport({ children }: { children: ReactNode }) {
     },
     [virtualizer],
   );
+  const hostUiProps = useHostUiProps();
   return (
     <VirtualizerContext.Provider value={virtualizer}>
       <div
+        {...hostUiProps}
         ref={viewportRef}
         className="min-h-0 flex-1 overflow-y-auto"
         data-bb-source-code-viewport

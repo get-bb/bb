@@ -9,6 +9,7 @@ import {
 } from "@bb/shared-ui/tooltip";
 import type { VoiceDelivery } from "@/lib/voice-recording-store";
 import { WaveformVisualizer } from "./WaveformVisualizer.js";
+import { useHostUiProps } from "@/lib/host-ui";
 
 interface VoiceRecordingBarProps {
   isCompact: boolean;
@@ -41,9 +42,11 @@ export function VoiceRecordingBar({
   const isTranscribing = state === "transcribing";
   const isConfirming = isTranscribing && delivery === "insert";
   const isSending = isTranscribing && delivery === "send";
+  const hostUiProps = useHostUiProps();
 
   return (
     <div
+      {...hostUiProps}
       className={cn(
         "flex flex-row items-center gap-2 px-2",
         isCompact ? "h-full py-1" : "py-1.5",
