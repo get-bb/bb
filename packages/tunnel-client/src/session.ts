@@ -252,10 +252,10 @@ export class TunnelSession {
     this.setRemoteClients(Math.max(0, this.remoteClientCount + delta));
   }
 
-  private send(frame: Frame): void {
+  private send(frame: Frame, compress = true): void {
     if (this.options.tunnel.readyState === NodeWebSocket.OPEN) {
       const encoded = encodeFrame(frame);
-      this.sendRaw(encoded, encoded.byteLength);
+      this.sendRaw(encoded, encoded.byteLength, compress);
     }
   }
 
@@ -270,8 +270,12 @@ export class TunnelSession {
     }
   }
 
-  private sendRaw(data: string | Uint8Array, byteLength: number): void {
-    this.options.tunnel.send(data);
+  private sendRaw(
+    data: string | Uint8Array,
+    byteLength: number,
+    compress = true,
+  ): void {
+    this.options.tunnel.send(data, { compress });
     this.bytesSent += byteLength;
     this.lastSentAt = Date.now();
   }
@@ -451,12 +455,14 @@ export class TunnelSession {
         status: res.statusCode ?? 502,
         headers: respHeaders,
       });
+      const compressBody = res.headers["content-encoding"] === undefined;
       let responseBytes = 0;
       for await (const chunk of res) {
         const value =
           chunk instanceof Uint8Array ? chunk : Buffer.from(String(chunk));
         responseBytes += value.byteLength;
-        for (const frame of chunkBody(streamId, value)) this.send(frame);
+        for (const frame of chunkBody(streamId, value))
+          this.send(frame, compressBody);
         await this.waitForSendBuffer(stream.abort.signal);
       }
       this.send({ type: "body-end", streamId });
