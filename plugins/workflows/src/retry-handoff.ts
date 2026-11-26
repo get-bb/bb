@@ -20,7 +20,14 @@ export type RetryHandoffApi = {
 export type RetryHandoff =
   | { kind: "stand-down"; reason: string }
   | { kind: "wait" }
-  | { kind: "re-run" };
+  | { kind: "re-run" }
+  | { kind: "give-up"; reason: string };
+
+const FINAL_PROVIDER_RETRY_DECLINES = new Set([
+  "attempts-exhausted",
+  "beyond-maximum-wait",
+  "pool-unavailable",
+]);
 
 const turnRequestSchema = z
   .object({
@@ -30,8 +37,13 @@ const turnRequestSchema = z
   .passthrough();
 
 const providerRetryDecisionSchema = z
-  .object({ requestId: z.string() })
-  .passthrough()
+  .object({
+    requestId: z.string(),
+    decision: z.object({
+      kind: z.enum(["retry", "decline"]),
+      reason: z.string(),
+    }),
+  })
   .nullable();
 
 function isThreadGoneError(error: unknown): boolean {
@@ -41,7 +53,7 @@ function isThreadGoneError(error: unknown): boolean {
 async function readProviderRetryDecision(
   bb: RetryHandoffApi,
   threadId: string,
-): Promise<{ requestId: string } | null | "absent"> {
+): Promise<z.infer<typeof providerRetryDecisionSchema> | "absent"> {
   const sources = await bb.sdk.plugins.experimental_discoverRpc({
     pluginId: PROVIDER_RETRY_PLUGIN_ID,
     method: PROVIDER_RETRY_DECISION_METHOD,
@@ -97,12 +109,14 @@ export async function readRetryHandoff(
           reason: `a retry of the failed turn ran in thread ${threadId}`,
         };
   }
-  if (
-    request === null ||
-    decision === "absent" ||
-    decision?.requestId === request.requestId ||
-    args.now - args.failedAt >= RETRY_DECISION_WAIT_MS
-  ) {
+  if (request === null || decision === "absent") return { kind: "re-run" };
+  if (decision?.requestId === request.requestId) {
+    return decision.decision.kind === "decline" &&
+      FINAL_PROVIDER_RETRY_DECLINES.has(decision.decision.reason)
+      ? { kind: "give-up", reason: decision.decision.reason }
+      : { kind: "re-run" };
+  }
+  if (args.now - args.failedAt >= RETRY_DECISION_WAIT_MS) {
     return { kind: "re-run" };
   }
   return { kind: "wait" };

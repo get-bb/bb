@@ -71,6 +71,7 @@ export const deltaBackgroundTaskShapeSchema = z.object({
   summary: z.string().optional(),
   error: z.string().optional(),
   outputFile: z.string().optional(),
+  stoppable: z.literal(true).optional(),
 });
 export type DeltaBackgroundTaskShape = z.infer<
   typeof deltaBackgroundTaskShapeSchema

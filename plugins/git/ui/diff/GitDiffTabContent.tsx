@@ -163,6 +163,17 @@ export function GitDiffTabContent({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {result.repos
+        .filter((repo) => repo.error !== null)
+        .map((repo) => (
+          <div
+            key={repo.rootPath}
+            role="status"
+            className="mx-4 mb-2 rounded-lg border border-border bg-surface-raised px-3 py-2 text-xs text-muted-foreground"
+          >
+            Couldn't read changes in {repo.label || repo.rootPath}: {repo.error}
+          </div>
+        ))}
       {result.truncated ? (
         <div
           role="status"
@@ -177,6 +188,7 @@ export function GitDiffTabContent({
         target={target}
         diffIdentity={diffIdentity}
         files={result.files}
+        repos={result.repos}
         fileFilter={fileFilter}
         filters={filters}
         initialPatches={result.initialPatches}

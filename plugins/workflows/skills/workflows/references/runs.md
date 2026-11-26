@@ -73,7 +73,11 @@ call first waits up to a minute for the provider retry plugin to decide. If
 provider retry, or core after a bb restart, queues or runs a retry in the
 worker's thread, the call keeps that worker and waits for its result instead
 of starting a replacement. Only a failure nobody else retries starts a new
-worker.
+worker. When provider retry declines because its retries are used up, the
+reset is beyond its maximum wait, or the account pool has no usable account,
+the call fails without a replacement, since a new worker would hit the same
+limit. Other declines, such as a rate limit with no reset time, fall back to
+the call's own retries.
 
 The CLI equivalents are:
 

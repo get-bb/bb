@@ -30,7 +30,7 @@ interface FileListEntry {
   name: string;
 }
 
-interface ListedPath {
+export interface ListedPath {
   kind: HostPathEntryKind;
   path: string;
   name: string;
@@ -41,15 +41,20 @@ interface PathListInclusion {
   includeDirectories: boolean;
 }
 
-interface FinalizeListedPathsArgs extends PathListInclusion {
-  paths: ListedPath[];
+interface FinalizeListedPathsArgs<
+  T extends ListedPath,
+> extends PathListInclusion {
+  paths: T[];
   limit: number;
   query?: string;
   signal: AbortSignal;
 }
 
-interface FinalizedPathList {
-  paths: HostPathEntry[];
+type RankedPath<T extends ListedPath> = T &
+  Pick<HostPathEntry, "score" | "positions">;
+
+interface FinalizedPathList<T extends ListedPath> {
+  paths: RankedPath<T>[];
   truncated: boolean;
 }
 
@@ -213,7 +218,7 @@ function shouldIncludePath(
     : inclusion.includeFiles;
 }
 
-function toFileListEntry(pathEntry: HostPathEntry): FileListEntry {
+function toFileListEntry(pathEntry: ListedPath): FileListEntry {
   return {
     path: pathEntry.path,
     name: pathEntry.name,
@@ -250,8 +255,8 @@ export async function finalizeListedFiles(
   };
 }
 
-function matchListedPaths(
-  items: readonly ListedPath[],
+function matchListedPaths<T extends ListedPath>(
+  items: readonly T[],
   query: string,
   limit: number,
 ) {
@@ -272,13 +277,13 @@ function throwIfPathSearchCancelled(signal: AbortSignal): void {
   }
 }
 
-async function rankListedPathsInChunks(
-  items: readonly ListedPath[],
+async function rankListedPathsInChunks<T extends ListedPath>(
+  items: readonly T[],
   query: string,
   limit: number,
   signal: AbortSignal,
 ) {
-  const candidates: ListedPath[] = [];
+  const candidates: T[] = [];
   for (let start = 0; start < items.length; start += RANKING_CHUNK_SIZE) {
     await yieldToEventLoop();
     throwIfPathSearchCancelled(signal);
@@ -292,8 +297,8 @@ async function rankListedPathsInChunks(
   return matchListedPaths(candidates, query, limit);
 }
 
-async function rankListedPaths(
-  items: readonly ListedPath[],
+async function rankListedPaths<T extends ListedPath>(
+  items: readonly T[],
   query: string,
   limit: number,
   signal: AbortSignal,
@@ -306,14 +311,14 @@ async function rankListedPaths(
   );
 }
 
-export async function finalizeListedPaths(
-  args: FinalizeListedPathsArgs,
-): Promise<FinalizedPathList> {
+export async function finalizeListedPaths<T extends ListedPath>(
+  args: FinalizeListedPathsArgs<T>,
+): Promise<FinalizedPathList<T>> {
   throwIfPathSearchCancelled(args.signal);
   const pathEntries = args.paths.filter((pathEntry) =>
     shouldIncludePath(pathEntry.kind, args),
   );
-  let rankedEntries: HostPathEntry[];
+  let rankedEntries: RankedPath<T>[];
 
   if (args.query) {
     const matches = await rankListedPaths(

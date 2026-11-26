@@ -43,6 +43,25 @@ export const IMAGE_GENERATION_PRESENTATION: DeltaPresentation = {
   icon: { glyph: "Palette" },
 };
 
+export function backgroundCommandDescription(command: string): string {
+  return unwrapShellCommand(command);
+}
+
+export function backgroundCommandPresentation(
+  command: string,
+): DeltaPresentation {
+  return withTitle(
+    {
+      label: {
+        pending: "Running background command",
+        completed: "Background command finished",
+      },
+      icon: { glyph: "Terminal" },
+    },
+    presentationTitle(unwrapShellCommand(command)),
+  );
+}
+
 export function commandPresentation(command: string): DeltaPresentation {
   return withTitle(
     {

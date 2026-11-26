@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS } from "@bb/sdk";
 import {
   buildSpawnEnvironment,
   looksLikePath,
@@ -8,7 +7,6 @@ import {
 import {
   DEFAULT_THREAD_WAIT_TIMEOUT_SECONDS,
   parseThreadWaitTimeoutMs,
-  parseThreadWaitPollIntervalMs,
   parseServiceTier,
   parsePermissionMode,
 } from "../commands/thread/helpers.js";
@@ -23,16 +21,6 @@ const acceptedParserCases = [
     label: "decimal wait timeout",
     parse: () => parseThreadWaitTimeoutMs("1.5"),
     expected: 1500,
-  },
-  {
-    label: "poll interval default",
-    parse: () => parseThreadWaitPollIntervalMs(undefined),
-    expected: DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
-  },
-  {
-    label: "integer poll interval",
-    parse: () => parseThreadWaitPollIntervalMs("500"),
-    expected: 500,
   },
   {
     label: "omitted service tier",
@@ -267,24 +255,6 @@ describe("parseThreadWaitTimeoutMs", () => {
         `Invalid --timeout value '${value}'. Expected a number of seconds or a duration with a unit (500ms, 90s, 5m, 2h).`,
       );
     }
-  });
-});
-
-describe("parseThreadWaitPollIntervalMs", () => {
-  it("keeps a bare number as milliseconds", () => {
-    expect(parseThreadWaitPollIntervalMs("2s")).toBe(2000);
-  });
-
-  it("throws for zero", () => {
-    expect(() => parseThreadWaitPollIntervalMs("0")).toThrow(
-      "--poll-interval must be greater than zero.",
-    );
-  });
-
-  it("throws for negative numbers", () => {
-    expect(() => parseThreadWaitPollIntervalMs("-100")).toThrow(
-      "Invalid --poll-interval value '-100'",
-    );
   });
 });
 

@@ -9,6 +9,7 @@ import {
   promptEditorContentFromValue,
   promptEditorCopiedSlice,
   promptEditorInlineContentFromValue,
+  promptEditorSerializationFromDoc,
   promptEditorValueFromDoc,
   type PromptEditorValue,
 } from "./prompt-editor-serialization";
@@ -325,5 +326,115 @@ describe("prompt editor mention word boundaries", () => {
     { text: "/review", mentions: [skill(0, "review")] },
   ])("leaves punctuation, whitespace and line breaks alone: $text", (value) => {
     expect(roundTrip(value)).toEqual(value);
+  });
+});
+
+describe("prompt editor blockquote offset mapping", () => {
+  const threadTarget = {
+    kind: "thread",
+    threadId: "thr_123",
+    projectId: "proj_1",
+    label: "@a",
+  } as const;
+
+  function threadMentionNode(serializedText: string) {
+    return {
+      type: "mention",
+      attrs: { mention: threadTarget, serializedText },
+    };
+  }
+
+  function quotedDocWithMentionPerLine(lineCount: number): Node {
+    const inline: unknown[] = [];
+    for (let index = 0; index < lineCount; index += 1) {
+      if (index > 0) inline.push({ type: "hardBreak" });
+      if (index % 7 === 3) continue;
+      inline.push({ type: "text", text: `line ${index}` });
+      inline.push(threadMentionNode(`@a${index}`));
+    }
+    return Node.fromJSON(schema, {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [{ type: "paragraph", content: inline }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "reply" }] },
+      ],
+    });
+  }
+
+  it("maps text and mentions in nested quotes with empty lines", () => {
+    const doc = Node.fromJSON(schema, {
+      type: "doc",
+      content: [
+        {
+          type: "blockquote",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "hi" },
+                threadMentionNode("@a"),
+                { type: "hardBreak" },
+                { type: "hardBreak" },
+                { type: "text", text: "x" },
+              ],
+            },
+            {
+              type: "blockquote",
+              content: [
+                { type: "paragraph", content: [{ type: "text", text: "y" }] },
+              ],
+            },
+          ],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "r" }] },
+      ],
+    });
+
+    expect(promptEditorSerializationFromDoc(doc)).toEqual({
+      text: "> hi @a\n>\n> x\n> > y\n\nr",
+      mentions: [{ ...threadTarget, from: 5, to: 7 }],
+      offsetMapping: [
+        { textFrom: 2, textTo: 4, docFrom: 2, docTo: 4, kind: "text" },
+        { textFrom: 5, textTo: 7, docFrom: 4, docTo: 5, kind: "mention" },
+        { textFrom: 12, textTo: 13, docFrom: 7, docTo: 8, kind: "text" },
+        { textFrom: 18, textTo: 19, docFrom: 11, docTo: 12, kind: "text" },
+        { textFrom: 21, textTo: 22, docFrom: 16, docTo: 17, kind: "text" },
+      ],
+    });
+  });
+
+  it("maps every segment and mention in a long quote with a mention on each line", () => {
+    const doc = quotedDocWithMentionPerLine(2_000);
+    const serialization = promptEditorSerializationFromDoc(doc);
+
+    const docSegments: { docFrom: number; docTo: number; text: string }[] = [];
+    doc.descendants((node, position) => {
+      if (node.isText || node.type.name === "mention") {
+        docSegments.push({
+          docFrom: position,
+          docTo: position + node.nodeSize,
+          text: node.isText ? node.text! : node.attrs.serializedText,
+        });
+      }
+    });
+    expect(
+      serialization.offsetMapping.map((segment) => ({
+        docFrom: segment.docFrom,
+        docTo: segment.docTo,
+        text: serialization.text.slice(segment.textFrom, segment.textTo),
+      })),
+    ).toEqual(docSegments);
+    expect(
+      serialization.mentions.map((mention) =>
+        serialization.text.slice(mention.from, mention.to),
+      ),
+    ).toEqual(
+      docSegments
+        .filter((segment) => segment.text.startsWith("@a"))
+        .map((segment) => segment.text),
+    );
   });
 });

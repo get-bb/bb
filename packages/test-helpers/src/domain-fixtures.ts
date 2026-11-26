@@ -162,7 +162,7 @@ export function makeThreadWithRuntime(
 ): ThreadWithRuntime {
   const thread: ThreadWithRuntime = {
     ...makeThread(),
-    runtime: { displayStatus: "idle" },
+    runtime: { displayStatus: "idle", failure: null },
   };
   return {
     ...thread,
@@ -194,6 +194,8 @@ export function makeThreadListEntry(
     environmentName: null,
     environmentBranchName: null,
     environmentPath: null,
+    environmentStatus: null,
+    environmentHostLifecycle: null,
     environmentProviderId: null,
     environmentIsWorktree: null,
     environmentWorkspaceDisplayKind: "other",

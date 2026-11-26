@@ -22,6 +22,7 @@ import {
   providerMaintenanceParamsSchema,
   skillsConfigureParamsSchema,
   threadArchiveParamsSchema,
+  threadBackgroundTaskStopParamsSchema,
   threadDiscardParamsSchema,
   threadForkParamsSchema,
   threadGoalClearParamsSchema,
@@ -176,6 +177,10 @@ const codexBridgeCommandSchema = z.discriminatedUnion("method", [
   z.object({
     method: z.literal("thread/goal/clear"),
     params: threadGoalClearParamsSchema,
+  }),
+  z.object({
+    method: z.literal("thread/backgroundTask/stop"),
+    params: threadBackgroundTaskStopParamsSchema,
   }),
   z.object({
     method: z.literal("skills/configure"),
@@ -2714,6 +2719,58 @@ async function handleThreadGoalClear(
   }
 }
 
+async function handleBackgroundTaskStop(
+  id: string | number,
+  params: z.infer<typeof threadBackgroundTaskStopParamsSchema>,
+): Promise<void> {
+  const session = sessionsByBbThreadId.get(params.threadId);
+  const connection = session?.connection ?? null;
+  if (
+    session === undefined ||
+    session.closing ||
+    connection === null ||
+    connection.exited
+  ) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      `Thread ${params.threadId} has no running Codex session`,
+    );
+    return;
+  }
+  const stopArgs = {
+    providerThreadId: params.providerThreadId,
+    itemId: params.familyId,
+  };
+  const processId = session.translator.beginBackgroundCommandStop(stopArgs);
+  if (processId === null) {
+    sendError(
+      id,
+      BRIDGE_JSON_RPC_ERRORS.BRIDGE_ERROR,
+      `Codex is not running background command ${params.familyId}`,
+    );
+    return;
+  }
+  try {
+    const result = await connection.request({
+      method: "thread/backgroundTerminals/terminate",
+      params: { threadId: params.providerThreadId, processId },
+      resultSchema: z.object({ terminated: z.boolean() }),
+      timeoutMs: CHILD_REQUEST_TIMEOUT_MS,
+    });
+    if (!result.terminated) {
+      sendThreadDeltas(
+        session,
+        session.translator.settleBackgroundCommand(stopArgs),
+      );
+    }
+    sendResult(id, {});
+  } catch (error) {
+    session.translator.cancelBackgroundCommandStop(stopArgs);
+    rejectWithCodexError(id, error);
+  }
+}
+
 async function handleThreadMaintenance(
   id: string | number,
   params: ThreadRefParamsShape,
@@ -2949,6 +3006,9 @@ async function handleRequest(
       break;
     case "thread/goal/clear":
       await handleThreadGoalClear(request.id, request.params);
+      break;
+    case "thread/backgroundTask/stop":
+      await handleBackgroundTaskStop(request.id, request.params);
       break;
     case "skills/configure":
       await handleSkillsConfigure(request.id, request.params);

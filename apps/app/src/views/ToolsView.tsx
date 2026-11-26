@@ -683,7 +683,6 @@ export function PluginsView({ detailKey }: { detailKey?: string } = {}) {
     }: SecondaryPanelRenderArgs) => (
       <ThreadSecondaryPanel
         activeTab={activeTab}
-        metadataContent={null}
         tabs={panelTabs}
         fixedTabs={[]}
         onTabReorder={reorderTab}

@@ -396,6 +396,7 @@ export const codexHandledThreadItemSchema = z.discriminatedUnion("type", [
       id: z.string(),
       command: z.string(),
       cwd: z.string(),
+      processId: z.string().nullish(),
       status: codexToolReferenceStatusSchema,
       aggregatedOutput: z.string().nullable(),
       exitCode: z.number().nullable(),

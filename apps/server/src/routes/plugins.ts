@@ -598,6 +598,30 @@ export function registerPluginRoutes(
     });
   });
 
+  app.get("/plugin-app-assets/:hash/chunks/:file", async (context) => {
+    const hash = context.req.param("hash");
+    const file = context.req.param("file");
+    const asset = /^[a-f0-9]{16}$/u.test(hash)
+      ? plugins.getAppChunkByHash(hash, file)
+      : undefined;
+    if (!asset) {
+      return context.json({ ok: false, error: "unknown plugin asset" }, 404);
+    }
+    let bytes: Buffer;
+    try {
+      bytes = await asset.read({ hostTailwind: false, scope: "legacy" });
+    } catch {
+      return context.json({ ok: false, error: "bundle file missing" }, 404);
+    }
+    return appAssetResponse(context, bytes, {
+      assetKey: `${hash}:chunk:${file}`,
+      cache: appAssetCompressionCache,
+      contentType: APP_ASSET_CONTENT_TYPES["app.js"].contentType,
+      cacheControl: "public, max-age=31536000, immutable",
+      contentHash: asset.hash,
+    });
+  });
+
   app.get("/plugins/:id/assets/icons/:file", (context) => {
     const file = context.req.param("file");
     const name = file.endsWith(".svg") ? file.slice(0, -".svg".length) : null;

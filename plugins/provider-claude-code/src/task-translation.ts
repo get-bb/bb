@@ -208,6 +208,9 @@ function buildClaudeTaskShape(
     ...(task.summary !== undefined ? { summary: task.summary } : {}),
     ...(task.error !== undefined ? { error: task.error } : {}),
     ...(task.outputFile !== undefined ? { outputFile: task.outputFile } : {}),
+    ...(isSettledBackgroundTaskStatus(task.taskStatus)
+      ? {}
+      : { stoppable: true as const }),
   };
 }
 

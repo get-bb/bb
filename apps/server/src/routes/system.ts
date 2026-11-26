@@ -14,6 +14,7 @@ import { getGateAuthKind } from "../request-context.js";
 import { serverAccessOverview } from "../services/machines/server-access.js";
 import {
   getAppSettings,
+  listRunningThreads,
   getAppKeybindingOverrides,
   getExperiments,
   getStoredFaviconColor,
@@ -305,6 +306,14 @@ export function registerSystemRoutes(
     return context.json(await machineEnvironmentView(deps.db));
   });
 
+  get(routes.quitStatus, (context) => {
+    context.header("cache-control", "no-store");
+    return context.json({
+      confirmDesktopQuit: getAppSettings(deps.db).confirmDesktopQuit,
+      runningAgentCount: listRunningThreads(deps.db).length,
+    });
+  });
+
   put(routes.generalSettings, (context, payload) => {
     const { showUnhandledProviderEvents, ...settings } = payload;
     const current = getAppSettings(deps.db);
@@ -330,6 +339,8 @@ export function registerSystemRoutes(
         settings.summarizeShellCommands ?? current.summarizeShellCommands,
       confirmThreadArchive:
         settings.confirmThreadArchive ?? current.confirmThreadArchive,
+      confirmDesktopQuit:
+        settings.confirmDesktopQuit ?? current.confirmDesktopQuit,
       earlyAdopter: settings.earlyAdopter ?? current.earlyAdopter,
       onboardingCompletedAt:
         settings.onboardingCompletedAt === undefined

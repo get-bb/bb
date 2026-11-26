@@ -223,6 +223,10 @@ export const githubRpcContract = defineRpcContract({
     input: itemInputSchema.extend({ body: nonBlankStringSchema }).strict(),
     output: okResultSchema,
   },
+  threadRepos: {
+    input: z.object({ threadId: z.string().min(1) }).strict(),
+    output: z.object({ repos: z.array(repoNameSchema) }).strict(),
+  },
   pullForThread: {
     input: z.object({ threadId: z.string().min(1) }).strict(),
     output: z
@@ -639,20 +643,31 @@ export default async function plugin(bb: BbPluginApi) {
     return authProbe;
   }
 
-  let repoCache: { repos: RepoInfo[]; fetchedAt: number } | null = null;
+  let repoCache: {
+    repos: RepoInfo[];
+    projectRepos: Map<string, string[]>;
+    fetchedAt: number;
+  } | null = null;
 
   let ignoredExtraRepos: string[] = [];
   let lastIgnoredExtraReposKey: string | null = null;
 
   async function discoverRepos(force = false): Promise<RepoInfo[]> {
+    return (await discoverRepoCache(force)).repos;
+  }
+
+  async function discoverRepoCache(
+    force = false,
+  ): Promise<NonNullable<typeof repoCache>> {
     if (
       !force &&
       repoCache !== null &&
       Date.now() - repoCache.fetchedAt < 60_000
     ) {
-      return repoCache.repos;
+      return repoCache;
     }
     const byRepo = new Map<string, RepoInfo>();
+    const projectRepos = new Map<string, string[]>();
     try {
       const projects = await bb.sdk.projects.list();
       for (const project of projects) {
@@ -665,8 +680,13 @@ export default async function plugin(bb: BbPluginApi) {
               5_000,
             );
             const repo = parseGithubRemote(stdout);
-            if (repo !== null && !byRepo.has(repo)) {
+            if (repo === null) continue;
+            if (!byRepo.has(repo)) {
               byRepo.set(repo, { repo, projectId: project.id });
+            }
+            const ownRepos = projectRepos.get(project.id) ?? [];
+            if (!ownRepos.includes(repo)) {
+              projectRepos.set(project.id, [...ownRepos, repo]);
             }
           } catch {}
         }
@@ -689,9 +709,12 @@ export default async function plugin(bb: BbPluginApi) {
       }
     }
     ignoredExtraRepos = parsed.ignored;
-    const repos = [...byRepo.values()];
-    repoCache = { repos, fetchedAt: Date.now() };
-    return repos;
+    repoCache = {
+      repos: [...byRepo.values()],
+      projectRepos,
+      fetchedAt: Date.now(),
+    };
+    return repoCache;
   }
 
   const db = bb.storage.database();
@@ -1451,6 +1474,12 @@ export default async function plugin(bb: BbPluginApi) {
     async commentPull({ repo, number, body }): Promise<{ ok: true }> {
       await gh(["pr", "comment", String(number), "-R", repo, "--body", body]);
       return { ok: true };
+    },
+
+    async threadRepos({ threadId }) {
+      const thread = await bb.sdk.threads.get({ threadId });
+      const { projectRepos } = await discoverRepoCache();
+      return { repos: projectRepos.get(thread.projectId) ?? [] };
     },
 
     async pullForThread({ threadId }) {

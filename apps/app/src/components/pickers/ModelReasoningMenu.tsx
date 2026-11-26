@@ -33,7 +33,7 @@ import {
   stripModelBrandPrefix,
   type ProviderPickerOption,
 } from "./model-brand-prefix";
-import type { PickerOption } from "./OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import { PickerLoadingRows } from "./PickerLoadingRows";
 import { Skeleton } from "@bb/shared-ui/skeleton";
 import type { ModelPickerOption } from "./model-picker-option";

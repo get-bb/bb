@@ -36,7 +36,6 @@ import {
 import { cn } from "@/lib/utils";
 import { openNewChatEnvironmentId } from "../new-chat/route.js";
 import { ProjectAvatar } from "../project-avatar.js";
-import { toActionTarget } from "../thread-target.js";
 import {
   buildWorkspaceSidebarModel,
   findWorkspaceKeyForThread,
@@ -244,7 +243,7 @@ function WorkspaceRow({
   const target = resolveOpenThread(workspace, lastActiveThreadId);
   const chatCount = workspace.chats.length;
   return (
-    <ThreadActionsContextMenu thread={toActionTarget(workspace.primary)}>
+    <ThreadActionsContextMenu thread={workspace.primary}>
       <div
         data-conductor-workspace={workspace.key}
         data-active={isActive ? "true" : undefined}

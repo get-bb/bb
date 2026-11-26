@@ -1,4 +1,3 @@
-import { ThreadInfoContentContext } from "@/components/secondary-panel/thread-info-registration";
 import {
   type CSSProperties,
   type FocusEvent,
@@ -185,7 +184,6 @@ export interface ThreadSecondaryPanelProps {
   canNavigateTabs?: boolean;
   areFixedTabsReady?: boolean;
   environmentId?: string;
-  metadataContent: ReactNode;
   tabs: readonly SecondaryPanelRenderableTab[];
   fixedTabs: readonly SecondaryPanelFixedTab[];
   onTabReorder: SecondaryPanelTabReorderHandler;
@@ -228,15 +226,7 @@ function panelTabPluginId(
   }
 }
 
-export function ThreadSecondaryPanel(props: ThreadSecondaryPanelProps) {
-  return (
-    <ThreadInfoContentContext.Provider value={props.metadataContent}>
-      <ThreadSecondaryPanelContent {...props} />
-    </ThreadInfoContentContext.Provider>
-  );
-}
-
-function ThreadSecondaryPanelContent({
+export function ThreadSecondaryPanel({
   activeTab,
   canNavigateTabs = true,
   areFixedTabsReady = true,

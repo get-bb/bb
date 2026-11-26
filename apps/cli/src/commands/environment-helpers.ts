@@ -3,6 +3,7 @@ import {
   type EnvironmentDisplayProviderLookup,
   formatEnvironmentDisplay,
 } from "@bb/core-ui";
+import type { Environment } from "@bb/domain";
 import type { BbSdk } from "@bb/sdk";
 
 export interface ThreadEnvironmentInfo {
@@ -35,26 +36,23 @@ async function resolveEnvironmentProvider(args: {
 }
 
 export async function fetchEnvironmentInfo(args: {
-  environmentId: string;
+  environment: Environment;
   sdk: BbSdk;
 }): Promise<ThreadEnvironmentInfo | null> {
   try {
-    const env = await args.sdk.environments.get({
-      environmentId: args.environmentId,
-    });
     return {
       display: formatEnvironmentDisplay({
-        environment: env,
+        environment: args.environment,
         host: {
           locality: "local",
           identity: null,
         },
         providerLookup: await resolveEnvironmentProvider({
-          environmentProviderId: env.environmentProviderId,
+          environmentProviderId: args.environment.environmentProviderId,
           sdk: args.sdk,
         }),
       }),
-      hostId: env.hostId,
+      hostId: args.environment.hostId,
     };
   } catch {
     return null;

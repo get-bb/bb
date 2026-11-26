@@ -198,6 +198,34 @@ function respondToRuntimeWorkspaceFileCommand(
   return true;
 }
 
+function respondToFindGitReposCommand(
+  deps: Pick<TestAppHarness, "hub">,
+  args: RegisterTestHostRpcCaptureArgs,
+  message: HostDaemonOnlineRpcRequestMessage,
+): boolean {
+  const command = message.command;
+  if (command.type !== "host.find_git_repos") return false;
+  deps.hub.recordHostOnlineRpcResponse({
+    message: hostDaemonOnlineRpcResponseMessageSchema.parse({
+      type: "host-rpc.response",
+      requestId: message.requestId,
+      commandType: command.type,
+      ok: true,
+      result: {
+        folders: command.folderPaths.map((folderPath) => ({
+          path: folderPath,
+          exists: true,
+          gitRoot: null,
+          repos: [],
+          truncated: false,
+        })),
+      },
+    }),
+    sessionId: args.sessionId,
+  });
+  return true;
+}
+
 function respondToProviderModelListCommand(
   deps: Pick<TestAppHarness, "hub">,
   args: RegisterTestHostRpcCaptureArgs,
@@ -425,6 +453,9 @@ export function registerTestHostRpcCapture(
         return;
       }
       if (respondToRuntimeWorkspaceFileCommand(deps, args, message)) {
+        return;
+      }
+      if (respondToFindGitReposCommand(deps, args, message)) {
         return;
       }
       if (respondToProviderModelListCommand(deps, args, message)) {

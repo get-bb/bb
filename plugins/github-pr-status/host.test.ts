@@ -151,24 +151,36 @@ async function createManagedBaseTrackedWorkspace(): Promise<string> {
 }
 
 function branchLookup(
-  nodes: Record<string, unknown>[],
+  nodes: ({ number: number } & Record<string, unknown>)[],
   defaultBranch = "main",
 ) {
+  const pullRequests = nodes.map((node) => ({
+    ...JSON.parse(pullRequestJson()),
+    url: `https://github.com/acme/bb/pull/${node.number}`,
+    ...node,
+  }));
   return {
     "api graphql": {
-      stdout: JSON.stringify({
-        data: {
-          p0: {
-            defaultBranchRef: { name: defaultBranch },
-            pullRequests: {
-              nodes: nodes.map((node) => ({
-                ...JSON.parse(pullRequestJson()),
-                ...node,
-              })),
+      resources: Object.fromEntries(
+        pullRequests.map((pullRequest) => [
+          pullRequest.url,
+          { data: pullRequest },
+        ]),
+      ),
+      whenQueryIncludes: {
+        text: "pullRequests(headRefName:",
+        response: {
+          stdout: JSON.stringify({
+            data: {
+              p0: {
+                defaultBranchRef: { name: defaultBranch },
+                pullRequests: { nodes: pullRequests },
+                newest: { nodes: pullRequests.slice(0, 1) },
+              },
             },
-          },
+          }),
         },
-      }),
+      },
     },
   };
 }
@@ -229,7 +241,7 @@ describe("pull request lookup for differently named upstream branches", () => {
         pullRequest: { number: 1236 },
       });
 
-      expect(await gh.readCalls()).toHaveLength(1);
+      expect(await gh.readCalls()).toHaveLength(2);
       expect((await gh.readQueries())[0]).toContain(
         `headRefName: "${localBranch}"`,
       );
@@ -276,7 +288,7 @@ describe("pull request lookup for differently named upstream branches", () => {
     });
 
     const calls = await gh.readCalls();
-    expect(calls).toHaveLength(1);
+    expect(calls).toHaveLength(2);
     expect((await gh.readQueries())[0]).toContain(
       `headRefName: "${localBranch}"`,
     );
@@ -331,6 +343,41 @@ describe("pull request lookup for differently named upstream branches", () => {
         refresh: true,
       }),
     ).resolves.toEqual({ outcome: "none" });
+  });
+
+  it("finds the branch's PR behind many newer PRs from other forks with the same head name", async () => {
+    const workspacePath = await createTrackedForkWorkspace();
+    const gh = await installFakeGh(
+      branchLookup([
+        ...Array.from({ length: 60 }, (_, index) => ({
+          number: 2000 - index,
+          isCrossRepository: true,
+          headRepositoryOwner: { login: `stranger-${index}` },
+        })),
+        {
+          number: 1236,
+          state: "MERGED",
+          isCrossRepository: true,
+          headRepositoryOwner: { login: "fork-owner" },
+        },
+      ]),
+    );
+
+    await expect(
+      view({ path: workspacePath, refresh: true }),
+    ).resolves.toMatchObject({
+      outcome: "found",
+      pullRequest: { number: 1236, state: "MERGED" },
+    });
+    const [scan, details] = await gh.readQueries();
+    expect(
+      Number(
+        scan?.match(/pullRequests\(headRefName: "[^"]+", first: (\d+)/)?.[1],
+      ),
+    ).toBeGreaterThanOrEqual(61);
+    expect(details).toContain(
+      'resource(url: "https://github.com/acme/bb/pull/1236")',
+    );
   });
 
   it("looks up a fork clone's branch in the upstream repository, as gh does", async () => {
@@ -424,7 +471,7 @@ describe("pull request lookup for differently named upstream branches", () => {
       outcome: "found",
       pullRequest: { number: 1237 },
     });
-    expect(await gh.readCalls()).toHaveLength(2);
+    expect(await gh.readCalls()).toHaveLength(3);
   });
 
   it.each([

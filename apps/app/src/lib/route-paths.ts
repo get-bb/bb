@@ -3,11 +3,14 @@ import {
   PLUGIN_DETAIL_ROUTE_PATH,
   PLUGINS_ROUTE_PATH,
   PLUGIN_PANEL_ROUTE_PATH,
+  PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
   REGISTRY_SKILL_DETAIL_ROUTE_PATH,
   REGISTRY_SKILLS_ROUTE_PATH,
   ROUTE_PATTERNS,
+  SETTINGS_PLUGIN_ROUTE_PATH,
   SKILL_DETAIL_ROUTE_PATH,
   SKILLS_ROUTE_PATH,
+  THREAD_DETAIL_ROUTE_PATH,
   TOOLS_ROUTE_PATH,
   stripRoutePathSuffix,
 } from "@bb/client-core";
@@ -74,6 +77,25 @@ export type { ThreadRoutePathArgs } from "@bb/client-core";
 
 export function getPluginPanelRoutePluginId(pathname: string): string | null {
   return matchPath(PLUGIN_PANEL_ROUTE_PATH, pathname)?.params.pluginId ?? null;
+}
+
+export function getThreadRouteThreadId(pathname: string): string | null {
+  for (const path of [
+    THREAD_DETAIL_ROUTE_PATH,
+    PROJECTLESS_THREAD_DETAIL_ROUTE_PATH,
+  ]) {
+    const threadId = matchPath({ path, end: false }, pathname)?.params.threadId;
+    if (threadId !== undefined) return threadId;
+  }
+  return null;
+}
+
+export function getRouteOwnerPluginId(pathname: string): string | null {
+  return (
+    getPluginPanelRoutePluginId(pathname) ??
+    matchPath(SETTINGS_PLUGIN_ROUTE_PATH, pathname)?.params.pluginId ??
+    null
+  );
 }
 
 interface IsRoutePathArgs {

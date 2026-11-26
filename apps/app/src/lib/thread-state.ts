@@ -1,9 +1,11 @@
 import { useMemo, useSyncExternalStore } from "react";
+import { hashKey, type QueryClient } from "@tanstack/react-query";
 import type { ThreadListEntry, ThreadWithRuntime } from "@bb/domain";
 import type {
   ExperimentalThread,
   ExperimentalThreadState,
 } from "@get-bb/plugin-sdk";
+import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { BbHttpError } from "@/lib/sdk";
 import {
@@ -88,16 +90,101 @@ function useTrackedSidebarEntry(threadId: string): TrackedEntry | null {
   );
 }
 
+interface ThreadFetch {
+  data: ThreadWithRuntime | undefined;
+  error: unknown;
+}
+
+export type ThreadRead =
+  | { status: "loading" | "notFound" | "error" }
+  | {
+      status: "ready";
+      thread: ThreadWithRuntime;
+      entry: ThreadListEntry | null;
+    };
+
+const READ_LOADING: ThreadRead = { status: "loading" };
+const READ_NOT_FOUND: ThreadRead = { status: "notFound" };
+const READ_ERROR: ThreadRead = { status: "error" };
+const readByEntry = new WeakMap<ThreadListEntry, ThreadRead>();
+const readByFetched = new WeakMap<ThreadWithRuntime, ThreadRead>();
+
+function readEntry(entry: ThreadListEntry): ThreadRead {
+  if (entry.deletedAt !== null) return READ_NOT_FOUND;
+  let read = readByEntry.get(entry);
+  if (read === undefined) {
+    read = { status: "ready", thread: entry, entry };
+    readByEntry.set(entry, read);
+  }
+  return read;
+}
+
+function readFetched(thread: ThreadWithRuntime): ThreadRead {
+  if (thread.deletedAt !== null) return READ_NOT_FOUND;
+  let read = readByFetched.get(thread);
+  if (read === undefined) {
+    read = { status: "ready", thread, entry: null };
+    readByFetched.set(thread, read);
+  }
+  return read;
+}
+
+function readThread(
+  threadId: string,
+  tracked: TrackedEntry | null,
+  fetch: ThreadFetch,
+): ThreadRead {
+  if (threadId === "") return READ_NOT_FOUND;
+  if (tracked?.held === true) return readEntry(tracked.entry);
+  if (fetch.error instanceof BbHttpError && fetch.error.status === 404) {
+    return READ_NOT_FOUND;
+  }
+  if (fetch.data !== undefined) return readFetched(fetch.data);
+  if (fetch.error != null) return READ_ERROR;
+  return tracked === null ? READ_LOADING : readEntry(tracked.entry);
+}
+
+export function threadReadSource(
+  store: SidebarThreadEntriesStore,
+  queryClient: QueryClient,
+  threadId: string,
+): { subscribe(listener: () => void): () => void; getSnapshot(): ThreadRead } {
+  const tracked = trackedEntrySource(store, threadId);
+  const queryHash = hashKey(threadQueryKey(threadId));
+  const fetchOf = (): ThreadFetch => {
+    const state = queryClient.getQueryState<ThreadWithRuntime>(
+      threadQueryKey(threadId),
+    );
+    return { data: state?.data, error: state?.error ?? null };
+  };
+  return {
+    subscribe: (listener) => {
+      const releaseEntry = tracked.subscribe(listener);
+      const releaseQuery = queryClient.getQueryCache().subscribe((event) => {
+        if (event.query.queryHash === queryHash) listener();
+      });
+      return () => {
+        releaseEntry();
+        releaseQuery();
+      };
+    },
+    getSnapshot: () => readThread(threadId, tracked.getSnapshot(), fetchOf()),
+  };
+}
+
 export function useThreadState(threadId: string): ExperimentalThreadState {
   const tracked = useTrackedSidebarEntry(threadId);
   const held = tracked?.held === true ? tracked.entry : null;
   const query = useThread(held === null ? threadId : "");
-  if (threadId === "") return NOT_FOUND;
-  if (held !== null) return stateOf(held);
-  if (query.error instanceof BbHttpError && query.error.status === 404) {
-    return NOT_FOUND;
+  const read = readThread(threadId, tracked, query);
+  switch (read.status) {
+    case "ready":
+      return stateOf(read.thread);
+    case "loading":
+      return LOADING;
+    case "notFound":
+      return NOT_FOUND;
+    case "error":
+      return ERROR;
   }
-  if (query.data !== undefined) return stateOf(query.data);
-  if (query.error !== null) return ERROR;
-  return tracked === null ? LOADING : stateOf(tracked.entry);
 }

@@ -8,6 +8,7 @@ import {
   environmentHolderSchema,
   environmentStatusSchema,
   environmentStatusValues,
+  joinHostPath,
   jsonValueSchema,
   type EnvironmentHolder,
   type EnvironmentStatus,
@@ -425,6 +426,35 @@ export function registerEnvironmentCommands(
     );
 
   environment
+    .command("repos <id>")
+    .description(
+      "List a ready environment's git repositories: its main folder, extra folders, and repos found inside them",
+    )
+    .option("--json", "Print machine-readable JSON output")
+    .action(
+      action(async (id: string, opts: EnvironmentShowCommandOptions) => {
+        const sdk = createCliBbSdk(getUrl());
+        const result = await sdk.environments.experimental_repos({
+          environmentId: id,
+        });
+        if (outputJson(opts, result)) return;
+        if (result.repos.length === 0) {
+          console.log("No git repositories.");
+          return;
+        }
+        for (const repo of result.repos) {
+          const label = repo.label.length === 0 ? "(main)" : repo.label;
+          const scope =
+            repo.path === repo.rootPath ? "" : `  (folder ${repo.path})`;
+          console.log(`${label}  ${repo.source}  ${repo.rootPath}${scope}`);
+        }
+        if (result.truncated) {
+          console.log("More repositories were found than are listed.");
+        }
+      }),
+    );
+
+  environment
     .command("show <id>")
     .alias("get")
     .description("Show environment details")
@@ -508,7 +538,14 @@ export function registerEnvironmentCommands(
         });
         if (outputJson(opts, result)) return;
         for (const entry of result.paths) {
-          console.log(`${entry.kind}\t${entry.path}`);
+          const path =
+            entry.folderPath === null
+              ? entry.path
+              : (joinHostPath({
+                  rootPath: entry.folderPath,
+                  relativePath: entry.path,
+                }) ?? entry.path);
+          console.log(`${entry.kind}\t${path}`);
         }
         if (result.truncated) console.log("(results truncated)");
       }),

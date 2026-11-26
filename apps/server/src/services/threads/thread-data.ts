@@ -3,7 +3,8 @@ import {
   findLastRootStoredTurnStarted,
   findStoredEventRow as findStoredEventRowRecord,
   getTurnFinalAgentMessageEventRow,
-  getLatestThreadSystemErrorEventRow,
+  getLastStoredTurnRequestEvent,
+  getLatestThreadErrorEventRow,
   hydrateRetainedEventOutputRows,
   listLatestTurnFinalAgentMessageEventRows,
   listStoredEventRows as listStoredEventRowRecords,
@@ -218,8 +219,27 @@ export function getLastThreadErrorMessage(
   db: DbConnection,
   threadId: string,
 ): string | null {
-  const row = getLatestThreadSystemErrorEventRow(db, { threadId });
+  const row = getLatestThreadErrorEventRow(db, {
+    afterSequence: getLastStoredTurnRequestEvent(db, threadId)?.sequence ?? 0,
+    threadId,
+  });
   if (!row) return null;
   const eventRow = parseStoredEventRow(row);
-  return eventRow.type === "system/error" ? eventRow.data.message : null;
+  switch (eventRow.type) {
+    case "system/error":
+      return eventRow.data.message;
+    case "provider/error": {
+      const text = eventRow.data.detail ?? eventRow.data.message;
+      const info = eventRow.data.errorInfo;
+      if (info === undefined) return text;
+      const facts = [
+        info.category,
+        info.httpStatusCode === null ? null : `HTTP ${info.httpStatusCode}`,
+        info.providerCode,
+      ].filter((fact) => fact !== null);
+      return `${text} (${facts.join(", ")})`;
+    }
+    default:
+      return null;
+  }
 }

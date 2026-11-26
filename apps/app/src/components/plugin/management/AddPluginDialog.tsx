@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  CURATED_PLUGIN_MARKETPLACE_NAME,
   type PluginCatalogInstallPlan,
   type PluginCatalogResolvedSource,
   type PluginInstallJob,
@@ -140,7 +139,7 @@ function resolvedSourceRows(
   ];
 }
 
-function ThirdPartySourceDisclosure({
+function MarketplaceSourceDisclosure({
   plan,
   pending,
   error,
@@ -202,9 +201,7 @@ function ThirdPartySourceDisclosure({
       </div>
     );
   }
-  if (plan === undefined || plan.kind !== "marketplace" || plan.official) {
-    return null;
-  }
+  if (plan === undefined || plan.kind !== "marketplace") return null;
   const author =
     plan.author.url === null ? null : (
       <a
@@ -220,8 +217,10 @@ function ThirdPartySourceDisclosure({
     <div className="space-y-1.5 rounded-md border border-border bg-muted/30 px-3 py-2">
       <p className="text-2xs text-subtle-foreground">
         Listed by{" "}
-        <span className="text-foreground">{plan.marketplaceDisplayName}</span>,
-        a third-party marketplace that BB does not review.
+        <span className="text-foreground">{plan.marketplaceDisplayName}</span>
+        {plan.official
+          ? ". BB does not review its plugins."
+          : ", a third-party marketplace that BB does not review."}
       </p>
       <dl className="space-y-0.5">
         <div className="flex gap-2">
@@ -270,12 +269,10 @@ function AddPluginDialogContent({
   const queryClient = useQueryClient();
   const [sourceText, setSourceText] = useState("");
   const request = buildRequest(initial, sourceText);
-  const thirdParty =
-    initial !== null &&
-    initial.marketplace !== CURATED_PLUGIN_MARKETPLACE_NAME &&
-    !initial.source.startsWith("builtin:");
+  const confirmsSource =
+    initial !== null && !initial.source.startsWith("builtin:");
   const planQuery = useCatalogInstallPlan(
-    thirdParty && initial !== null
+    confirmsSource && initial !== null
       ? { entryId: initial.entryId, marketplace: initial.marketplace }
       : null,
   );
@@ -288,7 +285,7 @@ function AddPluginDialogContent({
         ? startCatalogPluginInstall(fetch, {
             entryId: body.entryId,
             marketplace: body.marketplace,
-            ...(thirdParty && plan?.kind === "marketplace"
+            ...(confirmsSource && plan?.kind === "marketplace"
               ? { confirmedSource: plan.resolvedSource }
               : {}),
           })
@@ -309,12 +306,7 @@ function AddPluginDialogContent({
         <DialogDescription>
           {initial === null
             ? "Install from npm, a Git repository, or a local path."
-            : thirdParty
-              ? "Install this plugin from the source its marketplace lists."
-              : catalogInstallDescription(
-                  initial.source,
-                  initial.publisherLabel,
-                )}
+            : catalogInstallDescription(initial.source, initial.publisherLabel)}
         </DialogDescription>
       </DialogHeader>
       <div className="space-y-3">
@@ -349,8 +341,8 @@ function AddPluginDialogContent({
           </div>
         )}
 
-        {thirdParty ? (
-          <ThirdPartySourceDisclosure
+        {confirmsSource ? (
+          <MarketplaceSourceDisclosure
             plan={plan}
             pending={planQuery.isPending}
             error={planQuery.error}
@@ -382,8 +374,8 @@ function AddPluginDialogContent({
           disabled={
             request === null ||
             install.isPending ||
-            (thirdParty && planQuery.isPending) ||
-            (thirdParty && plan === undefined)
+            (confirmsSource && planQuery.isPending) ||
+            (confirmsSource && plan === undefined)
           }
           aria-busy={install.isPending}
           onClick={() => {

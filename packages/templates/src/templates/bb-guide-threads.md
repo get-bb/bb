@@ -133,9 +133,13 @@ Spawning:
 
 Handoff:
   The app's Hand off to new thread (in the follow-up model picker) starts a new
-  thread that references the source. From the CLI, run bb thread spawn with
-  --provider, --model, --environment and --prompt 'Continue from
-  @thread:THREAD_ID ...'; SDK callers pass the same fields to threads.spawn.
+  thread that references the source. The new thread is a sibling of the
+  source: it reuses the source environment and copies the source's parent
+  thread, parent notifications and section. A handoff of a root thread stays
+  a root thread. From the CLI, run bb thread spawn with --provider, --model,
+  --environment, the source's --parent-thread, --parent-notifications and
+  --section, and --prompt 'Continue from @thread:THREAD_ID ...'; SDK callers
+  pass the same fields to threads.spawn.
 
 Forking:
 

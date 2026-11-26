@@ -54,6 +54,7 @@ const THREAD_COLUMN_CHANGES: {
   }),
   status: () => ({ status: "error" }),
   statusChangedAt: () => ({ statusChangedAt: LATER }),
+  failureKind: () => ({ failureKind: "provisioning" }),
   startupContext: () => ({ startupContext: JSON.stringify({ kind: "test" }) }),
   parentThreadId: (context) => ({ parentThreadId: otherThreadId(context) }),
   lifecycleOwnerThreadId: (context) => ({

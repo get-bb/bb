@@ -5,10 +5,12 @@ import type { DiffPresentation } from "@bb/shared-ui/git-diff/renderers";
 import type { RequestDiffFileContents } from "@bb/shared-ui/git-diff/card-body";
 import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type {
-  DiffFileEntry,
-  DiffPatchEntry,
-  WorkspaceDiffTarget,
+import {
+  locateGitDiffRepoPath,
+  type DiffFileEntry,
+  type DiffPatchEntry,
+  type GitDiffRepo,
+  type WorkspaceDiffTarget,
 } from "../../contract.js";
 import { type DiffFileFilters, filterDiffFiles } from "./diff-file-filters.js";
 import {
@@ -38,6 +40,7 @@ interface DiffFilesPanelProps {
   target: WorkspaceDiffTarget;
   diffIdentity: string;
   files: readonly DiffFileEntry[];
+  repos: readonly GitDiffRepo[];
   fileFilter: string;
   filters: DiffFileFilters;
   initialPatches: readonly DiffPatchEntry[];
@@ -58,6 +61,7 @@ export function DiffFilesPanel({
   target,
   diffIdentity,
   files,
+  repos,
   fileFilter,
   filters,
   initialPatches,
@@ -111,6 +115,11 @@ export function DiffFilesPanel({
   const visibleFiles = useMemo(
     () => filterDiffFiles(files, fileFilter, filters, viewedRevisionByPath),
     [files, fileFilter, filters, viewedRevisionByPath],
+  );
+
+  const repoHeaders = useMemo(
+    () => buildRepoHeaders(repos, visibleFiles),
+    [repos, visibleFiles],
   );
 
   const cardStates = useDiffFileCardStates(diffIdentity);
@@ -214,6 +223,7 @@ export function DiffFilesPanel({
           if (!entry) {
             return null;
           }
+          const repoHeader = repoHeaders.get(item.index);
           return (
             <div
               key={entry.path}
@@ -225,6 +235,9 @@ export function DiffFilesPanel({
                 paddingBottom: DIFF_FILES_GAP_PX,
               }}
             >
+              {repoHeader === undefined ? null : (
+                <DiffRepoHeader header={repoHeader} />
+              )}
               <DiffFileRow
                 environmentId={environmentId}
                 entry={entry}
@@ -250,6 +263,58 @@ export function DiffFilesPanel({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+interface DiffRepoHeaderModel {
+  name: string;
+  rootPath: string;
+  fileCount: number;
+}
+
+function repoDisplayName(repo: GitDiffRepo): string {
+  if (repo.label.length > 0) return repo.label;
+  return repo.rootPath.split(/[\\/]/u).filter(Boolean).at(-1) ?? repo.rootPath;
+}
+
+function buildRepoHeaders(
+  repos: readonly GitDiffRepo[],
+  visibleFiles: readonly DiffFileEntry[],
+): Map<number, DiffRepoHeaderModel> {
+  const headers = new Map<number, DiffRepoHeaderModel>();
+  if (repos.length < 2) return headers;
+  const byRepo = new Map<GitDiffRepo, { index: number; count: number }>();
+  visibleFiles.forEach((entry, index) => {
+    const located = locateGitDiffRepoPath(repos, entry.path);
+    if (located === null) return;
+    const current = byRepo.get(located.repo);
+    if (current === undefined) byRepo.set(located.repo, { index, count: 1 });
+    else current.count += 1;
+  });
+  for (const [repo, { index, count }] of byRepo) {
+    headers.set(index, {
+      name: repoDisplayName(repo),
+      rootPath: repo.rootPath,
+      fileCount: count,
+    });
+  }
+  return headers;
+}
+
+function DiffRepoHeader({ header }: { header: DiffRepoHeaderModel }) {
+  return (
+    <div
+      className="flex min-w-0 items-baseline gap-2 pt-2 pb-1.5"
+      title={header.rootPath}
+      data-repo-header={header.rootPath}
+    >
+      <span className="min-w-0 truncate text-xs font-semibold text-foreground">
+        {header.name}
+      </span>
+      <span className="shrink-0 text-xs text-muted-foreground">
+        {header.fileCount === 1 ? "1 file" : `${header.fileCount} files`}
+      </span>
     </div>
   );
 }

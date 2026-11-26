@@ -16,6 +16,7 @@ import {
   gitPatchKey,
   type DiffFileEntry,
   type DiffPatchEntry,
+  type GitDiffRepo,
   type GitPatchResult,
   type GitViewedFile,
   type WorkspaceDiffTarget,
@@ -96,6 +97,7 @@ type Handlers = Partial<PluginRpcTestHandlers<typeof gitRpcContract>>;
 function renderPanel(
   props: {
     files: DiffFileEntry[];
+    repos?: GitDiffRepo[];
     filters?: DiffFileFilters;
     initialPatches?: DiffPatchEntry[];
     isLive?: boolean;
@@ -114,6 +116,7 @@ function renderPanel(
         target={TARGET}
         diffIdentity="env-1:uncommitted"
         files={next.files}
+        repos={next.repos ?? []}
         filters={next.filters ?? DEFAULT_DIFF_FILE_FILTERS}
         fileFilter=""
         initialPatches={next.initialPatches ?? []}
@@ -197,6 +200,42 @@ function availablePatches(keys: readonly string[]) {
     }),
   );
 }
+
+it("heads each repo's files with its name and count only when there is more than one repo", async () => {
+  const repo = (label: string, rootPath: string): GitDiffRepo => ({
+    label,
+    rootPath,
+    source: label === "" ? "main" : "discovered",
+    error: null,
+  });
+  const files = [
+    makeDiffFileEntry({ path: "src/app.ts", revision: "r1" }),
+    makeDiffFileEntry({ path: "api/server.ts", revision: "r2" }),
+    makeDiffFileEntry({ path: "api/routes.ts", revision: "r3" }),
+    makeDiffFileEntry({ path: "../shared/notes.md", revision: "r4" }),
+  ];
+  const repos = [
+    repo("", "/work/app"),
+    repo("api", "/work/app/api"),
+    repo("../shared", "/work/shared"),
+  ];
+  const rpc: Handlers = {
+    viewed: () => ({ files: [] }),
+    patches: ({ keys }) => availablePatches(keys),
+  };
+  const headers = () =>
+    [...document.querySelectorAll("[data-repo-header]")].map(
+      (header) => header.textContent,
+    );
+
+  const view = renderPanel({ files, repos }, rpc);
+  await waitFor(() =>
+    expect(headers()).toEqual(["app1 file", "api2 files", "../shared1 file"]),
+  );
+
+  view.rerenderPanel({ files: files.slice(0, 1), repos: repos.slice(0, 1) });
+  await waitFor(() => expect(headers()).toEqual([]));
+});
 
 it("shows Viewed only for files whose stored revision matches and marks the current revision", async () => {
   let viewed: GitViewedFile[] = [
@@ -400,6 +439,7 @@ it("requests an edited file and a newly added file in one batch", async () => {
         target={TARGET}
         diffIdentity="env-1:uncommitted"
         files={current}
+        repos={[]}
         filters={DEFAULT_DIFF_FILE_FILTERS}
         fileFilter=""
         initialPatches={[]}

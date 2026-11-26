@@ -55,7 +55,8 @@ export function resolveThreadEnvironmentAccess({
     reusesEnvironment:
       !executionUnavailable &&
       environment !== null &&
-      environment.status === "ready" &&
+      (environment.status === "ready" ||
+        environment.status === "provisioning") &&
       environment.path !== null &&
       thread?.environmentId != null,
   };

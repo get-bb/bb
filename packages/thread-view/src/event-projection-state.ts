@@ -118,11 +118,28 @@ export function onThreadInterrupted(args: ThreadInterruptedArgs): void {
   closeOpenTurns(args.state);
 }
 
+function callIdsWithRunningBackgroundTasks(
+  messages: readonly EventProjectionMessage[],
+): Set<string> {
+  const callIds = new Set<string>();
+  for (const message of messages) {
+    if (
+      message.kind === "workflow" &&
+      message.status === "pending" &&
+      message.parentToolCallId
+    ) {
+      callIds.add(message.parentToolCallId);
+    }
+  }
+  return callIds;
+}
+
 function interruptPendingToolMessages(
   state: ProjectionState,
   completedAt: number | null,
   turnId: string | null,
 ): void {
+  const stillRunningCallIds = callIdsWithRunningBackgroundTasks(state.messages);
   for (const message of state.messages) {
     if (
       turnId !== null &&
@@ -134,7 +151,10 @@ function interruptPendingToolMessages(
       case "command":
       case "tool-call":
       case "delegation":
-        if (message.status === "pending") {
+        if (
+          message.status === "pending" &&
+          !stillRunningCallIds.has(message.callId)
+        ) {
           message.status = "interrupted";
           message.completedAt = completedAt;
           if (message.kind === "command") {

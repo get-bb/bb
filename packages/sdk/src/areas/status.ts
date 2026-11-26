@@ -103,31 +103,30 @@ export function createStatusArea(args: CreateSdkAreaArgs): StatusArea {
             )
           : Promise.resolve(null),
       ]);
-      const pendingTodos =
+      const [pendingTodos, childThreads] =
         thread === null
-          ? null
-          : await fetchUnlessMissing(async () => {
-              const headState = await transport.readJson(
-                transport.api.v1.threads[":id"]["head-state"].$get(
-                  { param: { id: thread.id } },
-                  ...signalRequestArgs(signal),
-                ),
-              );
-              return headState.pendingTodos;
-            });
-      const childThreads =
-        thread === null
-          ? null
-          : await fetchUnlessMissing(() =>
-              transport.readJson(
-                transport.api.v1.threads.$get(
-                  {
-                    query: { parentThreadId: thread.id },
-                  },
-                  ...signalRequestArgs(signal),
+          ? [null, null]
+          : await Promise.all([
+              fetchUnlessMissing(async () => {
+                const headState = await transport.readJson(
+                  transport.api.v1.threads[":id"]["head-state"].$get(
+                    { param: { id: thread.id } },
+                    ...signalRequestArgs(signal),
+                  ),
+                );
+                return headState.pendingTodos;
+              }),
+              fetchUnlessMissing(() =>
+                transport.readJson(
+                  transport.api.v1.threads.$get(
+                    {
+                      query: { parentThreadId: thread.id },
+                    },
+                    ...signalRequestArgs(signal),
+                  ),
                 ),
               ),
-            );
+            ]);
 
       return {
         childThreads,

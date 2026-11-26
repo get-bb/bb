@@ -118,6 +118,7 @@ import {
   useCreateThread,
   useCancelThreadPlan,
   useStopThread,
+  useStopThreadBackgroundTask,
 } from "@/hooks/mutations/thread-runtime-mutations";
 import {
   useRestoreThreadEnvironment,
@@ -604,6 +605,7 @@ export function ThreadDetailPromptArea({
   );
   const stopThread = useStopThread();
   const cancelThreadPlan = useCancelThreadPlan();
+  const { mutate: stopBackgroundTask } = useStopThreadBackgroundTask();
   const unarchiveThread = useUnarchiveThread();
   const restoreThreadEnvironment = useRestoreThreadEnvironment();
   const createThread = useCreateThread();
@@ -855,7 +857,15 @@ export function ThreadDetailPromptArea({
   const handoffSeed = useMemo<ThreadHandoffCreateSeed>(
     () => ({
       environmentId: thread.environmentId,
+      parent:
+        thread.parentThreadId === null
+          ? null
+          : {
+              threadId: thread.parentThreadId,
+              notifications: thread.parentNotifications,
+            },
       projectId: thread.projectId,
+      sectionId: thread.sectionId,
       sourceThreadId: thread.id,
       sourceThreadTitle: sourceThreadDisplayTitle,
     }),
@@ -863,7 +873,10 @@ export function ThreadDetailPromptArea({
       sourceThreadDisplayTitle,
       thread.environmentId,
       thread.id,
+      thread.parentNotifications,
+      thread.parentThreadId,
       thread.projectId,
+      thread.sectionId,
     ],
   );
   const beginHandoff = useCallback(
@@ -2252,6 +2265,12 @@ export function ThreadDetailPromptArea({
           commands={activeBackgroundCommands}
           isExpanded={isBackgroundCommandsExpanded}
           onToggle={() => setIsBackgroundCommandsExpanded((value) => !value)}
+          onStop={(row) =>
+            stopBackgroundTask({
+              threadId: thread.id,
+              itemId: row.itemId,
+            })
+          }
         />
         {shouldHideComposer ? null : activePromptModeCard}
         <ThreadTodoCard
@@ -2354,6 +2373,7 @@ export function ThreadDetailPromptArea({
     [
       queueExpanded,
       setQueueExpanded,
+      stopBackgroundTask,
       childThreadsBannerKey,
       contextBannerKey,
       isChildThreadsExpanded,

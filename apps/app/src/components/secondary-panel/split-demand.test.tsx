@@ -69,7 +69,7 @@ function Surface({ open, browser }: { open: boolean; browser: boolean }) {
         fixedTabs={[]}
         isConversationCollapsed={false}
         isOpen={open}
-        metadataContent={null}
+        threadInfo={null}
         onClose={noop}
         onCollapse={noop}
         onOpenNewTab={noop}

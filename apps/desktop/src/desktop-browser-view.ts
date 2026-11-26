@@ -297,7 +297,6 @@ interface CreateEntryArgs {
   hostWindow: DesktopBrowserHostWindow;
   tabId: string;
   threadId: string;
-  backgroundThrottling: boolean;
 }
 
 interface HostWindowViewportBoundsArgs {
@@ -634,7 +633,6 @@ export function createDesktopBrowserViewManager(
       hostWindow: cold.hostWindow,
       tabId: cold.state.tabId,
       threadId: cold.threadId,
-      backgroundThrottling: !cold.agentOwned,
     });
     entry.agentOwned = cold.agentOwned;
     entry.generation = cold.generation;
@@ -1285,7 +1283,7 @@ export function createDesktopBrowserViewManager(
     const view = new WebContentsView({
       webPreferences: {
         ...hardenedWebPreferences(),
-        backgroundThrottling: args.backgroundThrottling,
+        backgroundThrottling: true,
         ...(pagePreloadPath === null ? {} : { preload: pagePreloadPath }),
       },
     });
@@ -1583,7 +1581,6 @@ export function createDesktopBrowserViewManager(
       const entry = createEntry({
         ...request,
         desiredBounds: { x: 0, y: 0, ...request.viewport },
-        backgroundThrottling: false,
       });
       entry.agentOwned = true;
       applyEntryDesiredBounds(entry, request.hostWindow);
@@ -1725,7 +1722,6 @@ export function createDesktopBrowserViewManager(
           hostWindow,
           tabId: request.tabId,
           threadId: request.threadId,
-          backgroundThrottling: true,
         });
       setEntryDesiredBounds({ bounds: request.bounds, entry, hostWindow });
       setEntryVisible(entry, request.visible);

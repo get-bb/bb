@@ -1,5 +1,6 @@
 export {
   buildPluginApp,
+  PLUGIN_APP_CHUNK_DIRECTORY,
   RUNTIME_SLOT_BY_SPECIFIER,
   SHIMMED_TYPE_PACKAGES,
 } from "./build-plugin-app.js";

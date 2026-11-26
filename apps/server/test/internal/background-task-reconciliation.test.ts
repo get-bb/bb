@@ -438,6 +438,113 @@ describe("settleDanglingBackgroundTasks", () => {
     });
   });
 
+  it("interrupts a background task's still-open command with the output it streamed", async () => {
+    await withTestHarness(async (harness) => {
+      const fixture = seedThreadFixture(harness, {});
+      const seed = (
+        sequence: number,
+        event: Omit<
+          Parameters<typeof seedStoredEvent>[1],
+          "threadId" | "environmentId" | "sequence" | "providerThreadId"
+        >,
+      ) =>
+        seedStoredEvent(harness.deps, {
+          threadId: fixture.thread.id,
+          environmentId: fixture.environment.id,
+          sequence,
+          providerThreadId: "codex-thread-1",
+          ...event,
+        });
+      seed(1, {
+        type: "turn/started",
+        scope: turnScope("turn-1"),
+        data: { providerThreadId: "codex-thread-1" },
+      });
+      seed(2, {
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        itemId: "cmd-1",
+        itemKind: "commandExecution",
+        data: {
+          providerThreadId: "codex-thread-1",
+          item: {
+            type: "commandExecution",
+            id: "cmd-1",
+            command: "npm run dev",
+            cwd: "/repo",
+            status: "pending",
+            approvalStatus: null,
+          },
+        },
+      });
+      for (const [sequence, delta] of [
+        [3, "ready on :3000\n"],
+        [6, "GET / 200\n"],
+      ] as const) {
+        seed(sequence, {
+          type: "item/commandExecution/outputDelta",
+          scope: turnScope("turn-1"),
+          itemId: "cmd-1",
+          data: { providerThreadId: "codex-thread-1", itemId: "cmd-1", delta },
+        });
+      }
+      seed(4, {
+        type: "item/started",
+        scope: turnScope("turn-1"),
+        itemId: "background-cmd-1",
+        itemKind: "backgroundTask",
+        data: {
+          providerThreadId: "codex-thread-1",
+          item: {
+            id: "background-cmd-1",
+            type: "backgroundTask",
+            familyId: "exec-1",
+            taskType: "local_bash",
+            description: "npm run dev",
+            status: "pending",
+            taskStatus: "running",
+            skipTranscript: false,
+            foreground: false,
+            stoppable: true,
+            parentToolCallId: "cmd-1",
+          },
+        },
+      });
+      seed(5, {
+        type: "turn/completed",
+        scope: turnScope("turn-1"),
+        data: { providerThreadId: "codex-thread-1", status: "completed" },
+      });
+
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        settleDanglingBackgroundTasks(harness.deps, {
+          hostId: fixture.host.id,
+          reason: "host-daemon-restarted",
+        });
+      }
+
+      const commandCompletions = listEvents(harness.deps.db, {
+        threadId: fixture.thread.id,
+      }).filter((row) => row.type === "item/completed");
+      expect(commandCompletions).toHaveLength(1);
+      expect(commandCompletions[0]).toMatchObject({
+        itemId: "cmd-1",
+        turnId: "turn-1",
+      });
+      expect(JSON.parse(commandCompletions[0]!.data)).toMatchObject({
+        item: {
+          type: "commandExecution",
+          command: "npm run dev",
+          status: "interrupted",
+          aggregatedOutput: "ready on :3000\nGET / 200\n",
+        },
+      });
+      expect(listSettledBackgroundTaskItems(harness, fixture.thread.id)).toEqual(
+        [{ status: "interrupted", taskStatus: "stopped" }],
+      );
+    });
+  });
+
   it("preserves an already-finished task status instead of stomping it to interrupted", async () => {
     await withTestHarness(async (harness) => {
       const { host, thread } = seedOpenBackgroundTaskThread(harness, {

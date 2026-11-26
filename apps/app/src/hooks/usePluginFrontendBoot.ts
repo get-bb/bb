@@ -13,6 +13,7 @@ import { frontendPriorityPluginIds } from "../lib/plugin-surface-providers";
 import { holdSplitPreloads } from "../lib/split-prefetch";
 import { whenScreenPainted } from "../lib/screen-paint";
 import { getPluginPanelRoutePluginId } from "../lib/route-paths";
+import { namesPlugin, restoredPageLazyParts } from "../lib/restored-lazy-parts";
 import { useSystemConfig } from "./queries/system-queries";
 import { pluginListQueryOptions } from "./queries/plugin-settings-queries";
 import { appQueryClient } from "../lib/app-query-client";
@@ -29,6 +30,7 @@ export function usePluginFrontendBoot(): void {
   useEffect(() => {
     const pathname = window.location.pathname;
     const priorityPluginIds = frontendPriorityPluginIds(pathname);
+    const pageParts = restoredPageLazyParts(pathname);
     let cancelled = false;
     void appQueryClient
       .fetchQuery(pluginListQueryOptions({ enabled: true }))
@@ -48,7 +50,11 @@ export function usePluginFrontendBoot(): void {
           if (bundle === null || !bundle.compatible) continue;
           warmPluginRuntimeGroups(bundle.runtimeSlots);
           prefetchPluginModule(bundle.jsUrl);
+          for (const url of bundle.staticChunkUrls) prefetchPluginModule(url);
           if (bundle.cssUrl !== null) prefetchPluginCss(bundle.cssUrl);
+          if (pageParts.some((part) => namesPlugin(part, pluginId))) {
+            for (const url of bundle.lazyChunkUrls) prefetchPluginModule(url);
+          }
         }
       })
       .catch(() => {});

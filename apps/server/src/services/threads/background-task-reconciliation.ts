@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
   getLatestThreadSequence,
+  listCommandOutputDeltaTexts,
   listOpenBackgroundTaskItemRowsForHost,
   listOpenBackgroundTaskItemRowsForThread,
+  listOpenCommandItemRowsByItemIds,
   type DbNotifier,
   type DbTransaction,
   type OpenBackgroundTaskItemRow,
@@ -12,7 +14,9 @@ import {
   convertLegacyStoredThreadEvent,
   isSettledBackgroundTaskStatus,
   threadEventBackgroundTaskItemSchema,
+  threadEventItemSchema,
   threadScope,
+  turnScope,
 } from "@bb/domain";
 import type { ThreadEventBackgroundTaskItem } from "@bb/domain";
 import type { AppDeps } from "../../types.js";
@@ -40,6 +44,8 @@ const storedBackgroundTaskEventDataSchema = z.object({
   item: threadEventBackgroundTaskItemSchema,
 });
 
+const storedItemEventDataSchema = z.object({ item: threadEventItemSchema });
+
 function parseStoredBackgroundTaskItem(
   row: OpenBackgroundTaskItemRow,
 ): ThreadEventBackgroundTaskItem | null {
@@ -57,6 +63,18 @@ function parseStoredBackgroundTaskItem(
   } catch {
     return null;
   }
+}
+
+export function listOpenThreadBackgroundTasks(
+  db: AppDeps["db"],
+  args: { threadId: string },
+): ThreadEventBackgroundTaskItem[] {
+  return listOpenBackgroundTaskItemRowsForThread(db, args).flatMap((row) => {
+    const item = parseStoredBackgroundTaskItem(row);
+    return item === null || isSettledBackgroundTaskStatus(item.taskStatus)
+      ? []
+      : [item];
+  });
 }
 
 export function settleDanglingBackgroundTasks(
@@ -170,6 +188,14 @@ function appendDanglingBackgroundTaskCompletions(
     const providerThreadId = row.providerThreadId ?? "";
     const forcedStop = !isSettledBackgroundTaskStatus(item.taskStatus);
     const taskStatus = forcedStop ? "stopped" : item.taskStatus;
+    if (forcedStop && item.parentToolCallId !== undefined) {
+      interruptOpenParentCommand(deps.db, {
+        commandItemId: item.parentToolCallId,
+        environmentId: row.environmentId,
+        providerThreadId,
+        threadId: row.threadId,
+      });
+    }
     appendThreadEventsInTransaction(deps.db, [
       {
         threadId: row.threadId,
@@ -193,4 +219,50 @@ function appendDanglingBackgroundTaskCompletions(
     settledThreadIds.add(row.threadId);
   }
   return settledThreadIds;
+}
+
+function interruptOpenParentCommand(
+  db: DbTransaction,
+  args: {
+    commandItemId: string;
+    environmentId: string | null;
+    providerThreadId: string;
+    threadId: string;
+  },
+): void {
+  for (const row of listOpenCommandItemRowsByItemIds(db, {
+    itemIds: [args.commandItemId],
+    threadId: args.threadId,
+  })) {
+    const stored = storedItemEventDataSchema.safeParse(
+      convertLegacyStoredThreadEvent({
+        type: "item/started",
+        data: storedEventDataSchema.parse(JSON.parse(row.data)),
+      }).data,
+    );
+    if (!stored.success || stored.data.item.type !== "commandExecution") {
+      continue;
+    }
+    appendThreadEventsInTransaction(db, [
+      {
+        threadId: args.threadId,
+        environmentId: args.environmentId,
+        providerThreadId: args.providerThreadId,
+        type: "item/completed",
+        scope: turnScope(row.turnId),
+        data: {
+          providerThreadId: args.providerThreadId,
+          item: {
+            ...stored.data.item,
+            status: "interrupted",
+            aggregatedOutput: listCommandOutputDeltaTexts(db, {
+              itemId: row.itemId,
+              threadId: args.threadId,
+              turnId: row.turnId,
+            }).join(""),
+          },
+        },
+      },
+    ]);
+  }
 }

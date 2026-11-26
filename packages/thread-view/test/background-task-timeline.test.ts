@@ -1176,6 +1176,79 @@ describe("background task timeline projection", () => {
     ]);
   });
 
+  it("keeps a command running while its background task runs past the turn, then settles it with the task", () => {
+    const commandStarted = withMeta(
+      {
+        type: "item/started",
+        threadId: "thread-1",
+        providerThreadId: "provider-1",
+        scope: turnScope("turn-1"),
+        item: {
+          type: "commandExecution",
+          id: "exec-dev-server",
+          command: "npm run dev",
+          cwd: "/tmp",
+          status: "pending",
+          approvalStatus: null,
+        },
+      },
+      2,
+    );
+    const taskStarted = withMeta(
+      {
+        type: "item/started",
+        threadId: "thread-1",
+        providerThreadId: "provider-1",
+        scope: turnScope("turn-1"),
+        item: bashTaskItem({
+          status: "pending",
+          taskStatus: "running",
+          id: "background-exec-dev-server",
+          description: "npm run dev",
+          parentToolCallId: "exec-dev-server",
+        }),
+      },
+      3,
+    );
+    const commandStatus = (events: ThreadEventWithMeta[]) =>
+      buildTimelineRows(events)
+        .flatMap((row) => (row.kind === "turn" ? (row.children ?? []) : [row]))
+        .find((row) => row.kind === "work" && row.workKind === "command");
+
+    expect(
+      commandStatus([
+        turnStarted("turn-1", 1),
+        commandStarted,
+        taskStarted,
+        turnCompleted("turn-1", 4),
+      ]),
+    ).toMatchObject({ status: "pending" });
+    expect(
+      commandStatus([
+        turnStarted("turn-1", 1),
+        commandStarted,
+        taskStarted,
+        turnCompleted("turn-1", 4),
+        withMeta(
+          {
+            type: "item/backgroundTask/completed",
+            threadId: "thread-1",
+            providerThreadId: "provider-1",
+            scope: threadScope(),
+            item: bashTaskItem({
+              status: "interrupted",
+              taskStatus: "stopped",
+              id: "background-exec-dev-server",
+              description: "npm run dev",
+              parentToolCallId: "exec-dev-server",
+            }),
+          },
+          5,
+        ),
+      ]),
+    ).toMatchObject({ status: "interrupted" });
+  });
+
   it("hides skip_transcript tasks from the timeline", () => {
     const timeline = buildTimeline([
       turnStarted("turn-1", 1),

@@ -268,9 +268,24 @@ export const DiffFileCard = memo(function DiffFileCard({
   onRetry,
   onOpenFileInEditor,
   onOpenFilePreview,
-  onRequestFileContents,
+  onRequestFileContents: requestContentsByPath,
 }: DiffFileCardProps) {
   const headerModel = useMemo(() => buildDiffEntryHeaderModel(entry), [entry]);
+  const onRequestFileContents = useMemo<RequestDiffFileContents | undefined>(
+    () =>
+      requestContentsByPath === undefined
+        ? undefined
+        : async (path, side) => {
+            const result = await requestContentsByPath(
+              side === "old" ? (entry.previousPath ?? entry.path) : entry.path,
+              side,
+            );
+            return result?.kind === "text"
+              ? { ...result, file: { ...result.file, name: path } }
+              : result;
+          },
+    [entry.path, entry.previousPath, requestContentsByPath],
+  );
   const parsedFile = useMemo<ParsedGitDiffFile | null>(() => {
     if (patchState.status !== "loaded" || patchState.patch === undefined) {
       return null;

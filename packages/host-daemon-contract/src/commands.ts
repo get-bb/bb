@@ -26,6 +26,7 @@ import {
   FILE_LIST_EXCLUDE_NAMES_MAX,
   FILE_LIST_LIMIT_MAX,
   FILE_LIST_QUERY_MAX_LENGTH,
+  PATH_LIST_ROOT_PATHS_MAX,
   flattenPromptInputGroups,
   BRANCH_LIST_LIMIT_MAX,
   BRANCH_LIST_QUERY_MAX_LENGTH,
@@ -390,6 +391,13 @@ const threadPlanCancelCommandSchema = hostDaemonThreadTargetSchema
   })
   .strict();
 
+const threadBackgroundTaskStopCommandSchema = hostDaemonThreadTargetSchema
+  .extend({
+    type: z.literal("thread.background_task.stop"),
+    itemId: z.string().min(1),
+  })
+  .strict();
+
 const threadRenameCommandSchema = hostDaemonThreadTargetSchema
   .extend({
     type: z.literal("thread.rename"),
@@ -535,13 +543,15 @@ const hostPathEntrySchema = z.object({
   name: z.string(),
   score: z.number(),
   positions: z.array(z.number().int().nonnegative()),
+  rootPath: z.string(),
 });
 export type HostPathEntry = z.infer<typeof hostPathEntrySchema>;
 
 const hostListPathsCommandSchema = z
   .object({
     type: z.literal("host.list_paths"),
-    path: z.string().min(1),
+    rootPaths: z.array(z.string().min(1)).min(1).max(PATH_LIST_ROOT_PATHS_MAX),
+    followRootSymlink: z.boolean(),
     query: z.string().max(FILE_LIST_QUERY_MAX_LENGTH).optional(),
     limit: z.number().int().positive().max(FILE_LIST_LIMIT_MAX),
     includeFiles: z.boolean(),
@@ -590,6 +600,43 @@ const hostPathsExistCommandSchema = pathsExistRequestSchema
   .extend({
     type: z.literal("host.paths_exist"),
   })
+  .strict();
+
+export const HOST_FIND_GIT_REPOS_MAX_FOLDERS = 64;
+export const HOST_FIND_GIT_REPOS_MAX_DEPTH = 4;
+export const HOST_FIND_GIT_REPOS_MAX_REPOS = 256;
+
+const hostFindGitReposCommandSchema = z
+  .object({
+    type: z.literal("host.find_git_repos"),
+    folderPaths: z
+      .array(z.string().min(1))
+      .min(1)
+      .max(HOST_FIND_GIT_REPOS_MAX_FOLDERS),
+    maxDepth: z.number().int().min(1).max(HOST_FIND_GIT_REPOS_MAX_DEPTH),
+    maxRepos: z.number().int().min(1).max(HOST_FIND_GIT_REPOS_MAX_REPOS),
+  })
+  .strict();
+
+const hostFoundGitRepoSchema = z
+  .object({
+    path: z.string().min(1),
+    gitRoot: z.string().min(1),
+  })
+  .strict();
+
+const hostFindGitReposFolderSchema = z
+  .object({
+    path: z.string().min(1),
+    exists: z.boolean(),
+    gitRoot: z.string().min(1).nullable(),
+    repos: z.array(hostFoundGitRepoSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+
+const hostFindGitReposResultSchema = z
+  .object({ folders: z.array(hostFindGitReposFolderSchema) })
   .strict();
 
 const projectInspectCommandSchema = z
@@ -1544,6 +1591,15 @@ export const hostDaemonCommandRegistry = {
     flushEventsBeforeResult: true,
     envLane: null,
   }),
+  "thread.background_task.stop": defineHostDaemonCommandDescriptor({
+    type: "thread.background_task.stop",
+    schema: threadBackgroundTaskStopCommandSchema,
+    resultSchema: z.object({ stopped: z.boolean() }).strict(),
+    transport: "settled",
+    retryable: false,
+    flushEventsBeforeResult: true,
+    envLane: null,
+  }),
   "thread.rename": defineHostDaemonCommandDescriptor({
     type: "thread.rename",
     schema: threadRenameCommandSchema,
@@ -1674,6 +1730,15 @@ export const hostDaemonCommandRegistry = {
     type: "host.paths_exist",
     schema: hostPathsExistCommandSchema,
     resultSchema: pathsExistResponseSchema,
+    transport: "onlineRpc",
+    retryable: true,
+    flushEventsBeforeResult: false,
+    envLane: null,
+  }),
+  "host.find_git_repos": defineHostDaemonCommandDescriptor({
+    type: "host.find_git_repos",
+    schema: hostFindGitReposCommandSchema,
+    resultSchema: hostFindGitReposResultSchema,
     transport: "onlineRpc",
     retryable: true,
     flushEventsBeforeResult: false,

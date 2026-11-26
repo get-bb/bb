@@ -21,6 +21,9 @@ const composer = makeInstalledPlugin({
       sdkVersion: "0.4.27",
       compatible: true,
       runtimeSlots: ["zod"],
+      staticChunkUrls: [],
+      lazyChunkUrls: [],
+      lazyRuntimeSlots: [],
     },
   },
 });

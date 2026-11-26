@@ -1,6 +1,7 @@
 import { registerPluginUpdateJobRoutes } from "../../../src/routes/plugin-update-jobs.js";
 import { pluginUpdateJobResponseSchema } from "@bb/server-contract";
 import { createPluginUpdateJobs } from "../../../src/services/plugins/plugin-update-jobs.js";
+import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import { execFile } from "node:child_process";
 import { cpSync } from "node:fs";
 import {
@@ -11,6 +12,7 @@ import {
   rename,
   rm,
   stat,
+  symlink,
   writeFile,
 } from "node:fs/promises";
 import Database from "better-sqlite3";
@@ -72,6 +74,7 @@ async function commitPlugin(
   version: string,
   engines?: { bb?: string; bbPluginSdk?: string },
   serverSource?: string,
+  appFiles?: Record<string, string>,
 ): Promise<string> {
   await mkdir(repo, { recursive: true });
   await writeFile(
@@ -85,6 +88,7 @@ async function commitPlugin(
         description: "Plugin update fixture.",
         branding: { icon: "Zap" },
         server: "./server.ts",
+        ...(appFiles ? { app: "./app.tsx" } : {}),
       },
     }),
   );
@@ -93,6 +97,9 @@ async function commitPlugin(
     serverSource ??
       `export default function plugin(bb: any) { bb.log.info(${JSON.stringify(version)}); }`,
   );
+  for (const [file, source] of Object.entries(appFiles ?? {})) {
+    await writeFile(join(repo, file), source);
+  }
   await git(repo, ["add", "-A"]);
   await git(repo, ["commit", "-qm", version]);
   return git(repo, ["rev-parse", "HEAD"]);
@@ -606,6 +613,81 @@ describe("plugin update service and routes", () => {
     expect(materializationCount).toBe(2);
   });
 
+  it("updates a subdirectory plugin that imports from outside its directory", async () => {
+    await installSubdirectoryUpdater();
+    await mkdir(join(repo, "shared"));
+    await writeFile(
+      join(repo, "shared", "message.ts"),
+      'export const message = "shared one";',
+    );
+    await writeFile(
+      join(repo, "plugins", "updater", "server.ts"),
+      'import { message } from "../../shared/message.js";\nexport default function plugin(bb: any) { bb.log.info(message); }',
+    );
+    await git(repo, ["add", "-A"]);
+    await git(repo, ["commit", "-qm", "Import a shared module"]);
+    const nextCommit = await git(repo, ["rev-parse", "HEAD"]);
+
+    expect(await service.checkForUpdates("updater")).toMatchObject([
+      {
+        id: "updater",
+        outcome: "update-available",
+        candidate: { version: nextCommit },
+      },
+    ]);
+    await expect(service.applyUpdate("updater")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: true },
+    });
+    const installed = getInstalledPluginRegistration(db, "updater");
+    expect(installed).toMatchObject({ gitResolvedCommit: nextCommit });
+    const rootDir = service
+      .list()
+      .find((entry) => entry.id === "updater")?.rootDir;
+    if (rootDir === undefined) throw new Error("updater has no rootDir");
+    expect(
+      await readFile(join(rootDir, "dist", "server.js"), "utf8"),
+    ).toContain("shared one");
+    await stat(join(rootDir, "..", "..", "shared", "message.ts"));
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "updates a subdirectory plugin whose skills are a symlink out of its directory",
+    async () => {
+      await installSubdirectoryUpdater();
+      await mkdir(join(repo, "shared", "skills", "review"), {
+        recursive: true,
+      });
+      await writeFile(
+        join(repo, "shared", "skills", "review", "SKILL.md"),
+        "---\nname: review\ndescription: Review changes.\n---\n\n# review\n",
+      );
+      await symlink(
+        join("..", "..", "shared", "skills"),
+        join(repo, "plugins", "updater", "skills"),
+      );
+      await git(repo, ["add", "-A"]);
+      await git(repo, ["commit", "-qm", "Link shared skills"]);
+      const nextCommit = await git(repo, ["rev-parse", "HEAD"]);
+
+      await expect(service.applyUpdate("updater")).resolves.toMatchObject({
+        ok: true,
+        result: { applied: true },
+      });
+      expect(getInstalledPluginRegistration(db, "updater")).toMatchObject({
+        gitResolvedCommit: nextCommit,
+      });
+      const rootDir = service
+        .list()
+        .find((entry) => entry.id === "updater")?.rootDir;
+      if (rootDir === undefined) throw new Error("updater has no rootDir");
+      await stat(join(rootDir, "skills", "review", "SKILL.md"));
+      expect((await readPluginManifest(rootDir)).skillNames).toEqual([
+        "review",
+      ]);
+    },
+  );
+
   it.each(["main", "semver:^1.0.0"])(
     "keeps healthy plugin results when the git remote for %s is unavailable",
     async (selector) => {
@@ -914,6 +996,90 @@ describe("plugin update service and routes", () => {
     expect(
       service.list().find((entry) => entry.id === "updater"),
     ).toMatchObject({ id: "updater", version: "1.0.0", status: "running" });
+  }, 60_000);
+
+  it("keeps serving the restored version's frontend chunks after a rollback", async () => {
+    const splitApp = (label: string) => ({
+      "app.tsx": `export const loadPanel = () => import("./panel");\nexport default function App() { return null; }\n`,
+      "panel.tsx": `export const PANEL = ${JSON.stringify(label)};\n`,
+    });
+    await commitPlugin(repo, "1.0.1", undefined, undefined, splitApp("v1 panel"));
+    await installUpdater();
+    const installed = service
+      .list()
+      .find((entry) => entry.id === "updater")?.app.bundle;
+    if (installed === null || installed === undefined) {
+      throw new Error("missing installed bundle");
+    }
+    const [chunkUrl] = installed.lazyChunkUrls;
+    if (chunkUrl === undefined) throw new Error("bundle has no lazy chunk");
+    const route = (url: string) => url.replace(/^\/api\/v1/u, "");
+    const before = await app.request(route(chunkUrl));
+    expect(before.status).toBe(200);
+    expect(await before.text()).toContain("v1 panel");
+
+    let rejectService!: (error: Error) => void;
+    const serviceCrash = new Promise<void>((_resolve, reject) => {
+      rejectService = reject;
+    });
+    vi.stubGlobal("__bbPluginStabilizationCrash", serviceCrash);
+    await service.stop();
+    service = createPluginService({
+      bundledPlugins: [],
+      aiServices: createAiServiceRegistry(),
+      telemetry: createNoopTelemetryService(),
+      db,
+      hub: {
+        getDaemonSessionIdForHost: () => null,
+        notifyPluginChanged: () => {},
+        onWatchedTargets: () => () => {},
+        notifyPluginSignal: () => 0,
+        notifySystem: () => {},
+      },
+      logger,
+      dataDir: join(workDir, "data"),
+      appVersion: "1.0.0",
+      loadTimeoutMs: 2000,
+      stabilizationWindowMs: 1,
+      serviceRestartBaseMs: 1000,
+      scheduleStabilizationWindow: () => {
+        rejectService(new Error("service exploded"));
+        return () => {};
+      },
+    });
+    await service.start();
+    app = new Hono();
+    registerPluginRoutes(
+      app,
+      { config: { serverPort: 3334 }, db },
+      service,
+      createPluginInstallJobs({ notifyChanged: () => {} }),
+      updateJobs,
+    );
+    await commitPlugin(
+      repo,
+      "1.1.0",
+      undefined,
+      `export default function plugin(bb: any) {
+        bb.background.service("unstable", { async start() {
+          await (globalThis as any).__bbPluginStabilizationCrash;
+        }});
+      }`,
+      splitApp("v2 panel"),
+    );
+    await expect(service.applyUpdate("updater")).resolves.toMatchObject({
+      ok: true,
+      result: { applied: false, outcome: "rolled-back" },
+    });
+
+    const restored = service
+      .list()
+      .find((entry) => entry.id === "updater")?.app.bundle;
+    expect(restored?.hash).toBe(installed.hash);
+    expect(restored?.lazyChunkUrls).toEqual(installed.lazyChunkUrls);
+    const after = await app.request(route(chunkUrl));
+    expect(after.status).toBe(200);
+    expect(await after.text()).toContain("v1 panel");
   }, 60_000);
 
   it("finishes an interrupted rollback before loading plugins after restart", async () => {

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { definePluginApp } from "./plugin-app-definition";
+import { registerLazyPart } from "./lazy-parts";
 import {
   createPluginFrontendReconcileState,
   orderPluginFrontendCandidates,
@@ -20,6 +21,9 @@ function candidate(pluginId: string, jsBytes: number): PluginFrontendCandidate {
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      staticChunkUrls: [],
+      lazyChunkUrls: [],
+      lazyRuntimeSlots: [],
     },
   };
 }
@@ -69,6 +73,7 @@ function makeDeps(
     settlePluginLoad: vi.fn(),
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    restoredLazyParts: () => [],
     whenScreenPainted: () => Promise.resolve(),
     beginSlotBatch: () => () => {},
     flushSlotBatch: () => {},
@@ -118,6 +123,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
       {
         importModule: imports.importModule,
         priorityPluginIds: () => ["panel"],
+        restoredLazyParts: () => [],
       },
     );
     const done = reconcilePluginFrontends(state, deps);
@@ -165,6 +171,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
         {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list", "not-installed"],
+          restoredLazyParts: () => [],
           setRegistrations: (pluginId) => events.push(`register ${pluginId}`),
           beginSlotBatch: () => {
             events.push("open batch");
@@ -209,6 +216,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
         {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list"],
+          restoredLazyParts: () => [],
           prefetchModule,
           whenScreenPainted: () => screenPainted,
         },
@@ -248,6 +256,7 @@ describe("reconcilePluginFrontends load scheduling", () => {
         {
           importModule: imports.importModule,
           priorityPluginIds: () => ["thread-list"],
+          restoredLazyParts: () => [],
           prefetchModule,
         },
       ),
@@ -265,6 +274,174 @@ describe("reconcilePluginFrontends load scheduling", () => {
     }
     await done;
     expect(prefetchedIds()).toEqual(["d", "e", "f"]);
+  });
+
+  it("downloads a split bundle's static chunks together with its entry when it downloads ahead", async () => {
+    const imports = makeDeferredImports();
+    const prefetchModule = vi.fn();
+    const split = candidate("split", 40);
+    split.bundle.staticChunkUrls = [
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/chunk-A.js",
+    ];
+    split.bundle.lazyChunkUrls = [
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/Panel-B.js",
+    ];
+    const done = reconcilePluginFrontends(
+      createPluginFrontendReconcileState(),
+      makeDeps(
+        [
+          candidate("thread-list", 900),
+          candidate("a", 10),
+          candidate("b", 20),
+          candidate("c", 30),
+          split,
+        ],
+        {
+          importModule: imports.importModule,
+          priorityPluginIds: () => ["thread-list"],
+          restoredLazyParts: () => [],
+          prefetchModule,
+        },
+      ),
+    );
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    await imports.resolveNext();
+
+    expect(prefetchModule.mock.calls.map(([url]) => url)).toEqual([
+      split.bundle.jsUrl,
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/chunk-A.js",
+    ]);
+    while (imports.started.length < 5 || imports.pending() > 0) {
+      await imports.resolveNext();
+    }
+    await done;
+    expect(prefetchModule.mock.calls.map(([url]) => url)).not.toContain(
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/Panel-B.js",
+    );
+  });
+
+  function lazyPart() {
+    let finish: () => void = () => {};
+    const download = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let loaded = false;
+    const load = vi.fn(() =>
+      download.then(() => {
+        loaded = true;
+      }),
+    );
+    function Part() {
+      return null;
+    }
+    registerLazyPart(Part, { load, isLoaded: () => loaded });
+    return { Part, load, finish };
+  }
+
+  it("publishes a plugin's settings page once the sections it shows load, without loading its other lazy parts", async () => {
+    const section = lazyPart();
+    const tab = lazyPart();
+    const ownerModule = {
+      default: definePluginApp((app) => {
+        app.slots.settingsSection({ id: "accounts", component: section.Part });
+        app.slots.experimental_tab({
+          id: "diff",
+          title: "Diff",
+          icon: "FileDiff",
+          context: { kind: "thread" },
+          availability: "fixed",
+          component: tab.Part,
+        });
+      }),
+    };
+    const owner = candidate("owner", 10);
+    owner.bundle.lazyChunkUrls = [
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/settings-A.js",
+    ];
+    const other = candidate("other", 20);
+    const setRegistrations = vi.fn();
+    const prefetchModule = vi.fn();
+    const done = reconcilePluginFrontends(
+      createPluginFrontendReconcileState(),
+      makeDeps([owner, other], {
+        importModule: async (url) =>
+          url.includes("/owner/") ? ownerModule : pluginModule(),
+        priorityPluginIds: () => ["owner"],
+        restoredLazyParts: () => [{ kind: "settings-page", pluginId: "owner" }],
+        setRegistrations,
+        prefetchModule,
+      }),
+    );
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+
+    expect(prefetchModule.mock.calls.map(([url]) => url)).toContain(
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/settings-A.js",
+    );
+    expect(section.load).toHaveBeenCalledTimes(1);
+    expect(tab.load).not.toHaveBeenCalled();
+    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual([
+      "other",
+    ]);
+
+    section.finish();
+    await done;
+    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual([
+      "other",
+      "owner",
+    ]);
+    expect(tab.load).not.toHaveBeenCalled();
+  });
+
+  it("starts the open panel tab's lazy part as soon as its plugin registers, without holding the plugin back", async () => {
+    const tab = lazyPart();
+    const other = lazyPart();
+    const gitModule = {
+      default: definePluginApp((app) => {
+        app.slots.experimental_tab({
+          id: "diff",
+          title: "Diff",
+          icon: "FileDiff",
+          context: { kind: "thread" },
+          availability: "fixed",
+          component: tab.Part,
+        });
+        app.slots.experimental_tab({
+          id: "history",
+          title: "History",
+          icon: "Zap",
+          context: { kind: "thread" },
+          availability: "fixed",
+          component: other.Part,
+        });
+      }),
+    };
+    const git = candidate("git", 10);
+    git.bundle.lazyChunkUrls = [
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/DiffTab-A.js",
+    ];
+    const setRegistrations = vi.fn();
+    const prefetchModule = vi.fn();
+    await reconcilePluginFrontends(
+      createPluginFrontendReconcileState(),
+      makeDeps([git], {
+        importModule: async () => gitModule,
+        restoredLazyParts: () => [
+          { kind: "panel-tab", pluginId: "git", tabId: "diff" },
+        ],
+        setRegistrations,
+        prefetchModule,
+      }),
+    );
+
+    expect(prefetchModule.mock.calls.map(([url]) => url)).toContain(
+      "/api/v1/plugin-app-assets/0123456789abcdef/chunks/DiffTab-A.js",
+    );
+    expect(tab.load).toHaveBeenCalledTimes(1);
+    expect(other.load).not.toHaveBeenCalled();
+    expect(setRegistrations.mock.calls.map(([pluginId]) => pluginId)).toEqual([
+      "git",
+    ]);
+    tab.finish();
   });
 
   it("a rejected import in one lane does not stall the remaining candidates", async () => {

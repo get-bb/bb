@@ -64,7 +64,7 @@ interface Collected {
 function Probe({ collected }: { collected: { current: Collected | null } }) {
   const useData = moveThreadAction.useData;
   if (useData === undefined) throw new Error("Move reads its destinations");
-  const data = useData({ threadIds: [] });
+  const data = useData({ threadIds: [], experimental_threads: [] });
   const sdk: PluginBrowserBbSdk = useSdk();
   const navigate: BbNavigate = useBbNavigate();
   const panel = experimental_useAppPanel();

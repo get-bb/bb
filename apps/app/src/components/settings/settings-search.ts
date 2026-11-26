@@ -11,6 +11,7 @@ export type SettingsSearchCondition =
   | "cliCommand"
   | "composers"
   | "desktopBrowser"
+  | "desktopQuitConfirmation"
   | "diffRenderers"
   | "fileOpeners"
   | "filePreferences"
@@ -48,6 +49,11 @@ export const SETTINGS_SEARCH_INDEX: Record<
       {
         title: "Default thread followup behavior",
         keywords: ["enter", "steer", "queue", "follow-up"],
+      },
+      {
+        title: "Ask before quitting",
+        keywords: ["quit", "agents", "confirmation", "desktop"],
+        when: "desktopQuitConfirmation",
       },
       {
         title: "Thread archive confirmation",

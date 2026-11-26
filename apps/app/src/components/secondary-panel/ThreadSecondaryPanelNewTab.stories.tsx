@@ -5,7 +5,7 @@ import { makeHost } from "@bb/test-helpers/domain-fixtures";
 import type {
   ThreadStoragePathListResponse,
   WorkspacePathEntry,
-  WorkspacePathListResponse,
+  WorkspaceSearchPathListResponse,
 } from "@bb/server-contract";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { WithDesktopBrowser } from "../../../.ladle/story-desktop";
@@ -33,7 +33,7 @@ import {
 import {
   getFileNameFromPath,
   resolveRightPanelFileIconName,
-} from "./rightPanelFileVisuals";
+} from "@bb/shared-ui/right-panel-file-visuals";
 import {
   resolveTerminalHost,
   TerminalHostSelector,
@@ -319,9 +319,9 @@ function PanelStage({ children, presentation = "card" }: PanelStageProps) {
 
 function makeWorkspacePathResponse(
   paths: readonly WorkspacePathEntry[],
-): WorkspacePathListResponse {
+): WorkspaceSearchPathListResponse {
   return {
-    paths: [...paths],
+    paths: paths.map((path) => ({ ...path, folderPath: null })),
     truncated: false,
   };
 }
@@ -382,6 +382,7 @@ function useStoryQueryClient({
         STORY_SOURCE_LIMIT,
         true,
         false,
+        "main",
       ),
       makeWorkspacePathResponse(workspacePaths),
     );
@@ -564,7 +565,6 @@ function NewTabPanelStory({
         tabs={[panelTab]}
         fixedTabs={[]}
         isOpen
-        metadataContent={null}
         onCollapse={noop}
         onClose={noop}
         onTabReorder={noop}

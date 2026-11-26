@@ -13,12 +13,14 @@ import {
 } from "@bb/domain";
 import {
   commitActionResponseSchema,
+  environmentReposResponseSchema,
   updateEnvironmentRequestSchema,
   type CommitActionResponse,
   type EnvironmentArchiveThreadsResponse,
   type EnvironmentPathsQuery,
+  type EnvironmentReposResponse,
   type UpdateEnvironmentRequest,
-  type WorkspacePathListResponse,
+  type WorkspaceSearchPathListResponse,
   type SystemEnvironmentProvider,
 } from "@bb/server-contract";
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
@@ -68,10 +70,15 @@ export interface EnvironmentPathsArgs extends EnvironmentPathsQuery {
   signal?: AbortSignal;
 }
 
+export interface EnvironmentReposArgs {
+  environmentId: string;
+  signal?: AbortSignal;
+}
+
 export type EnvironmentArchiveThreadsResult = EnvironmentArchiveThreadsResponse;
 export type EnvironmentCommitResult = CommitActionResponse;
 export type EnvironmentGetResult = Environment;
-export type EnvironmentPathsResult = WorkspacePathListResponse;
+export type EnvironmentPathsResult = WorkspaceSearchPathListResponse;
 export type EnvironmentUpdateResult = Environment;
 export interface EnvironmentListArgs {
   environmentProviderId?: string;
@@ -140,6 +147,10 @@ export interface EnvironmentsArea {
   ): Promise<EnvironmentListProvidersResult>;
   delete(args: EnvironmentDeleteArgs): Promise<EnvironmentDeleteResult>;
   paths(args: EnvironmentPathsArgs): Promise<EnvironmentPathsResult>;
+  /** Git repositories of a ready environment: its main folder, extra folders, and repos found inside them. Experimental: see docs/api_to_audit.md. */
+  experimental_repos(
+    args: EnvironmentReposArgs,
+  ): Promise<EnvironmentReposResponse>;
   update(args: EnvironmentUpdateArgs): Promise<EnvironmentUpdateResult>;
 }
 
@@ -164,6 +175,7 @@ function environmentPathsQuery(
     includeFiles: args.includeFiles,
     limit: args.limit,
     query: args.query,
+    ...(args.folders === undefined ? {} : { folders: args.folders }),
   };
 }
 
@@ -278,6 +290,15 @@ export function createEnvironmentsArea(
         ),
       );
       return environmentSchema.parse(body);
+    },
+    async experimental_repos(input) {
+      const body = await transport.readJson(
+        transport.api.v1.environments[":id"].repos.$get(
+          { param: { id: input.environmentId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+      return environmentReposResponseSchema.parse(body);
     },
     async paths(input) {
       return transport.readJson(

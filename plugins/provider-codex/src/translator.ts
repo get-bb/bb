@@ -10,7 +10,11 @@ import {
 import { z } from "zod";
 import {
   applyCodexRateLimitUpdate,
+  beginCodexBackgroundCommandStop,
+  cancelCodexBackgroundCommandStop,
   normalizeCodexRateLimits,
+  settleCodexRunningCommand,
+  settleCodexRunningCommands,
   clearCodexEventTranslationThreadState,
   createCodexEventTranslationState,
   setCodexInjectedTools,
@@ -572,7 +576,12 @@ export function createCodexEventTranslator(
   }): ThreadDelta[] {
     rawCommandOutputStateByProviderThreadId.delete(providerThreadId);
     responseHandledTurnsByThreadId.delete(providerThreadId);
-    return clearCodexDelegationParentState(providerThreadId);
+    return [
+      ...settleCodexRunningCommands(eventTranslationState, {
+        providerThreadId,
+      }),
+      ...clearCodexDelegationParentState(providerThreadId),
+    ];
   }
 
   function clearCodexDelegationParentState(
@@ -1707,8 +1716,32 @@ export function createCodexEventTranslator(
     setCodexInjectedTools(eventTranslationState, tools);
   }
 
+  function beginBackgroundCommandStop(args: {
+    providerThreadId: string;
+    itemId: string;
+  }): string | null {
+    return beginCodexBackgroundCommandStop(eventTranslationState, args);
+  }
+
+  function cancelBackgroundCommandStop(args: {
+    providerThreadId: string;
+    itemId: string;
+  }): void {
+    cancelCodexBackgroundCommandStop(eventTranslationState, args);
+  }
+
+  function settleBackgroundCommand(args: {
+    providerThreadId: string;
+    itemId: string;
+  }): ThreadDelta[] {
+    return settleCodexRunningCommand(eventTranslationState, args);
+  }
+
   return {
     activateThreadGitWritableRoots,
+    beginBackgroundCommandStop,
+    cancelBackgroundCommandStop,
+    settleBackgroundCommand,
     recoverRateLimits,
     resetRateLimits,
     clearExitedChildThreadState,

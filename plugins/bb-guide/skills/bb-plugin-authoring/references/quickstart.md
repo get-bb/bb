@@ -162,13 +162,20 @@ storage, settings, and CLI commands.
   when it declares `bb.app`, and its host bundle and metadata when it declares
   `bb.host`.
 - `bb plugin build` stamps every declared artifact's `dist/*.meta.json` with
-  `sdkMajor`, `sdkVersion`, `artifactFormatVersion` (currently `1`),
+  `sdkMajor`, `sdkVersion`, `artifactFormatVersion` (`1`, or `2` with chunks),
   `pluginId`, `pluginVersion`, and `builtWith: { bbVersion, pluginSdkVersion }`.
   Managed installs reject artifacts whose `pluginId`/`pluginVersion` disagree
   with the package manifest, or whose SDK major does not match the host.
   `app.meta.json` also lists `runtimeSlots`, the shimmed host modules the
   bundle imports. bb downloads `@pierre/diffs` only before evaluating a bundle
   that lists it; a bundle built without the field gets every slot.
+- Each dynamic `import()` in app code becomes a chunk in `dist/chunks/`,
+  listed in `app.meta.json` (`chunks`, `entryChunks`, `chunkRuntimeSlots`),
+  and the meta's `artifactFormatVersion` becomes `2`; bb versions that only
+  know `1` refuse the bundle. bb serves chunks under the bundle's content
+  hash, so a chunk always matches the entry that imports it. Ship
+  `dist/chunks/` with `dist/app.js` in npm packages. See "Loading a
+  surface's code when it first renders" in frontend-registration.md.
 - Give every mount and portal your plugin id. Current `lib/portal-scope`
   and the shared overlays set `data-bb-plugin` next to `data-bb-plugin-root`.
   If `app.js` sets `data-bb-plugin-root` without it, as copies of

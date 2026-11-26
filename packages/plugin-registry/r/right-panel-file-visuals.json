@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "right-panel-file-visuals",
+  "type": "registry:ui",
+  "title": "right-panel-file-visuals",
+  "description": "BB ui \"right-panel-file-visuals\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/right-panel-file-visuals.ts",
+      "content": "import type { IconName } from \"./icon\";\n\ninterface GetFileNameFromPathArgs {\n  path: string;\n}\n\ninterface HasPathDirectorySegmentArgs {\n  path: string;\n  segment: string;\n}\n\ninterface GetFileExtensionArgs {\n  path: string;\n}\n\nexport function getFileNameFromPath({ path }: GetFileNameFromPathArgs): string {\n  return path.slice(path.lastIndexOf(\"/\") + 1) || path;\n}\n\nfunction getFileExtension({ path }: GetFileExtensionArgs): string {\n  const name = getFileNameFromPath({ path });\n  const dotIndex = name.lastIndexOf(\".\");\n  return dotIndex <= 0 ? \"\" : name.slice(dotIndex + 1).toLowerCase();\n}\n\nfunction hasPathDirectorySegment({\n  path,\n  segment,\n}: HasPathDirectorySegmentArgs): boolean {\n  return path.toLowerCase().split(\"/\").slice(0, -1).includes(segment);\n}\n\nexport function resolveRightPanelFileIconName(path: string): IconName {\n  const extension = getFileExtension({ path });\n  const inReports = hasPathDirectorySegment({ path, segment: \"reports\" });\n  const isMarkdown = extension === \"md\" || extension === \"markdown\";\n  const isHtml = extension === \"html\" || extension === \"htm\";\n\n  if (inReports && (isMarkdown || isHtml)) {\n    return \"ChartColumn\";\n  }\n  if (isMarkdown) {\n    return \"File\";\n  }\n  if (isHtml) {\n    return \"AppWindow\";\n  }\n  return \"Code\";\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/right-panel-file-visuals.ts"
+    }
+  ]
+}

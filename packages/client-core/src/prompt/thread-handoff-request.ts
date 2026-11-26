@@ -3,14 +3,22 @@ import type {
   PromptTextMention,
   ReasoningLevel,
   ServiceTier,
+  ThreadParentNotifications,
 } from "@bb/domain";
 import type { AppCreateThreadRequest } from "../api-types.js";
 import type { ProviderCommandSuggestion } from "./mentions/types.js";
 import { promptDraftToInput, type PromptDraftState } from "./prompt-draft.js";
 
+export interface ThreadHandoffSourceParent {
+  threadId: string;
+  notifications: ThreadParentNotifications;
+}
+
 export interface ThreadHandoffCreateSeed {
   environmentId: string | null;
+  parent: ThreadHandoffSourceParent | null;
   projectId: string;
+  sectionId: string | null;
   sourceThreadId: string;
   sourceThreadTitle: string;
 }
@@ -153,10 +161,17 @@ export function buildThreadHandoffCreateRequest({
     },
     input,
     model: execution.model,
+    ...(seed.parent === null
+      ? {}
+      : {
+          parentNotifications: seed.parent.notifications,
+          parentThreadId: seed.parent.threadId,
+        }),
     permissionMode: execution.permissionMode,
     projectId: seed.projectId,
     providerId: execution.providerId,
     reasoningLevel: execution.reasoningLevel,
+    sectionId: seed.sectionId,
     ...(execution.supportsServiceTier && execution.serviceTier
       ? { serviceTier: execution.serviceTier }
       : {}),

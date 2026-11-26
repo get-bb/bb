@@ -81,6 +81,32 @@ describe("bb status command output", () => {
     );
   });
 
+  it("bb status reports only the unreachable server when every request fails", async () => {
+    vi.stubEnv("BB_PROJECT_ID", "proj-1");
+    vi.stubEnv("BB_THREAD_ID", "thread-1");
+    vi.mocked(fetch).mockRejectedValue(new TypeError("fetch failed"));
+    const unreachable = vi.fn(async () => {
+      throw new TypeError("fetch failed");
+    });
+    stubServerApi({
+      "v1.projects.:id.$get": unreachable,
+      "v1.threads.:id.$get": unreachable,
+    });
+
+    await expect(runCommand(["status"], register)).rejects.toThrow(
+      "process.exit:1",
+    );
+
+    expect(collectLogLines(vi.mocked(console.log))).toEqual([
+      "Project: proj-1",
+      "",
+      "Thread: thread-1",
+    ]);
+    expect(vi.mocked(console.error).mock.calls).toEqual([
+      ["Error: The bb server at http://server did not answer: fetch failed"],
+    ]);
+  });
+
   it("bb status prints pinned state for pinned thread context", async () => {
     vi.stubEnv("BB_PROJECT_ID", "proj-1");
     vi.stubEnv("BB_THREAD_ID", "thread-pinned-1");

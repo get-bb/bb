@@ -570,6 +570,9 @@ export function createDeltaAssembler(
         ...(shape.outputFile === undefined
           ? {}
           : { outputFile: shape.outputFile }),
+        ...(shape.stoppable === undefined
+          ? {}
+          : { stoppable: shape.stoppable }),
       },
       parentToolCallId,
     );

@@ -84,6 +84,9 @@ function pluginWithBundle(hash: string) {
         sdkVersion: "0.4.27",
         compatible: true,
         runtimeSlots: [],
+        staticChunkUrls: [],
+        lazyChunkUrls: [],
+        lazyRuntimeSlots: [],
       },
     },
   };

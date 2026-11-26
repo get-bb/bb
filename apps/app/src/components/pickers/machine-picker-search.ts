@@ -1,5 +1,5 @@
 import type { Host } from "@bb/domain";
-import { searchPickerOptions } from "@bb/shared-ui/picker-search";
+import { searchPickerOptions } from "@bb/fuzzy-match";
 
 export const MACHINE_SEARCH_MIN_OPTIONS = 5;
 

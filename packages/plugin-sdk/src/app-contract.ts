@@ -10,6 +10,7 @@ import type {
 } from "./rpc-contract.js";
 import type {
   ComponentPropsWithRef,
+  ComponentProps,
   ComponentPropsWithoutRef,
   ComponentType,
   CSSProperties,
@@ -18,6 +19,9 @@ import type {
   RefObject,
 } from "react";
 import type {
+  EnvironmentHostLifecycle,
+  EnvironmentStatus,
+  Environment,
   PermissionMode,
   PromptInput,
   ProviderInfo,
@@ -2040,7 +2044,9 @@ export interface ExperimentalThreadInfoProps {
  * fields `useSdk().threads.get` returns, without `activeBackgroundAgentCount`,
  * `canRestoreEnvironment`, `canEditMessages`, `canSpawnChild` and
  * `queuedMessageCount`, which only that request computes. Read those from
- * `threads.get` when you need them.
+ * `threads.get` when you need them. `runtime.failure` is `"provisioning"`
+ * while the thread is in `error` because setting up its environment failed,
+ * and null otherwise; the thread's next status change clears it.
  */
 export type ExperimentalThread = ThreadWithRuntime;
 
@@ -2054,6 +2060,88 @@ export type ExperimentalThreadState =
   | { status: "ready"; thread: ExperimentalThread }
   | { status: "notFound"; thread: null }
   | { status: "error"; thread: null };
+
+/**
+ * An environment as {@link PluginSdkApp.experimental_useEnvironment} reports
+ * it: what `useSdk().environments.get` returns, plus bb's own label for it and
+ * the machine it runs on.
+ */
+export type ExperimentalEnvironment = Environment & {
+  /**
+   * bb's label for the environment, the one its Info tab and composer show:
+   * a lifecycle state ("Provisioning", "Unavailable — machine removed"), the
+   * environment provider's name ("<id> (not installed)" for one bb doesn't
+   * have), or "Working locally"/"Working remotely".
+   */
+  label: string;
+  /** The machine the environment runs on; null when bb has no record of it. */
+  host: ExperimentalEnvironmentHost | null;
+};
+
+/** The machine an {@link ExperimentalEnvironment} runs on. */
+export interface ExperimentalEnvironmentHost {
+  id: string;
+  /** The machine's name, kept after the machine is removed. */
+  name: string;
+  /** False while the machine's daemon is offline, and once it is removed. */
+  connected: boolean;
+  /** True for the machine this bb client runs on. */
+  local: boolean;
+  /**
+   * Whether bb names the machine beside the environment: when there is more
+   * than one machine, when this one is not a persistent machine (a cloud or
+   * ephemeral one), and while it is being removed or once it is.
+   */
+  named: boolean;
+  /**
+   * The machine provider that created it, ready for
+   * `experimental_ProviderIcon` with `providerKind: "machine"`; null for a
+   * machine the user enrolled.
+   */
+  machineProvider: {
+    id: string;
+    displayName: string;
+    icon: string;
+    logoUrl: string | null;
+  } | null;
+}
+
+/**
+ * What {@link PluginSdkApp.experimental_useEnvironment} knows about one
+ * environment, with the states of {@link ExperimentalThreadState}: `notFound`
+ * means bb has no such environment, `error` is any other failed read.
+ */
+export type ExperimentalEnvironmentState =
+  | { status: "loading"; environment: null }
+  | { status: "ready"; environment: ExperimentalEnvironment }
+  | { status: "notFound"; environment: null }
+  | { status: "error"; environment: null };
+
+/** One file in a thread's storage, as `experimental_useThreadStorageFiles` lists it. */
+export interface ExperimentalThreadStorageFile {
+  /** Relative to the thread's storage root, `/`-separated. */
+  path: string;
+  /** The file's basename. */
+  name: string;
+}
+
+/**
+ * What {@link PluginSdkApp.experimental_useThreadStorageFiles} knows about a
+ * thread's storage. `errorMessage` is the text bb shows for the failure.
+ */
+export type ExperimentalThreadStorageFilesState =
+  | { status: "loading"; files: null }
+  | { status: "ready"; files: readonly ExperimentalThreadStorageFile[] }
+  | { status: "error"; files: null; errorMessage: string };
+
+/** Options for {@link PluginSdkApp.experimental_useThreadStorageFiles}. */
+export interface ExperimentalThreadStorageFilesOptions {
+  /**
+   * False pauses the hook: it makes no request and reports the last list it
+   * read for the thread, or `loading` before the first. Defaults to true.
+   */
+  enabled?: boolean;
+}
 
 /** An environment a thread surface hands to plugin components. */
 export interface ExperimentalThreadEnvironment {
@@ -2482,6 +2570,16 @@ export interface ExperimentalThreadContextCardRowProps {
   onClick?(): void;
 }
 
+/** What {@link PluginSdkApp.experimental_searchPickerOptions} searches. */
+export interface ExperimentalSearchPickerOptionsArgs<Option> {
+  options: readonly Option[];
+  query: string;
+  /** The text an option shows; matches rank above alias matches. */
+  getLabel(option: Option): string;
+  /** Other text the option should be found by, such as an id. */
+  getAliases?(option: Option): readonly string[];
+}
+
 /**
  * Props of the host-owned `experimental_InfoSection` component — the heading,
  * count, and collapse control every Info tab section uses.
@@ -2554,7 +2652,10 @@ export interface ExperimentalPluginBrowserToolbarActionRegistration {
 
 /**
  * The thread a thread action is evaluated for: the fields bb's own actions
- * read, copied from the thread payload by the surface that shows the menu.
+ * read. bb builds it from the thread's id the same way on every surface (the
+ * thread header, sidebar rows and their menus, selection menus, the command
+ * palette, and plugin lists), so an action sees the same target wherever it
+ * shows.
  */
 export interface PluginThreadActionTarget {
   id: string;
@@ -2573,10 +2674,19 @@ export interface PluginThreadActionTarget {
   isHidden: boolean;
   status: ThreadStatus;
   /**
-   * The thread's environment when a new thread can reuse it, null otherwise.
-   * `path` is the checkout path, null when the environment has none.
+   * The thread's environment, null when the thread has none or bb cannot
+   * read it. `path` is its checkout path, null while the environment has no
+   * checkout (not created yet, or removed). `status` is its setup state
+   * ("error" when setup failed) and `hostLifecycle` its machine's ("active"
+   * unless the machine is being removed or is gone). Experimental: see
+   * docs/api_to_audit.md.
    */
-  environment: { id: string; path: string | null } | null;
+  environment: {
+    id: string;
+    path: string | null;
+    status: EnvironmentStatus;
+    hostLifecycle: EnvironmentHostLifecycle;
+  } | null;
 }
 
 /** One row of a thread action's choice list. */
@@ -2648,6 +2758,13 @@ export interface PluginThreadActionDataInput {
    * ids, fetching only ids not loaded yet.
    */
   threadIds: readonly string[];
+  /**
+   * The targets `item` receives for `threadIds`, in the same order, kept
+   * current as the threads change. A thread bb has not loaded yet is left out
+   * until it loads. Read thread fields such as `environment` here instead of
+   * fetching each thread. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_threads: readonly PluginThreadActionTarget[];
 }
 
 /** What a registration's `item` receives for each thread it is shown for. */
@@ -2812,7 +2929,12 @@ export interface PluginThreadActionsInlineItem {
 export type PluginThreadActionsTriggerProps = ComponentPropsWithRef<"button">;
 
 interface PluginThreadActionsMenuBaseProps {
-  thread: PluginThreadActionTarget;
+  /**
+   * The thread the menu acts on. bb reads only its `id` and resolves the
+   * target its actions receive itself, so pass the thread object you hold
+   * (a `PluginSidebarThread`, an `ExperimentalThread`) or `{ id }`.
+   */
+  thread: { id: string };
   inline?: readonly PluginThreadActionsInlineItem[];
   /** See {@link PluginThreadActionsOptions.requestRename}. */
   requestRename?(threadId: string): void;
@@ -2849,10 +2971,10 @@ export interface PluginThreadActionsContextMenuProps extends PluginThreadActions
    * registration's `experimental_bulkItem` under a count of the
    * selection, including bb's own Mark read, Pin, Archive and Delete, which
    * confirm and clean up as the single-thread actions do, then `inline`.
-   * Omit it, or pass fewer than two, for `thread`'s own menu. Experimental:
-   * see docs/api_to_audit.md.
+   * Omit it, or pass fewer than two, for `thread`'s own menu. As with
+   * `thread`, bb reads only each `id`. Experimental: see docs/api_to_audit.md.
    */
-  experimental_bulkThreads?: readonly PluginThreadActionTarget[];
+  experimental_bulkThreads?: readonly { id: string }[];
   /** Called when Escape dismisses the desktop menu, e.g. to clear a selection. */
   onEscapeKeyDown?(event: KeyboardEvent): void;
 }
@@ -3712,6 +3834,8 @@ export interface ExperimentalPluginIconProps {
 export interface ExperimentalThreadTitleTextProps {
   title: string;
   className?: string;
+  /** Shows the title's display text as the native tooltip, for a title that may truncate. */
+  tooltip?: boolean;
 }
 
 /**
@@ -6131,11 +6255,34 @@ export interface ExperimentalServers {
 }
 
 /**
+ * A component that `experimental_lazy` loads from a separate chunk. Pass it
+ * straight to a slot's `component` so bb can see that it is lazy: hosts load
+ * it before they reveal it, and bb downloads it once startup settles.
+ * Experimental: see docs/api_to_audit.md.
+ */
+export type ExperimentalLazyComponent<P> = (props: P) => ReactNode;
+
+/**
  * Everything `@get-bb/plugin-sdk/app` resolves to at runtime. The BB app builds
  * the real implementation and `satisfies` this interface; `bb plugin build`
  * shims the specifier to that object on `globalThis.__bbPluginRuntime`.
  */
 export interface PluginSdkApp {
+  /**
+   * Load a component from a separate chunk instead of the plugin's startup
+   * bundle. `load` is a dynamic import resolving to `{ default: Component }`,
+   * as for `React.lazy`. bb downloads and evaluates the chunk once startup
+   * settles, so a surface opened later renders in its first frame. A host that
+   * stacks entries (Info rows and sections, context card rows, the rail,
+   * settings sections) reveals an entry only after the entries above it are
+   * ready, and a plugin's own page waits for the lazy parts it shows. A
+   * chunk that fails to load crashes only its slot, which reaches `onCrash`
+   * like any render error. Call it once at module scope, never during render.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_lazy<T extends ComponentType<any>>(
+    load: () => Promise<{ default: T }>,
+  ): ExperimentalLazyComponent<ComponentProps<T>>;
   /** List URL schemes approved for this BB site in the viewing client's localStorage. Core Settings uses the same implementation. */
   experimental_getApplicationLinkApprovals(): Promise<string[]>;
   /** Revoke one scheme, or all with null, for this BB site on this client. Does not grant permission. */
@@ -6374,10 +6521,12 @@ export interface PluginSdkApp {
    * then plugins' in registration order. Registrations' `useData` hooks run
    * once for the app, so calling this per sidebar row costs one store
    * subscription and a pure `item` call per registration. Pass `keys` for a
-   * row's quick actions. Experimental: see docs/api_to_audit.md.
+   * row's quick actions. bb reads only `thread.id` and resolves the target
+   * as its menus do; the list is empty until bb has loaded the thread.
+   * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadActions(
-    thread: PluginThreadActionTarget,
+    thread: { id: string },
     options?: PluginThreadActionsOptions,
   ): readonly PluginThreadActionEntry[];
   /**
@@ -6452,7 +6601,8 @@ export interface PluginSdkApp {
   /**
    * One thread by id (see {@link ExperimentalThreadState}). A thread bb's
    * sidebar already holds is read from it with no request and re-renders the
-   * component only when that thread changes. Any other thread, such as an
+   * component only when that thread changes; sidebar-held and fetched threads
+   * both carry `runtime.failure`. Any other thread, such as an
    * archived one, is fetched once and then kept current. A thread that leaves
    * the sidebar while you watch it (archived, say) stays `ready` with its last
    * sidebar value until that fetch answers. A thread deleted while you watch
@@ -6486,6 +6636,30 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_useTimelineViewport(): ExperimentalTimelineViewport | null;
+  /**
+   * One environment by id (see {@link ExperimentalEnvironmentState}), kept
+   * current as it changes: read from the same cache bb's thread view uses, so
+   * an environment bb already shows costs no extra request. Its machine and
+   * label update with the machine list and the environment provider catalog.
+   * An empty id is `notFound` with no request. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useEnvironment(
+    environmentId: string,
+  ): ExperimentalEnvironmentState;
+  /**
+   * The files in a thread's storage (see
+   * {@link ExperimentalThreadStorageFilesState}), the list bb's Info tab
+   * shows, kept current as the thread writes them. The list is read once
+   * however many components ask, and a failed refresh keeps the last list.
+   * Open a file with the file intents and a `thread-storage` target. Pass
+   * `{ enabled: false }` to stop reading while the list is not shown.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadStorageFiles(
+    threadId: string,
+    options?: ExperimentalThreadStorageFilesOptions,
+  ): ExperimentalThreadStorageFilesState;
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
    * Call it once per rendered row, like the built-in sidebar does.
@@ -6782,6 +6956,16 @@ export interface PluginSdkApp {
    */
   experimental_InfoSection: ComponentType<ExperimentalInfoSectionProps>;
   /**
+   * The thread Info tab's body: every `experimental_threadInfoRow` in its
+   * details block and every `experimental_threadInfoSection` below it, bb's
+   * own included, in the slots' group and order. It shows "No thread details
+   * available." only when none of them renders anything for the thread, and
+   * a skeleton while the thread loads. bb's Info tab registers it as its
+   * component; a thread tab can register it to show the same body.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadInfo: ComponentType<ExperimentalThreadTabProps>;
+  /**
    * bb's collapsible card for the stack above a thread's composer (see
    * {@link ExperimentalCollapsibleStackCardProps}). Render it from a
    * thread-scoped composer banner with `chrome: "bare"`. Experimental: see
@@ -6897,6 +7081,16 @@ export interface PluginSdkApp {
    * half of it. Experimental: see docs/api_to_audit.md.
    */
   experimental_sliceUtf16Head(value: string, maxChars: number): string;
+  /**
+   * Filters and ranks `options` against a typed `query` with bb's own picker
+   * search (see {@link ExperimentalSearchPickerOptionsArgs}): fzf-style fuzzy
+   * matching over each option's label and aliases, best match first. Options
+   * that match nothing are dropped; an empty or blank query returns `options`
+   * unchanged. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_searchPickerOptions<Option>(
+    args: ExperimentalSearchPickerOptionsArgs<Option>,
+  ): readonly Option[];
   experimental_ImageLightbox: ComponentType<ExperimentalImageLightboxProps>;
   experimental_PromptMentionIcon: ComponentType<ExperimentalPromptMentionIconProps>;
   /**

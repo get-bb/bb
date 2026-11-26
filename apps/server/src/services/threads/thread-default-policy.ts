@@ -24,6 +24,7 @@ import {
   resolvePrimaryHostId,
 } from "../hosts/primary-host.js";
 import { ensureHostSessionReadyForWork } from "../hosts/host-lifecycle.js";
+import type { GitCheckoutInspector } from "../environments/provider-availability.js";
 import {
   projectCheckoutPathOnHost,
   resolveProjectWorkspaceTarget,
@@ -100,6 +101,7 @@ interface ResolveCreateThreadEnvironmentArgs {
   parentThread: ParentThread | null;
   projectId: string;
   requestedEnvironment: CreateThreadEnvironment;
+  inspectGitCheckout: GitCheckoutInspector;
 }
 
 interface ResolveSupportedPermissionModeArgs {
@@ -296,14 +298,11 @@ async function resolveProjectDefaultHostId(
 
 async function projectSourceHasWorktreeBase(
   deps: WorkSessionDeps,
+  inspectGitCheckout: GitCheckoutInspector,
   hostId: string,
   path: string,
 ): Promise<boolean> {
-  const { checkout } = await callHostRetryableOnlineRpc(deps, {
-    hostId,
-    timeoutMs: COMMAND_TIMEOUT_MS,
-    command: { type: "host.inspect_git_checkout", path },
-  });
+  const { checkout } = await inspectGitCheckout({ hostId, path });
   if (checkout.kind === "branch") return true;
   const inspection = await callHostRetryableOnlineRpc(deps, {
     hostId,
@@ -319,7 +318,7 @@ async function projectSourceHasWorktreeBase(
 
 export async function resolveProjectDefaultThreadEnvironment(
   deps: WorkSessionDeps,
-  args: { projectId: string },
+  args: { projectId: string; inspectGitCheckout: GitCheckoutInspector },
 ): Promise<ResolvedCreateThreadEnvironment> {
   if (args.projectId === PERSONAL_PROJECT_ID) {
     return {
@@ -340,7 +339,14 @@ export async function resolveProjectDefaultThreadEnvironment(
     hostId,
     projectId: args.projectId,
   });
-  if (!(await projectSourceHasWorktreeBase(deps, hostId, source.path))) {
+  if (
+    !(await projectSourceHasWorktreeBase(
+      deps,
+      args.inspectGitCheckout,
+      hostId,
+      source.path,
+    ))
+  ) {
     return {
       type: "provider",
       environmentProviderId: requireDefaultEnvironmentProvider(
@@ -442,6 +448,7 @@ export async function resolveCreateThreadEnvironment(
     args.requestedEnvironment.type === "project-default"
       ? await resolveProjectDefaultThreadEnvironment(deps, {
           projectId: args.projectId,
+          inspectGitCheckout: args.inspectGitCheckout,
         })
       : args.requestedEnvironment;
 

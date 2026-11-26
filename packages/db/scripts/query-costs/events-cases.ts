@@ -42,7 +42,7 @@ import {
   getLatestStoredThreadEventOfTypes,
   getLatestThreadStopAim,
   getLatestThreadSequence,
-  getLatestThreadSystemErrorEventRow,
+  getLatestThreadErrorEventRow,
   getLatestTokenUsageRow,
   getStoredConversationOutlineProjectionState,
   findStoredItemTurnIdInRange,
@@ -64,6 +64,8 @@ import {
   listActiveBackgroundTaskCountsByThreadIds,
   listAppendedEventRows,
   listCommandItemDataByItemIds,
+  listCommandOutputDeltaTexts,
+  listOpenCommandItemRowsByItemIds,
   listContextWindowUsageRows,
   listItemEventSpansByItems,
   listLatestBackgroundTaskStateRowsByItemIds,
@@ -633,6 +635,25 @@ const LIVE_TURN_COST_CASES: readonly QueryCostCase[] = [
       listCommandItemDataByItemIds(db, {
         itemIds: [fixture.liveTurn.runningCommandItemId],
         threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listOpenCommandItemRowsByItemIds`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listOpenCommandItemRowsByItemIds(db, {
+        itemIds: [fixture.liveTurn.runningCommandItemId],
+        threadId: fixture.liveTurn.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listCommandOutputDeltaTexts`,
+    variant: LIVE_TURN,
+    run: (db, fixture) =>
+      listCommandOutputDeltaTexts(db, {
+        itemId: fixture.liveTurn.runningCommandItemId,
+        threadId: fixture.liveTurn.threadId,
+        turnId: fixture.liveTurn.turnId,
       }),
   },
   {
@@ -1333,9 +1354,12 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
       }),
   },
   {
-    name: `${EVENTS}#getLatestThreadSystemErrorEventRow`,
+    name: `${EVENTS}#getLatestThreadErrorEventRow`,
     run: (db, fixture) =>
-      getLatestThreadSystemErrorEventRow(db, { threadId: fixture.threadId }),
+      getLatestThreadErrorEventRow(db, {
+        afterSequence: 0,
+        threadId: fixture.threadId,
+      }),
   },
   {
     name: `${EVENTS}#getLatestModelFallbackRowSinceTurnRequest`,
@@ -1467,6 +1491,18 @@ export const EVENTS_COST_CASES: readonly QueryCostCase[] = [
     run: (db, fixture) =>
       getUnfinishedCommandItemData(db, {
         afterSequence: lastTurn(fixture).requestSequence,
+        threadId: fixture.threadId,
+      }),
+  },
+  {
+    name: `${EVENTS}#listOpenCommandItemRowsByItemIds`,
+    growsWith: {
+      turnSize:
+        "Checks the started and completed rows of every command the case passes, all those of the long last turn",
+    },
+    run: (db, fixture) =>
+      listOpenCommandItemRowsByItemIds(db, {
+        itemIds: lastTurn(fixture).commandItemIds,
         threadId: fixture.threadId,
       }),
   },

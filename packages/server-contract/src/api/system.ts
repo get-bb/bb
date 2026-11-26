@@ -893,3 +893,9 @@ export const systemProviderEnabledRequestSchema = z
 export type SystemProviderEnabledRequest = z.infer<
   typeof systemProviderEnabledRequestSchema
 >;
+
+export const desktopQuitStatusSchema = z.object({
+  confirmDesktopQuit: z.boolean(),
+  runningAgentCount: z.number().int().nonnegative(),
+});
+export type DesktopQuitStatus = z.infer<typeof desktopQuitStatusSchema>;

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "picker-layout",
+  "type": "registry:ui",
+  "title": "picker-layout",
+  "description": "BB ui \"picker-layout\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/picker-layout.ts",
+      "content": "export const PICKER_MOBILE_CLASS_NAME = \"h-[min(24rem,70dvh)]\";\n",
+      "type": "registry:ui",
+      "target": "components/ui/picker-layout.ts"
+    }
+  ]
+}

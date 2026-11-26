@@ -337,6 +337,56 @@ function resolveRehypePlugins({
   return rehypeKatex === null ? base : [...base, rehypeKatex];
 }
 
+const markdownRemarkPluginLists = new Map<string, MarkdownRemarkPlugins>();
+
+function resolveMarkdownRemarkPlugins({
+  breaks,
+  headingIds,
+  messageDirectives,
+  promptMentions,
+  threadMentions,
+}: {
+  breaks: boolean;
+  headingIds: boolean;
+  messageDirectives: boolean;
+  promptMentions: boolean;
+  threadMentions: boolean;
+}): MarkdownRemarkPlugins {
+  const key = [
+    breaks,
+    headingIds,
+    messageDirectives,
+    promptMentions,
+    threadMentions,
+  ].join();
+  const cached = markdownRemarkPluginLists.get(key);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const plugins: MarkdownRemarkPlugins = [
+    remarkGfm,
+    [remarkMath, { singleDollarTextMath: false }],
+    remarkInlineDollarMath,
+  ];
+  if (headingIds) {
+    plugins.push(remarkHeadingIds);
+  }
+  if (breaks) {
+    plugins.push(remarkBreaks);
+  }
+  if (threadMentions) {
+    plugins.push(remarkThreadMentions);
+  }
+  if (promptMentions) {
+    plugins.push(remarkPromptMentions);
+  }
+  if (messageDirectives) {
+    plugins.push(remarkDirective);
+  }
+  markdownRemarkPluginLists.set(key, plugins);
+  return plugins;
+}
+
 function areMarkdownAbsoluteLocalFileLinkRoutingsEqual({
   next,
   previous,
@@ -1879,32 +1929,15 @@ function MarkdownPreviewComponent({
       threadMentions,
     ],
   );
-  const baseRemarkPlugins = useMemo((): MarkdownRemarkPlugins => {
-    const plugins: MarkdownRemarkPlugins = [
-      remarkGfm,
-      [remarkMath, { singleDollarTextMath: false }],
-      remarkInlineDollarMath,
-    ];
-    if (headingAnchors) {
-      plugins.push(remarkHeadingIds);
-    }
-    if (
+  const baseRemarkPlugins = resolveMarkdownRemarkPlugins({
+    breaks:
       threadMentions?.preserveSoftBreaks === true ||
-      promptMentions !== undefined
-    ) {
-      plugins.push(remarkBreaks);
-    }
-    if (threadMentions !== undefined) {
-      plugins.push(remarkThreadMentions);
-    }
-    if (promptMentions !== undefined) {
-      plugins.push(remarkPromptMentions);
-    }
-    if (hasMessageDirectives) {
-      plugins.push(remarkDirective);
-    }
-    return plugins;
-  }, [headingAnchors, threadMentions, promptMentions, hasMessageDirectives]);
+      promptMentions !== undefined,
+    headingIds: headingAnchors,
+    messageDirectives: hasMessageDirectives,
+    promptMentions: promptMentions !== undefined,
+    threadMentions: threadMentions !== undefined,
+  });
   const codeFenceRegistry = useCodeFenceLanguages();
   const remarkPlugins = useMemo((): MarkdownRemarkPlugins => {
     const plugins: MarkdownRemarkPlugins = [...baseRemarkPlugins];

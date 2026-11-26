@@ -155,6 +155,8 @@ export const GIT_PATCHES_MAX_KEYS = 50;
 export const GIT_VIEWED_MAX_PATHS = 500;
 export const GIT_DIFF_MAX_DIFF_BYTES = 2 * 1024 * 1024;
 export const GIT_DIFF_MAX_FILE_LIST_BYTES = 256 * 1024;
+export const GIT_SNAPSHOT_MAX_FILE_LISTS = 16;
+export const DIFF_FILES_INLINE_PATCH_MAX_FILES = 10;
 
 export function gitStatusTag(environmentId: string): string {
   return `status:${environmentId}`;
@@ -255,12 +257,57 @@ const gitFilesSchema = z
   })
   .strict();
 
-export const gitFilesResultSchema = z.discriminatedUnion("outcome", [
+export const gitRepoFilesResultSchema = z.discriminatedUnion("outcome", [
   gitFilesSchema.extend({ outcome: z.literal("available") }),
   notApplicableSchema,
   unavailableSchema,
 ]);
+export type GitRepoFilesResult = z.infer<typeof gitRepoFilesResultSchema>;
+
+export const gitDiffRepoSchema = z
+  .object({
+    label: z.string(),
+    rootPath: z.string().min(1),
+    source: z.enum(["main", "folder", "discovered"]),
+    error: z.string().nullable(),
+  })
+  .strict();
+export type GitDiffRepo = z.infer<typeof gitDiffRepoSchema>;
+
+export const gitFilesResultSchema = z.discriminatedUnion("outcome", [
+  gitFilesSchema.extend({
+    outcome: z.literal("available"),
+    repos: z.array(gitDiffRepoSchema),
+  }),
+  notApplicableSchema,
+  unavailableSchema,
+]);
 export type GitFilesResult = z.infer<typeof gitFilesResultSchema>;
+
+export function gitDiffRepoPath(repo: { label: string }, path: string): string {
+  return repo.label.length === 0 ? path : `${repo.label}/${path}`;
+}
+
+export function locateGitDiffRepoPath<Repo extends { label: string }>(
+  repos: readonly Repo[],
+  path: string,
+): { repo: Repo; relativePath: string } | null {
+  let found: { repo: Repo; relativePath: string } | null = null;
+  for (const repo of repos) {
+    if (repo.label.length === 0) {
+      if (found === null) found = { repo, relativePath: path };
+      continue;
+    }
+    const prefix = `${repo.label}/`;
+    if (
+      path.startsWith(prefix) &&
+      (found === null || found.repo.label.length < repo.label.length)
+    ) {
+      found = { repo, relativePath: path.slice(prefix.length) };
+    }
+  }
+  return found;
+}
 
 export const gitPatchResultSchema = z.discriminatedUnion("outcome", [
   z
@@ -377,6 +424,41 @@ const hostReadFreshnessSchema = z
 
 export type GitReadFreshness = z.infer<typeof hostReadFreshnessSchema>;
 
+const knownPatchSchema = z
+  .object({ path: z.string().min(1), revision: z.string().min(1) })
+  .strict();
+
+const hostFilesInputShape = {
+  target: workspaceDiffTargetSchema,
+  ignoreWhitespace: z.boolean(),
+  knownPatches: z
+    .array(knownPatchSchema)
+    .max(DIFF_FILES_INLINE_PATCH_MAX_FILES),
+};
+
+const hostFilesSchema = gitFilesSchema
+  .extend({ reusedPatchPaths: z.array(z.string().min(1)) })
+  .strict();
+export type GitHostFiles = z.infer<typeof hostFilesSchema>;
+
+const fingerprintSchema = z.string().min(1).max(128);
+
+const fingerprintedAvailableSchema = <T extends z.ZodType>(available: T) =>
+  z
+    .object({
+      outcome: z.literal("available"),
+      value: available,
+      fingerprint: fingerprintSchema,
+    })
+    .strict();
+
+const snapshotPartSchema = <T extends z.ZodType>(available: T) =>
+  z.discriminatedUnion("outcome", [
+    fingerprintedAvailableSchema(available),
+    z.object({ outcome: z.literal("unchanged") }).strict(),
+    unavailableSchema,
+  ]);
+
 export const gitHostContract = defineRpcContract({
   status: {
     experimental_retryable: true,
@@ -407,13 +489,40 @@ export const gitHostContract = defineRpcContract({
   files: {
     experimental_retryable: true,
     input: hostPathSchema
+      .extend({ freshness: hostReadFreshnessSchema, ...hostFilesInputShape })
+      .strict(),
+    output: z.discriminatedUnion("outcome", [
+      fingerprintedAvailableSchema(hostFilesSchema),
+      unavailableSchema,
+    ]),
+  },
+  snapshot: {
+    experimental_retryable: true,
+    input: hostPathSchema
       .extend({
         freshness: hostReadFreshnessSchema,
-        target: workspaceDiffTargetSchema,
-        ignoreWhitespace: z.boolean(),
+        mergeBaseBranch: z.string().min(1).optional(),
+        statusUnless: fingerprintSchema.optional(),
+        files: z
+          .array(
+            z
+              .object({
+                ...hostFilesInputShape,
+                unless: fingerprintSchema.optional(),
+              })
+              .strict(),
+          )
+          .max(GIT_SNAPSHOT_MAX_FILE_LISTS),
       })
       .strict(),
-    output: hostReadResultSchema(gitFilesSchema),
+    output: hostReadResultSchema(
+      z
+        .object({
+          status: snapshotPartSchema(workspaceStatusSchema),
+          files: z.array(snapshotPartSchema(hostFilesSchema)),
+        })
+        .strict(),
+    ),
   },
   patches: {
     experimental_retryable: true,

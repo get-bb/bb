@@ -7,6 +7,7 @@ import {
   THREAD_CHANGE_KINDS,
   type ThreadChangeKind,
 } from "@bb/domain";
+import { terminalServerMessageSchema } from "@bb/server-contract";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NotificationHub } from "../../src/ws/hub.js";
 import { createMockHubSocket } from "../helpers/mock-hub-socket.js";
@@ -183,6 +184,33 @@ describe("NotificationHub", () => {
         },
       },
     ]);
+  });
+
+  it("sends terminal output without a schema parse and still parses other terminal messages", () => {
+    const hub = new NotificationHub();
+    const socket = createMockHubSocket();
+    const parse = vi.spyOn(terminalServerMessageSchema, "parse");
+    const output = {
+      type: "output" as const,
+      chunk: { seq: 0, dataBase64: "aGVsbG8=" },
+    };
+    try {
+      hub.registerTerminalClient("term-1", socket);
+
+      hub.sendTerminalClientMessage("term-1", output);
+      hub.sendTerminalSocketMessage(socket, output);
+      expect(parse).not.toHaveBeenCalled();
+      hub.sendTerminalSocketMessage(socket, { type: "pong" });
+      expect(parse).toHaveBeenCalledTimes(1);
+
+      expect(socket.messages.map((message) => JSON.parse(message))).toEqual([
+        output,
+        output,
+        { type: "pong" },
+      ]);
+    } finally {
+      parse.mockRestore();
+    }
   });
 
   it("gives terminal resize ownership to the latest client and restores it on detach", () => {
@@ -805,7 +833,7 @@ describe("NotificationHub events-appended thread-list coalescing", () => {
 
     const waiter = hub.registerThreadEventWaiter("thread-1", 10_000).promise;
     hub.notifyThread("thread-1", ["events-appended"]);
-    await expect(waiter).resolves.toBe(true);
+    await expect(waiter).resolves.toEqual(["events-appended"]);
     vi.advanceTimersByTime(1_000);
     expect(listSocket.messages).toHaveLength(3);
     expect(messagesOf(listSocket)[2]).toEqual({

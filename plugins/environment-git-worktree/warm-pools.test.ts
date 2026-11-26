@@ -63,7 +63,8 @@ async function setup(args: {
   ) =>
     | { status: "usable"; head: string }
     | { status: "refused"; reason: string }
-    | { status: "busy" };
+    | { status: "busy" }
+    | { status: "timed-out" };
   remoteBase?: { ref: string; commit: string; offline: boolean } | null;
   baseCommit?: string;
   offBase?: string[];
@@ -87,17 +88,27 @@ async function setup(args: {
   const { bb, harness } = createFakePluginHost({
     pluginId: PLUGIN_ID,
     experimental_callHostRpc: async (call) => {
-      if (call.method === "readRemoteBase") {
-        remoteReads += 1;
-        return args.remoteBase === undefined
-          ? { ref: "origin/main", commit: "base", offline: false }
-          : args.remoteBase;
-      }
       hostCalls.push(call);
       order.push(`host:${call.method}`);
-      if (call.method === "checkPoolMember")
-        return args.check?.(call) ?? { status: "usable", head: "base" };
-      if (call.method === "fastForward") return null;
+      if (call.method === "claimPoolMember") {
+        const input = call.input as {
+          base: { ref: string; commit: string; offline: boolean } | null;
+        };
+        let base = input.base;
+        if (base === null) {
+          remoteReads += 1;
+          base =
+            args.remoteBase === undefined
+              ? { ref: "origin/main", commit: "base", offline: false }
+              : args.remoteBase;
+        }
+        if (base === null) return { status: "no-base" };
+        const checked = args.check?.(call) ?? {
+          status: "usable",
+          head: "base",
+        };
+        return checked.status === "timed-out" ? checked : { ...checked, base };
+      }
       if (call.method === "nameHandedOffBranch") return null;
       if (call.method === "refreshPoolBase") {
         const refresh = args.refresh?.();
@@ -390,7 +401,7 @@ describe("warm worktree handoff", () => {
     });
     expect(fixture.adoptedResources).toEqual([ownedBranch("bb/env_warm")]);
     expect(fixture.order).toEqual([
-      "host:checkPoolMember",
+      "host:claimPoolMember",
       `adopt:${READY.id}`,
       "host:nameHandedOffBranch",
     ]);
@@ -398,9 +409,10 @@ describe("warm worktree handoff", () => {
       sourcePath: SOURCE_PATH,
       path: READY.path,
       placeholder: "bb/env_warm",
-      baseBranch: "origin/main",
-      baseCommit: "base",
+      base: null,
+      checkTimeoutMs: 15_000,
     });
+    expect(fixture.hostCalls[0]?.timeoutMs).toBe(15 * 60 * 1000);
     expect(fixture.hostCalls[1]?.input).toEqual({
       path: READY.path,
       fromBranch: "bb/env_warm",
@@ -454,8 +466,8 @@ describe("warm worktree handoff", () => {
       },
     ]);
     expect(fixture.order).toEqual([
-      "host:checkPoolMember",
-      "host:checkPoolMember",
+      "host:claimPoolMember",
+      "host:claimPoolMember",
       `adopt:${READY.id}`,
       "host:nameHandedOffBranch",
       "host:nameHandedOffBranch",
@@ -464,8 +476,8 @@ describe("warm worktree handoff", () => {
       sourcePath: "/code/api",
       path: "/worktrees/env_warm-1/api",
       placeholder: READY.branchName,
-      baseBranch: "origin/main",
-      baseCommit: "base",
+      base: null,
+      checkTimeoutMs: 15_000,
     });
     expect(
       fixture.hostCalls
@@ -487,7 +499,7 @@ describe("warm worktree handoff", () => {
     await fixture.harness.lifecycle.dispose();
   });
 
-  it("moves a folder worktree behind its remote forward and sets it up again before the main worktree", async () => {
+  it("sets a folder worktree its claim moved forward up again before the main worktree", async () => {
     const fixture = await setup({
       members: [WARM_WITH_API],
       folders: ["/code/api"],
@@ -503,11 +515,12 @@ describe("warm worktree handoff", () => {
     expect(fixture.adopted).toEqual([READY.id]);
     expect(fixture.deleted).toEqual([]);
     expect(result).toMatchObject({ status: "created", path: READY.path });
-    expect(
-      fixture.hostCalls
-        .filter((call) => call.method === "fastForward")
-        .map((call) => call.input),
-    ).toEqual([{ path: "/worktrees/env_warm-1/api", commit: "base" }]);
+    expect(fixture.hostCalls.map((call) => call.method)).toEqual([
+      "claimPoolMember",
+      "claimPoolMember",
+      "nameHandedOffBranch",
+      "nameHandedOffBranch",
+    ]);
     expect(fixture.setups).toEqual([READY.path]);
     expect(fixture.setupFolders).toEqual([["/worktrees/env_warm-1/api"]]);
     expect(fixture.steps).toContain(
@@ -515,6 +528,35 @@ describe("warm worktree handoff", () => {
     );
     await fixture.harness.lifecycle.dispose();
   });
+
+  it.each([
+    ["keeps the warm worktree when nothing in it moved", "base", []],
+    [
+      "deletes the warm worktree when its main worktree already moved",
+      "0123456789abcdef",
+      [READY.id],
+    ],
+  ])(
+    "builds a fresh worktree when a folder worktree is busy, and %s",
+    async (_case, mainHead, deleted) => {
+      const fixture = await setup({
+        members: [WARM_WITH_API],
+        folders: ["/code/api"],
+        check: (call) =>
+          (call.input as { path: string }).path === "/worktrees/env_warm-1/api"
+            ? { status: "busy" }
+            : { status: "usable", head: mainHead },
+      });
+      const result = await fixture.provider.create({
+        ...fixture.context("env_thread", "bb/fix-login-thr_1"),
+        inputs: { branch: { kind: "default" }, folders: ["/code/api"] },
+      });
+      expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
+      expect(fixture.adopted).toEqual([]);
+      expect(fixture.deleted).toEqual(deleted);
+      await fixture.harness.lifecycle.dispose();
+    },
+  );
 
   it("hands a warm worktree only to a thread that branches exactly its folders", async () => {
     const withFolders = await setup({
@@ -538,7 +580,7 @@ describe("warm worktree handoff", () => {
     await without.harness.lifecycle.dispose();
   });
 
-  it("moves a warm worktree behind the remote base forward and starts setup before the title settles", async () => {
+  it("reruns setup in a warm worktree the claim moved forward, before the title settles", async () => {
     const fixture = await setup({
       members: [READY],
       remoteBase: {
@@ -554,15 +596,11 @@ describe("warm worktree handoff", () => {
     );
     await vi.waitFor(() =>
       expect(fixture.order).toEqual([
-        "host:checkPoolMember",
+        "host:claimPoolMember",
         `adopt:${READY.id}`,
-        "host:fastForward",
         `setup:${READY.path}`,
       ]),
     );
-    expect(
-      fixture.hostCalls.find((call) => call.method === "fastForward")?.input,
-    ).toEqual({ path: READY.path, commit: "fedcba9876543210" });
     settle("bb/behind-thr_b");
     expect(await creating).toMatchObject({
       status: "created",
@@ -606,6 +644,7 @@ describe("warm worktree handoff", () => {
     );
     expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
     expect(fixture.hostCalls.map((call) => call.method)).toEqual([
+      "claimPoolMember",
       "create",
       "nameBranch",
     ]);
@@ -629,9 +668,6 @@ describe("warm worktree handoff", () => {
         fixture.context("env_thread", "bb/offline-thr_o"),
       ),
     ).toMatchObject({ path: READY.path });
-    expect(fixture.hostCalls[0]?.input).toMatchObject({
-      baseCommit: "0123456789abcdef",
-    });
     expect(fixture.steps).toEqual([
       "Using a warm worktree at the last fetched origin/main (0123456); it may be out of date",
     ]);
@@ -663,16 +699,22 @@ describe("warm worktree handoff", () => {
   );
 
   it.each([
-    ["the host lock is busy", () => ({ status: "busy" as const })],
+    ["the host lock is busy", () => ({ status: "busy" as const }), []],
     [
-      "the check times out",
+      "the host check runs out of time",
+      () => ({ status: "timed-out" as const }),
+      [],
+    ],
+    [
+      "the claim times out",
       () => {
-        throw new Error("Host RPC checkPoolMember timed out");
+        throw new Error("Host RPC claimPoolMember timed out");
       },
+      [READY.id],
     ],
   ])(
     "builds a fresh worktree at once when %s, without trying other members",
-    async (_case, check) => {
+    async (_case, check, deleted) => {
       const second: Member = {
         ...READY,
         id: "env_second",
@@ -685,10 +727,10 @@ describe("warm worktree handoff", () => {
       );
       expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
       expect(
-        fixture.hostCalls.filter((call) => call.method === "checkPoolMember"),
+        fixture.hostCalls.filter((call) => call.method === "claimPoolMember"),
       ).toHaveLength(1);
       expect(fixture.adopted).toEqual([]);
-      expect(fixture.deleted).toEqual([]);
+      expect(fixture.deleted).toEqual(deleted);
       await fixture.harness.lifecycle.dispose();
     },
   );
@@ -704,7 +746,7 @@ describe("warm worktree handoff", () => {
     expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
     expect(fixture.deleted).toEqual([READY.id]);
     expect(fixture.hostCalls.map((call) => call.method)).toEqual([
-      "checkPoolMember",
+      "claimPoolMember",
       "create",
       "nameBranch",
     ]);
@@ -746,11 +788,57 @@ describe("warm worktree handoff", () => {
     expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
     expect(fixture.adopted).toEqual([READY.id]);
     expect(fixture.hostCalls.map((call) => call.method)).toEqual([
-      "checkPoolMember",
+      "claimPoolMember",
       "create",
       "nameBranch",
     ]);
     expect(fixture.deleted).toEqual([]);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("deletes a warm worktree the claim moved forward when core refuses the adopt", async () => {
+    const fixture = await setup({
+      members: [READY],
+      refuseAdopt: [READY.id],
+      check: () => ({ status: "usable", head: "behind" }),
+    });
+    const result = await fixture.provider.create(
+      fixture.context("env_thread", "bb/refused-thr_m"),
+    );
+    expect(result).toMatchObject({ path: "/worktrees/cold/bb" });
+    expect(fixture.adopted).toEqual([READY.id]);
+    expect(fixture.deleted).toEqual([READY.id]);
+    await fixture.harness.lifecycle.dispose();
+  });
+
+  it("passes the remote base the first claim read to the claim of the next member", async () => {
+    const second: Member = {
+      ...READY,
+      id: "env_second",
+      path: "/worktrees/env_second-1/bb",
+      branchName: "bb/env_second",
+      createdAt: READY.createdAt + 1,
+    };
+    const fixture = await setup({
+      members: [READY, second],
+      size: 2,
+      check: (call) =>
+        (call.input as { path: string }).path === READY.path
+          ? { status: "refused", reason: "it is not on origin/main" }
+          : { status: "usable", head: "base" },
+    });
+    expect(
+      await fixture.provider.create(
+        fixture.context("env_thread", "bb/next-thr_n"),
+      ),
+    ).toMatchObject({ path: second.path });
+    expect(
+      fixture.hostCalls
+        .filter((call) => call.method === "claimPoolMember")
+        .map((call) => (call.input as { base: unknown }).base),
+    ).toEqual([null, { ref: "origin/main", commit: "base", offline: false }]);
+    expect(fixture.remoteReads()).toBe(1);
+    expect(fixture.deleted).toEqual([READY.id]);
     await fixture.harness.lifecycle.dispose();
   });
 
@@ -766,7 +854,7 @@ describe("warm worktree handoff", () => {
         .sort(),
     ).toEqual(["/worktrees/cold/bb", READY.path].sort());
     expect(
-      fixture.hostCalls.filter((call) => call.method === "checkPoolMember"),
+      fixture.hostCalls.filter((call) => call.method === "claimPoolMember"),
     ).toHaveLength(1);
     await fixture.harness.lifecycle.dispose();
   });

@@ -218,7 +218,7 @@ describe("shared draft submission ownership", () => {
       thread: makeThread({
         id: threadId,
         status: "active",
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", failure: null },
       }),
     });
     fireEvent.click(
@@ -618,7 +618,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.promptDraft.text = "Queue this with data";
     renderPromptArea({
       thread: makeThread({
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", failure: null },
         status: "active",
       }),
     });
@@ -644,7 +644,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.promptDraft.text = "Try again";
     renderPromptArea({
       thread: makeThread({
-        runtime: { displayStatus: "stopping" },
+        runtime: { displayStatus: "stopping", failure: null },
         status: "stopping",
       }),
     });
@@ -669,7 +669,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.promptDraft.text = "Steer this later";
     renderPromptArea({
       thread: makeThread({
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", failure: null },
         status: "active",
       }),
     });
@@ -699,7 +699,7 @@ describe("ThreadDetailPromptArea", () => {
     mocks.queuedMessages = [makeQueuedMessage()];
     renderPromptArea({
       thread: makeThread({
-        runtime: { displayStatus: "idle" },
+        runtime: { displayStatus: "idle", failure: null },
         status: "idle",
       }),
     });
@@ -946,6 +946,7 @@ describe("ThreadDetailPromptArea", () => {
       thread: makeThread({
         runtime: {
           displayStatus: "idle",
+          failure: null,
         },
         status: "idle",
       }),
@@ -972,6 +973,7 @@ describe("ThreadDetailPromptArea", () => {
       thread: makeThread({
         runtime: {
           displayStatus: "provisioning",
+          failure: null,
         },
         status: "starting",
       }),
@@ -2181,6 +2183,33 @@ describe("ThreadDetailPromptArea", () => {
     expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
   });
 
+  it("creates the handoff of a child thread next to its source", async () => {
+    mocks.promptDraft.text = "Keep going";
+    mocks.createThreadMutateAsync.mockResolvedValue({
+      id: "thr_new",
+      projectId: "proj_1",
+    });
+    renderPromptArea({
+      thread: makeThread({
+        parentThreadId: "thr_coordinator",
+        parentNotifications: "stuck",
+        sectionId: "sec_work",
+      }),
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start handoff" }));
+    fireEvent.click(screen.getByRole("button", { name: "Submit composer" }));
+
+    await waitFor(() =>
+      expect(mocks.createThreadMutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parentThreadId: "thr_coordinator",
+          parentNotifications: "stuck",
+          sectionId: "sec_work",
+        }),
+      ),
+    );
+  });
+
   it("marks a supported handoff service tier explicit", async () => {
     mocks.promptDraft.text = "Keep going";
     mocks.serviceTier = "fast";
@@ -2365,7 +2394,7 @@ describe("ThreadDetailPromptArea", () => {
         environmentId: "env_1",
         id: "thr_source",
         projectId: "proj_source",
-        runtime: { displayStatus: "active" },
+        runtime: { displayStatus: "active", failure: null },
         status: "active",
         title: "Source thread",
         titleFallback: null,

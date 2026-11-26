@@ -8,7 +8,7 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { PLUGIN_SDK_VERSION } from "@bb/domain";
+import { PLUGIN_SDK_VERSION, pluginPackageJsonSchema } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   resolvePluginSdkLayout,
@@ -64,6 +64,9 @@ describe("scaffoldPlugin SDK dependency", () => {
       server: "./server.ts",
       app: "./app.tsx",
     });
+    expect(pkg.keywords).toEqual(["bb-plugin"]);
+    expect(pkg.bbMarketplace).toEqual({});
+    expect(pluginPackageJsonSchema.safeParse(pkg).success).toBe(true);
     expect(pkg.devDependencies["@types/react"]).toBeDefined();
     expect(pkg.dependencies.zod).toBeDefined();
     expect(pkg.devDependencies.zod).toBeUndefined();
@@ -111,7 +114,11 @@ describe("scaffoldPlugin SDK dependency", () => {
 
     const readme = await readFile(join(targetDir, "README.md"), "utf8");
     expect(readme).toContain("## Store listing");
-    expect(readme).toContain("marketplace requires the file");
+    expect(readme).toContain(
+      "The public marketplace reads this file from your release.",
+    );
+    expect(readme).toContain("## Publish");
+    expect(readme).toContain("bb plugin publish --check");
   });
 
   it("uses the canonical id in a scoped package scaffold", async () => {

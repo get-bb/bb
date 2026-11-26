@@ -10,17 +10,21 @@ import {
 import {
   CLIENT_NOTIFICATION_CHANNEL,
   CLIENT_NOTIFICATION_DISMISS_CHANNEL,
+  clientNotificationSchema,
   type pushNotificationsRpcContract,
 } from "./contract.js";
 import {
   clientChannel,
   createClientDelivery,
+  createPresenceReporter,
   notificationPermission,
+  presenceChannel,
 } from "./client.js";
 import { notificationsThreadAction } from "./notificationsAction.js";
 
 function NotificationDelivery() {
   const navigate = useBbNavigate();
+  const rpc = useRpc<typeof pushNotificationsRpcContract>();
   const { values } = useSettings();
   const { threadId } = useBbContext();
   const currentThreadId = useRef(threadId);
@@ -40,10 +44,38 @@ function NotificationDelivery() {
     currentThreadId.current = threadId;
     delivery.current?.syncFocus();
   }, [threadId]);
+  useEffect(
+    () =>
+      createPresenceReporter(() => {
+        const channel = presenceChannel();
+        if (channel !== "mobile" && notificationPermission() !== "granted") {
+          return;
+        }
+        void rpc.call("presence.touch", { channel }).catch(() => undefined);
+      }),
+    [rpc],
+  );
   useRealtime(CLIENT_NOTIFICATION_CHANNEL, (payload) => {
     const channel = clientChannel();
     const enabled = channel !== null && values?.[`${channel}Enabled`] === true;
-    void delivery.current?.deliver(payload, enabled).catch(() => undefined);
+    const current = delivery.current;
+    if (current === null) return;
+    const parsed = clientNotificationSchema.safeParse(payload);
+    void current
+      .deliver(payload, enabled)
+      .then(() => {
+        if (
+          !enabled ||
+          channel === null ||
+          !parsed.success ||
+          !parsed.data.channels.includes(channel) ||
+          notificationPermission() !== "granted"
+        ) {
+          return;
+        }
+        return rpc.call("notifications.received", { id: parsed.data.id });
+      })
+      .catch(() => undefined);
   });
   useRealtime(CLIENT_NOTIFICATION_DISMISS_CHANNEL, (payload) => {
     delivery.current?.dismiss(payload);

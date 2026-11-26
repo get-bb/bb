@@ -36,9 +36,8 @@ export default async function plugin(bb: BbPluginApi) {
     },
     submitPlugin: {
       type: "boolean",
-      label: "Plugin submission skill",
-      description:
-        "Prepare and submit a BB plugin to the Community marketplace.",
+      label: "Plugin publishing skill",
+      description: "List a BB plugin on the public marketplace.",
       default: true,
     },
   });
@@ -56,7 +55,7 @@ export default async function plugin(bb: BbPluginApi) {
           ...(current.bbCli ? ["bb-cli"] : []),
           ...(current.pluginAuthoring ? ["bb-plugin-authoring"] : []),
           ...(current.skillCreator ? ["skill-creator"] : []),
-          ...(current.submitPlugin ? ["submit-a-plugin"] : []),
+          ...(current.submitPlugin ? ["publish-a-plugin"] : []),
         ]
       : [],
   }));

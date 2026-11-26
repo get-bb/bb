@@ -15,6 +15,7 @@ const runningCommand = (
   backgroundCommandRow({
     status: "pending",
     taskStatus: "running",
+    stoppable: true,
     summary: null,
     ...args,
   });
@@ -68,6 +69,7 @@ function ExpandableCard({
         commands={commands}
         isExpanded={expanded}
         onToggle={() => setExpanded((value) => !value)}
+        onStop={() => {}}
       />
       <FauxComposer />
     </div>
@@ -87,7 +89,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple (collapsed)"
-        hint="most recent command + total count; click to expand"
+        hint="summary + newest command; click to expand"
       >
         <ResponsiveStage>
           <ExpandableCard commands={many} />
@@ -95,7 +97,7 @@ export function Overview() {
       </StoryRow>
       <StoryRow
         label="multiple (expanded)"
-        hint="expanded: the other running commands listed below the primary"
+        hint="expanded: every running command is a row with its duration and Stop"
       >
         <ResponsiveStage>
           <ExpandableCard commands={many} startExpanded />

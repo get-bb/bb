@@ -1,14 +1,12 @@
 import { useMemo, useRef, useSyncExternalStore } from "react";
-import type {
-  PluginThreadActionsInlineItem,
-  PluginThreadActionTarget,
-} from "@get-bb/plugin-sdk/app";
+import type { PluginThreadActionsInlineItem } from "@get-bb/plugin-sdk/app";
+import type { SidebarThread } from "../model/sidebar-thread.js";
 import { useThreadSelectionStore } from "./threadSelection.js";
 
 const SELECTION_GROUP = "5_selection";
 
 export interface ThreadSelectionMenu {
-  selection: readonly PluginThreadActionTarget[];
+  selection: readonly SidebarThread[];
   inline: readonly PluginThreadActionsInlineItem[];
   onEscapeKeyDown: () => void;
   onCloseAutoFocus: (event: Event) => void;
@@ -20,7 +18,7 @@ export function useThreadSelectionMenu(
   const store = useThreadSelectionStore();
   const dismissedWithEscape = useRef(false);
   const selection = useSyncExternalStore(store.subscribe, () =>
-    threadIds === null ? null : store.getSelectionTargets(),
+    threadIds === null ? null : store.getSelectionThreads(),
   );
   return useMemo(
     () =>

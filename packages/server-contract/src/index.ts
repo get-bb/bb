@@ -1,5 +1,6 @@
 export * from "./api-client.js";
 export * from "./api-types.js";
+export * from "./api/thread-background-tasks.js";
 export * from "./api/thread-tabs.js";
 export * from "./common.js";
 export * from "./errors.js";

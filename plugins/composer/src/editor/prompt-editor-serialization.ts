@@ -405,35 +405,35 @@ function serializePromptEditorNode(
   const appendBlockquote = (node: ProseMirrorNode, nodePosition: number) => {
     const inner = serializePromptEditorNode(node, nodePosition);
     const lines = inner.text.split("\n");
-    const lineGlobalStarts: number[] = [];
-    let innerOffset = 0;
+    const prefixedLines: string[] = [];
+    const lineEnds: number[] = [];
+    const prefixDeltas: number[] = [];
+    let lineStart = 0;
+    let prefixDelta = 0;
     for (const line of lines) {
-      lineGlobalStarts.push(innerOffset);
-      innerOffset += line.length + 1;
+      const prefixedLine = line.length > 0 ? `> ${line}` : ">";
+      prefixedLines.push(prefixedLine);
+      lineEnds.push(lineStart + line.length);
+      prefixDelta += prefixedLine.length - line.length;
+      prefixDeltas.push(prefixDelta);
+      lineStart += line.length + 1;
     }
 
     const blockStart = text.length;
-    const prefixedLines = lines.map((line) =>
-      line.length > 0 ? `> ${line}` : ">",
-    );
     text += prefixedLines.join("\n");
 
     const prefixedOffset = (offset: number): number => {
-      let lineIndex = lines.length - 1;
-      for (let index = 0; index < lines.length; index += 1) {
-        if (offset <= lineGlobalStarts[index]! + lines[index]!.length) {
-          lineIndex = index;
-          break;
+      let low = 0;
+      let high = lines.length - 1;
+      while (low < high) {
+        const middle = (low + high) >>> 1;
+        if (offset <= lineEnds[middle]!) {
+          high = middle;
+        } else {
+          low = middle + 1;
         }
       }
-      const prefixDelta = prefixedLines
-        .slice(0, lineIndex + 1)
-        .reduce(
-          (sum, prefixedLine, index) =>
-            sum + (prefixedLine.length - lines[index]!.length),
-          0,
-        );
-      return offset + prefixDelta;
+      return offset + prefixDeltas[low]!;
     };
 
     for (const segment of inner.offsetMapping) {

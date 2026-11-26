@@ -6,7 +6,7 @@ export const BUNDLED_CURATED_MARKETPLACE: MarketplaceManifest = {
   name: CURATED_PLUGIN_MARKETPLACE_NAME,
   displayName: "BB Community",
   description:
-    "Plugins published to the BB registry and reviewed by the BB team.",
+    "Public plugins listed in the BB registry. BB does not review them.",
   plugins: [
     {
       id: "thread-hover-cards",

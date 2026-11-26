@@ -6,11 +6,13 @@ import {
 import {
   GIT_SHOW_CHANGES_SETTING,
   GIT_SHOW_COMMIT_BUTTON_SETTING,
+  GIT_SNAPSHOT_MAX_FILE_LISTS,
   gitFilesTag,
   gitRefsTag,
   gitStatusTag,
   gitViewedTag,
   parseGitPatchKey,
+  type GitFilesResult,
   type GitPatchKey,
   type GitPatchResult,
   type GitStatusRow,
@@ -22,7 +24,11 @@ import {
   tagsForEnvironmentChanges,
   type EnvironmentChangeKind,
 } from "./server/invalidation.js";
-import { createGitReads } from "./server/reads.js";
+import {
+  createGitReads,
+  filesQueryKey,
+  type GitFilesQuery,
+} from "./server/reads.js";
 import { createReadGenerations } from "./server/generations.js";
 import { createGitViewed } from "./server/viewed.js";
 
@@ -32,6 +38,23 @@ const THREAD_ENVIRONMENT_CACHE_LIMIT = 1024;
 function patchGroupKey(key: GitPatchKey): string {
   return JSON.stringify([key.environmentId, key.target, key.ignoreWhitespace]);
 }
+
+function filesFingerprint(result: GitFilesResult): string {
+  if (result.outcome !== "available") return JSON.stringify(result);
+  return JSON.stringify([
+    result.repos,
+    result.files,
+    result.truncated,
+    result.shortstat,
+    result.mergeBaseRef,
+  ]);
+}
+
+function servedOnly(served: ReadonlySet<string> | undefined, value: string) {
+  return served !== undefined && served.size === 1 && served.has(value);
+}
+
+type WatchedMethod = "status" | "files" | "patches" | "branches" | "viewed";
 
 export default function gitPlugin(bb: BbPluginApi): void {
   bb.settings.define({
@@ -49,13 +72,19 @@ export default function gitPlugin(bb: BbPluginApi): void {
     },
   });
   const watchedEnvironments = new Map<string, number>();
+  const watchedStatus = new Map<string, number>();
+  const watchedFiles = new Map<
+    string,
+    Map<string, { query: GitFilesQuery; count: number }>
+  >();
+  const servedStatus = new Map<string, Set<string>>();
+  const servedFiles = new Map<string, Map<string, Set<string>>>();
+  const probes = new Map<string, { pending: Set<string> }>();
   const generations = createReadGenerations((environmentId) =>
     watchedEnvironments.has(environmentId),
   );
   const reads = createGitReads(bb, generations.freshness);
-  const invalidator = createCoalescedInvalidator((tags) =>
-    bb.rpc.experimental_invalidate(tags),
-  );
+  const invalidator = createCoalescedInvalidator(publish);
   const viewed = createGitViewed(bb, (environmentId) => {
     if (watchedEnvironments.has(environmentId))
       invalidator.invalidate(environmentId, [gitViewedTag(environmentId)]);
@@ -72,15 +101,20 @@ export default function gitPlugin(bb: BbPluginApi): void {
       environmentId,
       changes,
     );
+    const watched = watchedEnvironments.has(environmentId);
     if (clearCaches) {
       generations.changed(environmentId, refsChanged);
-      reads.clearCaches(environmentId);
+      if (watched) {
+        reads.clearUnwatchedFiles(
+          environmentId,
+          watchedFiles.get(environmentId),
+        );
+      } else {
+        reads.clearCaches(environmentId);
+      }
     }
-    if (watchedEnvironments.has(environmentId))
-      invalidator.invalidate(environmentId, tags);
+    if (watched) invalidator.invalidate(environmentId, tags);
   }
-
-  const servedStatus = new Map<string, string>();
 
   function statusRow(environmentId: string): Promise<GitStatusRow> {
     return reads
@@ -94,20 +128,131 @@ export default function gitPlugin(bb: BbPluginApi): void {
       }));
   }
 
+  function publish(environmentId: string, tags: readonly string[]): void {
+    const probed = new Set(
+      tags.filter(
+        (tag) =>
+          tag === gitStatusTag(environmentId) ||
+          tag === gitFilesTag(environmentId),
+      ),
+    );
+    const direct = tags.filter((tag) => !probed.has(tag));
+    if (direct.length > 0) bb.rpc.experimental_invalidate(direct);
+    if (probed.size > 0) runProbe(environmentId, probed);
+  }
+
+  function runProbe(environmentId: string, tags: ReadonlySet<string>): void {
+    const running = probes.get(environmentId);
+    if (running !== undefined) {
+      for (const tag of tags) running.pending.add(tag);
+      return;
+    }
+    const state = { pending: new Set<string>() };
+    probes.set(environmentId, state);
+    void changedTags(environmentId, tags)
+      .catch(() => {
+        reads.clearCaches(environmentId);
+        return [...tags];
+      })
+      .then((changed) => {
+        if (probes.get(environmentId) !== state) return;
+        probes.delete(environmentId);
+        if (changed.length > 0) {
+          if (changed.includes(gitStatusTag(environmentId))) {
+            servedStatus.delete(environmentId);
+          }
+          if (changed.includes(gitFilesTag(environmentId))) {
+            servedFiles.delete(environmentId);
+          }
+          bb.rpc.experimental_invalidate(changed);
+        }
+        if (state.pending.size > 0) {
+          invalidator.invalidate(environmentId, [...state.pending]);
+        }
+      });
+  }
+
+  async function changedTags(
+    environmentId: string,
+    tags: ReadonlySet<string>,
+  ): Promise<string[]> {
+    const statusTag = gitStatusTag(environmentId);
+    const filesTag = gitFilesTag(environmentId);
+    const changed: string[] = [];
+    const probeStatus =
+      tags.has(statusTag) && (watchedStatus.get(environmentId) ?? 0) > 0;
+    if (tags.has(statusTag) && !probeStatus) changed.push(statusTag);
+    const queries = [...(watchedFiles.get(environmentId)?.values() ?? [])].map(
+      (entry) => entry.query,
+    );
+    const probeFiles =
+      tags.has(filesTag) &&
+      queries.length > 0 &&
+      queries.length <= GIT_SNAPSHOT_MAX_FILE_LISTS;
+    if (tags.has(filesTag) && !probeFiles) changed.push(filesTag);
+    if (changed.length > 0) reads.clearCaches(environmentId);
+    if (!probeStatus && !probeFiles) return changed;
+    const snapshot = await reads.snapshot(
+      environmentId,
+      probeFiles ? queries : [],
+    );
+    if (
+      probeStatus &&
+      !servedOnly(
+        servedStatus.get(environmentId),
+        JSON.stringify(snapshot.status),
+      )
+    ) {
+      changed.push(statusTag);
+    }
+    if (probeFiles) {
+      const served = servedFiles.get(environmentId);
+      const filesChanged = queries.some((query, index) => {
+        const result = snapshot.files[index];
+        return (
+          result === undefined ||
+          !servedOnly(
+            served?.get(filesQueryKey(query)),
+            filesFingerprint(result),
+          )
+        );
+      });
+      if (filesChanged) changed.push(filesTag);
+    }
+    return changed;
+  }
+
+  function rememberStatus(environmentId: string, row: GitStatusRow): void {
+    if ((watchedStatus.get(environmentId) ?? 0) === 0) return;
+    const served = servedStatus.get(environmentId) ?? new Set<string>();
+    served.add(JSON.stringify(row));
+    servedStatus.set(environmentId, served);
+  }
+
+  function rememberFiles(
+    environmentId: string,
+    query: GitFilesQuery,
+    result: GitFilesResult,
+  ): void {
+    const key = filesQueryKey(query);
+    if (watchedFiles.get(environmentId)?.has(key) !== true) return;
+    const byQuery = servedFiles.get(environmentId) ?? new Map();
+    const served = byQuery.get(key) ?? new Set<string>();
+    served.add(filesFingerprint(result));
+    byQuery.set(key, served);
+    servedFiles.set(environmentId, byQuery);
+  }
+
   function turnEnded(environmentId: string | null): void {
     if (environmentId === null || !watchedEnvironments.has(environmentId)) {
       return;
     }
     generations.changed(environmentId, false);
     reads.clearCaches(environmentId);
-    const served = servedStatus.get(environmentId);
-    void statusRow(environmentId).then((row) => {
-      if (JSON.stringify(row) === served) return;
-      invalidator.invalidate(environmentId, [
-        gitStatusTag(environmentId),
-        gitFilesTag(environmentId),
-      ]);
-    });
+    runProbe(
+      environmentId,
+      new Set([gitStatusTag(environmentId), gitFilesTag(environmentId)]),
+    );
   }
 
   function threadTurnEnded(threadId: string): void {
@@ -189,15 +334,61 @@ export default function gitPlugin(bb: BbPluginApi): void {
     };
   }
 
-  function watchEnvironment(environmentId: string, signal: AbortSignal): void {
+  function watchFilesQuery(
+    environmentId: string,
+    query: GitFilesQuery,
+    signal: AbortSignal,
+  ): void {
+    const key = filesQueryKey(query);
+    const byQuery = watchedFiles.get(environmentId) ?? new Map();
+    const entry = byQuery.get(key) ?? { query, count: 0 };
+    entry.count += 1;
+    byQuery.set(key, entry);
+    watchedFiles.set(environmentId, byQuery);
+    signal.addEventListener(
+      "abort",
+      () => {
+        entry.count -= 1;
+        if (entry.count > 0 || byQuery.get(key) !== entry) return;
+        byQuery.delete(key);
+        reads.clearUnwatchedFiles(environmentId, byQuery);
+        servedFiles.get(environmentId)?.delete(key);
+        if (byQuery.size > 0) return;
+        if (watchedFiles.get(environmentId) === byQuery) {
+          watchedFiles.delete(environmentId);
+        }
+      },
+      { once: true },
+    );
+  }
+
+  function watchEnvironment(
+    environmentId: string,
+    method: WatchedMethod,
+    signal: AbortSignal,
+  ): void {
     watchedEnvironments.set(
       environmentId,
       (watchedEnvironments.get(environmentId) ?? 0) + 1,
     );
+    if (method === "status") {
+      watchedStatus.set(
+        environmentId,
+        (watchedStatus.get(environmentId) ?? 0) + 1,
+      );
+    }
     stopEnvironmentEvents ??= subscribeToChanges();
     signal.addEventListener(
       "abort",
       () => {
+        if (method === "status") {
+          const statusCount = (watchedStatus.get(environmentId) ?? 1) - 1;
+          if (statusCount > 0) watchedStatus.set(environmentId, statusCount);
+          else {
+            watchedStatus.delete(environmentId);
+            servedStatus.delete(environmentId);
+          }
+        }
         const count = (watchedEnvironments.get(environmentId) ?? 1) - 1;
         if (count > 0) {
           watchedEnvironments.set(environmentId, count);
@@ -207,7 +398,7 @@ export default function gitPlugin(bb: BbPluginApi): void {
         invalidator.forget(environmentId);
         generations.forget(environmentId);
         reads.clearCaches(environmentId);
-        servedStatus.delete(environmentId);
+        probes.delete(environmentId);
         if (watchedEnvironments.size > 0) return;
         stopEnvironmentEvents?.();
         stopEnvironmentEvents = null;
@@ -235,7 +426,7 @@ export default function gitPlugin(bb: BbPluginApi): void {
           keys.map(
             async (environmentId): Promise<readonly [string, GitStatusRow]> => {
               const row = await statusRow(environmentId);
-              servedStatus.set(environmentId, JSON.stringify(row));
+              rememberStatus(environmentId, row);
               return [environmentId, row];
             },
           ),
@@ -247,7 +438,9 @@ export default function gitPlugin(bb: BbPluginApi): void {
           environmentId,
           {
             kind: "explicit",
-            ...(mergeBaseBranch === undefined ? {} : { branch: mergeBaseBranch }),
+            ...(mergeBaseBranch === undefined
+              ? {}
+              : { branch: mergeBaseBranch }),
           },
           "bypass",
         ),
@@ -256,8 +449,15 @@ export default function gitPlugin(bb: BbPluginApi): void {
           ...(maxDiffBytes === undefined ? {} : { maxDiffBytes }),
           ...(maxFileListBytes === undefined ? {} : { maxFileListBytes }),
         }),
-      files: ({ environmentId, target, ignoreWhitespace }) => {
-        return reads.files(environmentId, target, ignoreWhitespace, "shared");
+      async files({ environmentId, target, ignoreWhitespace }) {
+        const result = await reads.files(
+          environmentId,
+          target,
+          ignoreWhitespace,
+          "shared",
+        );
+        rememberFiles(environmentId, { target, ignoreWhitespace }, result);
+        return result;
       },
       async patches({ keys }) {
         const groups = new Map<string, { key: GitPatchKey; raw: string[] }>();
@@ -303,6 +503,7 @@ export default function gitPlugin(bb: BbPluginApi): void {
       },
       fileSide: ({ environmentId, query }) =>
         reads.fileSide(environmentId, query),
+      repos: ({ environmentId }) => reads.repos(environmentId),
       branches: ({ environmentId, query, limit, selectedBranch }) =>
         reads.branches({
           environmentId,
@@ -374,7 +575,17 @@ export default function gitPlugin(bb: BbPluginApi): void {
           method === "patches"
             ? parseGitPatchKey(read.key)?.environmentId
             : read.key;
-        if (environmentId !== undefined) watchEnvironment(environmentId, signal);
+        if (environmentId !== undefined) {
+          watchEnvironment(environmentId, method, signal);
+        }
+        return;
+      }
+      if (method === "files") {
+        const parsed = gitRpcContract.files.input.safeParse(read.input);
+        if (!parsed.success) return;
+        const { environmentId, target, ignoreWhitespace } = parsed.data;
+        watchEnvironment(environmentId, method, signal);
+        watchFilesQuery(environmentId, { target, ignoreWhitespace }, signal);
         return;
       }
       const input = read.input;
@@ -384,7 +595,7 @@ export default function gitPlugin(bb: BbPluginApi): void {
         !Array.isArray(input) &&
         typeof input.environmentId === "string"
       ) {
-        watchEnvironment(input.environmentId, signal);
+        watchEnvironment(input.environmentId, method, signal);
       }
     });
   }
@@ -394,7 +605,11 @@ export default function gitPlugin(bb: BbPluginApi): void {
     stopEnvironmentEvents?.();
     stopEnvironmentEvents = null;
     watchedEnvironments.clear();
+    watchedStatus.clear();
+    watchedFiles.clear();
     servedStatus.clear();
+    servedFiles.clear();
+    probes.clear();
     invalidator.dispose();
   });
 }

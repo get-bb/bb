@@ -10,6 +10,7 @@ import { apiErrorSchema } from "../errors.js";
 import {
   environmentProviderInstanceKeySchema,
   pathListIncludeQueryValueSchema,
+  workspacePathSearchFoldersSchema,
 } from "./shared.js";
 import { workspaceResolutionFailureSchema } from "@bb/host-daemon-contract/workspace";
 
@@ -73,9 +74,29 @@ export const environmentPathsQuerySchema = z.object({
   limit: z.string().regex(/^\d+$/).optional(),
   includeFiles: pathListIncludeQueryValueSchema,
   includeDirectories: pathListIncludeQueryValueSchema,
+  folders: workspacePathSearchFoldersSchema.optional(),
 });
 export type EnvironmentPathsQuery = z.infer<typeof environmentPathsQuerySchema>;
 
+export const environmentRepoSchema = z
+  .object({
+    rootPath: z.string().min(1),
+    path: z.string().min(1),
+    label: z.string(),
+    source: z.enum(["main", "folder", "discovered"]),
+  })
+  .strict();
+export type EnvironmentRepo = z.infer<typeof environmentRepoSchema>;
+
+export const environmentReposResponseSchema = z
+  .object({
+    repos: z.array(environmentRepoSchema),
+    truncated: z.boolean(),
+  })
+  .strict();
+export type EnvironmentReposResponse = z.infer<
+  typeof environmentReposResponseSchema
+>;
 
 export const environmentArchiveThreadsResponseSchema = z.object({
   ok: z.literal(true),
@@ -123,4 +144,3 @@ export const environmentActionApiErrorSchema = apiErrorSchema.extend({
 export type EnvironmentActionApiError = z.infer<
   typeof environmentActionApiErrorSchema
 >;
-

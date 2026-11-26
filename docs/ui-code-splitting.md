@@ -134,6 +134,13 @@ compatibility. SDK component splits remain separate from this mechanism:
 runtime slots must be installed before a plugin module evaluates, while SDK
 components can load when rendered or warmed at idle.
 
+A chunk's shim awaits its host-loaded slots before the chunk evaluates, and it
+only runs once the chunk has downloaded. So the chunk's slot download does not
+wait behind the chunk, `bb plugin build` rewrites every dynamic import of a
+chunk to call `loadRuntimeSlot` for the host-loaded slots in that chunk's static
+import closure that the entry does not already load. The chunk and those slots
+download together, and the shim's later call joins the pending load.
+
 Splits defined by modules that load later (a route
 chunk, for example) join the queue and drain at the next idle period. Tests do
 not start the queue, so defining a split never triggers a speculative import
@@ -175,6 +182,76 @@ still loading delays the route's own content by up to 300 ms.
 
 Keep the existing persistent responsive drawer's deferred realization and
 retained content. Avoid rendering a split merely to preload it.
+
+## Core contributions and plugin surfaces
+
+Core contributions (`apps/app/src/core-contributions/`) are registered from
+modules that load with the app, so everything their registration file imports
+statically lands in that payload. They cannot import `defineSplit`:
+`bb/core-contribution-imports` limits them to the public SDK. They split with
+`experimental_lazy` from `@get-bb/plugin-sdk/app`, the same call plugins use:
+
+```tsx
+const ThreadOutline = experimental_lazy(
+  () => import("./components/ThreadOutline"),
+);
+
+export default definePluginApp((app) => {
+  app.slots.experimental_threadRailOutline({
+    id: "outline",
+    component: ThreadOutline,
+  });
+});
+```
+
+The registration file keeps ids, groups and order. The component module lives
+in `src/core-contributions/components/` and default-exports the component.
+`experimental_lazy` is `lazyComponent` in `src/lib/lazy-component.tsx` for both
+callers: the core binding and the plugin runtime serve the same function. It is
+a `preload`-tier `defineSplit`, so it warms at idle once critical loads and
+plugin frontends settle, gets the same download retries, and renders the loaded
+component directly on later mounts. A final load failure throws into the
+surrounding slot boundary.
+
+Stacking slot hosts call `useOrderedReveal` from `src/lib/lazy-parts.ts`, one
+rule for bb's entries and plugins' alike: an entry shows once every entry above
+it is ready. A lazy entry still loading after `ORDERED_REVEAL_BOUND_MS`
+(3 seconds) stops holding the entries below it: they show what is ready, and
+the late entry is inserted in its place when it arrives, moving the entries
+below it once. A missing row is worse than one shift on a slow link. Eager
+entries that register later still appear in their place. Restored-part
+loading and core page preparation find lazy components through
+`PLUGIN_APP_COMPONENT_FIELDS` in the SDK's collector, where every slot kind
+lists its component fields.
+
+Before plugin frontends load, `restoredLazyParts` (`src/lib/restored-lazy-parts.ts`)
+lists the parts the restored screen shows: a plugin's settings sections on its
+settings page, the nav panel on its own page, and on a thread route the open
+right-panel tab from the thread's saved panel state (a plugin tab, a plugin
+panel action, or every plugin's Info rows and sections when Info is open). A
+plugin a listed part names prefetches its lazy chunks with its bundle. As soon
+as a plugin's registrations are collected, its listed lazy parts start loading
+instead of waiting for render or idle warming. A plugin's own page or settings
+page publishes its registrations once the parts that page shows load, bounded
+the same way; the other listed parts do not hold anything. Lazy parts the
+screen does not show wait for idle warming. Core contributions register at startup (`src/lib/core-contribution-parts.ts`
+lists them), and the thread route starts their lazy parts alongside the thread
+view chunk, so a part the page shows, such as the rail outline, arrives with
+the page instead of after it. bb's Info rows and sections are not in that
+list: when `restoredLazyParts` lists the Info tab, the plugin loader starts them
+with the plugins' restored parts (`startRestoredCoreContributionParts`).
+
+The bound comes from Slow 4G (562.5 ms RTT, 1.44 Mbps) cold loads: a lazy
+chunk a host waited on at render took 2.1 to 2.8 seconds while the app's
+other bundles shared the link (bb connect's settings sections 2.4 s, the
+automations panel 2.8 s, the rail outline 2.7 s), and about 0.6 seconds
+uncontended. Three seconds covers those loads, and one stuck chunk cannot
+hold the entries below it for longer.
+
+`src/core-contributions/components/*` is a split boundary for `boot`,
+`ThreadPage` and `NewThreadPage`, so a component module that becomes eager fails
+the budget check. Pattern entries ending in `/*` match the modules directly in
+that directory and fail when they match none.
 
 ## Enforce the boundary
 

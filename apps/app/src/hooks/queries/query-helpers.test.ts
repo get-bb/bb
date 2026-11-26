@@ -391,6 +391,7 @@ describe("optimisticallyInsertThread", () => {
       makeThreadResponse({
         runtime: {
           displayStatus: "active",
+          failure: null,
         },
       }),
     );

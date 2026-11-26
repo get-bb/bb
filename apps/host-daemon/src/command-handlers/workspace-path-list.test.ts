@@ -230,7 +230,8 @@ describe("workspace path discovery", () => {
     await write(root, "beta.md");
     const command = {
       type: "host.list_paths" as const,
-      path: root,
+      rootPaths: [root],
+      followRootSymlink: false,
       includeFiles: true,
       includeDirectories: false,
       includeHidden: true,
@@ -247,6 +248,108 @@ describe("workspace path discovery", () => {
     expect(beta.paths.map((entry) => entry.path)).toEqual(["beta.md"]);
   });
 
+  it("ranks every root together under one limit and names each result's root", async () => {
+    const main = await createRoot();
+    const extra = await createRoot();
+    await write(main, "docs/readme-notes.md");
+    await write(main, "src/index.ts");
+    await write(extra, "readme.md");
+    await write(extra, "lib/readme.txt");
+    const missing = path.join(extra, "does-not-exist");
+    const result = await listHostPaths(
+      {
+        type: "host.list_paths",
+        rootPaths: [main, missing, extra],
+        followRootSymlink: false,
+        query: "readme",
+        includeFiles: true,
+        includeDirectories: false,
+        includeHidden: true,
+        respectGitIgnore: false,
+        excludeNames: [],
+        limit: 2,
+      },
+      new AbortController().signal,
+    );
+    expect(result.truncated).toBe(true);
+    expect(
+      result.paths.map(({ path: entryPath, rootPath }) => ({
+        path: entryPath,
+        rootPath,
+      })),
+    ).toEqual([
+      { path: "readme.md", rootPath: extra },
+      { path: "lib/readme.txt", rootPath: extra },
+    ]);
+  });
+
+  it("returns a file from every root that has it at the same relative path", async () => {
+    const roots = [await createRoot(), await createRoot(), await createRoot()];
+    for (const root of roots) await write(root, "README.md");
+    const command = {
+      type: "host.list_paths" as const,
+      rootPaths: roots,
+      followRootSymlink: false,
+      includeFiles: true,
+      includeDirectories: false,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: [],
+      limit: 10,
+    };
+    for (const query of ["readme", undefined]) {
+      const result = await listHostPaths(
+        { ...command, ...(query ? { query } : {}) },
+        new AbortController().signal,
+      );
+      expect(
+        result.paths.map(({ path: entryPath, rootPath }) => ({
+          path: entryPath,
+          rootPath,
+        })),
+      ).toEqual(roots.map((rootPath) => ({ path: "README.md", rootPath })));
+    }
+  });
+
+  it("searches a symlinked root only when asked to follow it", async () => {
+    const main = await createRoot();
+    const target = await createRoot();
+    await write(main, "notes.md");
+    await write(target, "linked-notes.md");
+    const link = path.join(await createRoot(), "linked");
+    await fs.symlink(target, link);
+    const command = {
+      type: "host.list_paths" as const,
+      rootPaths: [main, link],
+      query: "notes",
+      includeFiles: true,
+      includeDirectories: false,
+      includeHidden: true,
+      respectGitIgnore: false,
+      excludeNames: [],
+      limit: 10,
+    };
+
+    const followed = await listHostPaths(
+      { ...command, followRootSymlink: true },
+      new AbortController().signal,
+    );
+    expect(
+      followed.paths
+        .map(({ path: entryPath, rootPath }) => ({ path: entryPath, rootPath }))
+        .sort((left, right) => left.path.localeCompare(right.path)),
+    ).toEqual([
+      { path: "linked-notes.md", rootPath: link },
+      { path: "notes.md", rootPath: main },
+    ]);
+    await expect(
+      listHostPaths(
+        { ...command, followRootSymlink: false },
+        new AbortController().signal,
+      ),
+    ).rejects.toMatchObject({ code: "invalid_path" });
+  });
+
   it("stops an unqueried listing after the limit with the same entries as a full walk", async () => {
     const root = await createRoot();
     for (const dir of ["a", "b", "c", "d"]) {
@@ -255,7 +358,8 @@ describe("workspace path discovery", () => {
     }
     const command = {
       type: "host.list_paths" as const,
-      path: root,
+      rootPaths: [root],
+      followRootSymlink: false,
       includeFiles: true,
       includeDirectories: true,
       includeHidden: true,

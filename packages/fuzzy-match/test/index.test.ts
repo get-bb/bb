@@ -266,6 +266,24 @@ describe("fuzzyMatchPaths", () => {
     ]);
   });
 
+  it("keeps distinct items that share a path", () => {
+    const items = [
+      { root: "/work/app", path: "README.md" },
+      { root: "/work/docs", path: "README.md" },
+      { root: "/work/api", path: "README.md" },
+    ];
+    for (const query of ["readme", "README.md"]) {
+      expect(
+        fuzzyMatchPaths({
+          items,
+          query,
+          getPath: (item) => item.path,
+          limit: 10,
+        }).map((match) => match.item.root),
+      ).toEqual(["/work/app", "/work/docs", "/work/api"]);
+    }
+  });
+
   it("includes directory-prefix positions when matching a leaf query", () => {
     const matches = fuzzyMatchPaths({
       items: ["src/foo/util-helper.ts"],

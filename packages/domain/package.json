@@ -34,6 +34,11 @@
       "types": "./src/thread-origin-kind.ts",
       "default": "./src/thread-origin-kind.ts"
     },
+    "./thread-failure-kind": {
+      "source": "./src/thread-failure-kind.ts",
+      "types": "./src/thread-failure-kind.ts",
+      "default": "./src/thread-failure-kind.ts"
+    },
     "./queued-message-lifecycle": {
       "source": "./src/queued-message-lifecycle.ts",
       "types": "./src/queued-message-lifecycle.ts",

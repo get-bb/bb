@@ -1200,7 +1200,6 @@ a.marketplace-detail-author:hover {
 }
 
 @media (max-width: 560px) {
-
   .marketplace-detail-download {
     display: none;
   }
@@ -1423,4 +1422,186 @@ a.marketplace-detail-author:hover {
 .marketplace-overview-heading .marketplace-detail-source {
   color: var(--subtle);
   white-space: nowrap;
+}
+
+.marketplace-hero > .marketplace-hero-note {
+  margin-top: 14px;
+  color: var(--subtle);
+  font-size: 13.5px;
+}
+
+.marketplace-hero-note a {
+  color: var(--dim);
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.marketplace-hero-note a:hover {
+  color: var(--heading);
+}
+
+.marketplace-detail-unreviewed {
+  color: var(--subtle);
+}
+
+.marketplace-overview-links {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+}
+
+.marketplace-publish {
+  max-width: 760px;
+}
+
+.marketplace-publish-head {
+  padding-bottom: 32px;
+  border-bottom: 1px solid var(--border);
+}
+
+.marketplace-publish-head h1 {
+  color: var(--heading);
+  font-size: 30px;
+  font-weight: 750;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
+.marketplace-publish-head p {
+  margin-top: 12px;
+  color: var(--dim);
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.marketplace-publish-head .marketplace-publish-notice {
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 14px;
+}
+
+.marketplace-publish-steps {
+  display: grid;
+  gap: 32px;
+  margin: 32px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.marketplace-publish .marketplace-publish-steps {
+  padding-left: 0;
+}
+
+.marketplace-publish-step {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 16px;
+}
+
+.marketplace-publish-steps > .marketplace-publish-step {
+  margin-bottom: 0;
+}
+
+.marketplace-publish-step-number {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--heading);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.marketplace-publish h2 {
+  margin: 3px 0 10px;
+  color: var(--heading);
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.marketplace-publish h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--heading);
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.marketplace-publish h3 svg {
+  width: 16px;
+  height: 16px;
+}
+
+.marketplace-publish .cmd-btn {
+  max-width: 100%;
+  margin: 0 0 10px;
+}
+
+.marketplace-publish-sources {
+  display: grid;
+  gap: 12px;
+}
+
+.marketplace-publish-sources > section {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--marketplace-card-radius);
+}
+
+.marketplace-publish-section {
+  margin-top: 40px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.marketplace-publish-categories {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.marketplace-publish-categories > div {
+  display: grid;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+  gap: 4px 16px;
+  font-size: 14px;
+}
+
+.marketplace-publish-categories dt {
+  display: grid;
+  gap: 2px;
+}
+
+.marketplace-publish-categories dt code {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ink);
+}
+
+.marketplace-publish-categories dt span {
+  color: var(--subtle);
+  font-size: 12px;
+}
+
+.marketplace-publish-categories dd {
+  margin: 0;
+  color: var(--dim);
+}
+
+@media (max-width: 640px) {
+  .marketplace-publish-categories > div {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

@@ -58,7 +58,6 @@ function panel(args: {
             tabs={[]}
             isConversationCollapsed={false}
             isOpen
-            metadataContent={null}
             onClose={noop}
             onCollapse={noop}
             onTabReorder={noop}

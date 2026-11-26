@@ -995,6 +995,7 @@ export function createWorkflowService(
         if (signal.aborted) handoffCalls.delete(call.id);
         throwIfCancelled(signal);
         let failure = error;
+        let providerRetryGaveUp: string | null = null;
         while (handoffCalls.has(call.id)) {
           const failedWorker = getCall(
             db,
@@ -1017,6 +1018,8 @@ export function createWorkflowService(
             handoffCalls.delete(call.id);
           }
           if (reopened === null || handoff.kind !== "stand-down") {
+            if (handoff.kind === "give-up")
+              providerRetryGaveUp = handoff.reason;
             wakeWorker();
             break;
           }
@@ -1031,6 +1034,12 @@ export function createWorkflowService(
             throwIfCancelled(signal);
             failure = handedOffError;
           }
+        }
+        if (providerRetryGaveUp !== null) {
+          bb.log.info(
+            `[${run.id}] Agent call ${callIndex + 1} is not retried: provider retry declined it (${providerRetryGaveUp})`,
+          );
+          throw failure;
         }
         const delay = PROVIDER_RETRY_DELAYS_MS[call.providerRetryAttempts];
         if (delay === undefined || !isRetryableProviderFailure(failure)) {

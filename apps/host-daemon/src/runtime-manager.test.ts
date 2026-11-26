@@ -193,6 +193,7 @@ function createFakeRuntime() {
       providerCheckpointId: null,
     })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
+    stopBackgroundTask: vi.fn(async () => ({ stopped: true })),
     renameThread: vi.fn(async (_args: RenameThreadArgs) => undefined),
     archiveThread: vi.fn(async () => undefined),
     unarchiveThread: vi.fn(async () => undefined),

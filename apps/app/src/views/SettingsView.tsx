@@ -82,6 +82,7 @@ import {
 } from "@/hooks/mutations/settings-mutations";
 import { useSystemConfig } from "@/hooks/queries/system-queries";
 import { useWorkspaceOpenTargets } from "@/hooks/useWorkspaceOpenTargets";
+import { useIsDesktopLocalServerActive } from "@/hooks/useServerChoices";
 import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
 import { showMutationErrorToast } from "@/lib/mutation-errors";
 import {
@@ -166,6 +167,9 @@ interface AppearanceSettingsSectionProps {
 }
 
 interface GeneralSettingsSectionProps {
+  confirmDesktopQuit: boolean;
+  desktopQuitConfirmationAvailable: boolean;
+  onConfirmDesktopQuitChange: (enabled: boolean) => void;
   confirmThreadArchive: boolean;
   onConfirmThreadArchiveChange: (enabled: boolean) => void;
   keepHistoryAfterContextClear: boolean;
@@ -867,6 +871,9 @@ export function AppearanceSettingsSection({
 }
 
 export function GeneralSettingsSection({
+  confirmDesktopQuit,
+  desktopQuitConfirmationAvailable,
+  onConfirmDesktopQuitChange,
   confirmThreadArchive,
   onConfirmThreadArchiveChange,
   keepHistoryAfterContextClear,
@@ -960,6 +967,20 @@ export function GeneralSettingsSection({
               </DropdownMenuContent>
             </DropdownMenu>
           </SettingsWithControl>
+
+          {desktopQuitConfirmationAvailable ? (
+            <SettingsWithControl
+              label="Ask before quitting"
+              description="Ask first when quitting the desktop app would stop agents working on this computer's bb server. Shown only while this window uses that server."
+            >
+              <Switch
+                checked={confirmDesktopQuit}
+                disabled={generalSettingsDisabled}
+                onCheckedChange={onConfirmDesktopQuitChange}
+                aria-label="Ask before quitting"
+              />
+            </SettingsWithControl>
+          ) : null}
 
           <SettingsWithControl
             label="Thread archive confirmation"
@@ -1277,6 +1298,7 @@ export function SettingsView() {
   const [navigateToThreadAfterCreate, setNavigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
   const [desktopBrowserAvailable] = useState(isDesktopBrowserAvailable);
+  const desktopQuitConfirmationAvailable = useIsDesktopLocalServerActive();
   const experiments = systemConfigQuery.data?.experiments ?? defaultExperiments;
   const updateExperimentsMutation = useUpdateExperiments();
   const generalSettings =
@@ -1424,6 +1446,13 @@ export function SettingsView() {
     content = (
       <>
         <GeneralSettingsSection
+          confirmDesktopQuit={generalSettings.confirmDesktopQuit}
+          desktopQuitConfirmationAvailable={desktopQuitConfirmationAvailable}
+          onConfirmDesktopQuitChange={(enabled) =>
+            updateGeneralSettingsMutation.mutate({
+              confirmDesktopQuit: enabled,
+            })
+          }
           confirmThreadArchive={generalSettings.confirmThreadArchive}
           onConfirmThreadArchiveChange={(enabled) =>
             updateGeneralSettingsMutation.mutate({

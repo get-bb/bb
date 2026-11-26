@@ -30,6 +30,7 @@ import type {
   QueuedMessageEditHoldResponse,
   SendQueuedMessageResponse,
   ThreadArchiveAllResponse,
+  ThreadBackgroundTasksResponse,
   ThreadChildSummaryResponse,
   ThreadImportResponse,
   ThreadConversationOutlineResponse,
@@ -92,7 +93,7 @@ import type {
 import { signalRequestArgs, type CreateSdkAreaArgs } from "./common.js";
 
 export const DEFAULT_THREAD_WAIT_TIMEOUT_MS = 20 * 60 * 1000;
-export const DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS = 250;
+const THREAD_WAIT_REQUEST_MS = 30_000;
 
 export interface ThreadListArgs {
   archived?: boolean;
@@ -238,6 +239,8 @@ export type ThreadQueuedMessageGroupBoundaryResult =
   ThreadQueuedMessageListResponse;
 export type ThreadQueueListResult = ThreadQueuedMessageListResponse;
 export type ThreadTabsResult = ThreadTabsResponse;
+export type ThreadBackgroundTaskListResult = ThreadBackgroundTasksResponse;
+export type ThreadBackgroundTaskStopResult = OperationResponse;
 export type ThreadTabsUpdateResult = ThreadTabsResponse;
 export type ThreadStorageFilesResult = ThreadStorageFileListResponse;
 export type ThreadStorageLocationResult = ThreadStorageLocationResponse;
@@ -481,6 +484,11 @@ export interface ThreadInteractionListArgs {
   threadId: string;
 }
 
+export interface ThreadBackgroundTaskTargetArgs {
+  itemId: string;
+  threadId: string;
+}
+
 export interface ThreadInteractionTargetArgs {
   interactionId: string;
   threadId: string;
@@ -504,7 +512,6 @@ export type ThreadWaitTarget =
 
 export interface ThreadWaitArgs {
   event?: string;
-  pollIntervalMs?: number;
   signal?: AbortSignal;
   status?: ThreadStatus;
   threadId: string;
@@ -609,6 +616,24 @@ export interface ThreadQueuedMessagesArea {
   ): Promise<ThreadQueuedMessageUpdateResult>;
 }
 
+/**
+ * The thread's running background tasks: the commands and agents its provider
+ * started in the background, which can outlive the turn that started them.
+ */
+export interface ThreadBackgroundTasksArea {
+  /** Running background tasks, with the timeline item id of each. */
+  list(args: ThreadStatusArgs): Promise<ThreadBackgroundTaskListResult>;
+  /**
+   * Stop one running background task without stopping the thread or its
+   * other tasks. Only tasks listed with `stoppable: true` can be stopped; the
+   * task settles as stopped once the provider reports it, which may follow
+   * an `in-progress` result.
+   */
+  stop(
+    args: ThreadBackgroundTaskTargetArgs,
+  ): Promise<ThreadBackgroundTaskStopResult>;
+}
+
 export interface ThreadTabsArea {
   get(args: ThreadStatusArgs): Promise<ThreadTabsResult>;
   update(args: ThreadTabsUpdateArgs): Promise<ThreadTabsUpdateResult>;
@@ -630,6 +655,8 @@ export interface ThreadQueueArea {
 export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
+  /** Experimental: see docs/api_to_audit.md. */
+  experimental_backgroundTasks: ThreadBackgroundTasksArea;
   childSummary(args: ThreadStatusArgs): Promise<ThreadChildSummaryResult>;
   compact(args: ThreadActionArgs): Promise<ThreadCompactResult>;
   cancelPlan(args: ThreadActionArgs): Promise<ThreadBannerActionResult>;
@@ -975,10 +1002,6 @@ function timelineQuery(args: ThreadTimelineArgs): ThreadTimelineQuery {
   };
 }
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function resolveThreadWaitTarget(args: ThreadWaitArgs): ThreadWaitTarget {
   const hasStatus = args.status !== undefined;
   const hasEvent = args.event !== undefined;
@@ -992,7 +1015,6 @@ function resolveThreadWaitTarget(args: ThreadWaitArgs): ThreadWaitTarget {
 }
 
 function validateThreadWaitArgs(args: ThreadWaitArgs): {
-  pollIntervalMs: number;
   target: ThreadWaitTarget;
   timeoutMs: number;
 } {
@@ -1002,15 +1024,7 @@ function validateThreadWaitArgs(args: ThreadWaitArgs): {
       "Timeout must be a non-negative number of milliseconds.",
     );
   }
-  const pollIntervalMs =
-    args.pollIntervalMs ?? DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS;
-  if (!Number.isInteger(pollIntervalMs) || pollIntervalMs < 1) {
-    throw new RangeError(
-      "Poll interval must be a positive integer number of milliseconds.",
-    );
-  }
   return {
-    pollIntervalMs,
     target: resolveThreadWaitTarget(args),
     timeoutMs,
   };
@@ -1071,6 +1085,27 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
         ...signalRequestArgs(input.signal),
       ),
     );
+  const waitForStatusChange = async (input: {
+    signal: AbortSignal | undefined;
+    thread: ThreadGetResult;
+    waitMs: number;
+  }): Promise<ThreadGetResult> => {
+    const response = await transport.resolve(
+      transport.api.v1.threads[":id"].status.wait.$get(
+        {
+          param: { id: input.thread.id },
+          query: {
+            notStatus: input.thread.status,
+            waitMs: String(input.waitMs),
+          },
+        },
+        ...signalRequestArgs(input.signal),
+      ),
+    );
+    const statusCode: number = response.status;
+    if (statusCode === 204) return input.thread;
+    return (await response.json()) ?? input.thread;
+  };
   function timeline(
     input: ThreadTimelineArgs & { afterTag?: undefined },
   ): Promise<ThreadTimelineResult>;
@@ -1300,6 +1335,25 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
           { query: queueListQuery(input) },
           ...signalRequestArgs(input?.signal),
         ),
+      );
+    },
+  };
+  const backgroundTasks: ThreadBackgroundTasksArea = {
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["background-tasks"].$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async stop(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"]["background-tasks"][
+          ":itemId"
+        ].stop.$post({
+          param: { id: input.threadId, itemId: input.itemId },
+        }),
       );
     },
   };
@@ -1702,6 +1756,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     tabs,
+    experimental_backgroundTasks: backgroundTasks,
     async context(input) {
       return transport.readJson(
         transport.api.v1.threads[":id"].context.$get(
@@ -1801,23 +1856,14 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     async wait(input) {
-      const { pollIntervalMs, target, timeoutMs } =
-        validateThreadWaitArgs(input);
+      const { target, timeoutMs } = validateThreadWaitArgs(input);
       const deadline = Date.now() + timeoutMs;
-      while (true) {
-        if (target.kind === "status") {
-          const thread = await getThread({
-            signal: input.signal,
-            threadId: input.threadId,
-          });
-          if (thread.status === target.status) {
-            return {
-              matched: true,
-              target,
-              thread,
-              threadId: input.threadId,
-            };
-          }
+      if (target.kind === "status") {
+        let thread = await getThread({
+          signal: input.signal,
+          threadId: input.threadId,
+        });
+        while (thread.status !== target.status) {
           const unreachable = isThreadWaitTargetUnreachable(
             thread.status,
             target,
@@ -1837,19 +1883,32 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
               threadId: input.threadId,
             });
           }
-          if (Date.now() >= deadline) {
+          const remainingMs = deadline - Date.now();
+          if (remainingMs <= 0) {
             throw new ThreadWaitTimeoutError({
               pendingRetry,
               target,
               threadId: input.threadId,
             });
           }
-          await sleep(pollIntervalMs);
-          continue;
+          thread = await waitForStatusChange({
+            signal: input.signal,
+            thread,
+            waitMs: Math.ceil(Math.min(remainingMs, THREAD_WAIT_REQUEST_MS)),
+          });
         }
-
+        return {
+          matched: true,
+          target,
+          thread,
+          threadId: input.threadId,
+        };
+      }
+      while (true) {
         const remainingMs = Math.max(0, deadline - Date.now());
-        const waitMs = Math.floor(Math.min(remainingMs, 30_000));
+        const waitMs = Math.floor(
+          Math.min(remainingMs, THREAD_WAIT_REQUEST_MS),
+        );
         const event = await events.wait({
           signal: input.signal,
           threadId: input.threadId,
@@ -1871,7 +1930,6 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
             threadId: input.threadId,
           });
         }
-        await sleep(pollIntervalMs);
       }
     },
   };

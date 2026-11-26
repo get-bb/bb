@@ -90,7 +90,6 @@ import type { SidebarSortableDragBindings } from "@/components/ui/sortable-motio
 import { SidebarThreadDragChip } from "../dnd/sidebarThreadDragChip.js";
 import { SplitPaneMiniMap } from "@/components/ui/split-pane-mini-map";
 import { ThreadRowQuickActions } from "./ThreadRowQuickActions.js";
-import { toThreadActionTarget } from "./threadActionTarget.js";
 import {
   useIsSelectionHidingActiveRow,
   useIsThreadSelected,
@@ -382,8 +381,7 @@ function ThreadRowComponent({
     openThreadInSplit(thread.id);
   }, [openThreadInSplit, thread.id]);
   const rowActionKeys = useAtomValue(threadRowActionsAtom);
-  const actionTarget = toThreadActionTarget(thread);
-  const quickActions = experimental_useThreadActions(actionTarget, {
+  const quickActions = experimental_useThreadActions(thread, {
     keys: thread.archivedAt !== null ? ARCHIVED_ROW_ACTION_KEYS : rowActionKeys,
     requestRename: () => {
       startEditing();
@@ -715,7 +713,7 @@ function ThreadRowComponent({
               )}
             >
               <ThreadActionsMenu
-                thread={actionTarget}
+                thread={thread}
                 trigger={renderThreadActionsTrigger}
                 inline={inlineMenuActions}
                 requestRename={requestRenameFromMenu}
@@ -804,7 +802,7 @@ function ThreadRowComponent({
                   }
                 >
                   <ThreadActionsMenu
-                    thread={actionTarget}
+                    thread={thread}
                     trigger={renderThreadActionsTrigger}
                     inline={inlineMenuActions}
                     requestRename={requestRenameFromMenu}
@@ -857,7 +855,7 @@ function ThreadRowComponent({
 
   return (
     <ThreadActionsContextMenu
-      thread={actionTarget}
+      thread={thread}
       inline={selectionMenu?.inline ?? inlineMenuActions}
       requestRename={requestRenameFromMenu}
       onOpenChange={setIsContextActionsOpen}

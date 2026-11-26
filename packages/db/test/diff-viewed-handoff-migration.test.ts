@@ -9,6 +9,7 @@ import {
   dropQueuedMessageRecheckAtColumn,
   dropProjectFolderSchema,
   dropThreadSearchOrderIndex,
+  rewindThreadFailureKindColumn,
   rewindThreadPurgeStartedColumn,
   dropQueuedMessageSourcesAndCompactFirstColumns,
   dropThreadRunStateTables,
@@ -34,6 +35,7 @@ function databaseBeforeHandoff(
   dropForkHistoryCopyIndex(db);
   dropEnvironmentHoldColumns(db);
   dropThreadSearchOrderIndex(db);
+  rewindThreadFailureKindColumn(db);
   rewindThreadPurgeStartedColumn(db);
   dropQueuedMessageSourcesAndCompactFirstColumns(db);
   db.$client.pragma("foreign_keys = OFF");

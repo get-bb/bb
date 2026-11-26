@@ -4,6 +4,7 @@ import { z } from "zod";
 import { WARM_POOLS_CHANGED_CHANNEL } from "./channels.js";
 import {
   MAX_POOL_SIZE,
+  type RemoteBase,
   worktreeHostContract,
   worktreeHostSignals,
 } from "./contract.js";
@@ -17,7 +18,8 @@ const FAILURE_BACKOFF_MS = 10 * 60 * 1000;
 const MEMBER_TTL_MS = 8 * 60 * 60 * 1000;
 const RESERVATION_TTL_MS = 10 * 60 * 1000;
 const REFRESH_TIMEOUT_MS = 5 * 60 * 1000;
-const HANDOFF_TIMEOUT_MS = 15_000;
+const HANDOFF_CHECK_TIMEOUT_MS = 15_000;
+const CLAIM_TIMEOUT_MS = 15 * 60 * 1000;
 const LIST_PAGE_SIZE = 500;
 const SETTLE_POLL_MS = 2_000;
 
@@ -820,133 +822,162 @@ export async function createWarmPools(args: {
     });
     if (creating.heldBy !== null) return null;
     const tried = new Set<string>();
-    const readRemoteBase = () =>
+    let base: RemoteBase | null = null;
+    const folderBases = new Map<string, RemoteBase>();
+    const claim = (target: {
+      sourcePath: string;
+      path: string;
+      placeholder: string;
+      base: RemoteBase | null;
+    }) =>
       host.call(
-        "readRemoteBase",
-        { sourcePath: request.sourcePath },
+        "claimPoolMember",
+        { ...target, checkTimeoutMs: HANDOFF_CHECK_TIMEOUT_MS },
         {
           hostId: request.hostId,
           signal: request.signal,
-          timeoutMs: HANDOFF_TIMEOUT_MS,
+          timeoutMs: CLAIM_TIMEOUT_MS,
         },
       );
-    let remoteBase: ReturnType<typeof readRemoteBase> | null = null;
+    const claimFailed = async (
+      member: Environment,
+      error: unknown,
+    ): Promise<void> => {
+      reserved.delete(member.id);
+      await serialFor(request)(() =>
+        discard(member, "its claim failed and it may have moved"),
+      );
+      if (request.signal.aborted) throw error;
+      bb.log.warn(
+        `Warm worktree ${member.id} could not be handed off: ${errorMessage(error)}`,
+      );
+    };
+    const checkTimedOut = `its check took longer than ${HANDOFF_CHECK_TIMEOUT_MS / 1000} s`;
     for (;;) {
       const member = await serialFor(request)(() => reserve(request, tried));
       if (member === null || member.path === null || member.branchName === null)
         break;
       tried.add(member.id);
-      remoteBase ??= readRemoteBase();
-      let base;
-      let checked;
-      let folderChecks;
+      const placeholder = member.branchName;
+      let claimed;
       try {
-        base = await remoteBase;
-        if (base === null) {
-          reserved.delete(member.id);
-          break;
-        }
-        checked = await host.call(
-          "checkPoolMember",
-          {
-            sourcePath: request.sourcePath,
-            path: member.path,
-            placeholder: member.branchName,
-            baseBranch: base.ref,
-            baseCommit: base.commit,
-          },
-          {
-            hostId: request.hostId,
-            signal: request.signal,
-            timeoutMs: HANDOFF_TIMEOUT_MS,
-          },
-        );
-        const placeholder = member.branchName;
-        const hostOptions = {
-          hostId: request.hostId,
-          signal: request.signal,
-          timeoutMs: HANDOFF_TIMEOUT_MS,
-        };
-        folderChecks = await Promise.all(
-          memberFolders(member).map(async (folder) => {
-            const folderBase = await host.call(
-              "readRemoteBase",
-              { sourcePath: folder.sourcePath },
-              hostOptions,
-            );
-            if (folderBase === null)
-              return { folder, base: null, checked: null } as const;
-            const folderChecked = await host.call(
-              "checkPoolMember",
-              {
-                sourcePath: folder.sourcePath,
-                path: folder.path,
-                placeholder,
-                baseBranch: folderBase.ref,
-                baseCommit: folderBase.commit,
-              },
-              hostOptions,
-            );
-            return { folder, base: folderBase, checked: folderChecked };
-          }),
-        );
+        claimed = await claim({
+          sourcePath: request.sourcePath,
+          path: member.path,
+          placeholder,
+          base,
+        });
       } catch (error) {
+        await claimFailed(member, error);
+        break;
+      }
+      if (claimed.status === "no-base") {
         reserved.delete(member.id);
-        if (request.signal.aborted) throw error;
+        break;
+      }
+      if (
+        claimed.status === "timed-out" ||
+        claimed.status === "base-unavailable"
+      ) {
+        reserved.delete(member.id);
         bb.log.warn(
-          `Warm worktree ${member.id} could not be handed off: ${errorMessage(error)}`,
+          `Warm worktree ${member.id} could not be handed off: ${claimed.status === "timed-out" ? checkTimedOut : claimed.reason}`,
         );
         break;
       }
-      if (checked.status !== "usable") {
+      base = claimed.base;
+      if (claimed.status !== "usable") {
         reserved.delete(member.id);
-        if (checked.status === "busy") break;
-        const reason = checked.reason;
+        if (claimed.status === "busy") break;
+        const reason = claimed.reason;
         await serialFor(request)(() =>
           discard(member, `it cannot be handed off: ${reason}`),
         );
         continue;
       }
+      const settled = await Promise.allSettled(
+        memberFolders(member).map(async (folder) => ({
+          folder,
+          claimed: await claim({
+            sourcePath: folder.sourcePath,
+            path: folder.path,
+            placeholder,
+            base: folderBases.get(folder.sourcePath) ?? null,
+          }),
+        })),
+      );
+      const failure = settled.find(
+        (entry): entry is PromiseRejectedResult => entry.status === "rejected",
+      );
+      if (failure !== undefined) {
+        await claimFailed(member, failure.reason);
+        break;
+      }
+      let moved = claimed.head !== claimed.base.commit;
       const folders: HandedFolderWorktree[] = [];
       let folderProblem: { discard: string | null } | null = null;
-      for (const entry of folderChecks) {
-        if (entry.base === null || entry.checked.status === "busy") {
-          folderProblem = { discard: null };
-          break;
+      for (const entry of settled) {
+        if (entry.status === "rejected") continue;
+        const { folder, claimed: folderClaimed } = entry.value;
+        if (
+          folderClaimed.status === "usable" ||
+          folderClaimed.status === "refused" ||
+          folderClaimed.status === "busy"
+        )
+          folderBases.set(folder.sourcePath, folderClaimed.base);
+        if (folderClaimed.status === "usable") {
+          if (folderClaimed.head !== folderClaimed.base.commit) moved = true;
+          folders.push({
+            ...folder,
+            baseBranch: folderClaimed.base.ref,
+            baseCommit: folderClaimed.base.commit,
+            memberCommit: folderClaimed.head,
+          });
+          continue;
         }
-        if (entry.checked.status === "refused") {
+        if (folderProblem !== null) continue;
+        if (folderClaimed.status === "refused") {
           folderProblem = {
-            discard: `its worktree of ${entry.folder.sourcePath} cannot be handed off: ${entry.checked.reason}`,
+            discard: `its worktree of ${folder.sourcePath} cannot be handed off: ${folderClaimed.reason}`,
           };
-          break;
+          continue;
         }
-        folders.push({
-          ...entry.folder,
-          baseBranch: entry.base.ref,
-          baseCommit: entry.base.commit,
-          memberCommit: entry.checked.head,
-        });
+        if (
+          folderClaimed.status === "timed-out" ||
+          folderClaimed.status === "base-unavailable"
+        )
+          bb.log.warn(
+            `Warm worktree ${member.id} could not be handed off: its worktree of ${folder.sourcePath}: ${folderClaimed.status === "timed-out" ? checkTimedOut : folderClaimed.reason}`,
+          );
+        folderProblem = { discard: null };
       }
       if (folderProblem !== null) {
         reserved.delete(member.id);
-        const reason = folderProblem.discard;
-        if (reason === null) break;
-        await serialFor(request)(() => discard(member, reason));
+        const reason =
+          folderProblem.discard ??
+          (moved ? "it moved to a new base but was not handed off" : null);
+        if (reason !== null)
+          await serialFor(request)(() => discard(member, reason));
+        if (folderProblem.discard === null) break;
         continue;
       }
       const handed: WarmHandOff = {
         path: member.path,
-        baseBranch: base.ref,
-        baseCommit: base.commit,
-        memberCommit: checked.head,
-        offline: base.offline,
-        placeholder: member.branchName,
+        baseBranch: claimed.base.ref,
+        baseCommit: claimed.base.commit,
+        memberCommit: claimed.head,
+        offline: claimed.base.offline,
+        placeholder,
         folders,
       };
       try {
         await request.adopt(member.id, handed);
       } catch (error) {
         reserved.delete(member.id);
+        if (moved)
+          await serialFor(request)(() =>
+            discard(member, "it moved to a new base but was not adopted"),
+          );
         if (request.signal.aborted) throw error;
         bb.log.warn(
           `Warm worktree ${member.id} could not be adopted: ${errorMessage(error)}`,

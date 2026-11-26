@@ -283,7 +283,7 @@ describe("host GraphQL batching", () => {
     expect(await gh.readCalls()).toHaveLength(2);
   });
 
-  it("keeps each document under GitHub's 500,000-node limit for branch lookups", async () => {
+  it("reads 25 branch lookups in one document with details for only each branch's newest PR", async () => {
     const gh = await installFakeGh({
       "api graphql": {
         stdout: JSON.stringify({
@@ -324,7 +324,9 @@ describe("host GraphQL batching", () => {
       ),
     );
     expect(results.every((result) => result.outcome === "none")).toBe(true);
-    expect(await gh.readCalls()).toHaveLength(2);
+    const queries = await gh.readQueries();
+    expect(queries).toHaveLength(1);
+    expect(queries[0]!.match(/statusCheckRollup/gu)).toHaveLength(25);
   });
 
   it("starts reads prepared at different times together, in one document", async () => {

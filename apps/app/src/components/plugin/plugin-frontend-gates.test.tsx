@@ -58,6 +58,9 @@ function candidate(pluginId: string): PluginFrontendCandidate {
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      staticChunkUrls: [],
+      lazyChunkUrls: [],
+      lazyRuntimeSlots: [],
     },
   };
 }
@@ -114,6 +117,7 @@ function liveDeps(): PluginFrontendReconcileDeps {
     flushSlotBatch: flushPluginSlotChanges,
     warn: vi.fn(),
     priorityPluginIds: () => [],
+    restoredLazyParts: () => [],
     whenScreenPainted: () => Promise.resolve(),
   };
 }

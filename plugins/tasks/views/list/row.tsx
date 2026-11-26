@@ -10,7 +10,12 @@ import { Icon } from "@/components/ui/icon";
 import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import type { TaskRowMeta } from "./data.js";
-import { activeWorkLabel, formatDueDate, partitionLabels } from "./lib.js";
+import {
+  activeWorkLabel,
+  formatDueDate,
+  partitionLabels,
+  type SubTaskProgress,
+} from "./lib.js";
 import type { EditFn } from "./property-menus.js";
 import {
   isBareKey,
@@ -93,6 +98,12 @@ function LabelChips({
 
 interface TaskRowProps {
   task: Task;
+  child?: boolean;
+  muted?: boolean;
+  subTasks?: SubTaskProgress;
+  subTasksOpen?: boolean;
+  subTasksLocked?: boolean;
+  onToggleSubTasks?: (taskId: string) => void;
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -154,6 +165,12 @@ export function KeyColumnScope({
 
 export const TaskRow = memo(function TaskRow({
   task,
+  child = false,
+  muted = false,
+  subTasks,
+  subTasksOpen = false,
+  subTasksLocked = false,
+  onToggleSubTasks,
   meta,
   project,
   showProject,
@@ -181,7 +198,9 @@ export const TaskRow = memo(function TaskRow({
         className={cn(
           "relative grid w-full grid-cols-[auto_auto_minmax(0,1fr)] items-center gap-x-2 gap-y-1 border-b border-border-hairline px-3.5 py-1.5 text-left transition-opacity hover:bg-state-hover",
           "@md:flex @md:h-[34px] @md:py-0",
+          child && "pl-9",
           pending && "opacity-70",
+          muted && "opacity-50",
         )}
       >
         <button
@@ -228,6 +247,22 @@ export const TaskRow = memo(function TaskRow({
         </span>
         <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
           {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
+          {subTasks !== undefined ? (
+            <button
+              type="button"
+              aria-expanded={subTasksOpen}
+              aria-label={`${subTasksOpen ? "Collapse" : "Expand"} sub-tasks of ${task.key}`}
+              disabled={subTasksLocked}
+              onClick={() => onToggleSubTasks?.(task.id)}
+              className={cn(RAIL_CHIP_CLASS, "relative disabled:opacity-70")}
+            >
+              <Icon
+                name={subTasksOpen ? "ChevronDown" : "ChevronRight"}
+                className="size-3"
+              />
+              {subTasks.done}/{subTasks.total}
+            </button>
+          ) : null}
           <LabelChips task={task} labelsById={labelsById} />
           {task.dueDate !== null ? (
             <span className={`${RAIL_CHIP_CLASS} shrink-0 tabular-nums`}>

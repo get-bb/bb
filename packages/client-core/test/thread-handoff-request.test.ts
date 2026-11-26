@@ -11,7 +11,9 @@ import {
 
 const SEED: ThreadHandoffCreateSeed = {
   environmentId: "env_source",
+  parent: null,
   projectId: "proj_source",
+  sectionId: null,
   sourceThreadId: "thr_source",
   sourceThreadTitle: "Source thread",
 };
@@ -189,9 +191,40 @@ describe("buildThreadHandoffCreateRequest", () => {
       projectId: "proj_source",
       providerId: "claude-code",
       reasoningLevel: "high",
+      sectionId: null,
       serviceTier: "fast",
       startedOnBehalfOf: null,
     });
+  });
+
+  it("places the continuation of a child thread next to its source", () => {
+    const request = buildThreadHandoffCreateRequest({
+      draft: { text: "Keep going", mentions: [], attachments: [] },
+      execution: EXECUTION,
+      seed: {
+        ...SEED,
+        parent: { threadId: "thr_coordinator", notifications: "stuck" },
+        sectionId: "sec_source",
+      },
+    });
+
+    expect(request).toMatchObject({
+      parentThreadId: "thr_coordinator",
+      parentNotifications: "stuck",
+      sectionId: "sec_source",
+    });
+  });
+
+  it("keeps the continuation of a root thread a root thread in its section", () => {
+    const request = buildThreadHandoffCreateRequest({
+      draft: { text: "Keep going", mentions: [], attachments: [] },
+      execution: EXECUTION,
+      seed: { ...SEED, sectionId: "sec_source" },
+    });
+
+    expect(request?.sectionId).toBe("sec_source");
+    expect(request).not.toHaveProperty("parentThreadId");
+    expect(request).not.toHaveProperty("parentNotifications");
   });
 
   it("falls back to the project default environment and drops unsupported service tiers", () => {

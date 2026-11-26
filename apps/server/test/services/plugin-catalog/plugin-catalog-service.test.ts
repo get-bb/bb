@@ -14,6 +14,7 @@ import { createMigratedConnection } from "@bb/db/testing";
 import {
   CURATED_PLUGIN_MARKETPLACE_NAME,
   ROOT_PLUGIN_SOURCE_SELECTION,
+  type PluginCatalogResolvedSource,
 } from "@bb/server-contract";
 import { PLUGIN_CATALOG_CATEGORIES } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +25,7 @@ import {
 } from "../../../src/services/server-move/freeze-state.js";
 import { refreshCuratedMarketplace } from "../../helpers/plugin-catalog.js";
 import type { MarketplaceFetch } from "../../../src/services/plugin-catalog/marketplace-http.js";
+import type { PluginService } from "../../../src/services/plugins/plugin-service.js";
 import {
   CURATED_MARKETPLACE_V1_URL,
   CURATED_MARKETPLACE_V2_URL,
@@ -121,6 +123,7 @@ describe("plugin catalog service", () => {
     fetch?: MarketplaceFetch;
     marketplaceUrl?: string;
     warn?: (message: string) => void;
+    resolveNpm?: PluginService["resolveCatalogNpmSource"];
   }) {
     return createPluginCatalogService({
       db,
@@ -136,10 +139,12 @@ describe("plugin catalog service", () => {
           installedCatalogEntries.push(args);
           throw new Error("catalog installation stopped by test");
         },
-        resolveCatalogNpmSource: async () => ({
-          outcome: "unavailable" as const,
-          detail: "no registry in this test",
-        }),
+        resolveCatalogNpmSource:
+          options?.resolveNpm ??
+          (async () => ({
+            outcome: "unavailable" as const,
+            detail: "no registry in this test",
+          })),
       },
       ...(options?.bundledPlugins === undefined
         ? {}
@@ -925,6 +930,54 @@ describe("plugin catalog service", () => {
       expect(await catalog.icon("bb-community", "widgets")).toBeUndefined();
     });
 
+    it("reuses a cached icon without a request until its URL changes", async () => {
+      const ALTERNATE_SVG = Buffer.from(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M0 0h8v8H0z"/></svg>',
+      );
+      let iconUrl = "./icons/widgets-1111.svg";
+      let description = "Widgets for threads.";
+      const iconRequests: string[] = [];
+      const catalog = service({
+        fetch: async (url) => {
+          if (url === MANIFEST_URL) {
+            return Response.json(
+              manifest([remoteEntry({ description, icon: { url: iconUrl } })]),
+            );
+          }
+          if (url.includes("/icons/")) iconRequests.push(url);
+          return new Response(
+            url.endsWith("widgets-2222.svg") ? ALTERNATE_SVG : VALID_SVG,
+            { status: 200 },
+          );
+        },
+      });
+      await refreshCuratedMarketplace(catalog, 1_000);
+      const first = await catalog.icon("bb-community", "widgets");
+      expect(iconRequests).toEqual([
+        "https://marketplace.test/icons/widgets-1111.svg",
+      ]);
+
+      description = "Widgets for every thread.";
+      await refreshCuratedMarketplace(catalog, 2_000);
+      expect(iconRequests).toHaveLength(1);
+      expect((await catalog.search("widgets"))[0]?.description).toBe(
+        "Widgets for every thread.",
+      );
+      expect((await catalog.icon("bb-community", "widgets"))?.hash).toBe(
+        first?.hash,
+      );
+
+      iconUrl = "./icons/widgets-2222.svg";
+      await refreshCuratedMarketplace(catalog, 3_000);
+      expect(iconRequests).toEqual([
+        "https://marketplace.test/icons/widgets-1111.svg",
+        "https://marketplace.test/icons/widgets-2222.svg",
+      ]);
+      const replaced = await catalog.icon("bb-community", "widgets");
+      expect(replaced?.hash).not.toBe(first?.hash);
+      expect(Buffer.from(replaced?.bytes ?? [])).toEqual(ALTERNATE_SVG);
+    });
+
     it("keeps the prior snapshot when an icon-table commit fails", async () => {
       db.$client.exec(`
         CREATE TRIGGER reject_marketplace_icon
@@ -1109,29 +1162,81 @@ describe("plugin catalog service", () => {
   });
 
   describe("catalog installs", () => {
-    async function refreshedCatalog(entry: Record<string, unknown>) {
+    const PINNED_COMMIT = "c".repeat(40);
+
+    function pinnedEntry(overrides: Record<string, unknown> = {}) {
+      return remoteEntry({
+        source: {
+          git: {
+            url: "https://github.com/acme/plugins.git",
+            subdir: "plugins/widgets",
+            ref: PINNED_COMMIT,
+          },
+        },
+        ...overrides,
+      });
+    }
+
+    async function refreshedCatalog(
+      entry: Record<string, unknown>,
+      resolveNpm?: PluginService["resolveCatalogNpmSource"],
+    ) {
       const catalog = service({
         fetch: async (url) =>
           url === MANIFEST_URL
             ? Response.json(manifest([entry]))
             : new Response(VALID_SVG, { status: 200 }),
+        ...(resolveNpm === undefined ? {} : { resolveNpm }),
       });
       await refreshCuratedMarketplace(catalog, 1_000);
       return catalog;
     }
 
-    it("routes a subdirectory entry through the install pipeline", async () => {
-      const catalog = await refreshedCatalog(remoteEntry());
+    async function confirmedSource(
+      catalog: ReturnType<typeof service>,
+    ): Promise<PluginCatalogResolvedSource> {
+      const plan = await catalog.installPlan({ entryId: "widgets" });
+      if (plan.kind !== "marketplace") throw new Error("expected a listing");
+      return plan.resolvedSource;
+    }
+
+    it("shows a bb-community entry's resolved source and requires its confirmation", async () => {
+      const catalog = await refreshedCatalog(pinnedEntry());
+      expect(await catalog.installPlan({ entryId: "widgets" })).toMatchObject({
+        kind: "marketplace",
+        marketplace: "bb-community",
+        official: true,
+        author: { name: "Acme" },
+        resolvedSource: {
+          kind: "git",
+          url: "https://github.com/acme/plugins.git",
+          subdir: "plugins/widgets",
+          ref: PINNED_COMMIT,
+          resolvedCommit: PINNED_COMMIT,
+        },
+      });
       await expect(catalog.install({ entryId: "widgets" })).rejects.toThrow(
-        "catalog installation stopped by test",
+        "install refused: confirm the marketplace source first",
       );
+      expect(installedCatalogEntries).toEqual([]);
+    });
+
+    it("routes a subdirectory entry through the install pipeline", async () => {
+      const catalog = await refreshedCatalog(pinnedEntry());
+      await expect(
+        catalog.install({
+          entryId: "widgets",
+          confirmedSource: await confirmedSource(catalog),
+        }),
+      ).rejects.toThrow("catalog installation stopped by test");
       expect(installedCatalogEntries).toEqual([
         {
           marketplace: "bb-community",
           entryId: "widgets",
           pluginId: "widgets",
-          source: "git:https://github.com/acme/plugins.git@v1.0.0",
+          source: `git:https://github.com/acme/plugins.git@${PINNED_COMMIT}`,
           selection: { kind: "subdirectory", path: "plugins/widgets" },
+          expectedGitCommit: PINNED_COMMIT,
         },
       ]);
       expect(installedNames).toEqual([]);
@@ -1149,10 +1254,18 @@ describe("plugin catalog service", () => {
             },
           },
         }),
+        async () => ({
+          outcome: "resolved" as const,
+          version: "2.0.0-beta.1",
+          integrity: "sha512-beta",
+        }),
       );
-      await expect(catalog.install({ entryId: "widgets" })).rejects.toThrow(
-        "catalog installation stopped by test",
-      );
+      await expect(
+        catalog.install({
+          entryId: "widgets",
+          confirmedSource: await confirmedSource(catalog),
+        }),
+      ).rejects.toThrow("catalog installation stopped by test");
       expect(installedCatalogEntries).toEqual([
         {
           marketplace: "bb-community",
@@ -1161,12 +1274,14 @@ describe("plugin catalog service", () => {
           source: "npm:bb-plugin-widgets@beta",
           selection: ROOT_PLUGIN_SOURCE_SELECTION,
           npmRegistry: "https://npm.acme.test",
+          expectedNpmVersion: "2.0.0-beta.1",
+          expectedNpmIntegrity: "sha512-beta",
         },
       ]);
     });
 
     it("offers a marketplace entry without judging compatibility", async () => {
-      const catalog = await refreshedCatalog(remoteEntry({ icon: "Zap" }));
+      const catalog = await refreshedCatalog(pinnedEntry({ icon: "Zap" }));
       const [entry] = await catalog.search("widgets");
       expect(entry).toMatchObject({
         compatible: true,
@@ -1177,9 +1292,12 @@ describe("plugin catalog service", () => {
         compatible: true,
         incompatibleReason: null,
       });
-      await expect(catalog.install({ entryId: "widgets" })).rejects.toThrow(
-        "catalog installation stopped by test",
-      );
+      await expect(
+        catalog.install({
+          entryId: "widgets",
+          confirmedSource: await confirmedSource(catalog),
+        }),
+      ).rejects.toThrow("catalog installation stopped by test");
     });
 
     it("reads the installed flag from catalog provenance", async () => {

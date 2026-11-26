@@ -22,6 +22,7 @@ import {
 } from "@bb/domain/thread-run-state";
 import { startedOnBehalfOfInitiatorValues } from "@bb/domain/started-on-behalf-of";
 import { threadCreateOriginValues } from "@bb/domain/thread-create-origin";
+import { threadFailureKindValues } from "@bb/domain/thread-failure-kind";
 import { threadOriginKindValues } from "@bb/domain/thread-origin-kind";
 import { threadParentNotificationsValues } from "@bb/domain/thread-parent-notifications";
 import { threadVisibilityValues } from "@bb/domain/thread-visibility";
@@ -680,6 +681,7 @@ export const threads = sqliteTable(
       .notNull()
       .default("starting"),
     statusChangedAt: integer("status_changed_at").notNull().default(0),
+    failureKind: text("failure_kind", { enum: threadFailureKindValues }),
     startupContext: text("startup_context"),
     parentThreadId: text("parent_thread_id").references(
       (): AnySQLiteColumn => threads.id,

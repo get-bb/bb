@@ -12,7 +12,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@bb/shared-ui/tooltip";
-import { OptionPicker } from "@/components/pickers/OptionPicker";
+import { OptionPicker } from "@bb/shared-ui/option-picker";
 import { formatCompactTokenCount } from "@/components/thread/timeline/thread-context-window-usage";
 
 export interface CompactBeforeSendOffer {

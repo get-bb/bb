@@ -1,5 +1,5 @@
 import { Children, Fragment, isValidElement, type ReactNode } from "react";
-import { Pressable, View } from "react-native";
+import { Pressable, useWindowDimensions, View } from "react-native";
 import { useTheme } from "@/theme/ThemeProvider";
 import { cn } from "./cn";
 import { Icon, isIconName, type IconName } from "./Icon";
@@ -81,6 +81,7 @@ export function GroupedRow({
   accessibilityLabel,
 }: GroupedRowProps) {
   const { tokens } = useTheme();
+  const { fontScale } = useWindowDimensions();
   const interactive = Boolean(onPress || onLongPress);
   const titleColor = destructive ? tokens.destructiveText : tokens.foreground;
   const leadingColor = destructive
@@ -113,7 +114,7 @@ export function GroupedRow({
       <View className="min-w-0 flex-1">
         <Text
           variant={IS_IOS ? "bodyLarge" : "body"}
-          numberOfLines={titleLines}
+          numberOfLines={IS_IOS && fontScale > 1 ? undefined : titleLines}
           style={{ color: titleColor }}
         >
           {title}

@@ -87,6 +87,7 @@ export type ThreadExecutionRequestOptions = Pick<
 export interface SendTextMessageOptions {
   execution?: ThreadExecutionRequestOptions;
   mode?: "auto" | "start" | "steer";
+  senderThreadId?: string;
   text: string;
 }
 
@@ -489,6 +490,9 @@ export async function sendTextMessage(
   const request: SendMessageRequest = {
     input: [{ type: "text", text: options.text, mentions: [] }],
     mode: options.mode ?? "auto",
+    ...(options.senderThreadId === undefined
+      ? {}
+      : { senderThreadId: options.senderThreadId }),
     ...(options.execution ?? {}),
   };
   const response = await api.threads[":id"].send.$post({

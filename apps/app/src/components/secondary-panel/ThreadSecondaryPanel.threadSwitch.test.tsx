@@ -119,7 +119,6 @@ function Host({
         tabs={renderableTabs}
         isConversationCollapsed={false}
         isOpen
-        metadataContent={null}
         onClose={noop}
         onCollapse={noop}
         onTabReorder={noop}

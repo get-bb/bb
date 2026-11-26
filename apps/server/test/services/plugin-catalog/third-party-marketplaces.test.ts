@@ -190,6 +190,61 @@ describe("third-party marketplaces", () => {
     return repo;
   }
 
+  async function taggedRepo(tag: string): Promise<string> {
+    const repo = await mkdtemp(join(tmpdir(), "bb-plugin-repo-"));
+    cleanup.push(repo);
+    await run("git", ["init", "-q", "-b", "main"], { cwd: repo });
+    await run("git", ["config", "user.email", "test@example.com"], {
+      cwd: repo,
+    });
+    await run("git", ["config", "user.name", "Test"], { cwd: repo });
+    await writeFile(join(repo, "file.txt"), tag);
+    await run("git", ["add", "."], { cwd: repo });
+    await run("git", ["commit", "-qm", tag], { cwd: repo });
+    await run("git", ["tag", tag], { cwd: repo });
+    return repo;
+  }
+
+  async function headCommit(repo: string): Promise<string> {
+    return (
+      await run("git", ["rev-parse", "HEAD"], { cwd: repo })
+    ).stdout.trim();
+  }
+
+  const UNREACHABLE_GIT_URL = "https://acme-git.test/plugins.git";
+
+  async function allowPartialClones(repo: string): Promise<void> {
+    await run("git", ["config", "uploadpack.allowFilter", "true"], {
+      cwd: repo,
+    });
+  }
+
+  async function commitUnreachableBlob(
+    repo: string,
+    path: string,
+  ): Promise<void> {
+    await mkdir(join(repo, ...path.split("/").slice(0, -1)), {
+      recursive: true,
+    });
+    await writeFile(join(repo, ...path.split("/")), "x".repeat(4096));
+    await run("git", ["-c", "core.excludesFile=/dev/null", "add", "."], {
+      cwd: repo,
+    });
+    await run("git", ["commit", "-qm", "unreachable blob"], { cwd: repo });
+    const blob = (
+      await run("git", ["rev-parse", `HEAD:${path}`], { cwd: repo })
+    ).stdout.trim();
+    await rm(join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+    await expect(
+      run("git", [
+        "clone",
+        "--quiet",
+        UNREACHABLE_GIT_URL,
+        join(dataDir, "full-clone"),
+      ]),
+    ).rejects.toThrow(/possible repository corruption/u);
+  }
+
   describe("git marketplace lifecycle", () => {
     let repo: string;
 
@@ -329,6 +384,100 @@ describe("third-party marketplaces", () => {
         getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
       ).toBe("image/svg+xml");
     });
+
+    it("refreshes an unchanged ref from the stored catalog without fetching the repository", async () => {
+      const warnings: string[] = [];
+      const catalog = service({
+        fetch: marketplaceFetch({}),
+        warn: (message) => warnings.push(message),
+      });
+      const added = await catalog.addMarketplace({
+        source: `git:${repo}@main`,
+        subdirectory: null,
+      });
+      const icon = getPluginMarketplaceIcon(db, "acme-plugins", "notes");
+      expect(icon?.contentHash).toEqual(expect.any(String));
+      const objects = join(repo, ".git", "objects");
+      for (const fanout of await readdir(objects)) {
+        if (/^[0-9a-f]{2}$/u.test(fanout)) {
+          await rm(join(objects, fanout), { recursive: true });
+        }
+      }
+      await expect(
+        run("git", ["clone", "--quiet", repo, join(dataDir, "full-clone")]),
+      ).rejects.toThrow(/nonexistent object/u);
+
+      const [refreshed] = await catalog.refreshMarketplaces({
+        name: "acme-plugins",
+      });
+
+      expect(refreshed).toMatchObject({
+        name: "acme-plugins",
+        ok: true,
+        error: null,
+        marketplace: { entryCount: 1, resolvedCommit: added.resolvedCommit },
+      });
+      expect(
+        getPluginMarketplaceIcon(db, "acme-plugins", "notes"),
+      ).toMatchObject({
+        contentType: icon?.contentType,
+        contentHash: icon?.contentHash,
+        sourceUrl: "file:icons/notes.svg",
+      });
+      expect(warnings).toEqual([]);
+      expect(
+        await readdir(join(dataDir, "marketplaces", "staging")).catch(() => []),
+      ).toEqual([]);
+    });
+
+    it("fetches only the catalog and its icons when the ref moved", async () => {
+      await allowPartialClones(repo);
+      await useGitUrlRewrite(UNREACHABLE_GIT_URL, `file://${repo}`);
+      const catalog = service({ fetch: marketplaceFetch({}) });
+      const added = await catalog.addMarketplace({
+        source: `git:${UNREACHABLE_GIT_URL}@main`,
+        subdirectory: null,
+      });
+      await mkdir(join(repo, "icons", "status"), { recursive: true });
+      await writeFile(join(repo, "icons", "status", "status.svg"), OTHER_SVG);
+      await writeFile(
+        join(repo, "marketplace.json"),
+        JSON.stringify(
+          manifest("acme-plugins", [
+            entry({ icon: { url: "./icons/notes.svg" } }),
+            entry({
+              id: "status",
+              displayName: "Acme Status",
+              icon: { url: "./icons/status/status.svg" },
+            }),
+          ]),
+        ),
+      );
+      await commitUnreachableBlob(repo, "plugins/alpha/dist/index.js");
+
+      const [refreshed] = await catalog.refreshMarketplaces({
+        name: "acme-plugins",
+      });
+
+      expect(refreshed).toMatchObject({
+        name: "acme-plugins",
+        ok: true,
+        error: null,
+        marketplace: {
+          entryCount: 2,
+          resolvedCommit: await headCommit(repo),
+        },
+      });
+      expect(refreshed?.marketplace.resolvedCommit).not.toBe(
+        added.resolvedCommit,
+      );
+      expect(
+        getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
+      ).toBe("image/svg+xml");
+      expect(
+        getPluginMarketplaceIcon(db, "acme-plugins", "status")?.contentHash,
+      ).toEqual(expect.any(String));
+    });
   });
 
   describe("git marketplace in a subdirectory", () => {
@@ -405,6 +554,44 @@ describe("third-party marketplaces", () => {
         ["bb-community", null],
         ["acme-plugins", "tools/bb"],
       ]);
+    });
+
+    it("fetches only the subdirectory when the ref moved", async () => {
+      await allowPartialClones(repo);
+      await useGitUrlRewrite(UNREACHABLE_GIT_URL, `file://${repo}`);
+      const catalog = service({ fetch: marketplaceFetch({}) });
+      await catalog.addMarketplace({
+        source: `git:${UNREACHABLE_GIT_URL}@main`,
+        subdirectory: "tools/bb",
+      });
+      await writeFile(
+        join(repo, "tools", "bb", "marketplace.json"),
+        JSON.stringify(
+          manifest("acme-plugins", [
+            entry({ icon: { url: "./icons/notes.svg" } }),
+            entry({ id: "status", displayName: "Acme Status", icon: "Zap" }),
+          ]),
+        ),
+      );
+      await commitUnreachableBlob(repo, "plugins/alpha/dist/index.js");
+
+      const [refreshed] = await catalog.refreshMarketplaces({
+        name: "acme-plugins",
+      });
+
+      expect(refreshed).toMatchObject({
+        name: "acme-plugins",
+        ok: true,
+        error: null,
+        marketplace: {
+          subdirectory: "tools/bb",
+          entryCount: 2,
+          resolvedCommit: await headCommit(repo),
+        },
+      });
+      expect(
+        getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
+      ).toBe("image/svg+xml");
     });
 
     it("keeps reading the repository root when no subdirectory is given", async () => {
@@ -486,6 +673,121 @@ describe("third-party marketplaces", () => {
       },
     );
   });
+
+  describe.skipIf(process.platform === "win32")(
+    "git marketplace read through symlinks inside the repository",
+    () => {
+      const notes = (iconUrl: string) =>
+        JSON.stringify(
+          manifest("acme-plugins", [entry({ icon: { url: iconUrl } })]),
+        );
+
+      it.each([
+        {
+          layout: "marketplace.json links to catalog/marketplace.json",
+          subdirectory: null,
+          build: async (repo: string) => {
+            await mkdir(join(repo, "catalog", "icons"), { recursive: true });
+            await writeFile(
+              join(repo, "catalog", "marketplace.json"),
+              notes("./catalog/icons/notes.svg"),
+            );
+            await writeFile(
+              join(repo, "catalog", "icons", "notes.svg"),
+              VALID_SVG,
+            );
+            await symlink(
+              join("catalog", "marketplace.json"),
+              join(repo, "marketplace.json"),
+            );
+          },
+        },
+        {
+          layout: "the subdirectory tools/bb links to catalog",
+          subdirectory: "tools/bb",
+          build: async (repo: string) => {
+            await mkdir(join(repo, "catalog", "icons"), { recursive: true });
+            await mkdir(join(repo, "tools"), { recursive: true });
+            await writeFile(
+              join(repo, "catalog", "marketplace.json"),
+              notes("./icons/notes.svg"),
+            );
+            await writeFile(
+              join(repo, "catalog", "icons", "notes.svg"),
+              VALID_SVG,
+            );
+            await symlink(join("..", "catalog"), join(repo, "tools", "bb"));
+          },
+        },
+        {
+          layout: "icons/notes.svg links to assets/notes.svg",
+          subdirectory: null,
+          build: async (repo: string) => {
+            await mkdir(join(repo, "assets"), { recursive: true });
+            await mkdir(join(repo, "icons"), { recursive: true });
+            await writeFile(
+              join(repo, "marketplace.json"),
+              notes("./icons/notes.svg"),
+            );
+            await writeFile(join(repo, "assets", "notes.svg"), VALID_SVG);
+            await symlink(
+              join("..", "assets", "notes.svg"),
+              join(repo, "icons", "notes.svg"),
+            );
+          },
+        },
+        {
+          layout: "icons links to assets/icons",
+          subdirectory: null,
+          build: async (repo: string) => {
+            await mkdir(join(repo, "assets", "icons"), { recursive: true });
+            await writeFile(
+              join(repo, "marketplace.json"),
+              notes("./icons/notes.svg"),
+            );
+            await writeFile(
+              join(repo, "assets", "icons", "notes.svg"),
+              VALID_SVG,
+            );
+            await symlink(join("assets", "icons"), join(repo, "icons"));
+          },
+        },
+      ])("reads the catalog when $layout", async ({ subdirectory, build }) => {
+        const repo = await mkdtemp(join(tmpdir(), "bb-marketplace-repo-"));
+        cleanup.push(repo);
+        await run("git", ["init", "-q", "-b", "main"], { cwd: repo });
+        await run("git", ["config", "user.email", "test@example.com"], {
+          cwd: repo,
+        });
+        await run("git", ["config", "user.name", "Test"], { cwd: repo });
+        await build(repo);
+        await run("git", ["-c", "core.excludesFile=/dev/null", "add", "."], {
+          cwd: repo,
+        });
+        await run("git", ["commit", "-qm", "catalog"], { cwd: repo });
+        const warnings: string[] = [];
+        const catalog = service({
+          fetch: marketplaceFetch({}),
+          warn: (message) => warnings.push(message),
+        });
+
+        const added = await catalog.addMarketplace({
+          source: `git:${repo}@main`,
+          subdirectory,
+        });
+
+        expect(added).toMatchObject({
+          name: "acme-plugins",
+          entryCount: 1,
+          resolvedCommit: await headCommit(repo),
+        });
+        expect(
+          getPluginMarketplaceIcon(db, "acme-plugins", "notes")?.contentType,
+        ).toBe("image/svg+xml");
+        expect(warnings).toEqual([]);
+      });
+    },
+  );
 
   it("removes a checkout left by a prior process crash", async () => {
     const repo = await gitMarketplace({
@@ -759,9 +1061,18 @@ describe("third-party marketplaces", () => {
       },
     ]);
 
-    await expect(catalog.install({ entryId: "notes" })).rejects.toThrow(
-      "catalog installation stopped by test",
+    await useGitUrlRewrite(
+      "https://github.com/acme/plugins.git",
+      await taggedRepo("v1.0.0"),
     );
+    const plan = await catalog.installPlan({ entryId: "notes" });
+    if (plan.kind !== "marketplace") throw new Error("expected a listing");
+    await expect(
+      catalog.install({
+        entryId: "notes",
+        confirmedSource: plan.resolvedSource,
+      }),
+    ).rejects.toThrow("catalog installation stopped by test");
     expect(installedCatalogEntries).toMatchObject([
       {
         marketplace: "bb-community",
@@ -1250,41 +1561,52 @@ describe("third-party marketplaces", () => {
       });
     });
 
-    it("names the official catalog without a network round trip", async () => {
+    it("resolves and binds a bb-community git range like a third-party listing", async () => {
+      const repo = await taggedRepo("v1.1.0");
+      const expected = await headCommit(repo);
+      const listedUrl = "https://community.test/bb-plugins.git";
+      await useGitUrlRewrite(listedUrl, repo);
       const catalog = service({
         fetch: marketplaceFetch({
           [OFFICIAL_URL]: manifest("bb-community", [
             entry({
-              id: "official-notes",
-              source: {
-                git: {
-                  url: "https://github.invalid/bb/plugins.git",
-                  range: "^1.0.0",
-                },
-              },
+              id: "community-notes",
+              source: { git: { url: listedUrl, range: "^1.0.0" } },
             }),
           ]),
         }),
       });
       await refreshCuratedMarketplace(catalog, 1_000);
 
-      const plan = await catalog.installPlan({ entryId: "official-notes" });
+      const plan = await catalog.installPlan({ entryId: "community-notes" });
       expect(plan).toMatchObject({
         kind: "marketplace",
         marketplace: "bb-community",
         official: true,
+        author: { name: "Acme", url: "https://github.com/acme" },
         resolvedSource: {
           kind: "git",
-          url: "https://github.invalid/bb/plugins.git",
+          url: listedUrl,
           range: "^1.0.0",
+          resolvedTag: "v1.1.0",
+          resolvedCommit: expected,
         },
       });
       if (plan.kind !== "marketplace") throw new Error("expected a listing");
-      expect(
-        plan.resolvedSource.kind === "git"
-          ? plan.resolvedSource.unresolvedReason
-          : undefined,
-      ).toBeUndefined();
+      await expect(
+        catalog.install({ entryId: "community-notes" }),
+      ).rejects.toThrow(
+        "install refused: confirm the marketplace source first",
+      );
+      await expect(
+        catalog.install({
+          entryId: "community-notes",
+          confirmedSource: plan.resolvedSource,
+        }),
+      ).rejects.toThrow("catalog installation stopped by test");
+      expect(installedCatalogEntries).toMatchObject([
+        { marketplace: "bb-community", expectedGitCommit: expected },
+      ]);
     });
   });
 

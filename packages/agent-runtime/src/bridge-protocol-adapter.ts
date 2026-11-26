@@ -447,6 +447,16 @@ export function createBridgeProtocolAdapter(
               providerThreadId: command.providerThreadId,
             },
           });
+        case "thread/backgroundTask/stop":
+          return {
+            kind: "request",
+            method: BRIDGE_REQUEST_METHODS.threadBackgroundTaskStop,
+            params: {
+              threadId: command.threadId,
+              providerThreadId: command.providerThreadId,
+              familyId: command.familyId,
+            },
+          };
         case "thread/goal/clear":
           return gate("threadGoalClear", {
             kind: "request",

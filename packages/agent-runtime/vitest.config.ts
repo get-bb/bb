@@ -8,6 +8,7 @@ export default defineWorkspaceTestConfig({
     silent: "passed-only",
     testTimeout: 15_000,
     hookTimeout: 15_000,
+    setupFiles: ["src/test/keep-provider-process-priority.ts"],
     projects: sharedWorkerProjects({
       pkgDir: __dirname,
       name: "@bb/agent-runtime",

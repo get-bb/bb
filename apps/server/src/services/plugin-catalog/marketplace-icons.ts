@@ -105,7 +105,7 @@ export async function fetchMarketplaceIcons(args: {
   marketplaceName: string;
   base: MarketplaceIconBase;
   entries: readonly MarketplaceEntry[];
-  onlyMissing: boolean;
+  rereadLocalIcons: boolean;
   fetch: MarketplaceFetch;
   warn?: (message: string) => void;
 }): Promise<UpsertPluginMarketplaceIconInput[]> {
@@ -138,18 +138,18 @@ export async function fetchMarketplaceIcons(args: {
   ): Promise<void> => {
     const sourceUrl = iconSourceUrl(icon);
     const cached = cachedByEntryId.get(entryId);
-    const unchangedUrl = cached?.sourceUrl === sourceUrl;
-    if (
-      args.onlyMissing &&
-      icon.kind === "remote" &&
-      cached !== undefined &&
-      unchangedUrl
-    ) {
+    const reusable = cached !== undefined && cached.sourceUrl === sourceUrl;
+    if (icon.kind === "local" && !args.rereadLocalIcons) {
+      if (reusable) resolved.set(entryId, iconInputFromRow(cached));
+      return;
+    }
+    if (icon.kind === "remote" && reusable) {
       resolved.set(entryId, iconInputFromRow(cached));
       return;
     }
     try {
-      const refreshed =
+      resolved.set(
+        entryId,
         icon.kind === "local"
           ? await readOneLocalIcon({
               marketplaceName: args.marketplaceName,
@@ -161,21 +161,14 @@ export async function fetchMarketplaceIcons(args: {
               marketplaceName: args.marketplaceName,
               entryId,
               iconUrl: icon.url,
-              cached,
               fetch: args.fetch,
-            });
-      if (refreshed !== null) {
-        resolved.set(entryId, refreshed);
-      } else if (cached !== undefined && unchangedUrl) {
-        resolved.set(entryId, iconInputFromRow(cached));
-      }
+            }),
+      );
     } catch (error) {
       args.warn?.(
         `marketplace ${args.marketplaceName} entry "${entryId}" icon ${sourceUrl} was rejected: ${marketplaceErrorMessage(error)}`,
       );
-      if (cached !== undefined && unchangedUrl) {
-        resolved.set(entryId, iconInputFromRow(cached));
-      }
+      if (reusable) resolved.set(entryId, iconInputFromRow(cached));
     }
   };
 
@@ -244,26 +237,14 @@ async function fetchOneIcon(args: {
   marketplaceName: string;
   entryId: string;
   iconUrl: string;
-  cached: PluginMarketplaceIconRow | undefined;
   fetch: MarketplaceFetch;
-}): Promise<UpsertPluginMarketplaceIconInput | null> {
+}): Promise<UpsertPluginMarketplaceIconInput> {
   assertPublicMarketplaceUrl(args.iconUrl);
-  const cached = args.cached;
-  const unchangedUrl =
-    cached !== undefined && cached.sourceUrl === args.iconUrl;
-  const headers = new Headers({ accept: "image/*" });
-  if (unchangedUrl && cached.etag !== null) {
-    headers.set("if-none-match", cached.etag);
-  }
   const response = await args.fetch(args.iconUrl, {
     method: "GET",
-    headers,
+    headers: new Headers({ accept: "image/*" }),
     redirect: "error",
   });
-  if (response.status === 304 && unchangedUrl) {
-    await response.body?.cancel();
-    return null;
-  }
   if (!response.ok) {
     await response.body?.cancel();
     throw new Error(`request failed with HTTP ${response.status}`);

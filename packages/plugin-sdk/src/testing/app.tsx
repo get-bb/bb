@@ -25,6 +25,7 @@ import {
 } from "react";
 import { act, render, type RenderResult } from "@testing-library/react";
 import {
+  type ExperimentalLazyComponent,
   type ExperimentalPageTitle,
   type ExperimentalThreadRequests,
   type BbContext,
@@ -110,6 +111,8 @@ import {
   type PluginSidebarThreadSplit,
   type PluginProvidersState,
   type ExperimentalThreadState,
+  type ExperimentalEnvironmentState,
+  type ExperimentalThreadStorageFilesState,
   type PluginSidebarThreadsState,
   type PluginSourceCodeRendererRegistration,
   type ExperimentalThreadContextSegmentRegistration,
@@ -129,6 +132,8 @@ import {
   type ExperimentalPanelTabIconProps,
   type ExperimentalPanelTabs,
   type ExperimentalInfoSectionProps,
+  type ExperimentalThreadTabProps,
+  type ExperimentalSearchPickerOptionsArgs,
   type ExperimentalDetailRowProps,
   type ExperimentalInfoListProps,
   type ExperimentalInfoListRowProps,
@@ -141,7 +146,6 @@ import {
   type ExperimentalThreadRowMetadataLineProps,
   type ExperimentalThreadRowMetadataRegistration,
   type PluginThreadActionsOptions,
-  type PluginThreadActionTarget,
   type ExperimentalPluginBrowserToolbarActionRegistration,
   type PluginThreadListRegistration,
   type PluginRpcContract,
@@ -408,6 +412,8 @@ interface SlotEnv {
   threadStates: ReadonlyMap<string, ExperimentalThreadState>;
   conversationOutlines: Readonly<Record<string, TestConversationOutlines>>;
   timelineViewport: ExperimentalTimelineViewport | null;
+  environmentStates: ReadonlyMap<string, ExperimentalEnvironmentState>;
+  threadStorageFiles: ReadonlyMap<string, ExperimentalThreadStorageFilesState>;
   experiments: ReadonlySet<string>;
   threadContextKind: ExperimentalThreadContextKind;
   threadExtensionStates: Readonly<
@@ -447,14 +453,15 @@ interface TestFixedTabTargetStore {
  * What `experimental_useThreadActions(thread)` returns in a test, in menu
  * order; the host's own actions are not emulated. `requestRename` is the
  * caller's rename editor (a no-op when it passed none), for entries whose
- * `run` renames. The fake applies `keys`. Omitted → an empty list. The fake
+ * `run` renames. `thread` is what the plugin passed, as the host reads only
+ * its `id`. The fake applies `keys`. Omitted → an empty list. The fake
  * `experimental_ThreadActionsMenu` opens on a trigger click and the fake
  * context menu on right-click; each lists these entries and its `inline`
  * items as `menuitem` buttons, and closes after one runs (calling
  * `onOpenChange(false)` and `onCloseAutoFocus`).
  */
 export type TestThreadActionsResolver = (
-  thread: PluginThreadActionTarget,
+  thread: { id: string },
   options: { requestRename(threadId: string): void },
 ) => readonly PluginThreadActionEntry[];
 
@@ -467,7 +474,7 @@ export type TestThreadActionsResolver = (
  * an empty list.
  */
 export type TestThreadBulkActionsResolver = (
-  threads: readonly PluginThreadActionTarget[],
+  threads: readonly { id: string }[],
 ) => readonly PluginThreadActionEntry[];
 
 /** One recorded `experimental_useThreadRequests()` call. */
@@ -657,7 +664,7 @@ function noRenameEditor(): void {}
 
 function useTestThreadActions(
   hook: string,
-  thread: PluginThreadActionTarget,
+  thread: { id: string },
   options?: PluginThreadActionsOptions,
 ): readonly PluginThreadActionEntry[] {
   const entries = useSlotEnv(hook).threadActions(thread, {
@@ -679,7 +686,7 @@ function TestThreadActionsMenuItems({
   onClose,
 }: {
   hook: string;
-  thread: PluginThreadActionTarget;
+  thread: { id: string };
   inline?: PluginThreadActionsMenuProps["inline"];
   requestRename?: (threadId: string) => void;
   onClose: () => void;
@@ -896,6 +903,12 @@ const NOT_FOUND_THREAD: ExperimentalThreadState = Object.freeze({
   status: "notFound",
   thread: null,
 });
+const NOT_FOUND_ENVIRONMENT: ExperimentalEnvironmentState = Object.freeze({
+  status: "notFound",
+  environment: null,
+});
+const LOADING_THREAD_STORAGE_FILES: ExperimentalThreadStorageFilesState =
+  Object.freeze({ status: "loading", files: null });
 
 function useSlotEnv(hook: string): SlotEnv {
   const env = useContext(SlotEnvContext);
@@ -1491,8 +1504,13 @@ function TestPluginIcon({ className }: ExperimentalPluginIconProps) {
 function TestThreadTitleText({
   title,
   className,
+  tooltip = false,
 }: ExperimentalThreadTitleTextProps) {
-  return <span className={className}>{title}</span>;
+  return (
+    <span className={className} title={tooltip ? title : undefined}>
+      {title}
+    </span>
+  );
 }
 
 /**
@@ -1608,6 +1626,30 @@ function TestInfoSection({
       {children}
     </section>
   );
+}
+
+/**
+ * Stand-in for bb's fuzzy picker search: keeps, in order, the options whose
+ * label or an alias contains the query, ignoring case.
+ */
+function testSearchPickerOptions<Option>({
+  options,
+  query,
+  getLabel,
+  getAliases,
+}: ExperimentalSearchPickerOptionsArgs<Option>): readonly Option[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") return options;
+  return options.filter((option) =>
+    [getLabel(option), ...(getAliases?.(option) ?? [])].some((text) =>
+      text.toLowerCase().includes(needle),
+    ),
+  );
+}
+
+/** Stand-in for bb's thread Info body; bb renders the registered rows and sections. */
+function TestThreadInfo({ threadId }: ExperimentalThreadTabProps) {
+  return <section aria-label="Thread info" data-thread-id={threadId} />;
 }
 
 /** Stand-in for bb's collapsible stack card; always shows its body. */
@@ -1767,7 +1809,32 @@ function captureErrorToasts(): TestErrorToast[] {
   return toasts;
 }
 
+const startedTestLazyLoads: Promise<unknown>[] = [];
+
+function testLazy<T extends React.ComponentType<any>>(
+  load: () => Promise<{ default: T }>,
+): ExperimentalLazyComponent<React.ComponentProps<T>> {
+  type P = React.ComponentProps<T>;
+  let loaded: React.ComponentType<P> | null = null;
+  const pending = load().then((module) => {
+    const component: React.ComponentType<P> = module.default;
+    loaded = component;
+    return { default: component };
+  });
+  pending.catch(() => {});
+  startedTestLazyLoads.push(pending);
+  const Suspending = React.lazy(() => pending);
+  function TestLazy(props: P) {
+    const [View] = React.useState<React.ComponentType<P>>(
+      () => loaded ?? Suspending,
+    );
+    return <View {...props} />;
+  }
+  return TestLazy;
+}
+
 const testPluginSdkApp = {
+  experimental_lazy: testLazy,
   experimental_getApplicationLinkApprovals: async (): Promise<string[]> => [],
   experimental_revokeApplicationLinkApproval: async (
     _scheme: string | null,
@@ -1954,6 +2021,7 @@ const testPluginSdkApp = {
   },
   experimental_matchesShortcutKey: matchesAppShortcutKey,
   experimental_sliceUtf16Head: sliceUtf16Head,
+  experimental_searchPickerOptions: testSearchPickerOptions,
   experimental_ImageLightbox: TestImageLightbox,
   experimental_PromptMentionIcon: TestPromptMentionIcon,
   experimental_describePromptMention(
@@ -1986,6 +2054,7 @@ const testPluginSdkApp = {
   experimental_FilePreview: TestFilePreview,
   experimental_Diff: TestDiff,
   experimental_InfoSection: TestInfoSection,
+  experimental_ThreadInfo: TestThreadInfo,
   experimental_CollapsibleStackCard: TestCollapsibleStackCard,
   experimental_DetailRow: TestDetailRow,
   experimental_ThreadContextCardRow: TestThreadContextCardRow,
@@ -2015,6 +2084,23 @@ const testPluginSdkApp = {
   },
   experimental_useTimelineViewport(): ExperimentalTimelineViewport | null {
     return useSlotEnv("experimental_useTimelineViewport").timelineViewport;
+  },
+  experimental_useThreadStorageFiles(
+    threadId,
+    options,
+  ): ExperimentalThreadStorageFilesState {
+    const states = useSlotEnv(
+      "experimental_useThreadStorageFiles",
+    ).threadStorageFiles;
+    if (options?.enabled === false) return LOADING_THREAD_STORAGE_FILES;
+    return states.get(threadId) ?? LOADING_THREAD_STORAGE_FILES;
+  },
+  experimental_useEnvironment(environmentId): ExperimentalEnvironmentState {
+    return (
+      useSlotEnv("experimental_useEnvironment").environmentStates.get(
+        environmentId,
+      ) ?? NOT_FOUND_ENVIRONMENT
+    );
   },
   experimental_useProviders(): PluginProvidersState {
     return useSlotEnv("experimental_useProviders").providers;
@@ -2053,7 +2139,7 @@ const testPluginSdkApp = {
     return useSlotEnv("experimental_useSidebarThreadActions").sidebarActions;
   },
   experimental_useThreadActions(
-    thread: PluginThreadActionTarget,
+    thread: { id: string },
     options?: PluginThreadActionsOptions,
   ): readonly PluginThreadActionEntry[] {
     return useTestThreadActions(
@@ -2332,7 +2418,8 @@ export interface LoadPluginAppOptions {
 /**
  * Install the test runtime, resolve the plugin app definition, and capture
  * its slot registrations. Pass the imported module, its default export, or a
- * thunk (`() => import("../app.tsx")`).
+ * thunk (`() => import("../app.tsx")`). Waits for the chunks its
+ * `experimental_lazy` components start loading, so slots render loaded.
  */
 export async function loadPluginApp(
   source: PluginAppSource,
@@ -2340,6 +2427,7 @@ export async function loadPluginApp(
 ): Promise<CapturedPluginApp> {
   installTestPluginRuntime();
   const resolved = typeof source === "function" ? await source() : source;
+  await Promise.allSettled(startedTestLazyLoads.splice(0));
   const definition = isPluginAppDefinition(resolved)
     ? resolved
     : (resolved as PluginAppModule).default;
@@ -2638,6 +2726,18 @@ export interface RenderSlotOptions<
   conversationOutlines?: Readonly<Record<string, TestConversationOutlines>>;
   /** What `experimental_useTimelineViewport()` reports. Omitted → null. */
   timelineViewport?: ExperimentalTimelineViewport;
+  /**
+   * What `experimental_useEnvironment(id)` reports per environment id.
+   * Omitted ids report `notFound`.
+   */
+  environments?: Readonly<Record<string, ExperimentalEnvironmentState>>;
+  /**
+   * What `experimental_useThreadStorageFiles(threadId)` reports per thread
+   * id. Omitted ids, and calls with `{ enabled: false }`, stay `loading`.
+   */
+  threadStorageFiles?: Readonly<
+    Record<string, ExperimentalThreadStorageFilesState>
+  >;
   /** Experiment keys `experimental_useExperiment()` reports as on. Omitted → none. */
   experiments?: readonly string[];
   /** What `experimental_useThreadContextKind()` reports. Omitted → `banner`. */
@@ -3234,6 +3334,12 @@ export function renderSlot<
   const threadStates: ReadonlyMap<string, ExperimentalThreadState> = new Map(
     Object.entries(options.threads ?? {}),
   );
+  const environmentStates: ReadonlyMap<string, ExperimentalEnvironmentState> =
+    new Map(Object.entries(options.environments ?? {}));
+  const threadStorageFiles: ReadonlyMap<
+    string,
+    ExperimentalThreadStorageFilesState
+  > = new Map(Object.entries(options.threadStorageFiles ?? {}));
   const sidebarRowStatuses = new Map(
     Object.entries(options.sidebarRowStatuses ?? {}),
   );
@@ -3705,6 +3811,8 @@ export function renderSlot<
     threadStates,
     conversationOutlines: options.conversationOutlines ?? {},
     timelineViewport: options.timelineViewport ?? null,
+    environmentStates,
+    threadStorageFiles,
     experiments: new Set(options.experiments ?? []),
     threadContextKind: options.threadContextKind ?? "banner",
     threadExtensionStates: options.threadExtensionStates ?? {},

@@ -1,17 +1,19 @@
-import type { WorkspacePathEntry } from "@bb/server-contract";
+import type { WorkspaceSearchPathEntry } from "@bb/server-contract";
 import { describe, expect, it } from "vitest";
 import { buildPathSuggestions } from "./usePathSuggestions";
 
 interface PathEntryFixture {
-  kind?: WorkspacePathEntry["kind"];
+  kind?: WorkspaceSearchPathEntry["kind"];
+  folderPath?: string;
   path: string;
   score: number;
 }
 
-function makePathEntry(fixture: PathEntryFixture): WorkspacePathEntry {
+function makePathEntry(fixture: PathEntryFixture): WorkspaceSearchPathEntry {
   const name = fixture.path.split("/").at(-1) ?? fixture.path;
   return {
     kind: fixture.kind ?? "file",
+    folderPath: fixture.folderPath ?? null,
     path: fixture.path,
     name,
     score: fixture.score,
@@ -55,6 +57,28 @@ describe("buildPathSuggestions", () => {
     ).toEqual([
       { source: "workspace", path: "packages/db/README.md" },
       { source: "thread-storage", path: "README.md" },
+    ]);
+  });
+
+  it("gives results from another folder their absolute path and keeps that folder", () => {
+    const suggestions = buildPathSuggestions({
+      workspacePaths: [
+        makePathEntry({
+          path: "src/api.ts",
+          folderPath: "/work/shared",
+          score: 120,
+        }),
+        makePathEntry({ path: "src/app.ts", score: 100 }),
+      ],
+      threadStoragePaths: [],
+      limit: 8,
+    });
+
+    expect(
+      suggestions.map(({ path, folderPath }) => ({ path, folderPath })),
+    ).toEqual([
+      { path: "/work/shared/src/api.ts", folderPath: "/work/shared" },
+      { path: "src/app.ts", folderPath: null },
     ]);
   });
 });

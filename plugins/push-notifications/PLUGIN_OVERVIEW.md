@@ -6,7 +6,7 @@ Mobile devices receive push messages through Expo, including when the app is clo
 
 Each thread has a level: `all` (questions, approvals, errors, finished turns), `input-only` (no finished turns), or `muted`. A thread uses its own level, else `childLevel` if it has a parent, else `defaultLevel`; every ancestor's own level caps it. Muting a parent mutes its whole subtree, but a parent never makes workers louder. The level applies on top of the suppressions below.
 
-Click a notification to open its thread, or bb when it has none; in the desktop app the click also restores and focuses the window. A thread open in a visible, focused window or tab is not notified. Events arriving together are combined, with pending questions taking priority. Read, archived, deleted, and hidden threads are suppressed. Tabs of the same origin deduplicate delivery. Once a notified thread is read on any client, phones, tablets, and open web and desktop clients remove its delivered notifications.
+Click a notification to open its thread, or bb when it has none; in the desktop app the click also restores and focuses the window. A thread open in a visible, focused window or tab is not notified. With **Notify the device you're using first** on, the kind of device you used bb on in the last two minutes (phone, browser, or desktop app) is notified right away and the others 90 seconds later, only if the thread is still unread. Browsers and the desktop app count with notification permission; if none confirms receipt within 5 seconds, or no device is in use, all are notified at once. Events arriving together are combined, with pending questions taking priority. Read, archived, deleted, and hidden threads are suppressed. Tabs of the same origin deduplicate delivery. Once a notified thread is read on any client, phones, tablets, and open web and desktop clients remove its delivered notifications.
 
 ## Thread menu
 
@@ -17,6 +17,7 @@ Every thread menu (header, sidebar row, right-click, compact drawer, optional ro
 - `mobileEnabled` / **Mobile notifications**: send to registered phones and tablets. Default: true.
 - `webEnabled` / **Web notifications**: notify connected browsers with permission. Default: true.
 - `desktopEnabled` / **Desktop notifications**: notify running desktop clients. Default: true.
+- `activeDeviceFirst` / **Notify the device you're using first**: notify the device in use first, the others after 90 seconds if still unread. Default: false.
 - `defaultLevel` / **Default notifications**: `all`, `input-only`, or `muted`, for threads you haven't set. Default: `all`.
 - `childLevel` / **Child thread notifications**: `inherit` (same as `defaultLevel`), `all`, `input-only`, or `muted`. Default: `input-only`.
 - `expoPushUrl` / **Expo push relay URL**: mobile relay endpoint. Defaults to `https://exp.host/--/api/v2/push/send`.

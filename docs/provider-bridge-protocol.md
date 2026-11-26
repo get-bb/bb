@@ -599,6 +599,14 @@ content.
    `backgroundTask` still pending on the bridge's threads as `interrupted`
    with `taskStatus: "stopped"`; a bridge that outlives its provider child
    still settles that child's work itself.
+6. A pending `backgroundTask` the provider can stop on its own carries
+   `stoppable: true`. The runtime then may send
+   `thread/backgroundTask/stop {threadId, providerThreadId, familyId}` for
+   it, and for no other item, so the flag is the capability; there is no
+   handshake field. The bridge answers once the provider accepted the stop
+   and settles the item through its normal notification (`taskStatus:
+   "stopped"`); the request does not settle it. Omit the flag when the
+   provider has no per-task stop, and core hides the Stop control.
 
 ## Ordering guarantees
 

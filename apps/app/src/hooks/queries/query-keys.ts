@@ -3,6 +3,7 @@ import type {
   ThreadSearchFilters,
   EnvironmentFilePreviewSource,
 } from "@bb/client-core";
+import type { WorkspacePathSearchFolders } from "@bb/server-contract";
 import {
   DEFAULT_THREAD_STORAGE_FILE_LIST_OPTIONS,
   type ThreadStorageFileListOptions,
@@ -166,6 +167,7 @@ type ProjectPathsQueryKey = readonly [
   number,
   boolean,
   boolean,
+  WorkspacePathSearchFolders,
 ];
 type ProjectPathsQueryKeyPrefix = readonly [
   typeof PROJECT_PATHS_QUERY_KEY,
@@ -397,6 +399,7 @@ type EnvironmentPathsQueryKey = readonly [
   number,
   boolean,
   boolean,
+  WorkspacePathSearchFolders,
 ];
 type EnvironmentPathsQueryKeyPrefix = readonly [
   typeof ENVIRONMENT_PATHS_QUERY_KEY,
@@ -498,6 +501,14 @@ export function hostQueryKey(hostId: HostQueryId): HostQueryKey {
   return [HOST_QUERY_KEY, hostId];
 }
 
+const REMOVED_HOST_QUERY_KEY = "removedHost";
+
+export function removedHostQueryKey(
+  hostId: string,
+): readonly [typeof REMOVED_HOST_QUERY_KEY, string] {
+  return [REMOVED_HOST_QUERY_KEY, hostId];
+}
+
 export function allHostQueryKeyPrefix(): AllHostQueryKeyPrefix {
   return [HOST_QUERY_KEY];
 }
@@ -552,6 +563,7 @@ export function projectPathsQueryKey(
   limit: number,
   includeFiles: boolean,
   includeDirectories: boolean,
+  folders: WorkspacePathSearchFolders,
 ): ProjectPathsQueryKey {
   return [
     PROJECT_PATHS_QUERY_KEY,
@@ -562,6 +574,7 @@ export function projectPathsQueryKey(
     limit,
     includeFiles,
     includeDirectories,
+    folders,
   ];
 }
 
@@ -597,6 +610,7 @@ export function environmentPathsQueryKey(
   limit: number,
   includeFiles: boolean,
   includeDirectories: boolean,
+  folders: WorkspacePathSearchFolders,
 ): EnvironmentPathsQueryKey {
   return [
     ENVIRONMENT_PATHS_QUERY_KEY,
@@ -605,6 +619,7 @@ export function environmentPathsQueryKey(
     limit,
     includeFiles,
     includeDirectories,
+    folders,
   ];
 }
 

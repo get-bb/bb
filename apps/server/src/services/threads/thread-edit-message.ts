@@ -158,7 +158,7 @@ async function stopThreadBeforeMessageEdit(
       waiter.cancel();
       return thread;
     }
-    if (!(await waiter.promise)) {
+    if ((await waiter.promise) === null) {
       conflict("The thread did not stop before the message edit timed out");
     }
   }

@@ -252,6 +252,7 @@ describe("createAgentRuntime tool calls", () => {
         toolCalls: new RuntimeProviderRequests(),
         getActiveTurnId: () => null,
         getThreadExecutionOptions: () => undefined,
+        onStderr: undefined,
         onInteractiveRequest: async () => ({
           decision: "deny",
         }),
@@ -317,6 +318,7 @@ describe("createAgentRuntime tool calls", () => {
         toolCalls: new RuntimeProviderRequests(),
         getActiveTurnId: () => "turn-1",
         getThreadExecutionOptions: () => undefined,
+        onStderr: undefined,
         onInteractiveRequest: async () => ({
           decision: "deny",
         }),

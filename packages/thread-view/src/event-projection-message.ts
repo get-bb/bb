@@ -478,6 +478,7 @@ export interface EventProjectionWorkflowMessage
     "pending" | "completed" | "error" | "interrupted"
   >;
   taskStatus: BackgroundTaskStatus;
+  stoppable: boolean;
   skipTranscript: boolean;
   foreground: boolean;
   workflow: WorkflowProgressSnapshot | null;

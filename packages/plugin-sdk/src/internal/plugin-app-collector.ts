@@ -21,3 +21,9 @@ export {
   type CollectedThreadContextCardSectionRegistration,
   collectPluginAppRegistrations,
 } from "./plugin-app-registration-collector.js";
+export {
+  PLUGIN_APP_COMPONENT_FIELDS,
+  registeredComponents,
+  registrationComponents,
+  type PluginAppComponentPath,
+} from "./plugin-app-component-fields.js";

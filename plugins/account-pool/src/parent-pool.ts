@@ -11,7 +11,9 @@ export const AVAILABILITY_PATH = "/availability";
 export const HUB_TOKEN_HEADER = "x-bb-account-pool-token";
 
 const DEFAULT_AVAILABILITY_TTL_MS = 30_000;
-const AVAILABILITY_TIMEOUT_MS = 2_000;
+const AVAILABILITY_TIMEOUT_MS = 5_000;
+const FAILED_READ_RETRY_MS = 5_000;
+const LAST_GOOD_GRACE_MS = 60_000;
 
 const parentUrlSchema = z.string().refine((value) => {
   try {
@@ -71,6 +73,8 @@ interface ParentAvailabilityOptions {
 
 export class ParentAvailability {
   private cached: { value: PoolAvailability; expiresAt: number } | null = null;
+  private lastGood: PoolAvailability | null = null;
+  private failingSince: number | null = null;
 
   constructor(private readonly options: ParentAvailabilityOptions) {}
 
@@ -79,13 +83,26 @@ export class ParentAvailability {
     if (cached !== null && cached.expiresAt > this.options.now()) {
       return cached.value;
     }
-    const value = await this.load();
+    const loaded = await this.load();
+    const now = this.options.now();
     const ttlMs = this.options.ttlMs ?? DEFAULT_AVAILABILITY_TTL_MS;
-    this.cached = { value, expiresAt: this.options.now() + ttlMs };
+    if (loaded !== null) {
+      this.lastGood = loaded;
+      this.failingSince = null;
+      this.cached = { value: loaded, expiresAt: now + ttlMs };
+      return loaded;
+    }
+    this.failingSince ??= now;
+    if (now - this.failingSince >= LAST_GOOD_GRACE_MS) {
+      this.cached = { value: UNAVAILABLE_POOL, expiresAt: now + ttlMs };
+      return UNAVAILABLE_POOL;
+    }
+    const value = this.lastGood ?? UNAVAILABLE_POOL;
+    this.cached = { value, expiresAt: now + FAILED_READ_RETRY_MS };
     return value;
   }
 
-  private async load(): Promise<PoolAvailability> {
+  private async load(): Promise<PoolAvailability | null> {
     try {
       const response = await this.options.fetch(
         `${this.options.parent.baseUrl}${AVAILABILITY_PATH}`,
@@ -104,6 +121,6 @@ export class ParentAvailability {
     } catch (error) {
       this.options.onError?.(error);
     }
-    return UNAVAILABLE_POOL;
+    return null;
   }
 }

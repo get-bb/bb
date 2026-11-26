@@ -1,5 +1,5 @@
 import { ListLoadingPlaceholder } from "../ui/list-loading-placeholder";
-import { PICKER_MOBILE_CLASS_NAME } from "./picker-layout";
+import { PICKER_MOBILE_CLASS_NAME } from "../ui/picker-layout";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import {
   BRANCH_PICKER_CONTENT_CLASS_NAME,
@@ -24,8 +24,8 @@ import {
   OPTION_TRIGGER_CONTENT_CLASS_NAME,
 } from "../ui/option-display";
 import { cn } from "../../lib/utils";
-import { searchPickerOptions } from "./picker-search";
-import { useResetPickerScroll } from "./use-reset-picker-scroll";
+import { searchPickerOptions } from "@bb/fuzzy-match";
+import { useResetPickerScroll } from "../ui/use-reset-picker-scroll";
 
 const EMPTY_BRANCH_OPTIONS: readonly string[] = [];
 const BRANCH_LABEL_PREFIXES = ["Branch from:"] as const;

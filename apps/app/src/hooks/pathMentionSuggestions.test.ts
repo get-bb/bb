@@ -13,6 +13,7 @@ function makePathSuggestion(fixture: PathSuggestionFixture): PathSuggestion {
   return {
     source: fixture.source,
     entryKind: fixture.entryKind,
+    folderPath: null,
     path: fixture.path,
     name: fixture.name,
     score: 1,

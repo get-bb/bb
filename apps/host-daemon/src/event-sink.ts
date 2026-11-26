@@ -12,6 +12,7 @@ import { ServerResponseError } from "./server-client.js";
 const STREAM_TICK_MS = TEXT_DELTA_FLUSH_MS;
 const INITIAL_RETRY_DELAY_MS = 1_000;
 const MAX_RETRY_DELAY_MS = 30_000;
+export const MAX_EVENTS_PER_POST = 500;
 
 const QUEUE_DEPTH_WARN_THRESHOLD = 512;
 const QUEUE_DEPTH_WARN_MIN_AGE_MS = 5_000;
@@ -294,13 +295,19 @@ export function createEventSink(options: CreateEventSinkOptions): EventSink {
 
   function takeEligibleBatch(): QueuedEvent[] {
     const batch: QueuedEvent[] = [];
-    const waiting: QueuedEvent[] = [];
+    let kept = 0;
     for (const queued of queue) {
-      (inFlightByThreadId.has(queued.envelope.threadId) ? waiting : batch).push(
-        queued,
-      );
+      if (
+        batch.length < MAX_EVENTS_PER_POST &&
+        !inFlightByThreadId.has(queued.envelope.threadId)
+      ) {
+        batch.push(queued);
+      } else {
+        queue[kept] = queued;
+        kept += 1;
+      }
     }
-    queue.splice(0, queue.length, ...waiting);
+    queue.length = kept;
     return batch;
   }
 

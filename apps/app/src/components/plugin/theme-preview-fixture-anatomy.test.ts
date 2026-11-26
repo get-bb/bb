@@ -170,7 +170,7 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
         "The thread projection keeps the real bottom-anchored timeline, bottom composer, and held-open table of contents composition.",
     },
     {
-      file: "apps/app/src/core-contributions/thread-outline.tsx",
+      file: "apps/app/src/core-contributions/components/ThreadOutline.tsx",
       mustContain: [
         'aria-label="Thread table of contents"',
         'label="Agent messages"',
@@ -181,10 +181,15 @@ const VIEW_FIXTURE_ANCHORS: Record<string, readonly FixtureAnchor[]> = {
         "The held-open fixture keeps the real message-role tabs and popover surface.",
     },
     {
-      file: "apps/app/src/components/secondary-panel/ThreadMetadataContent.tsx",
-      mustContain: ['appearance="flat"', "<EnvironmentRow"],
+      file: "apps/app/src/components/secondary-panel/info/ThreadInfo.tsx",
+      mustContain: ['appearance="flat"', "<ThreadInfoRows"],
       because:
-        "The open Info panel projects BB's flat metadata card and a representative environment row.",
+        "The open Info panel projects BB's flat Info card and its registered rows.",
+    },
+    {
+      file: "apps/app/src/core-contributions/thread-info/environment-row.tsx",
+      mustContain: ["Machine", "environment.label"],
+      because: "The open Info panel shows a representative environment row.",
     },
     {
       file: "plugins/git/ui/info/GitInfoRows.tsx",

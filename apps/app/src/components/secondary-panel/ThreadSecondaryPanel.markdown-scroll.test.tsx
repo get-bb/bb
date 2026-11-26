@@ -168,7 +168,6 @@ function Harness({
           fixedTabs={[]}
           tabs={tabs}
           isOpen
-          metadataContent={null}
           onClose={noop}
           onCollapse={noop}
           onTabReorder={noop}

@@ -115,10 +115,17 @@ function cardProps(
   };
 }
 
-function renderModifiedCard(onRequestFileContents: RequestDiffFileContents) {
+function renderModifiedCard(
+  onRequestFileContents: RequestDiffFileContents,
+  entryPath?: string,
+) {
   renderSlot(
     { component: DiffFileCard },
-    cardProps(buildEntry(), MODIFIED_PATCH, onRequestFileContents),
+    cardProps(
+      buildEntry(entryPath === undefined ? {} : { path: entryPath }),
+      MODIFIED_PATCH,
+      onRequestFileContents,
+    ),
   );
 }
 
@@ -176,6 +183,31 @@ describe("DiffFileCard context expansion", () => {
     expect(hasFullFileContents()).toBe(true);
   });
 
+  it("asks for a labelled repo file by its listed path, not the path inside the patch", async () => {
+    stubPointer("fine");
+    const onRequestFileContents = vi.fn<RequestDiffFileContents>(
+      async (path, side) =>
+        textResult(
+          side === "old" ? OLD_FILE_CONTENTS : NEW_FILE_CONTENTS,
+          path,
+        ),
+    );
+
+    renderModifiedCard(onRequestFileContents, "api/src/file.ts");
+
+    await waitFor(() => {
+      expect(onRequestFileContents).toHaveBeenCalledTimes(2);
+    });
+    expect(onRequestFileContents).toHaveBeenCalledWith(
+      "api/src/file.ts",
+      "old",
+    );
+    expect(onRequestFileContents).toHaveBeenCalledWith(
+      "api/src/file.ts",
+      "new",
+    );
+    await waitFor(() => expect(hasFullFileContents()).toBe(true));
+  });
   it("requests the contents during idle time on fine pointers without an explicit action", async () => {
     stubPointer("fine");
     const onRequestFileContents = vi.fn<RequestDiffFileContents>(

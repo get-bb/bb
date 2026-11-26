@@ -3,7 +3,7 @@ import type { SystemExecutionOptionsModelLoadError } from "@bb/server-contract";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import { STORY_PROVIDER_OPTIONS } from "../../../.ladle/story-fixtures";
 import { ModelReasoningPicker } from "./ModelReasoningPicker";
-import type { PickerOption } from "./OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import type { ProviderPickerOption } from "./model-brand-prefix";
 
 export default {

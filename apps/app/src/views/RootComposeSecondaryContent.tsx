@@ -49,6 +49,7 @@ type RootSecondaryPanelProps = Omit<
   | "onToggleConversationCollapse"
   | "renderAsDrawer"
   | "drawerFallback"
+  | "threadInfo"
   | "showNewTabButton"
 > & {
   renderBrowserDeck?: (args: {
@@ -93,7 +94,7 @@ export function RootComposeSecondaryContent({
   const drawerFallback = (
     <ThreadSecondaryPanelDrawerPlaceholder
       activeTab={threadSecondaryPanelProps.activeTab}
-      metadataContent={threadSecondaryPanelProps.metadataContent}
+      threadInfo={null}
     />
   );
 
@@ -154,6 +155,7 @@ export function RootComposeSecondaryContent({
         }) => (
           <LazyThreadSecondaryPanel
             {...threadSecondaryPanelProps}
+            threadInfo={null}
             drawerFallback={drawerFallback}
             renderBrowserDeck={(activeBrowserTabId, pane) =>
               renderBrowserDeck?.({

@@ -13,7 +13,6 @@ import { useAtomValue } from "jotai";
 import type {
   PluginBoundThreadAction,
   PluginThreadActionEntry,
-  PluginThreadActionTarget,
 } from "@get-bb/plugin-sdk";
 import { COARSE_POINTER_TOOLBAR_ACTION_BUTTON_CLASS } from "@bb/shared-ui/coarse-pointer-sizing";
 import { Icon } from "@bb/shared-ui/icon";
@@ -126,7 +125,7 @@ interface ThreadDetailHeaderProps {
   onClosePane?: () => void;
   onToggleSecondaryPanel: () => void;
   pluginActions?: ReactNode;
-  thread: PluginThreadActionTarget;
+  thread: { id: string; projectId: string };
   threadTitle: string;
   workspaceOpenButton?: ReactNode;
 }

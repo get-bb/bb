@@ -11,6 +11,7 @@ import ReactMarkdown, {
   type UrlTransform,
 } from "react-markdown";
 import type { Nodes, Root } from "mdast";
+import type { Processor } from "unified";
 import { EXIT, visit } from "unist-util-visit";
 import {
   EMPTY_MOUNTED_MESSAGE_DIRECTIVES,
@@ -88,8 +89,15 @@ interface ParseMarkdownPieceArgs {
   config: MarkdownPieceRenderConfig;
   indexBase: number;
   offsets: ReadonlyMap<string, number>;
+  reusesParsedTree: boolean;
   source: string;
   sourceOffset: number;
+}
+
+interface ParsedMarkdownTree {
+  messageDirectiveRegistry: MessageDirectiveRegistry | null;
+  remarkPlugins: MarkdownPluginList;
+  tree: ReturnType<NonNullable<Processor["parser"]>>;
 }
 
 const MARKDOWN_BLANK_LINE_PATTERN = /^[ \t]*$/u;
@@ -115,6 +123,9 @@ const MARKDOWN_GLOBAL_CONSTRUCT_TYPES = new Set([
   "footnoteReference",
 ]);
 const UNKEYED_MARKDOWN_ROOT_NAME = "#unkeyed";
+const PARSED_MARKDOWN_SOURCE_BUDGET = 512 * 1024;
+const parsedMarkdownTrees = new Map<string, ParsedMarkdownTree>();
+let parsedMarkdownSourceLength = 0;
 const EMPTY_MARKDOWN_TAG_COUNTS: ReadonlyMap<string, number> = new Map();
 const EMPTY_MARKDOWN_PIECE_SUMMARY: MarkdownPieceSummary = {
   endsOpen: false,
@@ -307,6 +318,41 @@ function remarkMarkdownPieceSummary(target: MarkdownPieceSummaryTarget) {
   };
 }
 
+function remarkReuseParsedTree(
+  this: Processor,
+  config: MarkdownPieceRenderConfig,
+): void {
+  const parse = this.parser!;
+  this.parser = (document, file) => {
+    if (document.length > PARSED_MARKDOWN_SOURCE_BUDGET) {
+      return parse(document, file);
+    }
+    const cached = parsedMarkdownTrees.get(document);
+    if (cached !== undefined) {
+      parsedMarkdownTrees.delete(document);
+      parsedMarkdownSourceLength -= document.length;
+    }
+    const tree =
+      cached !== undefined &&
+      cached.remarkPlugins === config.remarkPlugins &&
+      cached.messageDirectiveRegistry === config.messageDirectiveRegistry
+        ? cached.tree
+        : parse(document, file);
+    parsedMarkdownTrees.set(document, {
+      messageDirectiveRegistry: config.messageDirectiveRegistry,
+      remarkPlugins: config.remarkPlugins,
+      tree,
+    });
+    parsedMarkdownSourceLength += document.length;
+    for (const oldest of parsedMarkdownTrees.keys()) {
+      if (parsedMarkdownSourceLength <= PARSED_MARKDOWN_SOURCE_BUDGET) break;
+      parsedMarkdownTrees.delete(oldest);
+      parsedMarkdownSourceLength -= oldest.length;
+    }
+    return structuredClone(tree);
+  };
+}
+
 function markdownRootChildren(element: ReactElement): readonly ReactNode[] {
   if (element.type !== Fragment) {
     return [element];
@@ -360,6 +406,7 @@ function parseMarkdownPiece({
   config,
   indexBase,
   offsets,
+  reusesParsedTree,
   source,
   sourceOffset,
 }: ParseMarkdownPieceArgs): MarkdownPieceEntry {
@@ -399,6 +446,9 @@ function parseMarkdownPiece({
       };
     });
   });
+  if (reusesParsedTree) {
+    remarkPlugins.push([remarkReuseParsedTree, config]);
+  }
   const element = ReactMarkdown({
     children: source,
     components: config.components,
@@ -481,6 +531,7 @@ function resolveIncrementalMarkdownPieceEntries(
             config,
             indexBase: mountCount,
             offsets,
+            reusesParsedTree: false,
             source: body.slice(start, end),
             sourceOffset: start,
           });
@@ -497,6 +548,7 @@ function resolveIncrementalMarkdownPieceEntries(
         config,
         indexBase: mountCount,
         offsets,
+        reusesParsedTree: false,
         source: body.slice(start, end),
         sourceOffset: start,
       });
@@ -578,6 +630,7 @@ export function resolveMarkdownPieces(
       config,
       indexBase: 0,
       offsets: EMPTY_MARKDOWN_TAG_COUNTS,
+      reusesParsedTree: previousEntries.length === 0,
       source: body,
       sourceOffset: 0,
     });

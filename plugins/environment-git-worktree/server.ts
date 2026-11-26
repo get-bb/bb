@@ -606,21 +606,11 @@ export default async function worktreePlugin(bb: BbPluginApi): Promise<void> {
               (folder) => folder.memberCommit !== folder.baseCommit,
             );
             for (const folder of movedFolders) {
-              await host.call(
-                "fastForward",
-                { path: folder.path, commit: folder.baseCommit },
-                hostOptions,
-              );
               context.report.step(
                 `Moved the warm worktree of ${folder.sourcePath} from ${folder.memberCommit.slice(0, 7)} to ${folder.baseCommit.slice(0, 7)}; its setup runs again`,
               );
             }
             if (warm.memberCommit !== warm.baseCommit) {
-              await host.call(
-                "fastForward",
-                { path: warm.path, commit: warm.baseCommit },
-                hostOptions,
-              );
               context.report.step(
                 `Moved the warm worktree from ${warm.memberCommit.slice(0, 7)} to ${commit}; setup runs again`,
               );

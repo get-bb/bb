@@ -1,0 +1,18 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "list-loading-placeholder",
+  "type": "registry:ui",
+  "title": "list-loading-placeholder",
+  "description": "BB ui \"list-loading-placeholder\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/skeleton"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/list-loading-placeholder.tsx",
+      "content": "import { Skeleton } from \"./skeleton\";\n\nexport function ListLoadingPlaceholder({ label }: { label: string }) {\n  return (\n    <div role=\"status\" aria-label={label} className=\"space-y-3 px-3 py-4\">\n      <span className=\"sr-only\">{label}</span>\n      <Skeleton aria-hidden className=\"h-3 w-3/4\" />\n      <Skeleton aria-hidden className=\"h-3 w-1/2\" />\n      <Skeleton aria-hidden className=\"h-3 w-2/3\" />\n    </div>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/list-loading-placeholder.tsx"
+    }
+  ]
+}

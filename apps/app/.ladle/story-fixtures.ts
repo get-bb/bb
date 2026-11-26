@@ -25,7 +25,7 @@ import {
 } from "@bb/test-helpers/domain-fixtures";
 import { makeProjectResponse } from "../src/test/fixtures/projects";
 import { getProviderIconInfo } from "../src/lib/provider-icon";
-import type { PickerOption } from "../src/components/pickers/OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import type { ModelPickerOption } from "../src/components/pickers/model-picker-option";
 import type { ProjectSelectorOption } from "../src/components/pickers/ProjectSelector";
 import type { ReuseThreadOption } from "../src/components/pickers/ReuseEnvironmentPicker";

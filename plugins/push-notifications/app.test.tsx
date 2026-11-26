@@ -173,7 +173,10 @@ function Probe({
   threadIds: readonly string[];
   onItem(item: ItemFor, bulkItem: BulkItemFor): void;
 }) {
-  const data = notificationsThreadAction.useData!({ threadIds });
+  const data = notificationsThreadAction.useData!({
+    threadIds,
+    experimental_threads: [],
+  });
   const sdk = useSdk();
   const navigate = useBbNavigate();
   const panel = experimental_useAppPanel();

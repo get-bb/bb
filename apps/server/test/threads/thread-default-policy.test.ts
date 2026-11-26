@@ -9,6 +9,7 @@ import {
   type GitSourceInspection,
 } from "@bb/domain";
 import { createEnvironment } from "@bb/db";
+import { createGitCheckoutInspector } from "../../src/services/environments/provider-availability.js";
 import { describe, expect, it } from "vitest";
 import {
   resolveCreateThreadEnvironment,
@@ -244,11 +245,17 @@ describe("resolveCreateThreadExecutionDefaults", () => {
 
 describe("resolveCreateThreadEnvironment", () => {
   async function resolveEnvironment(
-    args: Parameters<typeof resolveCreateThreadEnvironment>[1],
+    args: Omit<
+      Parameters<typeof resolveCreateThreadEnvironment>[1],
+      "inspectGitCheckout"
+    >,
   ) {
     return withTestHarness((harness) => {
       installFakeGitWorktreeProvider();
-      return resolveCreateThreadEnvironment(harness.deps, args);
+      return resolveCreateThreadEnvironment(harness.deps, {
+        ...args,
+        inspectGitCheckout: createGitCheckoutInspector(harness.deps),
+      });
     });
   }
 
@@ -328,6 +335,7 @@ describe("resolveCreateThreadEnvironment", () => {
         });
         await expect(
           resolveCreateThreadEnvironment(harness.deps, {
+            inspectGitCheckout: createGitCheckoutInspector(harness.deps),
             parentThread: makeParentThread({
               projectId: project.id,
               environmentId: environment.id,
@@ -367,6 +375,7 @@ describe("resolveCreateThreadEnvironment", () => {
       });
       await expect(
         resolveCreateThreadEnvironment(harness.deps, {
+          inspectGitCheckout: createGitCheckoutInspector(harness.deps),
           parentThread: makeParentThread({
             projectId: project.id,
             environmentId: parentEnvironment.id,
@@ -411,6 +420,7 @@ describe("resolveCreateThreadEnvironment", () => {
 
       await expect(
         resolveCreateThreadEnvironment(harness.deps, {
+          inspectGitCheckout: createGitCheckoutInspector(harness.deps),
           parentThread: makeParentThread({
             projectId: project.id,
             environmentId: null,
@@ -458,6 +468,7 @@ describe("resolveCreateThreadEnvironment", () => {
 
         await expect(
           resolveCreateThreadEnvironment(harness.deps, {
+            inspectGitCheckout: createGitCheckoutInspector(harness.deps),
             parentThread: makeParentThread({
               environmentId: null,
               projectId: PERSONAL_PROJECT_ID,
@@ -578,6 +589,7 @@ describe("resolveCreateThreadEnvironment", () => {
         });
         await expect(
           resolveCreateThreadEnvironment(harness.deps, {
+            inspectGitCheckout: createGitCheckoutInspector(harness.deps),
             parentThread: makeParentThread({
               environmentId: parentEnvironment.id,
               projectId: PERSONAL_PROJECT_ID,
@@ -678,6 +690,7 @@ describe("resolveCreateThreadEnvironment", () => {
 
       await expect(
         resolveCreateThreadEnvironment(harness.deps, {
+          inspectGitCheckout: createGitCheckoutInspector(harness.deps),
           parentThread: makeParentThread({
             projectId: project.id,
             environmentId: parentEnvironment.id,
@@ -727,6 +740,7 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
 
       await expect(
         resolveProjectDefaultThreadEnvironment(harness.deps, {
+          inspectGitCheckout: createGitCheckoutInspector(harness.deps),
           projectId: project.id,
         }),
       ).resolves.toEqual({
@@ -749,6 +763,7 @@ describe("resolveProjectDefaultThreadEnvironment", () => {
 
       await expect(
         resolveProjectDefaultThreadEnvironment(harness.deps, {
+          inspectGitCheckout: createGitCheckoutInspector(harness.deps),
           projectId: PERSONAL_PROJECT_ID,
         }),
       ).resolves.toEqual({

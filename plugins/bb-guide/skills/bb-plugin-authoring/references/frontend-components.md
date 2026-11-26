@@ -172,6 +172,12 @@ className? }` —
   Usage is in frontend-registration.md. Experimental: see
   `docs/api_to_audit.md`.
 
+- `experimental_searchPickerOptions({ options, query, getLabel, getAliases? })`
+  — bb's own picker search: fuzzy matches on each option's label and aliases,
+  best first, non-matches dropped, `options` unchanged for a blank query. Use
+  it so a plugin picker ranks like bb's. Experimental: see
+  `docs/api_to_audit.md`.
+
 - `experimental_ThreadContextCardRow` — the thread context card's row, the one
   bb's own rows use: `{ icon?, leading?, label, trailing?, title?, disabled?,
 onClick?, action? }`. `icon` is any name `experimental_Icon` accepts and

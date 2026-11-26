@@ -5,20 +5,23 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import { createStore, Provider } from "jotai";
 import type { Thread } from "@bb/domain";
-import { makeThread as makeThreadFixture } from "@bb/test-helpers/domain-fixtures";
+import {
+  makeThread as makeThreadFixture,
+  makeThreadListEntry,
+} from "@bb/test-helpers/domain-fixtures";
 import { defaultAppSettings } from "@bb/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppCommandProvider } from "@/components/commands/AppCommandProvider";
 import { PaneContext, type PaneContextValue } from "./PaneContext";
 import { threadQueryKey } from "@/hooks/queries/query-keys";
 import { CORE_THREAD_ACTIONS } from "@/lib/thread-actions/core-thread-actions";
-import { toThreadActionTarget } from "@/lib/thread-actions/thread-action-target";
 import {
   ThreadActionCollectors,
   resetThreadActionRegistryForTest,
 } from "@/lib/thread-actions/thread-action-registry";
 import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler";
 import { threadRequestsAtom } from "@/lib/thread-requests";
+import { holdSidebarThreads } from "@/test/fixtures/related-threads";
 
 const threadRequests = vi.hoisted(() => ({
   requestArchive: vi.fn(async (_threadIds: readonly string[]) => {}),
@@ -119,6 +122,12 @@ function SplitHandlers({
   for (const thread of [firstPaneThread, secondThread]) {
     queryClient.setQueryData(threadQueryKey(thread.id), thread);
   }
+  holdSidebarThreads(
+    queryClient,
+    [firstPaneThread, secondThread].map((thread) =>
+      makeThreadListEntry(thread),
+    ),
+  );
   return (
     <QueryClientProvider client={queryClient}>
       <Provider store={store}>
@@ -134,9 +143,7 @@ function SplitHandlers({
                 focusedThreadId === firstPaneThread.id,
               )}
             >
-              <PaneThreadActionCommandHandler
-                thread={toThreadActionTarget(firstPaneThread, null)}
-              />
+              <PaneThreadActionCommandHandler thread={firstPaneThread} />
             </PaneContext.Provider>
             <PaneContext.Provider
               value={paneContext(
@@ -144,9 +151,7 @@ function SplitHandlers({
                 focusedThreadId === secondThread.id,
               )}
             >
-              <PaneThreadActionCommandHandler
-                thread={toThreadActionTarget(secondThread, null)}
-              />
+              <PaneThreadActionCommandHandler thread={secondThread} />
             </PaneContext.Provider>
           </AppCommandProvider>
         </MemoryRouter>

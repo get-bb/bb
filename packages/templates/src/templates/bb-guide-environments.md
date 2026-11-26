@@ -152,6 +152,9 @@ Making your repo work with bb:
     --recover                             After inspection, acknowledge interrupted hooks and
                                           retry failed cleanup (Linux and macOS same-user process guard)
   bb environment show <id>                Show environment details (path, branch, status, lifecycle, retirement deadline and teardown attempts)
+  bb environment repos <id>               List the git repositories of a ready environment:
+                                          its main folder, its extra folders, and repos found
+                                          up to two levels inside a folder that is not a repo
 
   bb environment paths <id>               Search workspace paths
     --query <query>                       Fuzzy path query

@@ -30,6 +30,7 @@ import { createSyncedPreferenceAtom } from "@/lib/ui-preferences/synced-preferen
 import { InfoSectionHeading } from "@/components/secondary-panel/info/info-list";
 import { CORE_PLUGIN_ID } from "@bb/domain";
 import { PluginSlotMount } from "./PluginSlotMount";
+import { useOrderedReveal } from "@/lib/lazy-parts";
 import {
   ThreadContextCardPaneContext,
   usePaneState,
@@ -112,6 +113,16 @@ function sortByPlacement<Item>(
     .map(({ item }) => item);
 }
 
+const ORDERED_CARD_ENTRIES = {
+  key: (entry: ThreadContextCardRowEntry | ThreadContextCardSectionEntry) =>
+    entry.owner === "core"
+      ? `core/${entry.slot.id}`
+      : `${entry.slot.pluginId}/${entry.slot.id}/${entry.slot.generation}`,
+  parts: (entry: ThreadContextCardRowEntry | ThreadContextCardSectionEntry) => [
+    entry.slot.component,
+  ],
+};
+
 export function ThreadContextCardProvider({
   enabled,
   coreRows,
@@ -138,14 +149,9 @@ export function ThreadContextCardProvider({
   >(null);
   const cardRevealed = cardRevealedForThreadId === threadId;
   const environmentId = environment?.id ?? null;
-  const value = useMemo<ThreadContextCardPaneState>(
-    () => ({
-      props: {
-        threadId,
-        projectId,
-        environment: environmentId === null ? null : { id: environmentId },
-      },
-      rows: enabled
+  const sortedRows = useMemo(
+    () =>
+      enabled
         ? sortByPlacement<ThreadContextCardRowEntry>(
             [
               ...coreRows.map((slot) => ({ owner: "core" as const, slot })),
@@ -157,7 +163,11 @@ export function ThreadContextCardProvider({
             (entry) => entry.slot,
           )
         : [],
-      sections: enabled
+    [coreRows, enabled, threadContextCardRows],
+  );
+  const sortedSections = useMemo(
+    () =>
+      enabled
         ? sortByPlacement<ThreadContextCardSectionEntry>(
             [
               ...coreSections.map((slot) => ({ owner: "core" as const, slot })),
@@ -169,6 +179,19 @@ export function ThreadContextCardProvider({
             (entry) => entry.slot,
           )
         : [],
+    [coreSections, enabled, threadContextCardSections],
+  );
+  const rows = useOrderedReveal(sortedRows, ORDERED_CARD_ENTRIES);
+  const sections = useOrderedReveal(sortedSections, ORDERED_CARD_ENTRIES);
+  const value = useMemo<ThreadContextCardPaneState>(
+    () => ({
+      props: {
+        threadId,
+        projectId,
+        environment: environmentId === null ? null : { id: environmentId },
+      },
+      rows,
+      sections,
       layout,
       setLayout,
       popoverOpen,
@@ -179,17 +202,14 @@ export function ThreadContextCardProvider({
       setCardRevealedForThreadId,
     }),
     [
-      coreRows,
       cardHasContent,
       cardRevealed,
-      coreSections,
-      enabled,
       environmentId,
       layout,
       popoverOpen,
       projectId,
-      threadContextCardRows,
-      threadContextCardSections,
+      rows,
+      sections,
       threadId,
     ],
   );

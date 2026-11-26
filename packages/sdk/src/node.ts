@@ -103,7 +103,6 @@ export { createBuiltinPlanCommandTextInput } from "./core.js";
 export { createGuideArea } from "./areas/guide.js";
 export { createRetiredEnvironmentMembers } from "./areas/retired-environment-members.js";
 export {
-  DEFAULT_THREAD_WAIT_POLL_INTERVAL_MS,
   DEFAULT_THREAD_WAIT_TIMEOUT_MS,
   ThreadWaitTimeoutError,
   ThreadWaitUnreachableError,

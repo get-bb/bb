@@ -24,7 +24,6 @@ import { NEW_CHAT_PANEL_PATH } from "../new-chat/route.js";
 import { runWorkspaceScript } from "../scripts/run.js";
 import { formatLineCount } from "../sidebar/model.js";
 import { useWorkspaceChanges } from "../sidebar/reads.js";
-import { toActionTarget } from "../thread-target.js";
 import { findDiffTabKey, tabAfterClose, workspaceChats } from "./model.js";
 import { deferCloseUntilOpen, takePendingClose } from "./pending-close.js";
 
@@ -70,7 +69,7 @@ function CloseTab({
   nextThreadId: string | null;
 }) {
   const navigate = useBbNavigate();
-  const actions = useThreadActions(toActionTarget(thread), {
+  const actions = useThreadActions(thread, {
     keys: [ARCHIVE_ACTION_KEY],
   });
   const archive = actions.find((entry) => entry.key === ARCHIVE_ACTION_KEY);

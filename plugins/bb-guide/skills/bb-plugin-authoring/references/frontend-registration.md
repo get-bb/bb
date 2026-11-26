@@ -146,6 +146,45 @@ export default definePluginApp((app) => {
 });
 ```
 
+### Loading a surface's code when it first renders
+
+bb loads every enabled plugin's `app.js` at startup. Keep the entry small:
+register surfaces there and load any surface that is not on screen at startup
+(a settings section, a panel, a dialog, a tab) with `experimental_lazy`. It
+takes the same loader as `React.lazy` and returns a component to pass straight
+to the slot:
+
+```tsx
+import { definePluginApp, experimental_lazy } from "@get-bb/plugin-sdk/app";
+
+const AccountSettings = experimental_lazy(() =>
+  import("./ui/AccountSettings.js").then((module) => ({
+    default: module.AccountSettings,
+  })),
+);
+
+export default definePluginApp((app) => {
+  app.slots.settingsSection({ id: "accounts", component: AccountSettings });
+});
+```
+
+- Call it once at module scope. Keep hooks the host calls outside render
+  (`useVisible`, `experimental_usePageTitle`) and their imports out of the
+  lazy module, or they pull it back into the entry.
+- bb downloads and evaluates lazy chunks once startup settles, so a surface
+  opened afterwards renders in its first frame.
+- Hosts that stack entries (Info rows and sections, context card rows, the
+  rail, settings sections) show an entry only once the entries above it are
+  ready, holding them at most 3 seconds behind a slow one, which then appears
+  in its place when it loads. Lazy parts on the screen bb restores
+  (your panel or settings page, the open right-panel tab, Info sections when
+  Info is open) start loading as soon as your plugin registers, and your
+  panel or settings page shows once the parts on it load.
+- A chunk that fails to load crashes only its slot, which reaches `onCrash`.
+- Wrapping the lazy component in your own function hides it from hosts; pass
+  it directly. Plain `React.lazy` still works but suspends after the host has
+  shown its neighbours.
+
 ### A button in the thread header
 
 A thread action with `placement: "header"` is a button in the open thread's
@@ -190,14 +229,22 @@ function Automations({ threadId }: ExperimentalThreadInfoProps) {
 
 Components receive `{ threadId, projectId, environment }` and mount once per
 visible thread; `environment` is `{ id }` taken from the thread, null only when
-the thread has no environment; read its state yourself. Return
-null to show nothing. A row renders `experimental_DetailRow`.
+the thread has no environment. Read state the way bb's rows do:
+`experimental_useThread(threadId)`, `experimental_useEnvironment(environment.id)`
+(the environment plus bb's `label` and its machine `host`) and
+`experimental_useThreadStorageFiles(threadId, { enabled })` (`enabled: false`
+pauses it while hidden); all three share bb's caches and
+return `{ status, ... }` with `loading`/`ready`/`notFound` or `error`. Return
+null to show nothing; the tab says "No thread details available." only when
+no row or section rendered. A row renders `experimental_DetailRow`.
 Entries sort by `group`, then `order` within it (unset last), then registration
 order, bb's first on a tie, as thread actions do. Join one of bb's groups from
 `experimental_THREAD_INFO_ROW_GROUPS` or `experimental_THREAD_INFO_SECTION_GROUPS`
 (bb's entries use orders 10, 20, 30 within a group), or name your own group to
 sort it where its string falls. Inside a section slot `experimental_InfoSection` collapses and bb
 remembers it per registration. A crash removes only that row or section.
+`experimental_ThreadInfo` is the whole Info body (bb's tab registers it as its
+component); register it in a thread tab of your own to show the same rows.
 
 ### Context beside a thread's composer
 
@@ -224,10 +271,14 @@ sidebar row's quick-action buttons. bb's own actions are registrations of the
 same shape.
 
 `useData` is a hook the host runs once for the whole app, never per row: read
-your preferences or a realtime channel there. It receives `{ threadIds }`, the
-sorted ids of every thread on screen or in an open menu; for per-thread state,
-keep an id-keyed cache and fetch only the ids not in it, in one batch (for
-example `useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
+your preferences or a realtime channel there. It receives `{ threadIds,
+experimental_threads }`: the sorted ids of every thread on screen or in an
+open menu, and the targets `item` gets for them. Read thread fields such as
+`environment` (its `id`, checkout `path`, setup `status`, and machine
+`hostLifecycle`) from `experimental_threads`; never fetch each thread. For other
+per-thread state, keep an id-keyed cache and fetch only the ids not in it, in
+one batch (for example
+`useSdk().threads.experimental_listPluginMetadata({ threadIds })`).
 `item` is pure: it gets `{ thread, data }` plus the [callback context](frontend-hooks-and-ui.md#callback-context)
 `{ sdk, navigate, panel }`, and returns the action for that thread, or
 null to hide it. Menus and the quick-action picker sort registrations by
@@ -274,7 +325,10 @@ app.slots.experimental_threadAction({
 A replacement thread list renders bb's menus with
 `experimental_ThreadActionsMenu` and `experimental_ThreadActionsContextMenu`,
 passing its own rename editor as `requestRename` and list-only entries as
-`inline` (`{ key, group, action }`). `trigger` is a function: spread the props
+`inline` (`{ key, group, action }`). Pass the thread you hold (a
+`PluginSidebarThread`) as `thread`: bb reads only its `id` and builds the
+target its actions see itself, the same as in its own menus, so never map
+threads to targets yourself. `trigger` is a function: spread the props
 and ref it receives onto your button, or the menu never opens. `experimental_useThreadActions(thread, { keys })` returns bound
 actions for quick-action buttons, and
 `experimental_useThreadActionRegistrations()` lists every action's static

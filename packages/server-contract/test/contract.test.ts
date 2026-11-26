@@ -1171,6 +1171,7 @@ describe("server-contract canonical schemas", () => {
           updatedAt: 2,
           runtime: {
             displayStatus: "idle",
+            failure: null,
           },
           activity: {
             activeWorkflowCount: 0,
@@ -1183,6 +1184,8 @@ describe("server-contract canonical schemas", () => {
           environmentName: null,
           environmentBranchName: "bb/test",
           environmentPath: null,
+          environmentStatus: "provisioning",
+          environmentHostLifecycle: "active",
           environmentProviderId: "git-worktree",
           environmentIsWorktree: true,
           environmentWorkspaceDisplayKind: "managed-worktree",
@@ -1198,6 +1201,8 @@ describe("server-contract canonical schemas", () => {
         environmentName: null,
         environmentBranchName: "bb/test",
         environmentPath: null,
+        environmentStatus: "provisioning",
+        environmentHostLifecycle: "active",
         environmentProviderId: "git-worktree",
         environmentIsWorktree: true,
         environmentWorkspaceDisplayKind: "managed-worktree",

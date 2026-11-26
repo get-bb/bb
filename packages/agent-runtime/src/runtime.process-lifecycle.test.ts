@@ -234,7 +234,10 @@ describe("createAgentRuntime process lifecycle", () => {
   });
 
   it("fires onProcessExit when provider crashes", async () => {
-    const exitInfo = vi.fn();
+    const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
+    const exited = new Promise<AgentRuntimeProcessExitInfo>((resolve) => {
+      exitInfo.mockImplementation(resolve);
+    });
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
@@ -245,30 +248,35 @@ describe("createAgentRuntime process lifecycle", () => {
     });
 
     await runtime.ensureProvider({ providerId: "fake" });
-    await waitForRuntimeState({
-      label: "provider process exit callback",
-      predicate: () => exitInfo.mock.calls.length === 1,
-    });
 
-    expect(exitInfo).toHaveBeenCalledWith(
-      expect.objectContaining({ providerId: "fake", code: 0, expected: false }),
-    );
+    expect(await exited).toMatchObject({
+      providerId: "fake",
+      code: 0,
+      expected: false,
+    });
+    expect(exitInfo).toHaveBeenCalledOnce();
     await runtime.shutdown();
   });
 
-  function createIdleProviderManager(
+  function createIdleAdapter(
     script = "process.stdin.resume()",
+  ): BridgeProtocolAdapter {
+    return {
+      ...createManagerAdapter({}),
+      process: {
+        command: process.execPath,
+        args: ["-e", script],
+      },
+      buildPostInitializeRequests: () => [],
+    };
+  }
+
+  function createIdleProviderManager(
+    script?: string,
   ): RuntimeProviderProcessManager {
-    const adapter = createManagerAdapter({});
+    const adapter = createIdleAdapter(script);
     const manager = createProviderProcessManager({
-      createAdapter: () => ({
-        ...adapter,
-        process: {
-          command: process.execPath,
-          args: ["-e", script],
-        },
-        buildPostInitializeRequests: () => [],
-      }),
+      createAdapter: () => adapter,
       onProcessExit: vi.fn(),
       workspacePath: tmpDir,
     });
@@ -391,9 +399,9 @@ describe("createAgentRuntime process lifecycle", () => {
     });
     const manager = createProviderProcessManager({
       createAdapter: () =>
-        createManagerAdapter(
-          starts++ === 0 ? {} : { rawScriptPath: stalledBridge },
-        ),
+        starts++ === 0
+          ? createIdleAdapter()
+          : createManagerAdapter({ rawScriptPath: stalledBridge }),
       onProcessExit: vi.fn(),
       onStderr: (line) => {
         if (line.includes("stalled-initialize-received")) markInitializing();
@@ -475,17 +483,16 @@ describe("createAgentRuntime process lifecycle", () => {
   it("drains provider stderr before reporting process exit", async () => {
     const exitInfo = vi.fn<NonNullable<AgentRuntimeOptions["onProcessExit"]>>();
     const crashScript = join(tmpDir, "delayed-stderr-provider.cjs");
-    const delayedWriter =
-      'setTimeout(() => process.stderr.write("stderr-after-exit"), 50);';
+    const exitWatcher =
+      'process.on("disconnect", () => setTimeout(() => process.stderr.write("stderr-after-exit"), 50)); process.send("ready");';
     writeFileSync(
       crashScript,
       `const { spawn } = require("node:child_process");
-      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(delayedWriter)}], {
+      const writer = spawn(process.execPath, ["-e", ${JSON.stringify(exitWatcher)}], {
         detached: process.platform === "win32",
-        stdio: ["ignore", "ignore", "inherit"],
+        stdio: ["ignore", "ignore", "inherit", "ipc"],
       });
-      writer.unref();
-      process.exit(42);`,
+      writer.once("message", () => process.exit(42));`,
     );
     const manager = createProviderProcessManager({
       onProcessExit: exitInfo,
@@ -1745,6 +1752,47 @@ describe("createAgentRuntime process lifecycle", () => {
           : null,
       ),
     ).toEqual(["completed"]);
+  });
+
+  it("stops one background task through the provider and leaves the thread running", async () => {
+    const { events, providerThreadId, runtime, startedTask } =
+      await startIdleThreadWithOpenBackgroundTask();
+
+    await expect(
+      runtime.stopBackgroundTask({ threadId: "t1", itemId: "unknown-item" }),
+    ).resolves.toEqual({ stopped: false });
+    await expect(
+      runtime.stopBackgroundTask({
+        threadId: "t1",
+        itemId: startedTask.item.id,
+      }),
+    ).resolves.toEqual({ stopped: true });
+    await waitForRuntimeState({
+      label: "the provider settled the stopped background task",
+      predicate: () => !runtime.hasOpenBackgroundWork(),
+      timeoutMs: 5_000,
+    });
+
+    expect(backgroundTaskCompletions(events)).toEqual([
+      expect.objectContaining({
+        type: "item/backgroundTask/completed",
+        threadId: "t1",
+        providerThreadId,
+        item: expect.objectContaining({
+          id: startedTask.item.id,
+          status: "interrupted",
+          taskStatus: "stopped",
+        }),
+      }),
+    ]);
+    expect(runtime.listRunningProviders()).toEqual(["fake"]);
+    await expect(
+      runtime.stopBackgroundTask({
+        threadId: "t1",
+        itemId: startedTask.item.id,
+      }),
+    ).resolves.toEqual({ stopped: false });
+    await runtime.shutdown();
   });
 
   it("concurrent ensureProvider calls do not spawn duplicate processes", async () => {

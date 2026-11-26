@@ -1153,6 +1153,12 @@ export const threadEventWaitQuerySchema = z.object({
 });
 export type ThreadEventWaitQuery = z.infer<typeof threadEventWaitQuerySchema>;
 
+export const threadStatusWaitQuerySchema = z.object({
+  notStatus: threadStatusSchema,
+  waitMs: z.string().regex(/^\d+$/),
+});
+export type ThreadStatusWaitQuery = z.infer<typeof threadStatusWaitQuerySchema>;
+
 const threadMessageContextCountSchema = z
   .string()
   .regex(/^\d+$/)

@@ -5,6 +5,8 @@ import {
   type ProviderRateLimitStatus,
   type ProviderRateLimitWindow,
   providerRawEventSchema,
+  type BackgroundTaskStatus,
+  type DeltaBackgroundTaskShape,
   type DeltaItemShape,
   type DeltaPresentation,
   type ProviderRawEvent,
@@ -18,6 +20,9 @@ import {
   experimental_toolPresentation as toolPresentation,
   experimental_webFetchPresentation as webFetchPresentation,
   experimental_webSearchPresentation as webSearchPresentation,
+  LOCAL_BASH_TASK_TYPE,
+  backgroundTaskItemStatus,
+  isSettledBackgroundTaskStatus,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import {
   codexAsyncQuestionItemSchema,
@@ -37,6 +42,8 @@ import {
 import {
   AGENT_MESSAGE_PRESENTATION,
   PLAN_PRESENTATION,
+  backgroundCommandDescription,
+  backgroundCommandPresentation,
   collabAgentPresentation,
   commandPresentation,
   fileChangePresentation,
@@ -66,11 +73,21 @@ interface CodexRetryErrorContext {
   failureText: string;
 }
 
+interface CodexRunningCommand {
+  processId: string;
+  command: string;
+  cwd: string;
+  turnId: string;
+  background: boolean;
+  stopRequested: boolean;
+}
+
 interface CodexEventTranslationState {
   rateLimitsByLimitId: Map<string, CodexRateLimitSnapshot>;
   latestRateLimitId: string;
   injectedToolsByName: Map<string, CodexInjectedTool>;
   retryErrorsByTurnKey: Map<string, CodexRetryErrorContext>;
+  runningCommandsByThreadId: Map<string, Map<string, CodexRunningCommand>>;
 }
 
 export function createCodexEventTranslationState(): CodexEventTranslationState {
@@ -79,6 +96,258 @@ export function createCodexEventTranslationState(): CodexEventTranslationState {
     latestRateLimitId: "codex",
     injectedToolsByName: new Map(),
     retryErrorsByTurnKey: new Map(),
+    runningCommandsByThreadId: new Map(),
+  };
+}
+
+export function beginCodexBackgroundCommandStop(
+  state: CodexEventTranslationState,
+  args: { providerThreadId: string; itemId: string },
+): string | null {
+  const command = state.runningCommandsByThreadId
+    .get(args.providerThreadId)
+    ?.get(args.itemId);
+  if (command === undefined || !command.background) {
+    return null;
+  }
+  command.stopRequested = true;
+  return command.processId;
+}
+
+export function cancelCodexBackgroundCommandStop(
+  state: CodexEventTranslationState,
+  args: { providerThreadId: string; itemId: string },
+): void {
+  const command = state.runningCommandsByThreadId
+    .get(args.providerThreadId)
+    ?.get(args.itemId);
+  if (command !== undefined) {
+    command.stopRequested = false;
+  }
+}
+
+function backgroundCommandKey(itemId: string): {
+  providerItemId: string;
+  parentRef: string;
+} {
+  return { providerItemId: `background:${itemId}`, parentRef: itemId };
+}
+
+function buildBackgroundCommandShape(
+  itemId: string,
+  command: CodexRunningCommand,
+  taskStatus: BackgroundTaskStatus,
+): DeltaBackgroundTaskShape {
+  return {
+    type: "backgroundTask",
+    familyId: itemId,
+    taskType: LOCAL_BASH_TASK_TYPE,
+    description: backgroundCommandDescription(command.command),
+    status: backgroundTaskItemStatus(taskStatus),
+    taskStatus,
+    skipTranscript: false,
+    ...(isSettledBackgroundTaskStatus(taskStatus)
+      ? {}
+      : { stoppable: true as const }),
+  };
+}
+
+function openBackgroundCommands(
+  state: CodexEventTranslationState,
+  args: {
+    providerThreadId: string;
+    providerTurnId: string;
+    turnStatus: ThreadEventTurnStatus;
+  },
+): ThreadDelta[] {
+  const { providerThreadId, providerTurnId } = args;
+  const running = state.runningCommandsByThreadId.get(providerThreadId);
+  if (running === undefined) {
+    return [];
+  }
+  if (args.turnStatus === "interrupted") {
+    for (const [itemId, command] of running) {
+      if (!command.background) {
+        running.delete(itemId);
+      }
+    }
+    if (running.size === 0) {
+      state.runningCommandsByThreadId.delete(providerThreadId);
+    }
+    return [];
+  }
+  const deltas: ThreadDelta[] = [];
+  for (const [itemId, command] of running) {
+    if (command.background) {
+      continue;
+    }
+    command.background = true;
+    deltas.push({
+      kind: "item.open",
+      key: backgroundCommandKey(itemId),
+      item: buildBackgroundCommandShape(itemId, command, "running"),
+      presentation: backgroundCommandPresentation(command.command),
+      providerTurnId,
+    });
+  }
+  return deltas;
+}
+
+function settleRunningCommand(
+  itemId: string,
+  command: CodexRunningCommand,
+): ThreadDelta[] {
+  const closes: ThreadDelta[] = [
+    {
+      kind: "item.close",
+      key: { providerItemId: itemId },
+      status: "interrupted",
+      item: { type: "command", command: command.command, cwd: command.cwd },
+      presentation: commandPresentation(command.command),
+      providerTurnId: command.turnId,
+    },
+  ];
+  if (command.background) {
+    const shape = buildBackgroundCommandShape(itemId, command, "stopped");
+    closes.push({
+      kind: "item.close",
+      key: backgroundCommandKey(itemId),
+      status: shape.status,
+      item: shape,
+      presentation: backgroundCommandPresentation(command.command),
+    });
+  }
+  return closes;
+}
+
+function forgetRunningCommand(
+  state: CodexEventTranslationState,
+  providerThreadId: string,
+  running: Map<string, CodexRunningCommand>,
+  itemId: string,
+): void {
+  running.delete(itemId);
+  if (running.size === 0) {
+    state.runningCommandsByThreadId.delete(providerThreadId);
+  }
+}
+
+export function settleCodexRunningCommands(
+  state: CodexEventTranslationState,
+  args: { providerThreadId: string },
+): ThreadDelta[] {
+  const running = state.runningCommandsByThreadId.get(args.providerThreadId);
+  if (running === undefined) {
+    return [];
+  }
+  const closes: ThreadDelta[] = [];
+  for (const [itemId, command] of running) {
+    closes.push(...settleRunningCommand(itemId, command));
+    forgetRunningCommand(state, args.providerThreadId, running, itemId);
+  }
+  return closes;
+}
+
+export function settleCodexRunningCommand(
+  state: CodexEventTranslationState,
+  args: { providerThreadId: string; itemId: string },
+): ThreadDelta[] {
+  const running = state.runningCommandsByThreadId.get(args.providerThreadId);
+  const command = running?.get(args.itemId);
+  if (running === undefined || command === undefined) {
+    return [];
+  }
+  forgetRunningCommand(state, args.providerThreadId, running, args.itemId);
+  return settleRunningCommand(args.itemId, command);
+}
+
+function finalBackgroundTaskStatus(
+  status: CodexItemStatus,
+  stopRequested: boolean,
+): BackgroundTaskStatus {
+  switch (status) {
+    case "completed":
+      return "completed";
+    case "failed":
+      return stopRequested ? "stopped" : "failed";
+    case "declined":
+    case "inProgress":
+      return "failed";
+  }
+}
+
+function withoutCommandExitCode(shape: DeltaItemShape): DeltaItemShape {
+  if (shape.type !== "command") {
+    return shape;
+  }
+  const { exitCode: _killedExitCode, ...rest } = shape;
+  return rest;
+}
+
+function trackCodexCommandExecution(
+  state: CodexEventTranslationState,
+  args: {
+    providerThreadId: string;
+    providerTurnId: string;
+    started: boolean;
+    item: CodexHandledThreadItem;
+  },
+): { closeDeltas: ThreadDelta[]; stopRequested: boolean } {
+  const none = { closeDeltas: [], stopRequested: false };
+  if (args.item.type !== "commandExecution") {
+    return none;
+  }
+  const item = args.item;
+  if (args.started) {
+    if (
+      item.status === "inProgress" &&
+      item.processId !== undefined &&
+      item.processId !== null
+    ) {
+      let running = state.runningCommandsByThreadId.get(args.providerThreadId);
+      if (running === undefined) {
+        running = new Map();
+        state.runningCommandsByThreadId.set(args.providerThreadId, running);
+      }
+      running.set(item.id, {
+        processId: item.processId,
+        command: item.command,
+        cwd: item.cwd,
+        turnId: args.providerTurnId,
+        background: false,
+        stopRequested: false,
+      });
+    }
+    return none;
+  }
+  const running = state.runningCommandsByThreadId.get(args.providerThreadId);
+  const command = running?.get(item.id);
+  if (running === undefined || command === undefined) {
+    return none;
+  }
+  running.delete(item.id);
+  if (running.size === 0) {
+    state.runningCommandsByThreadId.delete(args.providerThreadId);
+  }
+  if (!command.background) {
+    return none;
+  }
+  const shape = buildBackgroundCommandShape(
+    item.id,
+    command,
+    finalBackgroundTaskStatus(item.status, command.stopRequested),
+  );
+  return {
+    closeDeltas: [
+      {
+        kind: "item.close",
+        key: backgroundCommandKey(item.id),
+        status: shape.status,
+        item: shape,
+        presentation: backgroundCommandPresentation(command.command),
+      },
+    ],
+    stopRequested: command.stopRequested,
   };
 }
 
@@ -489,6 +758,7 @@ export function clearCodexEventTranslationThreadState(
       state.retryErrorsByTurnKey.delete(key);
     }
   }
+  state.runningCommandsByThreadId.delete(threadId);
 }
 
 function resolveCodexErrorInfo(
@@ -795,15 +1065,9 @@ function translateCodexAsyncQuestion(item: unknown): ThreadDelta[] {
 }
 
 function translateCodexItemShape(
-  item: unknown,
+  parsedItem: CodexHandledThreadItem,
   state: CodexEventTranslationState,
 ): CodexItemTranslationResult {
-  const parsed = codexHandledThreadItemSchema.safeParse(item);
-  if (!parsed.success) {
-    return { kind: "unhandled" };
-  }
-
-  const parsedItem: CodexHandledThreadItem = parsed.data;
   switch (parsedItem.type) {
     case "agentMessage":
       return {
@@ -1078,6 +1342,11 @@ export function translateCodexEventToDeltas(
       });
       const status = toTurnStatus(handledEvent.params.turn.status);
       return [
+        ...openBackgroundCommands(state, {
+          providerThreadId: handledEvent.params.threadId,
+          providerTurnId: handledEvent.params.turn.id,
+          turnStatus: status,
+        }),
         {
           kind: "turn.boundary",
           providerTurnId: handledEvent.params.turn.id,
@@ -1145,14 +1414,16 @@ export function translateCodexEventToDeltas(
       ];
     case "item/started":
     case "item/completed": {
-      const translation = translateCodexItemShape(
+      const parsedItem = codexHandledThreadItemSchema.safeParse(
         handledEvent.params.item,
-        state,
       );
+      const translation: CodexItemTranslationResult = parsedItem.success
+        ? translateCodexItemShape(parsedItem.data, state)
+        : { kind: "unhandled" };
       if (translation.kind === "ignored") {
         return [];
       }
-      if (translation.kind === "unhandled") {
+      if (translation.kind === "unhandled" || !parsedItem.success) {
         return buildUnhandledCodexDeltas({
           rawEvent,
           rawType: handledEvent.method,
@@ -1160,6 +1431,12 @@ export function translateCodexEventToDeltas(
         });
       }
       const key = { providerItemId: handledEvent.params.item.id };
+      const commandTracking = trackCodexCommandExecution(state, {
+        providerThreadId: handledEvent.params.threadId,
+        providerTurnId: handledEvent.params.turnId,
+        started: handledEvent.method === "item/started",
+        item: parsedItem.data,
+      });
       if (handledEvent.method === "item/started") {
         return [
           {
@@ -1171,16 +1448,21 @@ export function translateCodexEventToDeltas(
           },
         ];
       }
+      const stopped =
+        commandTracking.stopRequested && translation.status === "failed";
       return [
         {
           kind: "item.close",
           key,
-          status: translation.status,
+          status: stopped ? "interrupted" : translation.status,
           ...(translation.approvalDenied ? { approvalStatus: "denied" } : {}),
-          item: translation.shape,
+          item: stopped
+            ? withoutCommandExitCode(translation.shape)
+            : translation.shape,
           presentation: translation.presentation,
           providerTurnId: handledEvent.params.turnId,
         },
+        ...commandTracking.closeDeltas,
         ...translateCodexAsyncQuestion(handledEvent.params.item),
       ];
     }

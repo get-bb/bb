@@ -33,6 +33,7 @@ import type { Logger } from "@bb/logger";
 import { scaffoldPlugin } from "@bb/templates/plugin-scaffold";
 import { PLUGIN_SDK_MAJOR, PLUGIN_SDK_VERSION } from "@bb/domain";
 import { validatePluginArtifactMeta } from "../../../src/services/plugins/app-bundle.js";
+import { readPluginManifest } from "../../../src/services/plugins/manifest.js";
 import {
   gitArtifactCacheDir,
   gitRangeSourceSpec,
@@ -1539,6 +1540,370 @@ describe("plugin install flows", () => {
       expect(listPluginArtifacts(db, "collection-alpha")).toHaveLength(1);
     });
 
+    test("checks out only the directories the selected plugin needs", async ({
+      fixture,
+    }) => {
+      const { workDir, dataDir, service } = fixture;
+
+      const repoDir = join(workDir, "repo-collection-sparse");
+      await mkdir(join(repoDir, "unrelated"), { recursive: true });
+      await writeFile(
+        join(repoDir, "unrelated", "large.bin"),
+        "x".repeat(1024),
+      );
+      await writeFile(join(repoDir, "README.md"), "# collection\n");
+      const commit = await writeCollectionRepo(repoDir);
+      const checkout = gitArtifactCacheDir(
+        dataDir,
+        localGitCachePath(repoDir),
+        commit,
+      );
+      const present = (path: string) =>
+        stat(join(checkout, path)).then(
+          () => true,
+          () => false,
+        );
+
+      const alpha = await service.install(`git:${repoDir}@main`, {
+        kind: "entry",
+        name: "alpha",
+      });
+
+      expect(alpha.status).toBe("running");
+      expect(await present(join("plugins", "alpha", "package.json"))).toBe(
+        true,
+      );
+      expect(await present(join(".bb", "plugins.json"))).toBe(true);
+      expect(await present("README.md")).toBe(true);
+      expect(await present("unrelated")).toBe(false);
+      expect(await present(join("plugins", "beta"))).toBe(false);
+
+      const beta = await service.install(`git:${repoDir}@main`, {
+        kind: "subdirectory",
+        path: "plugins/beta",
+      });
+
+      expect(beta.status).toBe("running");
+      expect(await present(join("plugins", "beta", "package.json"))).toBe(true);
+      expect(await present(join("plugins", "alpha", "dist", "server.js"))).toBe(
+        true,
+      );
+      expect(await present("unrelated")).toBe(false);
+    });
+
+    test("installs a collection entry from a server that serves partial clones", async ({
+      fixture,
+    }) => {
+      const { db, workDir, dataDir, service } = fixture;
+
+      const repoDir = join(workDir, "repo-collection-partial");
+      await mkdir(join(repoDir, "unrelated"), { recursive: true });
+      await writeFile(
+        join(repoDir, "unrelated", "large.bin"),
+        "x".repeat(1024),
+      );
+      const commit = await writeCollectionRepo(repoDir);
+      await git(repoDir, ["config", "uploadpack.allowFilter", "true"]);
+
+      const beta = await service.install(`git:${repoDir}@main`, {
+        kind: "entry",
+        name: "beta",
+      });
+
+      expect(beta.status).toBe("running");
+      expect(
+        getInstalledPluginRegistration(db, "collection-beta"),
+      ).toMatchObject({
+        sourceGitSubdirectory: "plugins/beta",
+        gitResolvedCommit: commit,
+      });
+      const checkout = gitArtifactCacheDir(
+        dataDir,
+        localGitCachePath(repoDir),
+        commit,
+      );
+      await stat(join(checkout, "plugins", "beta", "dist", "server.js"));
+      await expect(stat(join(checkout, "unrelated"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+      await expect(
+        stat(join(checkout, "plugins", "alpha")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+    });
+
+    test("materializes the whole commit when the selected plugin imports from outside its directory", async ({
+      fixture,
+    }) => {
+      const { workDir, dataDir, service } = fixture;
+
+      const repoDir = join(workDir, "repo-collection-shared-import");
+      await writePluginFixture(join(repoDir, "plugins", "plain"), {
+        name: "bb-plugin-collection-plain",
+      });
+      await writeFile(join(repoDir, "plugins", "plain", ".npmrc"), "");
+      await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+        name: "bb-plugin-collection-alpha",
+      });
+      await mkdir(join(repoDir, "shared"), { recursive: true });
+      await writeFile(
+        join(repoDir, "shared", "message.ts"),
+        `export const message = "shared";`,
+      );
+      await writeFile(
+        join(repoDir, "plugins", "alpha", "server.ts"),
+        `import { message } from "../../shared/message.js";\nexport default function plugin(bb: any) { bb.log.info(message); }`,
+      );
+      await initGitRepo(repoDir);
+      const commit = await commitAll(repoDir, "init");
+      const checkout = gitArtifactCacheDir(
+        dataDir,
+        localGitCachePath(repoDir),
+        commit,
+      );
+
+      const plain = await service.install(`git:${repoDir}@main`, {
+        kind: "subdirectory",
+        path: "plugins/plain",
+      });
+      expect(plain.status).toBe("running");
+      await expect(stat(join(checkout, "shared"))).rejects.toMatchObject({
+        code: "ENOENT",
+      });
+
+      const alpha = await service.install(`git:${repoDir}@main`, {
+        kind: "subdirectory",
+        path: "plugins/alpha",
+      });
+
+      expect(alpha.status).toBe("running");
+      expect(
+        await readFile(join(alpha.rootDir, "dist", "server.js"), "utf8"),
+      ).toContain("shared");
+      await stat(join(checkout, "shared", "message.ts"));
+      await expect(
+        stat(join(checkout, "plugins", "plain", ".npmrc")),
+      ).rejects.toMatchObject({ code: "ENOENT" });
+      expect(
+        service
+          .list()
+          .filter((plugin) => plugin.id.startsWith("collection-"))
+          .map((plugin) => plugin.status),
+      ).toEqual(["running", "running"]);
+    });
+
+    test.skipIf(process.platform === "win32")(
+      "materializes the whole commit when the selected plugin's entry is a symlink out of its directory",
+      async ({ fixture }) => {
+        const { workDir, dataDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-collection-shared-entry");
+        await writePluginFixture(join(repoDir, "plugins", "beta"), {
+          name: "bb-plugin-collection-beta",
+        });
+        await mkdir(join(repoDir, "shared"), { recursive: true });
+        await writeFile(
+          join(repoDir, "shared", "server.ts"),
+          `export default function plugin(bb: any) { bb.log.info("shared entry"); }`,
+        );
+        await rm(join(repoDir, "plugins", "beta", "server.ts"));
+        await symlink(
+          join("..", "..", "shared", "server.ts"),
+          join(repoDir, "plugins", "beta", "server.ts"),
+        );
+        await mkdir(join(repoDir, ".bb"), { recursive: true });
+        await writeFile(
+          join(repoDir, ".bb", "plugins.json"),
+          JSON.stringify({
+            schemaVersion: 1,
+            name: "collection",
+            plugins: [{ name: "beta", source: "./plugins/beta" }],
+          }),
+        );
+        await initGitRepo(repoDir);
+        const commit = await commitAll(repoDir, "init");
+
+        const beta = await service.install(`git:${repoDir}@main`, {
+          kind: "entry",
+          name: "beta",
+        });
+
+        expect(beta.status).toBe("running");
+        expect(
+          await readFile(join(beta.rootDir, "dist", "server.js"), "utf8"),
+        ).toContain("shared entry");
+        const checkout = gitArtifactCacheDir(
+          dataDir,
+          localGitCachePath(repoDir),
+          commit,
+        );
+        await stat(join(checkout, "shared", "server.ts"));
+      },
+    );
+
+    test.skipIf(process.platform === "win32")(
+      "materializes the whole commit when the selected plugin's skills are a symlink out of its directory",
+      async ({ fixture }) => {
+        const { workDir, dataDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-collection-shared-skills");
+        await writePluginFixture(join(repoDir, "plugins", "plain"), {
+          name: "bb-plugin-collection-plain",
+        });
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-alpha",
+        });
+        await mkdir(join(repoDir, "shared", "skills", "review"), {
+          recursive: true,
+        });
+        await writeFile(
+          join(repoDir, "shared", "skills", "review", "SKILL.md"),
+          "---\nname: review\ndescription: Review changes.\n---\n\n# review\n",
+        );
+        await symlink(
+          join("..", "..", "shared", "skills"),
+          join(repoDir, "plugins", "alpha", "skills"),
+        );
+        await initGitRepo(repoDir);
+        const commit = await commitAll(repoDir, "init");
+        const checkout = gitArtifactCacheDir(
+          dataDir,
+          localGitCachePath(repoDir),
+          commit,
+        );
+
+        const plain = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "plugins/plain",
+        });
+        expect(plain.status).toBe("running");
+        await expect(stat(join(checkout, "shared"))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "plugins/alpha",
+        });
+
+        expect(alpha.status).toBe("running");
+        await stat(join(alpha.rootDir, "skills", "review", "SKILL.md"));
+        expect((await readPluginManifest(alpha.rootDir)).skillNames).toEqual([
+          "review",
+        ]);
+      },
+    );
+
+    test.skipIf(process.platform === "win32")(
+      "leaves a plugin installed through a symlinked path untouched when a sibling expands the shared checkout",
+      async ({ fixture }) => {
+        const { db, workDir, dataDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-collection-aliased-protected");
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-alpha",
+        });
+        await writeFile(join(repoDir, "plugins", "alpha", ".npmrc"), "");
+        await writePluginFixture(join(repoDir, "plugins", "gamma"), {
+          name: "bb-plugin-collection-gamma",
+        });
+        await mkdir(join(repoDir, "shared"), { recursive: true });
+        await writeFile(
+          join(repoDir, "shared", "message.ts"),
+          `export const message = "shared";`,
+        );
+        await writeFile(
+          join(repoDir, "plugins", "gamma", "server.ts"),
+          `import { message } from "../../shared/message.js";\nexport default function plugin(bb: any) { bb.log.info(message); }`,
+        );
+        await writePluginFixture(join(repoDir, "other", "beta"), {
+          name: "bb-plugin-collection-beta",
+        });
+        await symlink("plugins", join(repoDir, "alias"));
+        await initGitRepo(repoDir);
+        const commit = await commitAll(repoDir, "init");
+        const checkout = gitArtifactCacheDir(
+          dataDir,
+          localGitCachePath(repoDir),
+          commit,
+        );
+
+        await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "other/beta",
+        });
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "alias/alpha",
+        });
+        expect(alpha.rootDir).toBe(join(checkout, "alias", "alpha"));
+        await expect(
+          stat(join(checkout, "plugins", "alpha", ".npmrc")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        const alphaArtifact = listPluginArtifacts(db, "collection-alpha")[0];
+        if (alphaArtifact === undefined)
+          throw new Error("alpha has no artifact");
+        expect(await hashInstallDir(alpha.rootDir)).toBe(
+          alphaArtifact.contentHash,
+        );
+
+        const gamma = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "plugins/gamma",
+        });
+
+        expect(gamma.status).toBe("running");
+        await stat(join(checkout, "shared", "message.ts"));
+        await expect(
+          stat(join(checkout, "plugins", "alpha", ".npmrc")),
+        ).rejects.toMatchObject({ code: "ENOENT" });
+        expect(await hashInstallDir(alpha.rootDir)).toBe(
+          alphaArtifact.contentHash,
+        );
+      },
+    );
+
+    test.skipIf(process.platform === "win32")(
+      "installs a plugin through a symlinked directory a sibling left dangling in the shared checkout",
+      async ({ fixture }) => {
+        const { workDir, dataDir, service } = fixture;
+
+        const repoDir = join(workDir, "repo-collection-aliased-dir");
+        await writePluginFixture(join(repoDir, "plugins", "alpha"), {
+          name: "bb-plugin-collection-alpha",
+        });
+        await writePluginFixture(join(repoDir, "other", "beta"), {
+          name: "bb-plugin-collection-beta",
+        });
+        await symlink("plugins", join(repoDir, "alias"));
+        await initGitRepo(repoDir);
+        const commit = await commitAll(repoDir, "init");
+        const checkout = gitArtifactCacheDir(
+          dataDir,
+          localGitCachePath(repoDir),
+          commit,
+        );
+
+        const beta = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "other/beta",
+        });
+        expect(beta.status).toBe("running");
+        await expect(stat(join(checkout, "alias"))).rejects.toMatchObject({
+          code: "ENOENT",
+        });
+
+        const alpha = await service.install(`git:${repoDir}@main`, {
+          kind: "subdirectory",
+          path: "alias/alpha",
+        });
+
+        expect(alpha.status).toBe("running");
+        expect(alpha.rootDir).toBe(join(checkout, "alias", "alpha"));
+        await stat(join(alpha.rootDir, "dist", "server.js"));
+        await stat(join(checkout, "plugins", "alpha", "dist", "server.js"));
+      },
+    );
+
     test.skipIf(process.platform === "win32")(
       "promotes an in-repository symlinked plugin after a sibling",
       async ({ fixture }) => {
@@ -1850,13 +2215,13 @@ describe("plugin install flows", () => {
         validatePluginArtifactMeta({
           artifact: "server",
           raw: artifactMeta({
-            artifactFormatVersion: 2,
+            artifactFormatVersion: 3,
             pluginId: "artifact-format",
           }),
           pluginId: "artifact-format",
           pluginVersion: "0.1.0",
         }),
-      ).toMatch(/unknown artifactFormatVersion 2.*supported value is 1/);
+      ).toMatch(/unknown artifactFormatVersion 3.*supported values are 1 and 2/);
     });
   });
 

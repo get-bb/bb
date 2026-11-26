@@ -2360,3 +2360,283 @@ describe("codex account rate-limit translation", () => {
     });
   });
 });
+
+describe("codex background commands", () => {
+  const COMMAND = "/bin/zsh -lc 'npm run dev'";
+
+  function commandItem(
+    status: "inProgress" | "completed" | "failed",
+    processId: string | null,
+  ) {
+    return {
+      type: "commandExecution" as const,
+      id: "exec-1",
+      command: COMMAND,
+      cwd: "/tmp",
+      processId,
+      pluginId: null,
+      scriptPath: null,
+      source: "unifiedExecStartup" as const,
+      status,
+      commandActions: [],
+      aggregatedOutput: status === "inProgress" ? null : "ready\n",
+      exitCode: status === "completed" ? 0 : status === "failed" ? -1 : null,
+      durationMs: status === "inProgress" ? null : 4000,
+    };
+  }
+
+  function startCommand(
+    harness: CodexEquivalenceHarness,
+    processId: string | null,
+  ): void {
+    harness.translate(
+      codexEvent("turn/started", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "inProgress", error: null }),
+      }),
+    );
+    harness.translate(
+      codexEvent("item/started", {
+        threadId: "t1",
+        turnId: "turn-1",
+        startedAtMs: 0,
+        item: commandItem("inProgress", processId),
+      }),
+    );
+  }
+
+  function completeTurn(harness: CodexEquivalenceHarness): ThreadEvent[] {
+    return harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "completed", error: null }),
+      }),
+    );
+  }
+
+  function finishCommand(
+    harness: CodexEquivalenceHarness,
+    status: "completed" | "failed",
+  ): ThreadEvent[] {
+    return harness.translate(
+      codexEvent("item/completed", {
+        threadId: "t1",
+        turnId: "turn-1",
+        completedAtMs: 0,
+        item: commandItem(status, "34893"),
+      }),
+    );
+  }
+
+  it("opens a stoppable background task for a command still running when the turn ends", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+
+    const events = completeTurn(harness);
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/started",
+      "turn/completed",
+    ]);
+    expect(events[0]).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "backgroundTask",
+        familyId: "exec-1",
+        taskType: "local_bash",
+        description: "npm run dev",
+        status: "pending",
+        taskStatus: "running",
+        stoppable: true,
+        parentToolCallId: harness.itemId("exec-1"),
+      },
+    });
+    expect(
+      harness.translator.beginBackgroundCommandStop({
+        providerThreadId: "t1",
+        itemId: "exec-1",
+      }),
+    ).toBe("34893");
+  });
+
+  it("settles the background task when the command exits on its own", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+    completeTurn(harness);
+
+    const events = finishCommand(harness, "completed");
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "commandExecution",
+          status: "completed",
+        }),
+      }),
+    );
+    const task = events.find(
+      (event) => event.type === "item/backgroundTask/completed",
+    );
+    expect(task).toMatchObject({
+      scope: threadScope(),
+      item: { taskStatus: "completed", status: "completed" },
+    });
+    expect(task).not.toHaveProperty("item.stoppable");
+  });
+
+  it("reports a stopped command as stopped rather than failed", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+    completeTurn(harness);
+    harness.translator.beginBackgroundCommandStop({
+      providerThreadId: "t1",
+      itemId: "exec-1",
+    });
+
+    const events = finishCommand(harness, "failed");
+
+    const command = events.find((event) => event.type === "item/completed");
+    expect(command).toMatchObject({
+      item: { type: "commandExecution", status: "interrupted" },
+    });
+    expect(command).not.toHaveProperty("item.exitCode");
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/backgroundTask/completed",
+        item: expect.objectContaining({
+          type: "backgroundTask",
+          taskStatus: "stopped",
+        }),
+      }),
+    );
+  });
+
+  it("keeps a failure as failed when the stop request was withdrawn", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+    completeTurn(harness);
+    const stopArgs = { providerThreadId: "t1", itemId: "exec-1" };
+    harness.translator.beginBackgroundCommandStop(stopArgs);
+    harness.translator.cancelBackgroundCommandStop(stopArgs);
+
+    const events = finishCommand(harness, "failed");
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        item: expect.objectContaining({
+          type: "backgroundTask",
+          taskStatus: "failed",
+        }),
+      }),
+    );
+  });
+
+  it("does not treat commands that finish inside the turn, or have no process, as background work", () => {
+    const finished = createHarness();
+    startCommand(finished, "34893");
+    finishCommand(finished, "completed");
+    const noProcess = createHarness();
+    startCommand(noProcess, null);
+
+    for (const harness of [finished, noProcess]) {
+      expect(completeTurn(harness).map((event) => event.type)).toEqual([
+        "turn/completed",
+      ]);
+      expect(
+        harness.translator.beginBackgroundCommandStop({
+          providerThreadId: "t1",
+          itemId: "exec-1",
+        }),
+      ).toBeNull();
+    }
+  });
+  it("stops a background command whose Codex app-server went away", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+    completeTurn(harness);
+
+    const events = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.clearExitedChildThreadState({
+        providerThreadId: "t1",
+      }),
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "commandExecution",
+          status: "interrupted",
+        }),
+      }),
+    );
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "item/backgroundTask/completed",
+        item: expect.objectContaining({ taskStatus: "stopped" }),
+      }),
+    );
+    expect(
+      harness.translator.beginBackgroundCommandStop({
+        providerThreadId: "t1",
+        itemId: "exec-1",
+      }),
+    ).toBeNull();
+  });
+
+  it("does not background a command whose turn was interrupted, even when the next turn ends", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+
+    const interrupted = harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-1", status: "interrupted", error: null }),
+      }),
+    );
+    harness.translate(
+      codexEvent("turn/started", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-2", status: "inProgress", error: null }),
+      }),
+    );
+    const nextTurn = harness.translate(
+      codexEvent("turn/completed", {
+        threadId: "t1",
+        turn: codexTurn({ id: "turn-2", status: "completed", error: null }),
+      }),
+    );
+
+    expect([...interrupted, ...nextTurn].map((event) => event.type)).toEqual([
+      "turn/completed",
+      "turn/completed",
+    ]);
+  });
+
+  it("stops a background command Codex no longer runs when asked to stop it", () => {
+    const harness = createHarness();
+    startCommand(harness, "34893");
+    completeTurn(harness);
+
+    const events = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.settleBackgroundCommand({
+        providerThreadId: "t1",
+        itemId: "exec-1",
+      }),
+    });
+
+    expect(events.map((event) => event.type)).toEqual([
+      "item/completed",
+      "item/backgroundTask/completed",
+    ]);
+    expect(
+      harness.translator.settleBackgroundCommand({
+        providerThreadId: "t1",
+        itemId: "exec-1",
+      }),
+    ).toEqual([]);
+  });
+});

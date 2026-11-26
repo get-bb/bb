@@ -13,6 +13,7 @@ import type { ThreadCreateServiceRequest } from "../../../src/services/threads/t
 import {
   seedEvent,
   seedThreadFixture,
+  seedThreadRuntimeState,
   seedTurnStarted,
   seedThread,
 } from "../../helpers/seed.js";
@@ -311,6 +312,124 @@ describe("plugin thread lifecycle events", () => {
       expect(recorded[0]?.thread.id).toBe(thread.id);
       expect(recorded[0]?.thread.status).toBe("error");
       expect(recorded[0]?.error).toBe("provider exploded");
+    } finally {
+      delete globals.__failedEvents;
+      await cleanup();
+    }
+  });
+
+  it("delivers thread.failed with the failed turn's provider/error and its classification", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__failedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.failed", (payload: any) => {
+          (globalThis as any).__failedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      const providerThreadId = "pi-session";
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        scope: threadScope(),
+        sequence: 1,
+        type: "system/error",
+        data: { code: "provider_process_exited", message: "earlier turn" },
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId,
+        sequenceStart: 2,
+        threadId: thread.id,
+      });
+      const rateLimitDetail =
+        '429: {"code":"1302","message":"Rate limit reached for requests"}';
+      for (const [sequence, willRetry] of [
+        [4, true],
+        [5, true],
+        [6, undefined],
+      ] as const) {
+        seedEvent(harness.deps, {
+          threadId: thread.id,
+          environmentId: environment.id,
+          providerThreadId,
+          scope: threadScope(),
+          sequence,
+          type: "provider/error",
+          data: {
+            providerThreadId,
+            message: "Provider error",
+            detail: willRetry === undefined ? rateLimitDetail : "retrying 429",
+            ...(willRetry === undefined ? {} : { willRetry }),
+            errorInfo: {
+              category: "rate-limit",
+              providerCode: null,
+              httpStatusCode: 429,
+            },
+          },
+        });
+      }
+
+      expect(
+        moveThreadStatus(lifecycleDeps(harness), {
+          move: "run.failed",
+          threadId: thread.id,
+        }).applied,
+      ).toBe(true);
+
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.error).toBe(
+        `${rateLimitDetail} (rate-limit, HTTP 429)`,
+      );
+    } finally {
+      delete globals.__failedEvents;
+      await cleanup();
+    }
+  });
+
+  it("does not report an earlier turn's error for a failure without one", async () => {
+    const recorded: RecordedThreadPayload[] = [];
+    globals.__failedEvents = recorded;
+    const { harness, cleanup } = await setUpPluginHarness(`
+      export default function plugin(bb: any) {
+        bb.events.on("thread.failed", (payload: any) => {
+          (globalThis as any).__failedEvents.push(payload);
+        });
+      }
+    `);
+    try {
+      const { environment, thread } = seedThreadFixture(harness, {
+        thread: { status: "active" },
+      });
+      seedEvent(harness.deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        scope: threadScope(),
+        sequence: 1,
+        type: "system/error",
+        data: { code: "provider_process_exited", message: "earlier turn" },
+      });
+      seedThreadRuntimeState(harness.deps, {
+        environmentId: environment.id,
+        providerThreadId: "provider-session",
+        sequenceStart: 2,
+        threadId: thread.id,
+      });
+
+      expect(
+        moveThreadStatus(lifecycleDeps(harness), {
+          move: "run.failed",
+          threadId: thread.id,
+        }).applied,
+      ).toBe(true);
+
+      await vi.waitFor(() => expect(recorded).toHaveLength(1));
+      expect(recorded[0]?.error).toBeNull();
     } finally {
       delete globals.__failedEvents;
       await cleanup();

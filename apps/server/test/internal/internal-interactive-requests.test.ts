@@ -1008,7 +1008,7 @@ describe("internal interactive request lifecycle", () => {
       );
       expect(deleteResponse.status).toBe(200);
 
-      expect(await threadEventWaiter.promise).toBe(true);
+      expect(await threadEventWaiter.promise).not.toBeNull();
 
       expect(
         listPendingInteractionsByThread(harness.db, {

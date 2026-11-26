@@ -6,6 +6,7 @@ import {
   type CreateEventSinkOptions,
   type EventPostResult,
   type EventSink,
+  MAX_EVENTS_PER_POST,
 } from "./event-sink.js";
 import { ServerResponseError } from "./server-client.js";
 
@@ -389,6 +390,59 @@ describe("event sink", () => {
         sink.emit({ threadId: "thr_1", event: systemErrorEvent("thr_1") });
       }
     }).not.toThrow();
+  });
+
+  it("drains a reconnect backlog in bounded posts and keeps it after a failed post", async () => {
+    let sessionOpen = false;
+    const postEvents = acceptingPostEvents();
+    postEvents.mockRejectedValueOnce(new Error("response lost"));
+    const sink = createEventSink({
+      isSessionOpen: () => sessionOpen,
+      logger: createLogger(),
+      postEvents,
+    });
+    const threadIds = ["thr_1", "thr_2", "thr_3"];
+    const backlog = 150_000;
+    const emitted = new Map(
+      threadIds.map((threadId): [string, string[]] => [threadId, []]),
+    );
+    for (let index = 0; index < backlog; index += 1) {
+      const threadId = threadIds[index % threadIds.length] ?? "thr_1";
+      emitted.get(threadId)?.push(String(index));
+      sink.emit({
+        threadId,
+        event: {
+          type: "item/agentMessage/delta",
+          threadId,
+          providerThreadId: "provider-1",
+          scope: turnScope("turn-1"),
+          itemId: "item-1",
+          delta: String(index),
+        },
+      });
+    }
+
+    sessionOpen = true;
+    await expect(sink.flush()).resolves.toBeUndefined();
+    await sink.flush();
+
+    const posts = postEvents.mock.calls.map(([events]) => events);
+    expect(
+      posts.filter((events) => events.length > MAX_EVENTS_PER_POST),
+    ).toEqual([]);
+    const delivered = posts.slice(1).flat();
+    expect(delivered).toHaveLength(backlog);
+    for (const threadId of threadIds) {
+      const deltas = delivered.flatMap((envelope) =>
+        envelope.threadId === threadId &&
+        envelope.event.type === "item/agentMessage/delta"
+          ? [envelope.event.delta]
+          : [],
+      );
+      expect(deltas).toEqual(emitted.get(threadId));
+    }
+    expect(sink.listUndeliveredThreadIds()).toEqual([]);
+    await sink.dispose();
   });
 });
 

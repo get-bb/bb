@@ -7,6 +7,7 @@ import {
   GIT_PATCHES_MAX_KEYS,
   GIT_STATUS_MAX_KEYS,
   GIT_VIEWED_MAX_PATHS,
+  gitDiffRepoSchema,
   gitDiffResultSchema,
   gitFileSideQuerySchema,
   gitFileSideResultSchema,
@@ -104,6 +105,15 @@ export const gitRpcContract = defineRpcContract({
       .strict(),
     output: z.record(z.string(), gitPatchResultSchema),
     keyTags: () => [],
+  },
+  repos: {
+    experimental_description:
+      "Git repositories of an environment: its main folder, extra folders, and repos found inside them. Empty when there are none.",
+    input: environmentInputSchema,
+    output: z
+      .object({ repos: z.array(gitDiffRepoSchema.omit({ error: true })) })
+      .strict(),
+    tags: ({ environmentId }) => [gitFilesTag(environmentId)],
   },
   fileSide: {
     experimental_description:

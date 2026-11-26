@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   CLIENT_NOTIFICATION_CHANNEL,
   CLIENT_NOTIFICATION_DISMISS_CHANNEL,
+  deliveryChannelSchema,
   NOTIFICATION_BODY_MAX_LENGTH,
   NOTIFICATION_TITLE_MAX_LENGTH,
   type ClientNotification,
@@ -24,6 +25,7 @@ import {
   type NotificationLevel,
   type PushNotificationKind,
 } from "./preferences.js";
+import type { Presence } from "./presence.js";
 import type { PushSubscriptionStore } from "./subscriptions.js";
 
 type ThreadResponse = PluginThreadEventPayloads["thread.idle"]["thread"];
@@ -32,6 +34,8 @@ type PendingInteraction =
 
 const EXPO_PUSH_BATCH_SIZE = 100;
 const DEFAULT_COALESCE_MS = 2_000;
+const DEFAULT_HANDOFF_MS = 90_000;
+const DEFAULT_RECEIPT_MS = 5_000;
 const NETWORK_WARNING_INTERVAL_MS = 60 * 60 * 1_000;
 const LAST_OUTCOME_KEY = "last-send-outcome";
 const DELIVERED_THREAD_KEY_PREFIX = "delivered-thread:";
@@ -121,6 +125,23 @@ interface OutgoingNotification {
   thread: { id: string; projectId: string } | null;
 }
 
+interface PreparedNotification {
+  message: Omit<ClientNotification, "channels">;
+  kind: OutgoingNotification["kind"];
+  thread: OutgoingNotification["thread"];
+}
+
+interface ThreadNotification extends PreparedNotification {
+  kind: PushNotificationKind;
+}
+
+interface DeliverySettings {
+  mobileEnabled: boolean;
+  webEnabled: boolean;
+  desktopEnabled: boolean;
+  activeDeviceFirst: boolean;
+}
+
 export interface ExpoAlertPushMessage {
   to: string;
   title: string;
@@ -177,6 +198,7 @@ export interface PushSender {
   onThreadRead(
     payload: PluginThreadEventPayloads["experimental_thread.read"],
   ): void;
+  receive(id: string): void;
   send(
     input: SendNotificationInput,
     caller: ExperimentalPluginRpcCaller,
@@ -194,13 +216,12 @@ export interface CreatePushSenderArgs {
     id: string;
     parentThreadId: string | null;
   }): Promise<NotificationLevel>;
-  getDeliverySettings(): Promise<{
-    mobileEnabled: boolean;
-    webEnabled: boolean;
-    desktopEnabled: boolean;
-  }>;
+  getDeliverySettings(): Promise<DeliverySettings>;
+  presence: Presence;
   fetch?: PushSenderFetch;
   coalesceMs?: number;
+  handoffMs?: number;
+  receiptMs?: number;
   now?: () => number;
 }
 
@@ -252,6 +273,28 @@ function pickKind(
   return null;
 }
 
+function enabledChannels(config: DeliverySettings): DeliveryChannel[] {
+  return deliveryChannelSchema.options.filter(
+    (channel) => config[`${channel}Enabled`],
+  );
+}
+
+function isLive(thread: ThreadResponse): boolean {
+  return (
+    thread.deletedAt === null &&
+    thread.archivedAt === null &&
+    thread.visibility === "visible"
+  );
+}
+
+function needsAttention(thread: ThreadResponse, eventAt: number): boolean {
+  const lastReadAt = thread.lastReadAt ?? 0;
+  return (
+    isLive(thread) &&
+    (lastReadAt < thread.latestAttentionAt || lastReadAt < eventAt)
+  );
+}
+
 function describeCaller(caller: ExperimentalPluginRpcCaller): string {
   return caller.kind === "plugin" ? `plugin ${caller.pluginId}` : "a client";
 }
@@ -269,10 +312,16 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     bb,
     subscriptions,
     coalesceMs = DEFAULT_COALESCE_MS,
+    handoffMs = DEFAULT_HANDOFF_MS,
+    receiptMs = DEFAULT_RECEIPT_MS,
     now = Date.now,
   } = args;
   const fetchImpl = args.fetch ?? undiciFetch;
   const pending = new Map<string, PendingThreadPush>();
+  const generations = new Map<string, number>();
+  const holds = new Map<string, ReturnType<typeof setTimeout>>();
+  const receipts = new Map<string, (received: boolean) => void>();
+  let nextGeneration = 0;
   const inFlight = new Set<Promise<void>>();
   let dispatcher: EnvHttpProxyAgent | null = null;
   let lastNetworkWarningAt = Number.NEGATIVE_INFINITY;
@@ -307,6 +356,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     body: string,
   ): void {
     if (!running) return;
+    release(threadId);
     const eventAt = now();
     const existing = pending.get(threadId);
     if (existing) {
@@ -389,17 +439,7 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     } catch {
       return;
     }
-    if (
-      thread.deletedAt !== null ||
-      thread.archivedAt !== null ||
-      thread.visibility !== "visible"
-    ) {
-      return;
-    }
-    const lastReadAt = thread.lastReadAt ?? 0;
-    if (lastReadAt >= thread.latestAttentionAt && lastReadAt >= entry.eventAt) {
-      return;
-    }
+    if (!needsAttention(thread, entry.eventAt)) return;
     const level = await args.getNotificationLevel(thread);
     const resolved = await resolvePush(
       thread,
@@ -411,33 +451,168 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       resolved.body,
       referencedThreadTitle,
     );
-    await deliver({
-      title: threadDisplayTitle(thread),
-      body: preview || FALLBACK_BODIES[resolved.kind],
-      kind: resolved.kind,
-      thread,
+    await route(
+      thread.id,
+      {
+        ...prepare({
+          title: threadDisplayTitle(thread),
+          body: preview || FALLBACK_BODIES[resolved.kind],
+          kind: resolved.kind,
+          thread,
+        }),
+        kind: resolved.kind,
+      },
+      entry.eventAt,
+    );
+  }
+
+  function prepare(notification: OutgoingNotification): PreparedNotification {
+    return {
+      message: {
+        id: randomUUID(),
+        title: truncate(notification.title, NOTIFICATION_TITLE_MAX_LENGTH),
+        body: truncate(notification.body, NOTIFICATION_BODY_MAX_LENGTH),
+        threadId: notification.thread?.id ?? null,
+      },
+      kind: notification.kind,
+      thread: notification.thread,
+    };
+  }
+
+  function release(threadId: string): void {
+    generations.delete(threadId);
+    clearTimeout(holds.get(threadId));
+    holds.delete(threadId);
+  }
+
+  function isCurrent(threadId: string, generation: number): boolean {
+    return running && generations.get(threadId) === generation;
+  }
+
+  function finish(threadId: string, generation: number): void {
+    if (generations.get(threadId) === generation) generations.delete(threadId);
+  }
+
+  function waitForReceipt(id: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => settleReceipt(false), receiptMs);
+      timer.unref?.();
+      function settleReceipt(received: boolean): void {
+        clearTimeout(timer);
+        receipts.delete(id);
+        resolve(received);
+      }
+      receipts.set(id, settleReceipt);
     });
   }
 
-  async function deliver(
-    notification: OutgoingNotification,
-  ): Promise<DeliveryChannel[]> {
-    const title = truncate(notification.title, NOTIFICATION_TITLE_MAX_LENGTH);
-    const body = truncate(notification.body, NOTIFICATION_BODY_MAX_LENGTH);
+  async function route(
+    threadId: string,
+    notification: ThreadNotification,
+    eventAt: number,
+  ): Promise<void> {
+    release(threadId);
+    const generation = ++nextGeneration;
+    generations.set(threadId, generation);
     const config = await args.getDeliverySettings();
-    const channels: ClientNotification["channels"] = [];
-    if (config.webEnabled) channels.push("web");
-    if (config.desktopEnabled) channels.push("desktop");
+    if (!isCurrent(threadId, generation)) return;
+    const enabled = enabledChannels(config);
+    const active = new Set(
+      config.activeDeviceFirst ? args.presence.activeChannels() : [],
+    );
+    const first = enabled.filter((channel) => active.has(channel));
+    const rest = enabled.filter((channel) => !active.has(channel));
+    if (first.length === 0 || rest.length === 0) {
+      finish(threadId, generation);
+      await deliver(notification, enabled);
+      return;
+    }
+    const startedAt = now();
+    const receipt = first.some((channel) => channel !== "mobile")
+      ? waitForReceipt(notification.message.id)
+      : null;
+    const delivered = await deliver(notification, first);
+    const reached =
+      delivered.includes("mobile") || (receipt !== null && (await receipt));
+    if (!isCurrent(threadId, generation)) return;
+    if (!reached) {
+      await sendHeld(threadId, generation, notification, eventAt, rest);
+      return;
+    }
+    const timer = setTimeout(
+      () => {
+        holds.delete(threadId);
+        track(
+          sendHeld(threadId, generation, notification, eventAt, rest),
+          `Push notification handoff for thread ${threadId}`,
+        );
+      },
+      Math.max(0, handoffMs - (now() - startedAt)),
+    );
+    timer.unref?.();
+    holds.set(threadId, timer);
+  }
+
+  async function unreadSince(
+    threadId: string,
+    eventAt: number,
+  ): Promise<ThreadResponse | null> {
+    const thread = await bb.sdk.threads.get({ threadId }).catch(() => null);
+    return thread !== null &&
+      isLive(thread) &&
+      (thread.lastReadAt ?? 0) < eventAt
+      ? thread
+      : null;
+  }
+
+  async function sendHeld(
+    threadId: string,
+    generation: number,
+    notification: ThreadNotification,
+    eventAt: number,
+    channels: readonly DeliveryChannel[],
+  ): Promise<void> {
+    const thread = await unreadSince(threadId, eventAt);
+    if (!isCurrent(threadId, generation)) return;
+    if (thread === null) {
+      finish(threadId, generation);
+      return;
+    }
+    const [config, level] = await Promise.all([
+      args.getDeliverySettings(),
+      args.getNotificationLevel(thread),
+    ]);
+    if (!isCurrent(threadId, generation)) return;
+    finish(threadId, generation);
+    if (!NOTIFICATION_KINDS_BY_LEVEL[level].has(notification.kind)) return;
+    const enabled = enabledChannels(config);
+    await deliver(
+      notification,
+      channels.filter((channel) => enabled.includes(channel)),
+    );
+    if (running && (await unreadSince(threadId, eventAt)) === null) {
+      await dismissThread(threadId);
+    }
+  }
+
+  async function deliver(
+    notification: PreparedNotification,
+    deliveryChannels: readonly DeliveryChannel[],
+  ): Promise<DeliveryChannel[]> {
+    const { title, body } = notification.message;
+    const channels = deliveryChannels.filter(
+      (channel): channel is ClientNotification["channels"][number] =>
+        channel !== "mobile",
+    );
     if (channels.length > 0) {
       bb.realtime.publish(CLIENT_NOTIFICATION_CHANNEL, {
-        id: randomUUID(),
-        title,
-        body,
-        threadId: notification.thread?.id ?? null,
+        ...notification.message,
         channels,
       } satisfies ClientNotification);
     }
-    const rows = config.mobileEnabled ? await subscriptions.list() : [];
+    const rows = deliveryChannels.includes("mobile")
+      ? await subscriptions.list()
+      : [];
     if (
       notification.thread !== null &&
       (channels.length > 0 || rows.length > 0)
@@ -536,12 +711,17 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       }
       thread = { id: found.id, projectId: found.projectId };
     }
-    const delivery = deliver({
-      title: input.title,
-      body: input.body,
-      kind: SENT_NOTIFICATION_KIND,
-      thread,
-    });
+    const delivery = args.getDeliverySettings().then((config) =>
+      deliver(
+        prepare({
+          title: input.title,
+          body: input.body,
+          kind: SENT_NOTIFICATION_KIND,
+          thread,
+        }),
+        enabledChannels(config),
+      ),
+    );
     const tracked = delivery.then(
       () => undefined,
       () => undefined,
@@ -664,10 +844,14 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
     },
     onThreadRead({ thread }) {
       if (!running) return;
+      release(thread.id);
       track(
         dismissThread(thread.id),
         `Push notification dismissal for thread ${thread.id}`,
       );
+    },
+    receive(id) {
+      receipts.get(id)?.(true);
     },
     send,
     settle,
@@ -684,6 +868,8 @@ export function createPushSender(args: CreatePushSenderArgs): PushSender {
       if (!running) return;
       running = false;
       for (const threadId of [...pending.keys()]) cancel(threadId);
+      for (const threadId of [...generations.keys()]) release(threadId);
+      for (const settleReceipt of [...receipts.values()]) settleReceipt(false);
       await settle();
       const activeDispatcher = dispatcher;
       dispatcher = null;

@@ -65,7 +65,6 @@ import {
 } from "../cache-owners/thread-open-cache-owner";
 
 import { fetchThreadTimeline, type QueryOptions } from "./thread-queries";
-import { hasThreadProvisioningFailure } from "@/lib/thread-provisioning-failure";
 interface ThreadTimelineQueryOptions extends QueryOptions {
   notifyOnChangeProps?: NotifyOnChangeProps;
 }
@@ -339,25 +338,6 @@ export function useThreadTimelineSubscription(
   });
 }
 
-const selectThreadTimelineProvisioningFailure = (
-  timeline: ThreadTimelineResponse,
-) => hasThreadProvisioningFailure(timeline.rows);
-const selectNoThreadTimelineProvisioningFailure = () => false;
-
-export function useThreadTimelineProvisioningFailure(
-  id: string,
-  check: boolean,
-): boolean {
-  const queryClient = useQueryClient();
-  const query = useQuery({
-    ...threadTimelineQueryOptions(queryClient, id, { enabled: false }),
-    select: check
-      ? selectThreadTimelineProvisioningFailure
-      : selectNoThreadTimelineProvisioningFailure,
-  });
-  return query.data ?? false;
-}
-
 export function useThreadConversationOutline(
   id: string,
   role: ThreadConversationOutlineRole,
@@ -455,5 +435,13 @@ export function useThreadTimelineTurnSummaryDetails(
       Boolean(identity.turnId),
     refetchOnMount: options?.refetchOnMount ?? true,
     staleTime: options?.staleTime ?? Infinity,
+    placeholderData: (previous, previousQuery) => {
+      const previousKey = previousQuery?.queryKey;
+      return previousKey?.[1] === identity.threadId &&
+        previousKey[2] === identity.turnId &&
+        previousKey[5] === identity.itemId
+        ? previous
+        : undefined;
+    },
   });
 }

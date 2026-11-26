@@ -179,6 +179,14 @@ function serializeServerMessage(message: ServerChangedMessage): string | null {
   return JSON.stringify(parseResult.data);
 }
 
+function encodeTerminalServerMessage(message: TerminalServerMessage): string {
+  return JSON.stringify(
+    message.type === "output"
+      ? message
+      : terminalServerMessageSchema.parse(message),
+  );
+}
+
 type SessionTimers = Map<string, ReturnType<typeof setTimeout>>;
 
 function cancelTimer(timers: SessionTimers, sessionId: string): void {
@@ -205,7 +213,7 @@ function scheduleTimer(
 }
 
 interface ThreadEventWaiter {
-  resolve: (notified: boolean) => void;
+  resolve: (changes: readonly ThreadChangeKind[] | null) => void;
   timeout: ReturnType<typeof setTimeout>;
 }
 
@@ -534,7 +542,7 @@ export class NotificationHub implements DbNotifier {
   ): void {
     this.sendOrQueueTerminalPayload(
       socket,
-      JSON.stringify(terminalServerMessageSchema.parse(message)),
+      encodeTerminalServerMessage(message),
     );
   }
 
@@ -551,7 +559,7 @@ export class NotificationHub implements DbNotifier {
       return;
     }
 
-    const payload = JSON.stringify(terminalServerMessageSchema.parse(message));
+    const payload = encodeTerminalServerMessage(message);
     for (const socket of [...sockets]) {
       this.sendOrQueueTerminalPayload(socket, payload);
     }
@@ -1075,21 +1083,26 @@ export class NotificationHub implements DbNotifier {
   registerThreadEventWaiter(
     threadId: string,
     timeoutMs: number,
-  ): { promise: Promise<boolean>; cancel: () => void } {
+  ): {
+    promise: Promise<readonly ThreadChangeKind[] | null>;
+    cancel: () => void;
+  } {
     let waiter: ThreadEventWaiter;
-    const promise = new Promise<boolean>((resolve) => {
-      waiter = {
-        resolve: (notified) => resolve(notified),
-        timeout: setTimeout(() => {
-          this.deleteThreadEventWaiter(threadId, waiter);
-          resolve(false);
-        }, timeoutMs),
-      };
-      const waiters =
-        this.threadEventWaiters.get(threadId) ?? new Set<ThreadEventWaiter>();
-      waiters.add(waiter);
-      this.threadEventWaiters.set(threadId, waiters);
-    });
+    const promise = new Promise<readonly ThreadChangeKind[] | null>(
+      (resolve) => {
+        waiter = {
+          resolve,
+          timeout: setTimeout(() => {
+            this.deleteThreadEventWaiter(threadId, waiter);
+            resolve(null);
+          }, timeoutMs),
+        };
+        const waiters =
+          this.threadEventWaiters.get(threadId) ?? new Set<ThreadEventWaiter>();
+        waiters.add(waiter);
+        this.threadEventWaiters.set(threadId, waiters);
+      },
+    );
     const cancel = () => {
       this.deleteThreadEventWaiter(threadId, waiter!);
     };
@@ -1122,7 +1135,7 @@ export class NotificationHub implements DbNotifier {
     if (threadEventWaiters) {
       for (const waiter of threadEventWaiters) {
         clearTimeout(waiter.timeout);
-        waiter.resolve(true);
+        waiter.resolve(changes);
       }
       this.threadEventWaiters.delete(threadId);
     }

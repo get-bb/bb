@@ -19,6 +19,9 @@ function candidate(pluginId: string, hash: string): PluginFrontendCandidate {
       sdkVersion: "0.1.0",
       compatible: true,
       runtimeSlots: [],
+      staticChunkUrls: [],
+      lazyChunkUrls: [],
+      lazyRuntimeSlots: [],
     },
   };
 }
@@ -46,6 +49,7 @@ function deps(
     flushSlotBatch: () => {},
     warn: () => {},
     priorityPluginIds: () => [],
+    restoredLazyParts: () => [],
     whenScreenPainted: () => Promise.resolve(),
   };
 }

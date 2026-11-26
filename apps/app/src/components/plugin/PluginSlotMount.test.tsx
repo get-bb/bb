@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, render, screen } from "@testing-library/react";
+import { lazy, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -50,6 +51,43 @@ describe("PluginSlotMount", () => {
     );
 
     expect(screen.getByText("plugin broken crashed")).toBeDefined();
+    expect(screen.getByText("healthy slot")).toBeDefined();
+  });
+
+  it("suspends only its own slot while a lazy surface chunk loads, and crashes into onCrash when the chunk fails", async () => {
+    let rejectChunk: (error: Error) => void = () => {};
+    const LazySurface = lazy(
+      () =>
+        new Promise<{ default: () => ReactNode }>((_resolve, reject) => {
+          rejectChunk = reject;
+        }),
+    );
+    const onCrash = vi.fn();
+    render(
+      <>
+        <PluginSlotMount
+          pluginId="split"
+          slotKind="threadPanelTab"
+          slotId="diff"
+          onCrash={onCrash}
+        >
+          <LazySurface />
+        </PluginSlotMount>
+        <PluginSlotMount pluginId="fine" slotKind="threadPanelTab" slotId="b">
+          <Healthy />
+        </PluginSlotMount>
+      </>,
+    );
+
+    expect(screen.getByText("healthy slot")).toBeDefined();
+    expect(onCrash).not.toHaveBeenCalled();
+
+    await act(async () => {
+      rejectChunk(new Error("Failed to fetch dynamically imported module"));
+    });
+
+    expect(onCrash).toHaveBeenCalledWith("split");
+    expect(screen.getByText("plugin split crashed")).toBeDefined();
     expect(screen.getByText("healthy slot")).toBeDefined();
   });
 

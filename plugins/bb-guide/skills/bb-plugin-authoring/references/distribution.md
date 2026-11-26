@@ -88,7 +88,9 @@ bb reads the repository's tags, installs the highest release the range allows,
 and `bb plugin update` moves them to later releases in the same range.
 Prereleases stay out unless the range names one. Give each plugin of a
 multi-plugin repository its own tag prefix — `notes/v1.2.3` — and users add
-`--tag-prefix notes/`.
+`--tag-prefix notes/`. For the public marketplace, the prefix is the plugin
+directory's name plus `/` (`notes/` for `plugins/notes`); see
+[Getting listed](#getting-listed-on-the-public-marketplace).
 
 bb records the tag it installed together with the commit that tag pointed at,
 and refuses the plugin if that tag is ever moved to another commit. Publish a
@@ -193,14 +195,103 @@ relative icons read from the repository root, or from the directory named by
 `--subdirectory <relative-path>`. An entry's `source.git.subdir` stays
 relative to the repository root. Prefer git tag ranges over
 pinned refs so a release reaches users without a catalog change. Before
-installing from a marketplace that does not ship with bb, bb resolves and
+installing from any marketplace other than `bb-official`, bb resolves and
 shows the true source — including the exact release tag and commit a range
 lands on — so keep your listed URL, subdirectory, and range honest.
 
 Two marketplaces ship with bb. `bb-official` lists the plugins bundled inside
 the app, which install from that local copy with no network fetch; inclusion
 there is a BB release decision. `bb-community` lists public third-party
-plugins; to list one there, use the `submit-a-plugin` skill.
+plugins that BB does not review; to list one there, see the next section.
+
+### Getting listed on the public marketplace
+
+`bb-community` and https://getbb.app/marketplace list every public plugin that
+opts in. There is no pull request and no review, and every listing says "Not
+reviewed by BB". A crawler finds the plugin, reads its listing from its latest
+release, and refreshes the catalog about every 30 minutes. The
+`publish-a-plugin` skill walks an agent through the whole flow.
+
+Opt in one of two ways:
+
+- **GitHub:** give a public repository (not a fork, not archived) the topic
+  `bb-plugin`, and push a semver release tag. A root plugin uses `vX.Y.Z`.
+  A plugin in a subdirectory uses its directory name as a prefix:
+  `notes/v1.2.3` for `plugins/notes` (the plugin id works too). The `v` is
+  required: bb installs only `v` tags, so a bare `1.2.3` tag is never listed
+  (`no-release-tag`). The crawler
+  reads the plugins `.bb/plugins.json` lists, or the repository root when there
+  is no such file. Prereleases, branches, and the default branch are never
+  listed; every field is read from the highest stable tag.
+- **npm:** include `bb-plugin` in package.json `keywords` and `npm publish`. A
+  deprecated `latest` is not listed. When the package's `repository` is a
+  crawled GitHub repository, the plugin is listed once, from npm.
+
+The listing comes from the plugin's own files:
+
+```json
+{
+  "name": "bb-plugin-notes",
+  "keywords": ["bb-plugin", "notes", "markdown"],
+  "bb": {
+    "name": "Notes",
+    "description": "Keep project notes beside each thread.",
+    "branding": { "icon": "./icon.svg" }
+  },
+  "bbMarketplace": {
+    "category": "thread-content",
+    "secondaryCategories": ["memory-and-context"],
+    "screenshots": ["./screenshots/notes-panel.png"]
+  }
+}
+```
+
+- The id is `derivePluginId(name)`. Ids that start with `bb--`, ids of plugins
+  bundled with BB, and ids another source already holds are refused; rename
+  the package.
+- `bb.name`, `bb.description`, and `bb.branding.icon` become the display name,
+  description, and icon. The icon is a BB icon name or a relative `.svg` of at
+  most 256 KiB.
+- `keywords` become tags: `bb-plugin`, `bb`, and `bb-plugins` are dropped, the
+  rest are lowercased, and only kebab-case words of at most 32 characters are
+  kept, up to 10.
+- `bbMarketplace` is a top-level key that bb ignores when it loads the plugin.
+  Set `category`: it is optional, but a plugin without one is listed
+  uncategorized. An unknown category id is an error, `secondaryCategories`
+  holds at most 3 other categories, and an unknown key is an error.
+  `bb plugin new` scaffolds an empty `bbMarketplace` to fill in.
+- `bbMarketplace.screenshots` holds at most 6 relative paths inside the plugin
+  directory: PNG, JPEG, or WebP files whose extension matches their data, at
+  most 2 MiB and at least 1200 px wide.
+- PLUGIN_OVERVIEW.md beside package.json becomes the overview (see
+  [Store listing text](#store-listing-text)). It is optional, and an invalid
+  one drops only the overview, not the listing.
+- npm: the overview, a file icon, and every screenshot must be in the
+  published tarball, so add them to `files` when package.json has one.
+- The author is the GitHub owner, or for npm the owner of `repository`.
+
+Run the same checks locally before you release:
+
+```sh
+bb plugin publish --check            # this directory
+bb plugin publish --check ./plugins/notes --json
+```
+
+It validates everything above, checks the release tag, the GitHub topic or
+the npm tarball, and the id against the live catalog, then prints the exact
+topic, tag, push, or publish commands. It never pushes, tags, or publishes,
+and it exits 1 when an error would keep the plugin out. The crawler's verdict
+for each source, with the same reason codes (`no-release-tag`,
+`missing-category`, `invalid-screenshot`, `id-claimed`, …), is in
+https://getbb.app/marketplace/index/v1/report.json under
+`github:OWNER/REPO[/SUBDIR]` or `npm:PACKAGE`.
+
+To update a listing, release a new version. Plugins that were added to
+get-bb/marketplace by pull request keep working; their authors update them the
+same way, by self-publishing from the same source or a repository of the same
+GitHub owner. The self-published listing then replaces the old entry; the old
+category, icon, screenshots, and overview carry over only where the release has
+none.
 
 ### Store listing text
 
@@ -211,9 +302,9 @@ State the outcome the user gets.
 
 `PLUGIN_OVERVIEW.md` beside package.json holds the long-form description. The
 detail page shows it in an Overview section under the lead paragraph, in the
-app and on the public getbb.app marketplace. `bb plugin new` scaffolds one, the
-BB Community marketplace requires one, and a plugin that is only installed from
-a local path or a private source still reads better with one.
+app and on the public getbb.app marketplace. `bb plugin new` scaffolds one,
+the public marketplace reads it from your release, and a plugin that is only
+installed from a local path or a private source still reads better with one.
 
 The file is the same claim as `bb.description` at length: the same outcome, the
 same surfaces, no capability the short text does not imply. Treat the two as
@@ -221,12 +312,13 @@ one text in two lengths. Whenever you change `bb.description`, or add or remove
 a surface, update this file in the same change so the lead paragraph and the
 Overview section never disagree.
 
-The `submit-a-plugin` skill copies the file into the marketplace repository as
-`overview/<plugin-id>.md` and references it from the entry with
-`"overview": "./overview/<plugin-id>.md"`. A bundled BB plugin uses the same
-file, and the bb-official generator folds it into the built catalog.
+The marketplace crawler reads the file at your release tag (or from the npm
+tarball) and publishes it as the listing's overview. A bundled BB plugin uses
+the same file, and the bb-official generator folds it into the built catalog.
 
-Follow these rules. Marketplace CI rejects a file that breaks one.
+Follow these rules. `bb plugin publish --check` reports a file that breaks
+one (`invalid-overview`), and the crawler then publishes the listing without
+the overview.
 
 - UTF-8 text with a maximum of 4000 characters. Aim for 700 to 1800.
 - Headings, paragraphs, emphasis, strong text, strikethrough, inline code,

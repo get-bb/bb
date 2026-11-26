@@ -5,6 +5,9 @@ import {
   recoverEnvironmentCleanup,
   requestEnvironmentRemoval,
 } from "../services/environments/environment-engine.js";
+import { resolveEnvironmentRepos } from "../services/environments/environment-repos.js";
+import { searchWorkspaceFolderPaths } from "../services/projects/workspace-path-search.js";
+import { listEnvironmentExtraFolderPaths } from "../services/environments/environment-workspace-folders.js";
 import { parsePaginationQuery } from "../services/lib/validation.js";
 import { createEnvironmentBeforeThread } from "../services/environments/environment-creation.js";
 import {
@@ -12,10 +15,7 @@ import {
   listEnvironments,
   updateEnvironmentMetadata,
 } from "@bb/db";
-import {
-  environmentStatusValues,
-  type EnvironmentStatus,
-} from "@bb/domain";
+import { environmentStatusValues, type EnvironmentStatus } from "@bb/domain";
 import {
   publicApiRoutes,
   typedRoutes,
@@ -42,22 +42,13 @@ import {
   requireEnvironment,
   requireReadyEnvironment,
 } from "../services/lib/entity-lookup.js";
-import {
-  ensureHostSessionReadyForWork,
-} from "../services/hosts/host-lifecycle.js";
+import { ensureHostSessionReadyForWork } from "../services/hosts/host-lifecycle.js";
 import { runLiveCommandAndWait } from "../services/hosts/live-command-wait.js";
-import { callHostRetryableOnlineRpc } from "../services/hosts/online-rpc.js";
 import { generateCommitMessage } from "../services/ai/commit-message.js";
 import { archiveEnvironmentThreads } from "../services/threads/thread-archive.js";
 import { parseFileListLimit } from "./file-list-query.js";
 import { parsePathKindInclusion } from "./path-list-inclusion.js";
-import {
-  DEFAULT_PATH_LIST_EXCLUDE_NAMES,
-  WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
-} from "./path-list-policy.js";
-import {
-  requireWorkspaceCommandTarget,
-} from "../services/environments/workspace-command-target.js";
+import { requireWorkspaceCommandTarget } from "../services/environments/workspace-command-target.js";
 
 const LISTED_ENVIRONMENT_STATUSES: readonly EnvironmentStatus[] =
   environmentStatusValues.filter((status) => status !== "destroyed");
@@ -219,44 +210,41 @@ export function registerEnvironmentRoutes(
     });
   });
 
+  get(routes.repos, async (context) => {
+    const environment = requireReadyEnvironment(
+      deps.db,
+      context.req.param("id"),
+    );
+    return context.json(await resolveEnvironmentRepos(deps, environment));
+  });
+
   get(routes.paths, async (context, query) => {
     const environment = requireReadyEnvironment(
       deps.db,
       context.req.param("id"),
     );
-    const limit = parseFileListLimit(query.limit);
     const inclusion = parsePathKindInclusion({
       includeFiles: query.includeFiles,
       includeDirectories: query.includeDirectories,
     });
-
-    try {
-      const result = await callHostRetryableOnlineRpc(deps, {
+    return context.json(
+      await searchWorkspaceFolderPaths(deps, {
+        folders: query.folders ?? "all",
+        extraFolders: listEnvironmentExtraFolderPaths(deps.db, {
+          additionalPaths: environment.additionalPaths,
+          hostId: environment.hostId,
+          mainPath: environment.path,
+          projectId: environment.projectId,
+        }),
         hostId: environment.hostId,
+        includeDirectories: inclusion.includeDirectories,
+        includeFiles: inclusion.includeFiles,
+        limit: parseFileListLimit(query.limit),
+        mainPath: environment.path,
+        query: query.query,
         signal: context.req.raw.signal,
-        timeoutMs: COMMAND_TIMEOUT_MS,
-        command: {
-          type: "host.list_paths",
-          path: environment.path,
-          ...(query.query ? { query: query.query } : {}),
-          limit,
-          includeFiles: inclusion.includeFiles,
-          includeDirectories: inclusion.includeDirectories,
-          includeHidden: WORKSPACE_PATH_LIST_INCLUDE_HIDDEN,
-          respectGitIgnore: true,
-          excludeNames: [...DEFAULT_PATH_LIST_EXCLUDE_NAMES],
-        },
-      });
-      return context.json({
-        paths: result.paths,
-        truncated: result.truncated,
-      });
-    } catch (error) {
-      if (error instanceof ApiError && error.body.code === "ENOENT") {
-        return context.json({ paths: [], truncated: false });
-      }
-      throw error;
-    }
+      }),
+    );
   });
 
   post(routes.actions, async (context) => {
@@ -277,11 +265,7 @@ export function registerEnvironmentRoutes(
         maxFileListBytes: AI_MAX_FILE_LIST_BYTES,
       });
     if (!workspaceStatus.workingTree.hasUncommittedChanges) {
-      throw new ApiError(
-        409,
-        "no_changes",
-        "No uncommitted changes to commit",
-      );
+      throw new ApiError(409, "no_changes", "No uncommitted changes to commit");
     }
 
     const aiMessage = await generateCommitMessage(deps, {
