@@ -54,7 +54,7 @@ import {
   selectedLabelIds,
   STATUS_LABELS,
   taskMatches,
-  visibleTaskCount,
+  listTaskCount,
   type TaskMatchCriteria,
 } from "./lib.js";
 import { KeyColumnScope, TaskRow } from "./row.js";
@@ -244,7 +244,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     () =>
       displayTasks === undefined
         ? undefined
-        : visibleTaskCount(displayTasks, matchCriteria, visibleChildren),
+        : listTaskCount(displayTasks, matchCriteria, visibleChildren),
     [displayTasks, matchCriteria, visibleChildren],
   );
   const widestKeys = useMemo(

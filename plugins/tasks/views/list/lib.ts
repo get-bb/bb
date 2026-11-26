@@ -174,21 +174,25 @@ export interface TaskMatchCriteria {
   activeIds: ReadonlySet<string> | null;
 }
 
+function isFiltering(criteria: TaskMatchCriteria): boolean {
+  return (
+    criteria.search.trim() !== "" ||
+    criteria.statuses.length > 0 ||
+    criteria.priorities.length > 0 ||
+    criteria.labelIds !== null ||
+    criteria.activeIds !== null
+  );
+}
+
 export function parentIsOpen(
   parentId: string,
   expanded: readonly string[],
   criteria: TaskMatchCriteria,
   visibleChildren: ReadonlyMap<string, readonly Task[]>,
 ): boolean {
-  const filtering =
-    criteria.search.trim() !== "" ||
-    criteria.statuses.length > 0 ||
-    criteria.priorities.length > 0 ||
-    criteria.labelIds !== null ||
-    criteria.activeIds !== null;
   return (
     expanded.includes(parentId) ||
-    (filtering && (visibleChildren.get(parentId)?.length ?? 0) > 0)
+    (isFiltering(criteria) && (visibleChildren.get(parentId)?.length ?? 0) > 0)
   );
 }
 
@@ -264,11 +268,12 @@ export function childrenForList(
   return { visible, totals };
 }
 
-export function visibleTaskCount(
+export function listTaskCount(
   rows: readonly Task[],
   criteria: TaskMatchCriteria,
   visibleChildren: ReadonlyMap<string, readonly Task[]>,
 ): number {
+  if (!isFiltering(criteria)) return rows.length;
   let count = 0;
   for (const task of rows) {
     if (taskMatches(task, criteria)) count += 1;

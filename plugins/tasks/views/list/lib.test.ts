@@ -14,7 +14,7 @@ import {
   partitionLabels,
   selectedLabelIds,
   taskMatches,
-  visibleTaskCount,
+  listTaskCount,
   visibleChildrenByParent,
   type TaskMatchCriteria,
 } from "./lib.js";
@@ -379,9 +379,14 @@ describe("visible task tree", () => {
   });
 });
 
-describe("visibleTaskCount", () => {
+describe("listTaskCount", () => {
   it.each<[string, TaskMatchCriteria, number]>([
-    ["counts parents and sub-tasks together", criteria(), 5],
+    ["counts only top-level tasks without a search or filter", criteria(), 2],
+    [
+      "counts matching parents and sub-tasks under a filter",
+      criteria({ statuses: ["todo", "done"] }),
+      3,
+    ],
     [
       "counts only matches while searching, not the muted parent",
       criteria({ search: "palette" }),
@@ -394,7 +399,7 @@ describe("visibleTaskCount", () => {
       "manual",
     );
     const display = displayRows([demoParent, demoOther], criteria, visible);
-    expect(visibleTaskCount(display, criteria, visible)).toBe(expected);
+    expect(listTaskCount(display, criteria, visible)).toBe(expected);
   });
 });
 
@@ -437,6 +442,6 @@ describe("active view rows", () => {
       false,
       true,
     ]);
-    expect(visibleTaskCount(rows, active, visible)).toBe(2);
+    expect(listTaskCount(rows, active, visible)).toBe(2);
   });
 });
