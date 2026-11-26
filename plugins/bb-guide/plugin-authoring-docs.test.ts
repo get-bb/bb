@@ -4,16 +4,15 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import ts from "typescript";
 
-const REPO_ROOT = fileURLToPath(new URL("../../../../../", import.meta.url));
-
-const SKILL_ROOT = join(
-  REPO_ROOT,
-  "plugins/bb-guide/skills/bb-plugin-authoring/",
+const SKILL_ROOT = fileURLToPath(
+  new URL("./skills/bb-plugin-authoring/", import.meta.url),
 );
 
-const SDK_DECLARATIONS = join(
-  REPO_ROOT,
-  "packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts",
+const SDK_DECLARATIONS = fileURLToPath(
+  new URL(
+    "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts",
+    import.meta.url,
+  ),
 );
 
 const COMPILER_OPTIONS: ts.CompilerOptions = {

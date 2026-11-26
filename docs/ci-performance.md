@@ -214,7 +214,7 @@ composition, install filters, and concurrency rules. The thirteen shards distrib
 Vitest workers each and keep process-heavy packages in separate groups. Windows setup takes
 roughly twice as long as Linux, and test files run about half as fast.
 
-Windows server and other-package shards build SDK declarations
+Windows other-package shards build SDK declarations
 (`@get-bb/plugin-sdk#build:types`) as a prerequisite. The shared declaration
 emitter in `packages/plugin-sdk/scripts/shared-declaration-emit.mjs` resolves
 TypeScript's forward-slash filenames and the workspace prefix to the same form
