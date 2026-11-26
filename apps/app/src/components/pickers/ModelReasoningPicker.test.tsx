@@ -984,28 +984,57 @@ describe("ModelReasoningPicker", () => {
     ).not.toContain("max-h-");
   });
 
-  it("commits a provider tab immediately and keeps its models selectable", async () => {
-    const { onSelectedProviderChange, onModelChange } = renderPicker();
+  it.each([false, true])(
+    "names the active provider and exposes selection while switching (compact=%s)",
+    async (compact) => {
+      const { onSelectedProviderChange, onModelChange } = renderPicker({
+        compact,
+        pickerProviderOptions: providerOptions.map((provider) => ({
+          ...provider,
+          icon: () => <svg aria-hidden="true" />,
+        })),
+      });
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Provider, model and reasoning",
-      }),
-    );
-    expect(screen.getAllByText("5.5")).toHaveLength(2);
+      fireEvent.click(
+        screen.getByRole("button", {
+          name: "Provider, model and reasoning",
+        }),
+      );
+      expect(
+        await screen.findByRole("heading", { name: "Codex" }),
+      ).not.toBeNull();
+      expect(screen.getAllByText("5.5")).toHaveLength(2);
+      expect(
+        screen.getByRole("button", { name: "Codex", pressed: true }),
+      ).not.toBeNull();
+      const alternateProvider = screen.getByRole("button", {
+        name: "Claude Code",
+        pressed: false,
+      });
 
-    fireEvent.click(screen.getByTitle("Claude Code"));
+      fireEvent.click(alternateProvider);
 
-    expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
-    expect(await screen.findByText("Opus 4.7")).not.toBeNull();
-    expect(screen.getAllByText("5.5")).toHaveLength(1);
-    expect(onModelChange).not.toHaveBeenCalled();
+      expect(onSelectedProviderChange).toHaveBeenCalledWith("claude-code");
+      expect(await screen.findByText("Opus 4.7")).not.toBeNull();
+      expect(
+        screen.getByRole("heading", { name: "Claude Code" }),
+      ).not.toBeNull();
+      expect(screen.queryByRole("heading", { name: "Codex" })).toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Codex", pressed: false }),
+      ).not.toBeNull();
+      expect(
+        screen.getByRole("button", { name: "Claude Code", pressed: true }),
+      ).toBe(alternateProvider);
+      expect(screen.getAllByText("5.5")).toHaveLength(1);
+      expect(onModelChange).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByText("Opus 4.7"));
+      fireEvent.click(screen.getByText("Opus 4.7"));
 
-    expect(onSelectedProviderChange).toHaveBeenCalledTimes(1);
-    expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
-  });
+      expect(onSelectedProviderChange).toHaveBeenCalledTimes(1);
+      expect(onModelChange).toHaveBeenCalledWith("claude-opus-4-7");
+    },
+  );
 
   it("discards provider browsing on Escape without starting a handoff", async () => {
     const onStart = vi.fn();
