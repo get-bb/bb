@@ -31,6 +31,7 @@ export interface BuildSessionOptionsArgs {
   disable1MContext: boolean;
   artifactsEnabled: boolean;
   sandboxEnabled: boolean;
+  codeMode: boolean;
   memoryEnabled?: boolean;
 }
 
@@ -57,6 +58,7 @@ const SUMMARIZED_ADAPTIVE_THINKING = {
   display: "summarized",
 } satisfies Exclude<Options["thinking"], undefined>;
 const CLAUDE_CODE_EXECUTABLE_ENV = "BB_CLAUDE_CODE_EXECUTABLE";
+const CLAUDE_CODE_MODE_ENV = "CLAUDE_CODE_EXPERIMENTAL_CODE_MODE";
 
 export function toSdkEffort(
   reasoningLevel: ReasoningLevel,
@@ -85,6 +87,7 @@ function buildFlagSettings(params: BuildSessionOptionsArgs): Settings {
     enableWorkflows: params.workflowsEnabled,
     ultracode: params.reasoningLevel === "ultracode",
     fastMode: params.serviceTier === "fast",
+    ...(params.codeMode ? { env: { [CLAUDE_CODE_MODE_ENV]: "1" } } : {}),
   };
 }
 

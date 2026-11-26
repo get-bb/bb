@@ -42,6 +42,30 @@ with `bb plugin config provider-claude-code set <key> <value>`.
   bb runs Claude Code's Bash commands in its sandbox. Set it to `false` to use
   Claude Code's own command approvals and sandbox settings instead. A change
   restarts the thread's Claude process before its next turn, preserving context.
+- `codeModeEnabled` defaults to `false`. Enable with
+  `bb plugin config provider-claude-code set codeModeEnabled true` to start new
+  threads in Claude Code's experimental Code Mode, where Claude writes
+  JavaScript that makes several tool calls in one step. Agent SDK sessions read
+  `CLAUDE_CODE_EXPERIMENTAL_CODE_MODE` only from the `env` block of the SDK
+  `settings`, so setting it in the shell or `~/.claude/settings.json` is not
+  enough; bb puts it there. A `0` in the shell or `~/.claude/settings.json`
+  still turns it off. It needs Claude Code 2.1.323 or later, an Opus 5.5,
+  Sonnet 5.5, Haiku 5.5 or Fable 5.2 model, and the Anthropic API (not Bedrock,
+  Vertex, Foundry, a gateway or `ANTHROPIC_AUTH_TOKEN`); otherwise Claude Code
+  starts with the ordinary tools and posts a notice saying why.
+  - The setting applies to new threads. A resumed thread keeps the mode it
+    started in: bb reads the `repl-mode` entry at the top of the session
+    transcript and passes the flag again, because Claude Code refuses to resume
+    a Code Mode session without it. Turning the setting off therefore leaves
+    existing Code Mode threads resumable.
+  - Forks continue without Code Mode, because Claude Code's fork drops the
+    transcript entry.
+  - Keep Code Mode threads on a supported model: Claude Code refuses to resume
+    one on an older model.
+  - Calls made from code appear in the timeline as ordinary tool calls, and
+    bb's approvals and hooks apply to each of them. The code itself is not
+    shown. bb's sandbox covers only shell commands run from the code.
+  - Claude in Chrome is unavailable in Code Mode sessions.
 - `fullAccessApprovalsEnabled` defaults to `false`, so Full Access approves
   every request Claude Code sends, and unattended threads never wait. Set it to
   `true` to show Claude Code's own prompts in Full Access: `permissions.ask`

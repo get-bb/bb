@@ -78,6 +78,7 @@ export type ClaudeSessionExecutionOptions = RuntimePermissionPolicy & {
   disable1MContext: boolean;
   artifactsEnabled: boolean;
   sandboxEnabled: boolean;
+  codeModeEnabled: boolean;
   fullAccessApprovalsEnabled: boolean;
   commandDescriptionsEnabled: boolean;
   memoryEnabled?: boolean | undefined;
@@ -142,6 +143,7 @@ function buildInternalSessionParams(
     disable1MContext: args.options.disable1MContext,
     artifactsEnabled: args.options.artifactsEnabled,
     sandboxEnabled: args.options.sandboxEnabled,
+    codeModeEnabled: args.options.codeModeEnabled,
     fullAccessApprovalsEnabled: args.options.fullAccessApprovalsEnabled,
     commandDescriptionsEnabled: args.options.commandDescriptionsEnabled,
     memoryEnabled: args.options.memoryEnabled,
@@ -158,6 +160,7 @@ const claudeProviderOptionsSchema = z
     disable1MContext: z.boolean().optional(),
     artifactsEnabled: z.boolean().optional(),
     sandboxEnabled: z.boolean().optional(),
+    codeModeEnabled: z.boolean().optional(),
     fullAccessApprovalsEnabled: z.boolean().optional(),
     commandDescriptionsEnabled: z.boolean().optional(),
     memoryEnabled: z.boolean().optional(),
@@ -207,6 +210,7 @@ export function buildClaudeSessionParams(
       disable1MContext: providerOptions.disable1MContext ?? false,
       artifactsEnabled: providerOptions.artifactsEnabled ?? false,
       sandboxEnabled: providerOptions.sandboxEnabled ?? true,
+      codeModeEnabled: providerOptions.codeModeEnabled ?? false,
       fullAccessApprovalsEnabled:
         providerOptions.fullAccessApprovalsEnabled ?? false,
       commandDescriptionsEnabled:

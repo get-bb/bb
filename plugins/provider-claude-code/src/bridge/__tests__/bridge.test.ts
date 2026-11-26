@@ -1413,12 +1413,154 @@ describe("bridge", () => {
     }
   });
 
+  describe("Code Mode", () => {
+    const CODE_MODE_ENV = { CLAUDE_CODE_EXPERIMENTAL_CODE_MODE: "1" };
+
+    function writeTranscript(args: {
+      configDir: string;
+      sessionId: string;
+      entries: Record<string, JsonValue>[];
+    }): void {
+      const projectDir = join(args.configDir, "projects", "-tmp-worktree");
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(
+        join(projectDir, `${args.sessionId}.jsonl`),
+        args.entries.map((entry) => JSON.stringify(entry)).join("\n") + "\n",
+      );
+    }
+
+    function userEntry(sessionId: string): Record<string, JsonValue> {
+      return {
+        type: "user",
+        uuid: randomUUID(),
+        parentUuid: null,
+        sessionId,
+        message: { role: "user", content: "hello" },
+      };
+    }
+
+    function lastQuerySettings(): unknown {
+      const call = queryMock.mock.lastCall?.[0] as
+        | { options?: { settings?: unknown } }
+        | undefined;
+      return call?.options?.settings;
+    }
+
+    it.each([
+      { codeModeEnabled: true, expected: CODE_MODE_ENV },
+      { codeModeEnabled: false, expected: undefined },
+    ])(
+      "starts a new thread with settings.env $expected when codeModeEnabled=$codeModeEnabled",
+      async ({ codeModeEnabled, expected }) => {
+        const bridge = createBridgeJsonRpcTestHarness(handleLine);
+        const queries: ControlledClaudeQuery[] = [];
+        queryMock.mockImplementation(() => {
+          const query = createControlledClaudeQuery();
+          queries.push(query);
+          return query;
+        });
+
+        try {
+          bridge.sendRequest(1, "thread/start", {
+            cwd: "/tmp/worktree",
+            instructionMode: "append",
+            options: canonicalOptions({ providerOptions: { codeModeEnabled } }),
+            threadId: "code-mode-start",
+          });
+          await bridge.waitForResponse(1);
+
+          expect(lastQuerySettings()).toEqual(
+            expected === undefined
+              ? expect.not.objectContaining({ env: expect.anything() })
+              : expect.objectContaining({ env: expected }),
+          );
+        } finally {
+          await stopBridgeThread({
+            bridge,
+            queries,
+            threadId: "code-mode-start",
+          });
+          bridge.restore();
+        }
+      },
+    );
+
+    it.each([
+      {
+        name: "keeps Code Mode for a session started in it after the setting is turned off",
+        marker: true,
+        codeModeEnabled: false,
+        expected: CODE_MODE_ENV,
+      },
+      {
+        name: "resumes a session started without Code Mode without it while the setting is on",
+        marker: false,
+        codeModeEnabled: true,
+        expected: undefined,
+      },
+    ])("$name", async ({ marker, codeModeEnabled, expected }) => {
+      const configDir = mkdtempSync(join(tmpdir(), "bb-claude-code-mode-"));
+      tempDirs.push(configDir);
+      const sessionId = randomUUID();
+      writeTranscript({
+        configDir,
+        sessionId,
+        entries: [
+          ...(marker ? [{ type: "repl-mode", replMode: true, sessionId }] : []),
+          { type: "session-owner", sessionId },
+          userEntry(sessionId),
+        ],
+      });
+      const bridge = createBridgeJsonRpcTestHarness(handleLine);
+      const queries: ControlledClaudeQuery[] = [];
+      queryMock.mockImplementation(() => {
+        const query = createControlledClaudeQuery();
+        queries.push(query);
+        return query;
+      });
+
+      try {
+        bridge.sendRequest(1, "thread/resume", {
+          cwd: "/tmp/worktree",
+          instructionMode: "append",
+          options: {
+            ...canonicalOptions({ providerOptions: { codeModeEnabled } }),
+            envVars: { CLAUDE_CONFIG_DIR: configDir },
+          },
+          providerThreadId: sessionId,
+          threadId: "code-mode-resume",
+        });
+        const response = await bridge.waitForResponse(1);
+        expect(response.error).toBeUndefined();
+
+        expect(queryMock).toHaveBeenLastCalledWith(
+          expect.objectContaining({
+            options: expect.objectContaining({ resume: sessionId }),
+          }),
+        );
+        expect(lastQuerySettings()).toEqual(
+          expected === undefined
+            ? expect.not.objectContaining({ env: expect.anything() })
+            : expect.objectContaining({ env: expected }),
+        );
+      } finally {
+        await stopBridgeThread({
+          bridge,
+          queries,
+          threadId: "code-mode-resume",
+        });
+        bridge.restore();
+      }
+    });
+  });
+
   it("keeps manager sessions on a plain string system prompt", () => {
     const options = buildSessionOptions(
       {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1440,6 +1582,7 @@ describe("bridge", () => {
     { artifactsEnabled: false, inherited: {}, expected: undefined },
     {
       artifactsEnabled: false,
+      codeMode: false,
       inherited: { CLAUDE_CODE_ARTIFACT: "1" },
       expected: "1",
     },
@@ -1451,6 +1594,7 @@ describe("bridge", () => {
           chromeEnabled: false,
           disable1MContext: false,
           artifactsEnabled,
+          codeMode: false,
           sandboxEnabled: true,
           serviceTier: "default",
           workflowsEnabled: false,
@@ -1473,6 +1617,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
@@ -1501,6 +1646,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         baseInstructions: "You are a coder.",
@@ -1529,6 +1675,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         workflowsEnabled: false,
         serviceTier: "fast",
@@ -1550,6 +1697,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1577,6 +1725,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1603,6 +1752,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1639,6 +1789,7 @@ describe("bridge", () => {
           chromeEnabled: false,
           disable1MContext: false,
           artifactsEnabled: false,
+          codeMode: false,
           sandboxEnabled: true,
           workflowsEnabled: false,
           cwd: "/tmp/worktree",
@@ -1669,6 +1820,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1698,6 +1850,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1720,6 +1873,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1749,6 +1903,7 @@ describe("bridge", () => {
           chromeEnabled: false,
           disable1MContext: false,
           artifactsEnabled: false,
+          codeMode: false,
           sandboxEnabled: true,
           serviceTier: "default",
           workflowsEnabled: false,
@@ -1772,6 +1927,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1788,6 +1944,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1824,6 +1981,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: true,
         serviceTier: "default",
         workflowsEnabled: false,
@@ -1849,6 +2007,7 @@ describe("bridge", () => {
         chromeEnabled: false,
         disable1MContext: false,
         artifactsEnabled: false,
+        codeMode: false,
         sandboxEnabled: false,
         serviceTier: "default",
         workflowsEnabled: false,
