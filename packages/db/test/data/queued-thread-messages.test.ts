@@ -7,6 +7,7 @@ import {
   claimQueuedThreadMessageGroup,
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessage,
+  QueuedMessageThreadUnavailableError,
   deleteClaimedQueuedThreadMessageBatchInTransaction,
   deleteQueuedThreadMessage,
   getQueuedThreadMessage,
@@ -24,7 +25,11 @@ import {
   updateQueuedThreadMessage,
 } from "../../src/data/queued-thread-messages.js";
 import { createProject } from "../../src/data/projects.js";
-import { createThread } from "../../src/data/threads.js";
+import {
+  archiveThread,
+  createThread,
+  deleteThread,
+} from "../../src/data/threads.js";
 import { upsertHost } from "../../src/data/hosts.js";
 import { createMigratedConnection } from "../../src/testing.js";
 
@@ -78,6 +83,45 @@ function setup() {
 }
 
 describe("queued thread messages", () => {
+  it.each([
+    ["archived", archiveThread],
+    ["deleted", deleteThread],
+  ] as const)(
+    "refuses to queue onto a thread that is %s and leaves no row",
+    (reason, retire) => {
+      const { db, thread } = setup();
+      retire(db, noopNotifier, thread.id);
+      const notifyThread = vi.fn();
+
+      expect(() =>
+        createQueuedThreadMessage(
+          db,
+          { ...noopNotifier, notifyThread },
+          {
+            threadId: thread.id,
+            content: defaultInput,
+            model: "gpt-5",
+            reasoningLevel: "medium",
+            permissionMode: "full",
+            serviceTier: "default",
+            waitingOn: null,
+            sendAt: null,
+            payload: { kind: "inline" },
+            systemNotice: null,
+          },
+        ),
+      ).toThrow(
+        expect.objectContaining({
+          name: QueuedMessageThreadUnavailableError.name,
+          threadId: thread.id,
+          reason,
+        }),
+      );
+      expect(listQueuedThreadMessages(db, thread.id)).toEqual([]);
+      expect(notifyThread).not.toHaveBeenCalled();
+    },
+  );
+
   it("lists an idle thread waiting for its turn to start", () => {
     const { db, project } = setup();
     const thread = createThread(db, noopNotifier, {
@@ -1008,8 +1052,8 @@ describe("queued thread messages", () => {
       tail.id,
     ]);
     requeueClaimedQueuedThreadMessages(db, noopNotifier, {
-            compactFirstDone: false,
-claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+      compactFirstDone: false,
+      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,
@@ -1090,8 +1134,8 @@ claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
       () => true,
     );
     requeueClaimedQueuedThreadMessages(db, noopNotifier, {
-            compactFirstDone: false,
-claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
+      compactFirstDone: false,
+      claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
       threadId: thread.id,
       waitingOn: { kind: "plugin", pluginId: "limits", reason: "At capacity" },
       sendAt: null,
@@ -2020,7 +2064,8 @@ claims: claimed!.map(({ id, claimToken }) => ({ id, claimToken })),
           content: null,
           execution: opus,
           reschedule: null,
-          expectedUpdatedAt: getQueuedThreadMessage(db, row.id)?.updatedAt ?? -1,
+          expectedUpdatedAt:
+            getQueuedThreadMessage(db, row.id)?.updatedAt ?? -1,
           id: row.id,
           threadId: thread.id,
         });

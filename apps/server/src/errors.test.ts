@@ -1,8 +1,9 @@
+import { QueuedMessageThreadUnavailableError } from "@bb/db";
 import { Hono } from "hono";
 import { describe, expect, it, vi } from "vitest";
 import { ApiError, createServerErrorHandler } from "./errors.js";
 
-function createApp(error: ApiError) {
+function createApp(error: Error) {
   const logger = {
     debug: vi.fn(),
     error: vi.fn(),
@@ -18,6 +19,22 @@ function createApp(error: ApiError) {
 }
 
 describe("createServerErrorHandler", () => {
+  it.each(["archived", "deleted"] as const)(
+    "returns a conflict when queue insertion rejects a %s thread",
+    async (reason) => {
+      const error = new QueuedMessageThreadUnavailableError("thread-1", reason);
+      const { app, logger } = createApp(error);
+      const response = await app.request("/api/v1/threads/thread-1/messages", {
+        method: "POST",
+      });
+      expect(response.status).toBe(409);
+      expect(await response.json()).toEqual({
+        code: "thread_not_writable",
+        message: error.message,
+      });
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
   it("logs deliberate 5xx API errors with the failing request", async () => {
     const error = new ApiError(500, "internal_error", "Thread changed twice");
     const { app, logger } = createApp(error);

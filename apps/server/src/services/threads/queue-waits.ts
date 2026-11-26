@@ -2,6 +2,7 @@ import {
   moveQueuedThreadMessageToFrontInTransaction,
   clearQueuedThreadMessageWaitingOn,
   createQueuedThreadMessageInTransaction,
+  QueuedMessageThreadUnavailableError,
   requeueClaimedQueuedThreadMessages,
   type ClaimedQueuedThreadMessageRow,
   type DbConnection,
@@ -116,7 +117,7 @@ export interface RecordQueuedMessageWaitArgs {
  * Returns the row the wait now sits on, or null when a re-queue lost its row
  * (deleted under the drain), which the caller treats as "nothing to do".
  */
-export function recordQueuedMessageWait(
+function recordQueuedMessageWaitInternal(
   deps: QueueWaitDeps,
   args: RecordQueuedMessageWaitArgs,
 ): ThreadQueuedMessage | null {
@@ -204,4 +205,18 @@ export function clearQueuedMessageWait(
     id: args.queuedMessageId,
     threadId: args.threadId,
   });
+}
+
+export function recordQueuedMessageWait(
+  deps: QueueWaitDeps,
+  args: RecordQueuedMessageWaitArgs,
+): ThreadQueuedMessage | null {
+  try {
+    return recordQueuedMessageWaitInternal(deps, args);
+  } catch (error) {
+    if (error instanceof QueuedMessageThreadUnavailableError) {
+      throw new ApiError(409, "thread_not_writable", error.message);
+    }
+    throw error;
+  }
 }
