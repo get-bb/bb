@@ -13,6 +13,7 @@ import { frontendPriorityPluginIds } from "../lib/plugin-surface-providers";
 import { holdSplitPreloads } from "../lib/split-prefetch";
 import { whenScreenPainted } from "../lib/screen-paint";
 import { getPluginPanelRoutePluginId } from "../lib/route-paths";
+import { namesPlugin, restoredPageLazyParts } from "../lib/restored-lazy-parts";
 import { useSystemConfig } from "./queries/system-queries";
 import { pluginListQueryOptions } from "./queries/plugin-settings-queries";
 import { appQueryClient } from "../lib/app-query-client";
@@ -23,28 +24,13 @@ import { warmPluginRuntimeGroups } from "../lib/plugin-runtime-groups";
 export const PLUGIN_FRONTEND_SETTLE_FLOOR_MS = 15_000;
 const PRIORITY_PRELOAD_HOLD_MAX_MS = 10_000;
 
-function loadRestoredPartNames(
-  pathname: string,
-): Promise<(pluginId: string) => boolean> {
-  return import("../lib/restored-lazy-parts")
-    .then((module) => {
-      const parts = module.restoredLazyParts(
-        pathname,
-        module.readStoredPanelTabs,
-      );
-      return (pluginId: string) =>
-        parts.some((part) => module.namesPlugin(part, pluginId));
-    })
-    .catch(() => () => false);
-}
-
 export function usePluginFrontendBoot(): void {
   const systemConfig = useSystemConfig();
   const resolved = systemConfig.data !== undefined;
   useEffect(() => {
     const pathname = window.location.pathname;
     const priorityPluginIds = frontendPriorityPluginIds(pathname);
-    const restoredPartNames = loadRestoredPartNames(pathname);
+    const pageParts = restoredPageLazyParts(pathname);
     let cancelled = false;
     void appQueryClient
       .fetchQuery(pluginListQueryOptions({ enabled: true }))
@@ -66,10 +52,9 @@ export function usePluginFrontendBoot(): void {
           prefetchPluginModule(bundle.jsUrl);
           for (const url of bundle.staticChunkUrls) prefetchPluginModule(url);
           if (bundle.cssUrl !== null) prefetchPluginCss(bundle.cssUrl);
-          void restoredPartNames.then((names) => {
-            if (cancelled || !names(pluginId)) return;
+          if (pageParts.some((part) => namesPlugin(part, pluginId))) {
             for (const url of bundle.lazyChunkUrls) prefetchPluginModule(url);
-          });
+          }
         }
       })
       .catch(() => {});

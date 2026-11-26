@@ -4,13 +4,7 @@ import {
   registrationComponents,
   type CollectedPluginAppRegistrations,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
-import {
-  EMPTY_FIXED_PANEL_TABS_STATE,
-  getFixedPanelTabsStateStorageKey,
-  parseFixedPanelTabsState,
-  type FixedPanelTabsState,
-} from "./fixed-panel-tabs-state";
-import { getLocalStorage } from "./browser-storage";
+import type { FixedPanelTabsState } from "./fixed-panel-tabs-state";
 import {
   PLUGIN_PANEL_ROUTE_PATH,
   SETTINGS_PLUGIN_ROUTE_PATH,
@@ -24,10 +18,7 @@ export type RestoredLazyPart =
   | { kind: "panel-action"; pluginId: string; actionId: string }
   | { kind: "info-tab" };
 
-export function restoredLazyParts(
-  pathname: string,
-  readPanelTabs: (threadId: string) => FixedPanelTabsState,
-): RestoredLazyPart[] {
+export function restoredPageLazyParts(pathname: string): RestoredLazyPart[] {
   const settings = matchPath(SETTINGS_PLUGIN_ROUTE_PATH, pathname);
   if (settings?.params.pluginId !== undefined) {
     return [{ kind: "settings-page", pluginId: settings.params.pluginId }];
@@ -45,6 +36,15 @@ export function restoredLazyParts(
       },
     ];
   }
+  return [];
+}
+
+export function restoredLazyParts(
+  pathname: string,
+  readPanelTabs: (threadId: string) => FixedPanelTabsState,
+): RestoredLazyPart[] {
+  const pageParts = restoredPageLazyParts(pathname);
+  if (pageParts.length > 0) return pageParts;
   const threadId = getThreadRouteThreadId(pathname);
   if (threadId === null) return [];
   const { secondary } = readPanelTabs(threadId);
@@ -68,17 +68,6 @@ export function restoredLazyParts(
     default:
       return [];
   }
-}
-
-export function readStoredPanelTabs(threadId: string): FixedPanelTabsState {
-  return parseFixedPanelTabsState({
-    initialValue: EMPTY_FIXED_PANEL_TABS_STATE,
-    now: Date.now(),
-    storedValue:
-      getLocalStorage()?.getItem(
-        getFixedPanelTabsStateStorageKey({ threadId }),
-      ) ?? null,
-  });
 }
 
 export function namesPlugin(part: RestoredLazyPart, pluginId: string): boolean {

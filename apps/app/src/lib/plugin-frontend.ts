@@ -63,11 +63,11 @@ import { loadLazyComponents, ORDERED_REVEAL_BOUND_MS } from "./lazy-parts";
 import {
   holdsPage,
   namesPlugin,
-  readStoredPanelTabs,
   restoredLazyParts,
   restoredPartComponents,
   type RestoredLazyPart,
 } from "./restored-lazy-parts";
+import { readStoredPanelTabs } from "./fixed-panel-tabs-state";
 import { whenScreenPainted } from "./screen-paint";
 import {
   pluginSdkAppImplementation,
