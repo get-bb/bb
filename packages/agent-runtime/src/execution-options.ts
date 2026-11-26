@@ -40,6 +40,23 @@ export function assertProviderSupportsExecutionOptions(
   }
 }
 
+interface KeepRunningTurnApprovalsArgs {
+  requested: AgentRuntimeExecutionOptions;
+  running: AgentRuntimeExecutionOptions;
+}
+
+export function keepRunningTurnApprovals(
+  args: KeepRunningTurnApprovalsArgs,
+): AgentRuntimeExecutionOptions {
+  if (
+    args.requested.permissionEscalation !== "deny" ||
+    args.running.permissionEscalation !== "ask"
+  ) {
+    return args.requested;
+  }
+  return { ...args.requested, permissionEscalation: "ask" };
+}
+
 export function toProviderExecutionContext(
   args: ToProviderExecutionContextArgs,
 ): ProviderExecutionContext {

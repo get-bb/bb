@@ -14,6 +14,10 @@ Prompt directives:
 - `withdraw_approval` (with `approve:<kind>`) withdraws the approval after
   `delay:<ms>` with `notifications/cancelled`, as a provider does when a hook
   answers it, and answers `Approval withdrawn`.
+- `approve_after_steer:<kind>` holds the turn open until a steer joins it,
+  then raises the approval from that same turn, as a provider does when work
+  the user started later needs approval; an allowed approval answers with the
+  turn's own `Response to: <prompt text>`.
 - `ask_user` raises a user question and echoes the answer.
 - `call_tool:<name>` / `call_tool_unresolved:<name>` calls a dynamic tool
   with a resolved or an unresolved turn id and answers `Tool called: <name>`.

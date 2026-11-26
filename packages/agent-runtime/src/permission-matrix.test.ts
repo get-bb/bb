@@ -388,6 +388,7 @@ async function runCell(
     toolCalls: new RuntimeProviderRequests(),
     getActiveTurnId: () => "turn-1",
     getThreadExecutionOptions: () => executionOptions,
+    onStderr: undefined,
     onInteractiveRequest,
     onToolCall: async () => ({
       contentItems: [{ type: "inputText", text: "unused" }],
