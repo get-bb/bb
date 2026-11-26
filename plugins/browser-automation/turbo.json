@@ -9,8 +9,7 @@
       ]
     },
     "build": {
-      "dependsOn": ["@get-bb/plugin-sdk#build:types", "@bb/cli#build"],
-      "cache": false
+      "dependsOn": ["@get-bb/plugin-sdk#build:types", "@bb/cli#build", "topo"]
     },
     "test": {
       "dependsOn": [
@@ -21,8 +20,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/packages/plugin-registry/flavors/**"
-      ],
-      "cache": false
+      ]
     },
     "smoke": {
       "cache": false,
