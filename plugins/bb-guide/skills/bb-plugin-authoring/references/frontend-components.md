@@ -22,10 +22,10 @@ className?, leadingContent?, experimental_messageActions? }` —
   scrolling with it; `experimental_messageActions` takes `messageAction`
   registrations for this instance only, validated, filtered and ordered like
   the slot's (their `experimental_surfaces` is ignored) and run with the
-  rendering plugin's context. The deprecated `messageActions`
-  (`ThreadChatMessageAction` `{ id, title, icon?, roles?, run(message) }`)
-  still works as inline-only registrations. The
-  host owns timeline loading, streaming, drafts, send/queue/steer/stop,
+  rendering plugin's context. It replaces the retired `messageActions`
+  prop: give each old `{ id, title, icon?, roles?, run(message) }` entry
+  `experimental_roles: roles`, `experimental_placements: ["inline"]` and
+  `run: ({ message }) => …`. The host owns timeline loading, streaming, drafts, send/queue/steer/stop,
   attachments, execution controls, pending interactions, and read tracking —
   do not proxy thread data through your own RPC or rebuild the composer.
 - `experimental_ProviderModelPicker` — bb's controlled provider, model, and

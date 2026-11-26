@@ -1556,7 +1556,7 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         instanceMessageActions={collectThreadChatMessageActions({
           pluginId: "demo",
-          legacyActions: [
+          retiredActions: [
             {
               id: "send-to-main",
               icon: "ArrowTurnBackward",
@@ -1616,7 +1616,7 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         instanceMessageActions={collectThreadChatMessageActions({
           pluginId: "demo",
-          legacyActions: [
+          retiredActions: [
             {
               id: "explodes",
               title: "Explodes",
@@ -1666,7 +1666,7 @@ describe("ThreadTimelineRows actions", () => {
         ]}
         instanceMessageActions={collectThreadChatMessageActions({
           pluginId: "demo",
-          legacyActions: [
+          retiredActions: [
             { id: "link", title: "Consumer link", run: consumerRun },
           ],
           registrations: undefined,
@@ -2114,7 +2114,7 @@ describe("ThreadTimelineRows actions", () => {
           ]}
           instanceMessageActions={collectThreadChatMessageActions({
             pluginId: "demo",
-            legacyActions: undefined,
+            retiredActions: undefined,
             registrations: [
               {
                 id: "send-to-main",

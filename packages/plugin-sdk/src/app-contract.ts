@@ -5514,30 +5514,6 @@ export type ExperimentalComposerSubmitOptions = ComposerSubmitOptions;
 // ---------------------------------------------------------------------------
 
 /**
- * @deprecated Pass {@link PluginMessageActionRegistration}s as
- * `ThreadChatProps.experimental_messageActions`. bb runs each of these as
- * a registration with `experimental_roles: roles` and
- * `experimental_placements: ["inline"]` whose `run` gets the message.
- */
-export interface ThreadChatMessageAction {
-  /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
-  id: string;
-  /** Tooltip / menu label for the action. */
-  title: string;
-  icon?: BbIconName;
-  /**
-   * Message roles the action applies to. Omitted = both user and assistant
-   * messages.
-   */
-  roles?: readonly ("user" | "assistant")[];
-  /**
-   * Runs when the user activates the action. Errors (sync or async) are
-   * contained and logged; they never break the timeline.
-   */
-  run(message: ThreadChatMessageReference): void | Promise<void>;
-}
-
-/**
  * Props of the host-owned `ThreadChat` component — one thread's chat
  * (timeline, and for the composer variants the full send/queue/draft
  * engine), rendered by the BB app inside a plugin slot. This is the
@@ -5573,10 +5549,6 @@ export interface ThreadChatProps {
   className?: string;
   /** Rendered above the conversation, scrolling with it. */
   leadingContent?: ReactNode;
-  /**
-   * @deprecated Use `experimental_messageActions`.
-   */
-  messageActions?: readonly ThreadChatMessageAction[];
   /**
    * Message actions for this instance only, validated and shown like
    * `slots.messageAction` registrations (ids must be unique within the

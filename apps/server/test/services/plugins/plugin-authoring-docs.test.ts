@@ -30,7 +30,6 @@ const FIELD_DOCUMENTED_TYPES = [
   "PluginContentScriptContext",
   "PluginContentScriptRegistration",
   "ThreadChatProps",
-  "ThreadChatMessageAction",
   "ThreadChatMessageReference",
   "ExperimentalThreadActionTabProps",
 ];

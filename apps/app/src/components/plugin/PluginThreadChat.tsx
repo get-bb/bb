@@ -2,11 +2,13 @@ import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
   PluginMessageActionRegistration,
-  ThreadChatMessageAction,
   ThreadChatProps,
 } from "@get-bb/plugin-sdk";
 import { CORE_PLUGIN_ID } from "@bb/domain";
-import { collectThreadChatMessageActions } from "@/lib/plugin-message-actions";
+import {
+  collectThreadChatMessageActions,
+  type RetiredThreadChatMessageAction,
+} from "@/lib/plugin-message-actions";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -59,6 +61,10 @@ import {
 } from "@/views/thread-detail/ThreadScreen";
 import { openThread } from "@/lib/split-layout/openThread";
 
+export type PluginThreadChatProps = ThreadChatProps & {
+  messageActions?: readonly RetiredThreadChatMessageAction[];
+};
+
 export function PluginThreadChat({
   threadId,
   variant = "full",
@@ -69,7 +75,7 @@ export function PluginThreadChat({
   leadingContent,
   messageActions,
   experimental_messageActions,
-}: ThreadChatProps) {
+}: PluginThreadChatProps) {
   const containerClassName = cn(
     layout === "contained" ? "flex h-full min-h-0 flex-col" : "flex flex-col",
     className,
@@ -97,7 +103,7 @@ interface PluginThreadChatBodyProps {
   focusRequest: number | undefined;
   permissionPolicy: "inherit" | "editable";
   leadingContent: ReactNode;
-  messageActions: readonly ThreadChatMessageAction[] | undefined;
+  messageActions: readonly RetiredThreadChatMessageAction[] | undefined;
   experimentalMessageActions:
     | readonly PluginMessageActionRegistration[]
     | undefined;
@@ -221,7 +227,7 @@ function PluginThreadChatBody({
     () =>
       collectThreadChatMessageActions({
         pluginId: pluginId ?? CORE_PLUGIN_ID,
-        legacyActions: messageActions,
+        retiredActions: messageActions,
         registrations: experimentalMessageActions,
       }),
     [experimentalMessageActions, messageActions, pluginId],

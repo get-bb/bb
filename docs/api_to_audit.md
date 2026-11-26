@@ -452,10 +452,13 @@ image with the text through bb's own image clipboard writer.
 
 `ThreadChatProps.experimental_messageActions` takes the same registrations for
 one embedded chat; they are validated by the same function and resolved,
-filtered and ordered with the registered ones. The old
+filtered and ordered with the registered ones. It replaces
 `ThreadChatProps.messageActions` (`ThreadChatMessageAction`, with `roles` and
-`run(message)`) is deprecated and adapted into registrations with
-`experimental_placements: ["inline"]`.
+`run(message)`), which is gone from the types and docs. Compiled plugins that
+still pass it keep working: `PluginThreadChat` adapts each entry into an
+inline-only registration (`collectThreadChatMessageActions` in
+`apps/app/src/lib/plugin-message-actions.ts`) and warns once per plugin to
+move to `experimental_messageActions`.
 
 Core callers: bb's Copy link, Copy, Edit, Add to chat (row menu and selection
 menu; `composer.replace` with `experimental_appendQuoteToDraft`, then

@@ -7,7 +7,6 @@ import type {
   PluginComposerApi,
   PluginMessageActionContext,
   PluginMessageActionRegistration,
-  ThreadChatMessageAction,
   ThreadChatMessageReference,
 } from "@get-bb/plugin-sdk";
 import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
@@ -196,10 +195,28 @@ export function buildMessageActions({
 }
 
 const THREAD_CHAT_ACTIONS_KIND = "ThreadChat.experimental_messageActions";
-const LEGACY_THREAD_CHAT_ACTIONS_KIND = "ThreadChat.messageActions";
+const RETIRED_THREAD_CHAT_ACTIONS_KIND = "ThreadChat.messageActions";
 
-function legacyThreadChatAction(
-  action: ThreadChatMessageAction,
+export interface RetiredThreadChatMessageAction {
+  id: string;
+  title: string;
+  icon?: string;
+  roles?: readonly ("user" | "assistant")[];
+  run(message: ThreadChatMessageReference): void | Promise<void>;
+}
+
+const warnedRetiredThreadChatPlugins = new Set<string>();
+
+function warnRetiredThreadChatActions(pluginId: string): void {
+  if (warnedRetiredThreadChatPlugins.has(pluginId)) return;
+  warnedRetiredThreadChatPlugins.add(pluginId);
+  console.warn(
+    `[plugin:${pluginId}] ThreadChat "messageActions" is retired; pass "experimental_messageActions" registrations instead ({ id, title, icon, experimental_roles, experimental_placements: ["inline"], run({ message }) }).`,
+  );
+}
+
+function retiredThreadChatAction(
+  action: RetiredThreadChatMessageAction,
 ): PluginMessageActionRegistration {
   return {
     id: action.id,
@@ -213,11 +230,11 @@ function legacyThreadChatAction(
 
 export function collectThreadChatMessageActions({
   pluginId,
-  legacyActions,
+  retiredActions,
   registrations,
 }: {
   pluginId: string;
-  legacyActions: readonly ThreadChatMessageAction[] | undefined;
+  retiredActions: readonly RetiredThreadChatMessageAction[] | undefined;
   registrations: readonly PluginMessageActionRegistration[] | undefined;
 }): readonly PluginMessageActionSlot[] {
   const seenIds = new Set<string>();
@@ -237,9 +254,15 @@ export function collectThreadChatMessageActions({
       generation: 0,
     };
   };
+  if (retiredActions !== undefined && retiredActions.length > 0) {
+    warnRetiredThreadChatActions(pluginId);
+  }
   return [
-    ...(legacyActions ?? []).map((action) =>
-      collect(LEGACY_THREAD_CHAT_ACTIONS_KIND, legacyThreadChatAction(action)),
+    ...(retiredActions ?? []).map((action) =>
+      collect(
+        RETIRED_THREAD_CHAT_ACTIONS_KIND,
+        retiredThreadChatAction(action),
+      ),
     ),
     ...(registrations ?? []).map((registration) =>
       collect(THREAD_CHAT_ACTIONS_KIND, registration),

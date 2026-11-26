@@ -948,14 +948,13 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
  * Stand-in for the host-owned ThreadChat component: a recognizable stub that
  * records every public prop as a data attribute so plugin tests can assert
  * what their slot component passed without the real chat engine.
- * `leadingContent` renders inside the stub; each `messageActions` entry
- * renders as a button (`data-testid="bb-thread-chat-action-<id>"`) that
- * invokes its `run` with a synthetic assistant message reference, so plugin
- * tests can drive the action without the real timeline. Each
- * `experimental_messageActions` entry renders the same way
- * (`data-testid="bb-thread-chat-experimental-action-<id>"`) and runs with a
- * {@link makeActionContext} context, that message, a null composer, an
- * inline-button invocation, and message requests that do nothing.
+ * `leadingContent` renders inside the stub. Each `experimental_messageActions`
+ * entry renders as a button
+ * (`data-testid="bb-thread-chat-experimental-action-<id>"`, ids also listed in
+ * `data-message-actions`) that runs it with a {@link makeActionContext}
+ * context, a synthetic message reference of its first role, a null composer,
+ * an inline-button invocation, and no Edit request, so plugin tests can drive
+ * the action without the real timeline.
  */
 function testMessageReference(
   threadId: string,
@@ -982,7 +981,6 @@ function TestThreadChat({
   permissionPolicy = "inherit",
   className,
   leadingContent,
-  messageActions,
   experimental_messageActions,
 }: ThreadChatProps) {
   return (
@@ -993,7 +991,7 @@ function TestThreadChat({
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-permission-policy={permissionPolicy}
-      data-message-actions={(messageActions ?? [])
+      data-message-actions={(experimental_messageActions ?? [])
         .map((action) => action.id)
         .join(" ")}
       className={className}
@@ -1002,21 +1000,6 @@ function TestThreadChat({
         <div data-testid="bb-thread-chat-leading-content">{leadingContent}</div>
       )}
       ThreadChat stub ({threadId})
-      {(messageActions ?? []).map((action) => (
-        <button
-          key={action.id}
-          type="button"
-          data-testid={`bb-thread-chat-action-${action.id}`}
-          data-roles={action.roles === undefined ? "" : action.roles.join(" ")}
-          onClick={() => {
-            void action.run(
-              testMessageReference(threadId, action.roles?.[0] ?? "assistant"),
-            );
-          }}
-        >
-          {action.title}
-        </button>
-      ))}
       {(experimental_messageActions ?? []).map((action) => (
         <button
           key={action.id}
