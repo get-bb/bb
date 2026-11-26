@@ -119,6 +119,7 @@ interface HandleRuntimeProviderRequestArgs extends RuntimeProviderRequestArgs {
     threadId: string,
   ) => AgentRuntimeExecutionOptions | undefined;
   onInteractiveRequest: AgentRuntimeOptions["onInteractiveRequest"];
+  onStderr: AgentRuntimeOptions["onStderr"];
   onToolCall: AgentRuntimeOptions["onToolCall"];
   interactiveRequests: RuntimeProviderRequests;
   toolCalls: RuntimeProviderRequests;
@@ -304,13 +305,21 @@ function handleInteractiveProviderRequest(
   const executionOptions = runtimeOwnsApprovalPolicy
     ? args.getThreadExecutionOptions(resolvedThreadId)
     : undefined;
-  const shouldAutoDenyApprovalRequest =
-    isApprovalRequest &&
-    ((runtimeOwnsApprovalPolicy && executionOptions
+  const deniedByPolicy =
+    runtimeOwnsApprovalPolicy && executionOptions
       ? shouldAutoDenyInteractiveRequest(executionOptions)
-      : false) ||
-      !args.onInteractiveRequest);
+      : false;
+  const shouldAutoDenyApprovalRequest =
+    isApprovalRequest && (deniedByPolicy || !args.onInteractiveRequest);
   if (shouldAutoDenyApprovalRequest) {
+    args.onStderr?.(
+      `Declined approval request "${String(interactiveReq.requestId)}" on turn "${resolvedTurnId}" for thread "${resolvedThreadId}" without asking: ${
+        deniedByPolicy
+          ? 'the turn runs with permission escalation "deny"'
+          : "no interactive request handler is configured"
+      }.`,
+      resolvedThreadId,
+    );
     try {
       const resolution = buildDeniedInteractiveResolution(
         interactiveReq.payload,

@@ -75,6 +75,14 @@ const deniedEscalationOptions = {
   permissionEscalation: "deny",
 } as const;
 
+const askEscalationOptions = {
+  ...fullRuntimeOptions,
+  permissionMode: "accept-edits",
+  permissionScope: "workspace",
+  approvalReviewer: "user",
+  permissionEscalation: "ask",
+} as const;
+
 async function answerDirectRequest(args: {
   rawRequest: JsonRpcMessage;
   handshake?: Record<string, unknown>;
@@ -110,6 +118,7 @@ async function answerDirectRequest(args: {
       getThreadExecutionOptions:
         args.getThreadExecutionOptions ?? (() => undefined),
       onInteractiveRequest: args.onInteractiveRequest,
+      onStderr: undefined,
       onToolCall: async () => ({
         contentItems: [{ type: "inputText", text: "tool result" }],
         success: true,
@@ -334,10 +343,12 @@ describe("createAgentRuntime interactive requests", () => {
   it("denies interactive requests when permission escalation is deny", async () => {
     const requests: string[] = [];
     const events: ThreadEvent[] = [];
+    const stderr: string[] = [];
     const runtime = createScriptedEchoRuntime({
       runtime: {
         workspacePath: tmpDir,
         onEvent: (event) => events.push(event),
+        onStderr: (line) => stderr.push(line),
         onInteractiveRequest: async (request) => {
           requests.push(request.providerRequestId);
           return { decision: "allow_once", grantedPermissions: null };
@@ -368,6 +379,78 @@ describe("createAgentRuntime interactive requests", () => {
     });
 
     expect(requests).toEqual([]);
+    expect(stderr).toContainEqual(
+      expect.stringMatching(
+        /^Declined approval request ".+" on turn ".+" for thread "t1" without asking: the turn runs with permission escalation "deny"\.$/u,
+      ),
+    );
+    await runtime.shutdown();
+  });
+
+  it.each([
+    {
+      name: "keeps a running ask turn asking after a deny-escalation steer joins it",
+      running: askEscalationOptions,
+      steer: { ...askEscalationOptions, permissionEscalation: "deny" },
+    },
+    {
+      name: "lets an ask-escalation steer raise a running deny turn to asking",
+      running: { ...askEscalationOptions, permissionEscalation: "deny" },
+      steer: askEscalationOptions,
+    },
+  ] as const)("$name", async ({ running, steer }) => {
+    const requests: string[] = [];
+    const events: ThreadEvent[] = [];
+    const runtime = createScriptedEchoRuntime({
+      runtime: {
+        workspacePath: tmpDir,
+        onEvent: (event) => events.push(event),
+        onInteractiveRequest: async (request) => {
+          requests.push(request.providerRequestId);
+          return { decision: "allow_once", grantedPermissions: null };
+        },
+      },
+    });
+
+    await runtime.startThread({
+      environmentId: "env-1",
+      threadId: "t1",
+      projectId: "p1",
+      providerId: "fake",
+      options: running,
+    });
+    await runtime.runTurn({
+      additionalWorkspaceWriteRoots: [],
+      clientRequestId: "creq_222222225a",
+      threadId: "t1",
+      input: [promptTextInput({ text: "approve_after_steer:command" })],
+      options: running,
+    });
+    const { turnId } = await waitForThreadTurnStarted({
+      events,
+      providerId: "fake",
+      runtime,
+      threadId: "t1",
+    });
+    await expect(
+      runtime.steerTurn({
+        additionalWorkspaceWriteRoots: [],
+        threadId: "t1",
+        expectedTurnId: turnId,
+        clientRequestId: "creq_222222225b",
+        input: [promptTextInput({ text: "FYI, my build finished" })],
+        options: steer,
+      }),
+    ).resolves.toEqual({ status: "steered" });
+    await waitForThreadAgentMessageText({
+      events,
+      providerId: "fake",
+      runtime,
+      text: "Response to: approve_after_steer:command",
+      threadId: "t1",
+    });
+
+    expect(requests).toHaveLength(1);
     await runtime.shutdown();
   });
 
