@@ -8,11 +8,13 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@bb/shared-ui/tooltip";
 
 const TAB_PILL_DEFAULT_LABEL_MAX_WIDTH_CLASS = "max-w-[180px]";
 const TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS =
-  "inline-flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-muted-foreground/15 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none max-md:pointer-coarse:size-5";
-const TAB_PILL_AFFORDANCE_ICON_CLASS = "size-3.5 max-md:pointer-coarse:size-5";
-const TAB_PILL_CLOSE_BUTTON_CLASS = `pointer-events-none absolute left-1.5 top-1/2 z-10 -translate-y-1/2 ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 group-hover/tab-pill:pointer-events-auto group-hover/tab-pill:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-30 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100`;
+  "group/tab-pill-affordance inline-flex size-5 shrink-0 items-center justify-center focus-visible:outline-none disabled:pointer-events-none max-md:pointer-coarse:size-6";
+const TAB_PILL_AFFORDANCE_SURFACE_CLASS =
+  "inline-flex size-full items-center justify-center rounded-sm group-hover/tab-pill-affordance:bg-muted-foreground/15 group-focus-visible/tab-pill-affordance:ring-1 group-focus-visible/tab-pill-affordance:ring-ring";
+const TAB_PILL_AFFORDANCE_ICON_CLASS = "size-3.5 max-md:pointer-coarse:size-4";
+const TAB_PILL_CLOSE_BUTTON_CLASS = `pointer-events-none absolute left-1 top-1/2 z-10 -translate-y-1/2 ${TAB_PILL_AFFORDANCE_BUTTON_BASE_CLASS} opacity-0 hover:opacity-100 group-hover/tab-pill:pointer-events-auto group-hover/tab-pill:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:opacity-30 [@media(hover:none)]:pointer-events-auto [@media(hover:none)]:opacity-100`;
 const TAB_PILL_LARGE_COARSE_POINTER_CLOSE_BUTTON_CLASS =
-  "max-md:pointer-coarse:min-h-9 max-md:pointer-coarse:min-w-9";
+  "max-md:pointer-coarse:left-0 max-md:pointer-coarse:min-h-9 max-md:pointer-coarse:min-w-9";
 const TAB_PILL_LEADING_VISUAL_CLASS =
   "inline-flex size-4 shrink-0 items-center justify-center [&_[data-icon-root]]:size-3.5 max-md:pointer-coarse:size-5 max-md:pointer-coarse:[&_[data-icon-root]]:size-5";
 
@@ -170,16 +172,21 @@ function TabPillCloseButton({
       className={cn(
         TAB_PILL_CLOSE_BUTTON_CLASS,
         compact &&
-          "left-2 top-auto z-auto translate-y-0 group-focus-within/tab-pill:pointer-events-auto group-focus-within/tab-pill:opacity-100",
+          "left-1.5 top-auto z-auto translate-y-0 group-focus-within/tab-pill:pointer-events-auto group-focus-within/tab-pill:opacity-100",
         compact && !isActive && "[@media(hover:none)]:hidden",
-        compact &&
-          enlargeCloseTargetOnCoarsePointer &&
-          "max-md:pointer-coarse:left-0",
         enlargeCloseTargetOnCoarsePointer &&
           TAB_PILL_LARGE_COARSE_POINTER_CLOSE_BUTTON_CLASS,
       )}
     >
-      <Icon name="X" className={TAB_PILL_AFFORDANCE_ICON_CLASS} />
+      <span
+        data-tab-pill-close-surface=""
+        className={cn(
+          TAB_PILL_AFFORDANCE_SURFACE_CLASS,
+          enlargeCloseTargetOnCoarsePointer && "max-md:pointer-coarse:size-7",
+        )}
+      >
+        <Icon name="X" className={TAB_PILL_AFFORDANCE_ICON_CLASS} />
+      </span>
     </button>
   );
   return closeAction.tooltip === undefined ? (

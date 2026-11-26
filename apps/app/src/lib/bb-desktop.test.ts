@@ -9,6 +9,7 @@ import {
 import { createBbDesktopApi } from "@/test/bb-desktop-test-utils";
 import {
   DEFAULT_WINDOW_FIND_TOP_OFFSET,
+  MACOS_TITLE_BAR_CONTROL_SIZE_CLASS,
   applyAppFrameGeometry,
   resolveWindowFindTopOffset,
   shouldReserveMacosTrafficLights,
@@ -107,6 +108,15 @@ describe("desktop chrome geometry", () => {
       `${RAIL_PADDING_PX}px`,
     );
     expect(properties.has("--bb-window-title-bar-height")).toBe(false);
+  });
+
+  it("does not stretch tab-pill close buttons to full title-bar control height", () => {
+    expect(MACOS_TITLE_BAR_CONTROL_SIZE_CLASS).toContain(
+      "[&_button:not([data-tab-pill-close])]:h-(--bb-title-bar-control-size)",
+    );
+    expect(MACOS_TITLE_BAR_CONTROL_SIZE_CLASS).not.toContain(
+      "[&_button]:h-(--bb-title-bar-control-size)",
+    );
   });
 });
 

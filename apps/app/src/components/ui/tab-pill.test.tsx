@@ -94,6 +94,51 @@ describe("TabPill", () => {
     expect(
       closeButton.classList.contains("max-md:pointer-coarse:min-w-9"),
     ).toBe(true);
+    expect(closeButton.classList.contains("max-md:pointer-coarse:left-0")).toBe(
+      true,
+    );
+    const closeSurface = closeButton.querySelector(
+      "[data-tab-pill-close-surface]",
+    );
+    expect(closeSurface).not.toBeNull();
+    expect(
+      closeSurface?.classList.contains("max-md:pointer-coarse:size-7"),
+    ).toBe(true);
+  });
+
+  it("keeps the close hover surface inset inside the pill at desktop and touch sizes", () => {
+    render(
+      <TabPill
+        label="Terminal"
+        title="Terminal"
+        isActive
+        onSelect={vi.fn()}
+        leadingVisual={<span aria-hidden>term</span>}
+        closeAction={{
+          closeLabel: "Close Terminal",
+          onClose: vi.fn(),
+        }}
+      />,
+    );
+
+    const closeButton = screen.getByRole("button", { name: "Close Terminal" });
+    expect(closeButton.classList.contains("left-1")).toBe(true);
+    expect(closeButton.classList.contains("size-5")).toBe(true);
+    expect(closeButton.classList.contains("max-md:pointer-coarse:size-6")).toBe(
+      true,
+    );
+    const closeSurface = closeButton.querySelector(
+      "[data-tab-pill-close-surface]",
+    );
+    expect(closeSurface?.classList.contains("rounded-sm")).toBe(true);
+    expect(
+      closeSurface?.classList.contains(
+        "group-hover/tab-pill-affordance:bg-muted-foreground/15",
+      ),
+    ).toBe(true);
+    expect(
+      closeSurface?.classList.contains("max-md:pointer-coarse:size-7"),
+    ).toBe(false);
   });
 
   it("separates an enlarged coarse-pointer close target from the label", () => {
