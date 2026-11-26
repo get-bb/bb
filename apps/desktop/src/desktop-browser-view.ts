@@ -21,6 +21,7 @@ import {
 import {
   BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH,
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
+  BB_DESKTOP_BROWSER_ROOT_COMPOSE_THREAD_ID,
   bbDesktopBrowserEvaluateResultSchema,
   bbDesktopBrowserPageMessageSchema,
   clampBbDesktopBrowserViewBounds,
@@ -30,6 +31,7 @@ import {
   type BbDesktopBrowserAttachRequest,
   type BbDesktopBrowserFindInPageRequest,
   type BbDesktopBrowserFindResult,
+  type BbDesktopBrowserHandoffRootComposeRequest,
   type BbDesktopBrowserNavigateRequest,
   type BbDesktopBrowserOpenTabRequest,
   type BbDesktopBrowserScopedOpenTabRequest,
@@ -336,6 +338,11 @@ export interface DesktopBrowserViewManager {
   setTabLeased(ref: NativeTabRef, leased: boolean): void;
   session(): Session;
   attach(args: HostScopedRequestArgs<BbDesktopBrowserAttachRequest>): void;
+  handoffRootComposeTabs(
+    args: HostScopedRequestArgs<BbDesktopBrowserHandoffRootComposeRequest> & {
+      serverOrigin: string;
+    },
+  ): string[];
   detach(args: HostScopedTabArgs): void;
   setThreadDiscarded(
     args: HostScopedRequestArgs<BbDesktopBrowserSetThreadDiscardedRequest>,
@@ -1739,6 +1746,43 @@ export function createDesktopBrowserViewManager(
         notifyAutomationTabs();
       }
       pushState(hostWindow, request.tabId, entry);
+    },
+    handoffRootComposeTabs({
+      hostWindow,
+      request,
+      serverOrigin: expectedOrigin,
+    }) {
+      if (serverOrigin !== expectedOrigin) {
+        throw new Error("The browser server changed before the handoff");
+      }
+      const approvedIds: string[] = [];
+      const adopted: (BrowserViewEntry | ColdBrowserTab)[] = [];
+      const foreignRegistries = [...serverEntries.values()].filter(
+        (registry) => registry !== entries,
+      );
+      for (const tabId of new Set(request.tabIds)) {
+        const key = browserViewKey(hostWindow, tabId);
+        const tab = entries.get(key) ?? coldTabsFor(entries).get(key);
+        if (tab?.threadId === BB_DESKTOP_BROWSER_ROOT_COMPOSE_THREAD_ID) {
+          adopted.push(tab);
+        } else if (tab?.threadId !== request.threadId) {
+          if (tab !== undefined) continue;
+          const suffix = `:${tabId}`;
+          if (
+            [...entries.keys(), ...coldTabsFor(entries).keys()].some(
+              (otherKey) => otherKey.slice(otherKey.indexOf(":")) === suffix,
+            ) ||
+            foreignRegistries.some(
+              (registry) => registry.has(key) || coldTabsFor(registry).has(key),
+            )
+          )
+            continue;
+        }
+        approvedIds.push(tabId);
+      }
+      for (const tab of adopted) tab.threadId = request.threadId;
+      if (adopted.length > 0) notifyAutomationTabs();
+      return approvedIds;
     },
     setThreadDiscarded({ hostWindow, request }) {
       const key = `${hostWindow.webContents.id}:${request.threadId}`;

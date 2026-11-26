@@ -3116,6 +3116,156 @@ describe("DesktopBrowserViewManager", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("hands off the same live WebContents and publishes its new owner once", () => {
+    const manager = createDesktopBrowserViewManager();
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 91,
+      contentBounds: { width: 700, height: 450 },
+    });
+    const serverOrigin = "https://server.example";
+    const threadId = "thr_23456789ab";
+    const tabId = "browser:draft";
+    const originalUrl = "https://example.com/original";
+    const currentUrl = "https://example.com/next";
+    manager.setServerOrigin(serverOrigin);
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId,
+      threadId: "root-compose",
+      url: originalUrl,
+    });
+    const view = requireFakeView(0);
+    view.webContents.emitDidNavigate(currentUrl);
+    view.webContents.canGoBackResult = true;
+    const original = manager.listTabs({
+      hostWebContentsId: 91,
+      threadId: "root-compose",
+    })[0];
+    const listener = vi.fn();
+    manager.subscribeAutomationTabs(listener);
+    const handoff = {
+      hostWindow,
+      serverOrigin,
+      request: { threadId, tabIds: [tabId] },
+    };
+
+    expect(manager.handoffRootComposeTabs(handoff)).toEqual([tabId]);
+    expect(manager.handoffRootComposeTabs(handoff)).toEqual([tabId]);
+    expect(listener).toHaveBeenCalledOnce();
+    expect(
+      manager.listTabs({ hostWebContentsId: 91, threadId: "root-compose" }),
+    ).toEqual([]);
+    expect(manager.listTabs({ hostWebContentsId: 91, threadId })).toEqual([
+      { ...original, threadId, url: currentUrl, canGoBack: true },
+    ]);
+    expect(
+      manager.getAutomationTabs({ hostWebContentsId: 91, threadId })[0]
+        ?.webContents,
+    ).toBe(view.webContents);
+
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId,
+      threadId,
+      url: originalUrl,
+    });
+    manager.goBack({ hostWindow, tabId });
+    expect(electronMock.fakeViews).toHaveLength(1);
+    expect(view.webContents.loadURLCalls).toEqual([originalUrl]);
+    expect(view.webContents.goBackCalls).toEqual(["goBack"]);
+    manager.destroyAll();
+  });
+
+  it("leaves tabs owned by another thread, window, or server in place", () => {
+    const manager = createDesktopBrowserViewManager();
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 91,
+      contentBounds: { width: 700, height: 450 },
+    });
+    const otherWindow = new FakeHostWindow({
+      webContentsId: 92,
+      contentBounds: { width: 700, height: 450 },
+    });
+    const serverOrigin = "https://server.example";
+    const otherOrigin = "https://other.example";
+    const threadId = "thr_23456789ab";
+    const otherThreadId = "thr_23456789ac";
+    const url = "https://example.com/";
+    manager.setServerOrigin(otherOrigin);
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:other-server",
+      threadId: "root-compose",
+      url,
+    });
+    manager.setServerOrigin(serverOrigin);
+    attachBrowserTab({
+      manager,
+      hostWindow: otherWindow,
+      tabId: "browser:other-window",
+      threadId: "root-compose",
+      url,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:other-thread",
+      threadId: otherThreadId,
+      url,
+    });
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId: "browser:draft",
+      threadId: "root-compose",
+      url,
+    });
+    const handoff = {
+      hostWindow,
+      serverOrigin,
+      request: {
+        threadId,
+        tabIds: [
+          "browser:other-server",
+          "browser:other-window",
+          "browser:other-thread",
+          "browser:draft",
+          "browser:local-only",
+        ],
+      },
+    };
+
+    expect(() =>
+      manager.handoffRootComposeTabs({ ...handoff, serverOrigin: otherOrigin }),
+    ).toThrow("browser server changed");
+    expect(manager.handoffRootComposeTabs(handoff)).toEqual([
+      "browser:draft",
+      "browser:local-only",
+    ]);
+    expect(
+      manager
+        .listTabs({ hostWebContentsId: 91, threadId })
+        .map((tab) => tab.tabId),
+    ).toEqual(["browser:draft"]);
+    expect(
+      manager.listTabs({ hostWebContentsId: 91, threadId: otherThreadId })[0]
+        ?.tabId,
+    ).toBe("browser:other-thread");
+    expect(
+      manager.listTabs({ hostWebContentsId: 92, threadId: "root-compose" })[0]
+        ?.tabId,
+    ).toBe("browser:other-window");
+    manager.setServerOrigin(otherOrigin);
+    expect(
+      manager.listTabs({ hostWebContentsId: 91, threadId: "root-compose" })[0]
+        ?.tabId,
+    ).toBe("browser:other-server");
+    manager.destroyAll();
+  });
+
   it("discovers hidden live tabs only in the requested window and thread", () => {
     const { manager, hostWindow, view } = createRendererRecoveryFixture(91);
     manager.setVisible({
@@ -4753,6 +4903,74 @@ describe("hidden browser retention", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+  });
+
+  it("moves an evicted draft tab with its stored history and generation", () => {
+    const manager = createDesktopBrowserViewManager();
+    const hostWindow = new FakeHostWindow({
+      webContentsId: 91,
+      contentBounds: { width: 700, height: 450 },
+    });
+    const serverOrigin = "https://server.example";
+    const threadId = "thr_23456789ab";
+    const tabId = "browser:cold";
+    const url = "https://example.com/current";
+    manager.setServerOrigin(serverOrigin);
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId,
+      threadId: "root-compose",
+      url,
+    });
+    const original = requireFakeView(0);
+    const history = [
+      { url: "https://example.com/previous", title: "Previous" },
+      { url, title: "Current" },
+    ];
+    vi.spyOn(
+      original.webContents.navigationHistory,
+      "getAllEntries",
+    ).mockReturnValue(history);
+    vi.spyOn(
+      original.webContents.navigationHistory,
+      "getActiveIndex",
+    ).mockReturnValue(1);
+    hideTab(manager, hostWindow, tabId);
+    manager.setThreadDiscarded({
+      hostWindow,
+      request: { threadId: "root-compose", discarded: true },
+    });
+    expect(original.webContents.isDestroyed()).toBe(true);
+    const cold = manager.listTabs({
+      hostWebContentsId: 91,
+      threadId: "root-compose",
+    })[0];
+
+    expect(
+      manager.handoffRootComposeTabs({
+        hostWindow,
+        serverOrigin,
+        request: { threadId, tabIds: [tabId] },
+      }),
+    ).toEqual([tabId]);
+    expect(electronMock.fakeViews).toHaveLength(1);
+    expect(manager.listTabs({ hostWebContentsId: 91, threadId })).toEqual([
+      { ...cold, threadId },
+    ]);
+    attachBrowserTab({
+      manager,
+      hostWindow,
+      tabId,
+      threadId: "root-compose",
+      url,
+    });
+    expect(electronMock.fakeViews).toHaveLength(1);
+    attachBrowserTab({ manager, hostWindow, tabId, threadId, url });
+    expect(
+      requireFakeView(1).webContents.navigationHistory.restore,
+    ).toHaveBeenCalledExactlyOnceWith({ entries: history, index: 1 });
+    manager.destroyAll();
   });
 
   it("evicts the oldest hidden renderers, restores navigation on reveal, and forgets closed cold tabs", () => {

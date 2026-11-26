@@ -110,13 +110,20 @@ import {
   getProjectComposeRoutePath,
   getRootComposeRoutePath,
 } from "@/lib/route-paths";
-import { isDesktopBrowserAvailable } from "@/lib/bb-desktop";
+import {
+  getDesktopBrowserApi,
+  isDesktopBrowserAvailable,
+} from "@/lib/bb-desktop";
 import {
   useFixedPanelTabsState,
   useFixedPanelTabsStorageMaintenance,
+  useGetFixedPanelTabsState,
+  useMoveFixedPanelBrowserTabs,
   useTouchFixedPanelTabsState,
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
+import { registerBrowserView } from "@/components/secondary-panel/browserViewVisibilityCoordinator";
+import { appToast } from "@/components/ui/app-toast";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 import { UrlOpenRoutingProvider } from "@/lib/url-open-routing";
 import {
@@ -413,15 +420,65 @@ export function RootComposeView() {
   );
   const [navigateToThreadAfterCreate] =
     useNavigateToThreadAfterCreatePreference();
+  const getRootPanel = useGetFixedPanelTabsState(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+  const moveBrowserTabs = useMoveFixedPanelBrowserTabs(
+    ROOT_COMPOSE_FIXED_PANEL_STATE_ID,
+  );
+
+  const handoffBrowserTabs = useCallback(
+    async (threadId: string, submittedIds: ReadonlySet<string>) => {
+      const browser = getDesktopBrowserApi();
+      const handoff = browser?.handoffRootComposeTabs?.bind(browser);
+      if (handoff === undefined || submittedIds.size === 0) return;
+
+      const attempt = async () => {
+        const tabIds = getRootPanel()
+          .secondary.tabs.filter(
+            (tab) => tab.kind === "browser" && submittedIds.has(tab.id),
+          )
+          .map((tab) => tab.id);
+        if (tabIds.length === 0) return;
+        const confirmedIds = await handoff({ threadId, tabIds });
+        for (const tab of moveBrowserTabs(threadId, confirmedIds)) {
+          registerBrowserView({
+            tabId: tab.id,
+            environmentId: tab.environmentId,
+            threadId,
+          });
+        }
+      };
+
+      async function transfer() {
+        try {
+          await attempt().catch(attempt);
+        } catch {
+          appToast.error("Couldn’t move Browser tabs", {
+            action: { label: "Retry", onClick: () => void transfer() },
+          });
+        }
+      }
+
+      await transfer();
+    },
+    [getRootPanel, moveBrowserTabs],
+  );
 
   const handleSubmit = useCallback(
     async (request: NewThreadRequest) => {
+      const submittedBrowserTabIds = new Set(
+        getRootPanel()
+          .secondary.tabs.filter((tab) => tab.kind === "browser")
+          .map((tab) => tab.id),
+      );
       const { sendAt, ...requestFields } = request;
       const thread = await createThread.mutateAsync({
         ...requestFields,
         ...placement,
         ...(sendAt === undefined ? {} : { sendAt }),
       });
+      await handoffBrowserTabs(thread.id, submittedBrowserTabIds);
       setLastCreatedThreadId(thread.id);
       setPlacement(DEFAULT_THREAD_CREATION_PLACEMENT);
       if (navigateToThreadAfterCreate) {
@@ -430,6 +487,8 @@ export function RootComposeView() {
     },
     [
       createThread,
+      getRootPanel,
+      handoffBrowserTabs,
       navigateInPane,
       navigateToThreadAfterCreate,
       placement,

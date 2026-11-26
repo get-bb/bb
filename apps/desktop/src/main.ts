@@ -954,6 +954,13 @@ function setCurrentRuntime(runtime: DesktopRuntime | null): void {
   sendDesktopInfoChanged();
 }
 
+function getActiveBrowserServerUrl(): string {
+  const target = serverTargetStore?.getTarget();
+  if (target?.kind === "connect") return target.server.url;
+  if (target?.kind === "custom") return target.url;
+  return currentRuntime?.serverUrl ?? builtinServerUrl;
+}
+
 function formatApiUrl(serverUrl: string): string {
   const url = new URL(serverUrl);
   url.pathname = "/api/v1/system/config";
@@ -3403,7 +3410,11 @@ async function runDesktopApp(): Promise<void> {
       });
     },
   });
-  registerDesktopBrowserIpc(desktopBrowserViewManager);
+  registerDesktopBrowserIpc(desktopBrowserViewManager, {
+    applicationWindowWebContentsIds,
+    getActiveAppUrl: () => (bbAppLoaded ? currentWindowUrl : null),
+    getActiveServerUrl: getActiveBrowserServerUrl,
+  });
   const browserImportService = createBrowserImportService({
     context: {
       platform: process.platform,
@@ -3499,12 +3510,7 @@ async function runDesktopApp(): Promise<void> {
       net.fetch(input instanceof URL ? input.toString() : input, init),
     dataDir,
     homeDir: homedir(),
-    getServerUrl() {
-      const target = serverTargetStore?.getTarget();
-      if (target?.kind === "connect") return target.server.url;
-      if (target?.kind === "custom") return target.url;
-      return currentRuntime?.serverUrl ?? builtinServerUrl;
-    },
+    getServerUrl: getActiveBrowserServerUrl,
   });
   if (desktopUpdateSupport.versionCheck) {
     desktopUpdateService.start();

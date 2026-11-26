@@ -1,4 +1,4 @@
-import { jsonValueSchema } from "@bb/domain";
+import { jsonValueSchema, rawThreadIdSchema } from "@bb/domain";
 import { z } from "zod";
 import {
   desktopBrowserImportSelectionSchema,
@@ -8,6 +8,7 @@ import {
 
 export const BB_DESKTOP_BROWSER_MAX_URL_LENGTH = 4096;
 export const BB_DESKTOP_BROWSER_MAX_TITLE_LENGTH = 1024;
+export const BB_DESKTOP_BROWSER_ROOT_COMPOSE_THREAD_ID = "root-compose";
 
 export const bbDesktopBrowserTargetSchema = z
   .object({
@@ -129,6 +130,16 @@ export const bbDesktopBrowserAttachRequestSchema = z
   .strict();
 export type BbDesktopBrowserAttachRequest = z.infer<
   typeof bbDesktopBrowserAttachRequestSchema
+>;
+
+export const bbDesktopBrowserHandoffRootComposeRequestSchema = z
+  .object({
+    threadId: rawThreadIdSchema,
+    tabIds: z.array(z.string().min(1)).nonempty(),
+  })
+  .strict();
+export type BbDesktopBrowserHandoffRootComposeRequest = z.infer<
+  typeof bbDesktopBrowserHandoffRootComposeRequestSchema
 >;
 
 export const bbDesktopBrowserNavigateRequestSchema = z
@@ -359,6 +370,9 @@ export interface BbDesktopBrowserApi {
     listener: (request: BbDesktopBrowserRevealRequest) => void,
   ): BbDesktopBrowserUnsubscribe;
   attach(request: BbDesktopBrowserAttachRequest): void;
+  handoffRootComposeTabs?(
+    request: BbDesktopBrowserHandoffRootComposeRequest,
+  ): Promise<string[]>;
   detach(tabId: string): void;
   setThreadDiscarded?(request: BbDesktopBrowserSetThreadDiscardedRequest): void;
   listThreadIdsWithTabs?(): Promise<string[]>;

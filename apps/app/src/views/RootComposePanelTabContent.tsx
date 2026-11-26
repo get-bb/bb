@@ -2,6 +2,7 @@ import { PluginDetailTabContent } from "@/components/plugin/plugin-detail-naviga
 import type { ReactNode } from "react";
 import type { SidebarProject } from "@/hooks/queries/project-queries";
 import { findLocalPathProjectSourceForHost } from "@bb/domain";
+import { BB_DESKTOP_BROWSER_ROOT_COMPOSE_THREAD_ID } from "@bb/desktop-contract";
 import type {
   ExperimentalLiveFileTarget,
   PluginFileOpenerSource,
@@ -41,7 +42,8 @@ import { resolveAbsoluteFilePath } from "@bb/shared-ui/lib/absolute-file-path";
 import { useAppCommandHandler } from "@/components/commands/AppCommandProvider";
 import type { MarkdownPreviewLinkHandler } from "@/components/ui/markdown-link";
 
-export const ROOT_COMPOSE_FIXED_PANEL_STATE_ID = "root-compose";
+export const ROOT_COMPOSE_FIXED_PANEL_STATE_ID =
+  BB_DESKTOP_BROWSER_ROOT_COMPOSE_THREAD_ID;
 
 export type RootComposeTerminalTarget =
   | { kind: "environment"; environmentId: string }

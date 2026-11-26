@@ -66,6 +66,7 @@ import {
 } from "./desktop-update-ipc.js";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_HANDOFF_ROOT_COMPOSE_CHANNEL,
   BB_DESKTOP_BROWSER_TARGET_CHANNEL,
   BB_DESKTOP_BROWSER_GET_CONTROL_CHANNEL,
   BB_DESKTOP_BROWSER_CONTROL_CHANNEL,
@@ -347,6 +348,16 @@ const bbBrowserApi: BbDesktopBrowserApi = {
       ...request,
       bounds: browserViewBoundsAtWindowScale(request.bounds),
     });
+  },
+  async handoffRootComposeTabs(request) {
+    return z
+      .array(z.string().min(1))
+      .parse(
+        await ipcRenderer.invoke(
+          BB_DESKTOP_BROWSER_HANDOFF_ROOT_COMPOSE_CHANNEL,
+          request,
+        ),
+      );
   },
   detach(tabId): void {
     ipcRenderer.send(BB_DESKTOP_BROWSER_DETACH_CHANNEL, { tabId });

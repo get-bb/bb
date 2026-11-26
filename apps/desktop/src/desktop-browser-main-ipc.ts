@@ -3,6 +3,7 @@ import type { z } from "zod";
 import {
   bbDesktopBrowserAttachRequestSchema,
   bbDesktopBrowserEvaluateRequestSchema,
+  bbDesktopBrowserHandoffRootComposeRequestSchema,
   bbDesktopBrowserFindInPageRequestSchema,
   bbDesktopBrowserNavigateRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
@@ -14,6 +15,7 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_HANDOFF_ROOT_COMPOSE_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
   BB_DESKTOP_BROWSER_FOCUS_CHANNEL,
@@ -58,7 +60,43 @@ function registerRequestCommand<T>(
 
 export function registerDesktopBrowserIpc(
   manager: DesktopBrowserViewManager,
+  {
+    applicationWindowWebContentsIds,
+    getActiveAppUrl,
+    getActiveServerUrl,
+  }: {
+    applicationWindowWebContentsIds: ReadonlySet<number>;
+    getActiveAppUrl: () => string | null;
+    getActiveServerUrl: () => string | null;
+  },
 ): void {
+  ipcMain.handle(
+    BB_DESKTOP_BROWSER_HANDOFF_ROOT_COMPOSE_CHANNEL,
+    (event, payload: unknown) => {
+      const hostWindow = BrowserWindow.fromWebContents(event.sender);
+      const frame = event.senderFrame;
+      const appUrl = getActiveAppUrl();
+      const serverUrl = getActiveServerUrl();
+      if (
+        hostWindow === null ||
+        !applicationWindowWebContentsIds.has(event.sender.id) ||
+        frame === null ||
+        frame !== event.sender.mainFrame ||
+        appUrl === null ||
+        serverUrl === null ||
+        new URL(frame.url).origin !== new URL(appUrl).origin
+      ) {
+        throw new Error(
+          "Browser handoff requires the active application window",
+        );
+      }
+      return manager.handoffRootComposeTabs({
+        hostWindow,
+        request: bbDesktopBrowserHandoffRootComposeRequestSchema.parse(payload),
+        serverOrigin: new URL(serverUrl).origin,
+      });
+    },
+  );
   registerRequestCommand(
     BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
     bbDesktopBrowserAttachRequestSchema,

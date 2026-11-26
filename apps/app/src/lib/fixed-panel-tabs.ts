@@ -27,6 +27,7 @@ import {
   parseFixedPanelTabsState,
   pruneFixedPanelTabsStorage,
   serializeFixedPanelTabsState,
+  type BrowserFixedPanelTab,
   type FixedPanelTab,
   type FixedPanelTabsState,
   type FixedPanelViewTab,
@@ -364,6 +365,65 @@ export function applyFixedPanelTabsUpdate(
 ): FixedPanelTabsState | null {
   const next = ensureOpenFixedPanelHasActiveTab(update(current));
   return next === current ? null : touchFixedPanelTabsState(next, now);
+}
+
+export function useMoveFixedPanelBrowserTabs(sourcePanelStateId: string) {
+  const sourceAtom = getFixedPanelTabsStateAtom(sourcePanelStateId);
+  const store = useStore();
+  const queryClient = useQueryClient();
+  return useCallback(
+    (threadId: string, tabIds: readonly string[]): BrowserFixedPanelTab[] => {
+      const source = store.get(sourceAtom);
+      const ids = new Set(tabIds);
+      const tabs = source.secondary.tabs.filter(
+        (tab): tab is BrowserFixedPanelTab =>
+          tab.kind === "browser" && ids.has(tab.id),
+      );
+      if (tabs.length === 0) return tabs;
+
+      const targetAtom = getFixedPanelTabsStateAtom(threadId);
+      const target = store.get(targetAtom);
+      const selected =
+        tabs.find((tab) => tab.id === source.secondary.activeTabId) ??
+        tabs.find((tab) => tab.id === source.secondary.previousActiveTabId) ??
+        tabs[0];
+      const movedIds = new Set(tabs.map((tab) => tab.id));
+      const targetById = new Map(
+        target.secondary.tabs.map((tab) => [tab.id, tab]),
+      );
+      const nextTarget = setSecondaryPanelTabsInState({
+        state: target,
+        tabs: [
+          ...target.secondary.tabs.filter((tab) => !movedIds.has(tab.id)),
+          ...tabs.map((tab) => targetById.get(tab.id) ?? tab),
+        ],
+        activeTabId: selected?.id ?? target.secondary.activeTabId,
+        isOpen: source.secondary.isOpen || target.secondary.isOpen,
+      });
+      const nextSource = tabs.reduce(
+        (state, tab) => closeSecondaryPanelTabInState(state, tab.id),
+        source,
+      );
+      const now = Date.now();
+      if (
+        !areThreadTabListsEquivalent(
+          target.secondary.tabs,
+          nextTarget.secondary.tabs,
+        )
+      ) {
+        scheduleThreadTabsPersistence({
+          previousTabs: target.secondary.tabs,
+          tabs: nextTarget.secondary.tabs,
+          queryClient,
+          threadId,
+        });
+      }
+      store.set(targetAtom, touchFixedPanelTabsState(nextTarget, now));
+      store.set(sourceAtom, touchFixedPanelTabsState(nextSource, now));
+      return tabs;
+    },
+    [queryClient, sourceAtom, store],
+  );
 }
 
 export function useUpdateFixedPanelTabsState(

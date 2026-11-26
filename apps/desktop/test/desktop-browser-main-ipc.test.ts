@@ -12,6 +12,7 @@ import {
 } from "@bb/desktop-contract";
 import {
   BB_DESKTOP_BROWSER_ATTACH_CHANNEL,
+  BB_DESKTOP_BROWSER_HANDOFF_ROOT_COMPOSE_CHANNEL,
   BB_DESKTOP_BROWSER_DETACH_CHANNEL,
   BB_DESKTOP_BROWSER_EVALUATE_CHANNEL,
   BB_DESKTOP_BROWSER_SET_THREAD_DISCARDED_CHANNEL,
@@ -28,7 +29,7 @@ import {
   BB_DESKTOP_BROWSER_STOP_CHANNEL,
   BB_DESKTOP_BROWSER_STOP_FIND_IN_PAGE_CHANNEL,
 } from "../src/desktop-browser-ipc.js";
-import { registerDesktopBrowserIpc } from "../src/desktop-browser-main-ipc.js";
+import { registerDesktopBrowserIpc as registerProductionDesktopBrowserIpc } from "../src/desktop-browser-main-ipc.js";
 import type {
   DesktopBrowserNativeTab,
   DesktopBrowserViewManager,
@@ -37,6 +38,7 @@ import type {
 const electronMock = vi.hoisted(() => {
   interface FakeWebContents {
     id: number;
+    mainFrame?: { url: string };
   }
 
   interface FakeBrowserWindow {
@@ -45,6 +47,7 @@ const electronMock = vi.hoisted(() => {
 
   interface FakeIpcEvent {
     sender: FakeWebContents;
+    senderFrame?: { url: string };
   }
 
   type FakeIpcListener = (event: FakeIpcEvent, payload: unknown) => void;
@@ -83,6 +86,9 @@ vi.mock("electron", () => ({
 }));
 
 type AttachCall = Parameters<DesktopBrowserViewManager["attach"]>[0];
+type HandoffCall = Parameters<
+  DesktopBrowserViewManager["handoffRootComposeTabs"]
+>[0];
 type DetachCall = Parameters<DesktopBrowserViewManager["detach"]>[0];
 type SetThreadDiscardedCall = Parameters<
   DesktopBrowserViewManager["setThreadDiscarded"]
@@ -99,6 +105,7 @@ type EvaluateCall = Parameters<DesktopBrowserViewManager["evaluate"]>[0];
 
 interface FakeWebContents {
   id: number;
+  mainFrame?: { url: string };
 }
 
 interface FakeBrowserWindow {
@@ -181,6 +188,8 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
     this.attachCalls.push(args);
   }
 
+  handoffRootComposeTabs = vi.fn(({ request }: HandoffCall) => request.tabIds);
+
   beginWindowResize(): void {}
 
   prepareWindowReload(): void {}
@@ -248,6 +257,17 @@ class RecordingDesktopBrowserViewManager implements DesktopBrowserViewManager {
 
 let nextWebContentsId = 1;
 
+function registerDesktopBrowserIpc(
+  manager: RecordingDesktopBrowserViewManager,
+  trustedIds: number[] = [],
+) {
+  registerProductionDesktopBrowserIpc(manager, {
+    applicationWindowWebContentsIds: new Set(trustedIds),
+    getActiveAppUrl: () => "http://localhost:11001/",
+    getActiveServerUrl: () => "http://127.0.0.1:19001/",
+  });
+}
+
 beforeEach(() => {
   electronMock.handlers.clear();
   electronMock.listeners.clear();
@@ -283,6 +303,53 @@ function oversizedBrowserUrl(): string {
 }
 
 describe("registerDesktopBrowserIpc", () => {
+  it("authorizes draft ownership handoff only from a trusted main frame on the active app origin", async () => {
+    const manager = new RecordingDesktopBrowserViewManager();
+    const renderer = createTrustedRenderer("main-window");
+    const popup = createTrustedRenderer("popup");
+    registerDesktopBrowserIpc(manager, [renderer.sender.id]);
+    const handler = electronMock.handlers.get(
+      BB_DESKTOP_BROWSER_HANDOFF_ROOT_COMPOSE_CHANNEL,
+    )!;
+    const mainFrame = { url: "http://localhost:11001/new" };
+    renderer.sender.mainFrame = mainFrame;
+    popup.sender.mainFrame = mainFrame;
+    const request = { threadId: "thr_23456789ab", tabIds: ["browser:draft"] };
+    const invoke = async (
+      sender: FakeWebContents,
+      senderFrame: { url: string },
+      payload = request,
+    ) => handler({ sender, senderFrame }, payload);
+
+    await expect(invoke(popup.sender, mainFrame)).rejects.toThrow(
+      "active application window",
+    );
+    await expect(invoke(renderer.sender, { ...mainFrame })).rejects.toThrow(
+      "active application window",
+    );
+    mainFrame.url = "http://localhost:11002/";
+    await expect(invoke(renderer.sender, mainFrame)).rejects.toThrow(
+      "active application window",
+    );
+    mainFrame.url = "http://localhost:11001/";
+    await expect(
+      invoke(renderer.sender, mainFrame, {
+        ...request,
+        threadId: "root-compose",
+      }),
+    ).rejects.toThrow();
+    expect(manager.handoffRootComposeTabs).not.toHaveBeenCalled();
+
+    await expect(invoke(renderer.sender, mainFrame)).resolves.toEqual(
+      request.tabIds,
+    );
+    expect(manager.handoffRootComposeTabs).toHaveBeenCalledExactlyOnceWith({
+      hostWindow: renderer.hostWindow,
+      serverOrigin: "http://127.0.0.1:19001",
+      request,
+    });
+  });
+
   it("evaluates page expressions only for valid requests from BrowserWindow-owned senders", async () => {
     const manager = new RecordingDesktopBrowserViewManager();
     registerDesktopBrowserIpc(manager);

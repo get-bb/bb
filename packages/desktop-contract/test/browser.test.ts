@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BB_DESKTOP_BROWSER_MAX_URL_LENGTH,
   bbDesktopBrowserAttachRequestSchema,
+  bbDesktopBrowserHandoffRootComposeRequestSchema,
   bbDesktopBrowserSetBoundsRequestSchema,
   bbDesktopBrowserStateSchema,
   clampBbDesktopBrowserViewBounds,
@@ -55,6 +56,21 @@ describe("desktop browser bounds containment", () => {
 });
 
 describe("desktop browser IPC schemas", () => {
+  it("accepts only a real thread ID and explicit tab IDs for a draft handoff", () => {
+    const schema = bbDesktopBrowserHandoffRootComposeRequestSchema;
+    const request = { threadId: "thr_23456789ab", tabIds: ["browser:abc"] };
+    expect(schema.parse(request)).toEqual(request);
+    expect(
+      schema.safeParse({ ...request, threadId: "root-compose" }).success,
+    ).toBe(false);
+    expect(schema.safeParse({ ...request, tabIds: [] }).success).toBe(false);
+    expect(schema.safeParse({ ...request, tabIds: [""] }).success).toBe(false);
+    expect(
+      schema.safeParse({ ...request, sourceThreadId: "thr_23456789ac" })
+        .success,
+    ).toBe(false);
+  });
+
   it.each([undefined, "", 42])(
     "rejects invalid attach ownership: %s",
     (threadId) => {
