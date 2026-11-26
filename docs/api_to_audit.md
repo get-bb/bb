@@ -5925,7 +5925,9 @@ entry. `AppLayoutSidebar` mounts whichever entry resolves in the alternate
 sidebar body, holds the outgoing entry while a compact drawer closes, and
 retains the native rail and mounted thread-list state. Every entry renders in
 `SectionSidebar`, which owns the top chrome and history controls, the "Back to
-app" row and title in the top-list layout, compact-drawer dismissal for SDK and
+app" row in the top-list layout (core sections also show their section label;
+plugin panels omit the redundant visible label and expose their title as the
+sidebar region's accessible name), compact-drawer dismissal for SDK and
 delegated-link navigation, and the resize handle. Panel sidebar routes are
 section routes in `useAppSettingsRouteMemory`, so Back to app and the `app.back`
 command return to the last core app route, as from Plugins and Skills. A crash

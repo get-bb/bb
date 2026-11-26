@@ -55,7 +55,12 @@ function pluginPanelRouteSidebar({
   return {
     id: `plugin/${panel.pluginId}/${panel.id}/${panel.generation}/${subPath}`,
     render: (props) => (
-      <SectionSidebar title={panel.title} testIdPrefix="plugin" {...props}>
+      <SectionSidebar
+        title={panel.title}
+        showTitleLabel={false}
+        testIdPrefix="plugin"
+        {...props}
+      >
         <PluginSlotMount
           key={`${panel.pluginId}/${panel.id}/${panel.generation}`}
           pluginId={panel.pluginId}
