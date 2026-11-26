@@ -231,6 +231,15 @@ screens, matching the fix proposed in upstream
 It addresses a release-build crash reproduced immediately after pairing on
 Android 16. Recheck and remove it when upgrading to a version with the fix.
 
+The `react-native-nitro-modules` patch backports upstream
+[PR #1824](https://github.com/margelo/nitro/pull/1824) to 0.36.5. It prevents
+Xcode 27 Swift/C++ interop from importing iOS 18-only exception symbols into
+the app, which aborts launch on iPadOS 17 before any app code runs. Both
+Swift-visible exception construction and pending generic promise rejection
+use throw/catch with `std::current_exception()`. Remove this patch when
+upgrading to a Nitro release containing that fix. Verify native Release
+imports and cold launch on iOS 17 when changing this dependency.
+
 ### Android production setup
 
 The manual `Mobile Android (EAS)` workflow builds preview APKs or production
