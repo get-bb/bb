@@ -17,6 +17,14 @@ import {
   SIDEBAR_WORKING_STATUS_COLOR_CLASS,
 } from "@bb/shared-ui/sidebar-row-classes";
 
+const UNREAD_WORKING_STATUS_COLOR_CLASS = "text-timeline-accent";
+
+function workingColorClass(unread: boolean): string {
+  return unread
+    ? UNREAD_WORKING_STATUS_COLOR_CLASS
+    : SIDEBAR_WORKING_STATUS_COLOR_CLASS;
+}
+
 const WORKING_ACTIVITY_ICONS = {
   workflow: "Workflow",
   "background-agent": "UserRoundPlus",
@@ -32,10 +40,12 @@ const WAITING_ICONS = {
 function ThreadDraftIndicator({
   hideIdleLabel = false,
   isWorking,
+  unread = false,
   size,
 }: {
   hideIdleLabel?: boolean;
   isWorking: boolean;
+  unread?: boolean;
   size: "default" | "compact";
 }) {
   const label = threadIndicatorLabel(isWorking ? "working-draft" : "draft");
@@ -46,7 +56,7 @@ function ThreadDraftIndicator({
         "pointer-events-none shrink-0",
         size === "compact" ? "size-3.5" : SIDEBAR_STATUS_ICON_CLASS,
         isWorking
-          ? ["animate-shine-icon", SIDEBAR_WORKING_STATUS_COLOR_CLASS]
+          ? ["animate-shine-icon", workingColorClass(unread)]
           : "text-muted-foreground",
       )}
       {...(!isWorking && hideIdleLabel
@@ -58,9 +68,11 @@ function ThreadDraftIndicator({
 
 function PluginThreadRowStatusIndicator({
   status,
+  unread,
   size,
 }: {
   status: PluginComposerThreadRowStatus;
+  unread: boolean;
   size: "default" | "compact";
 }) {
   const iconSizeClass =
@@ -71,7 +83,7 @@ function PluginThreadRowStatusIndicator({
         className={cn(
           "inline-flex items-center justify-center motion-safe:animate-pulse",
           iconSizeClass,
-          "text-success",
+          unread ? UNREAD_WORKING_STATUS_COLOR_CLASS : "text-success",
         )}
       >
         <Icon
@@ -108,6 +120,7 @@ export function ThreadStatusGlyph({
   archived = false,
   rowStatus = null,
   hideIdleDraftLabel = false,
+  unread = false,
   size = "default",
 }: PluginThreadStatusGlyphProps) {
   const iconSizeClass =
@@ -124,7 +137,11 @@ export function ThreadStatusGlyph({
   const shownRowStatus = visibleThreadRowStatus(indicator, rowStatus);
   if (shownRowStatus) {
     return (
-      <PluginThreadRowStatusIndicator status={shownRowStatus} size={size} />
+      <PluginThreadRowStatusIndicator
+        status={shownRowStatus}
+        unread={unread}
+        size={size}
+      />
     );
   }
 
@@ -148,7 +165,7 @@ export function ThreadStatusGlyph({
         />
       );
     case "working-draft":
-      return <ThreadDraftIndicator isWorking size={size} />;
+      return <ThreadDraftIndicator isWorking unread={unread} size={size} />;
     case "workflow":
     case "background-agent":
     case "background-command":
@@ -158,7 +175,7 @@ export function ThreadStatusGlyph({
           name={WORKING_ACTIVITY_ICONS[indicator]}
           className={cn(
             "animate-shine-icon",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            workingColorClass(unread),
             iconSizeClass,
           )}
           aria-label={threadIndicatorLabel(indicator) ?? undefined}
@@ -170,7 +187,7 @@ export function ThreadStatusGlyph({
           name="Loading"
           className={cn(
             "animate-spin motion-reduce:animate-none",
-            SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+            workingColorClass(unread),
             iconSizeClass,
           )}
           aria-label={threadIndicatorLabel(indicator) ?? undefined}

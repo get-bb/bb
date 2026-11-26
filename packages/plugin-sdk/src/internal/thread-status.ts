@@ -154,5 +154,6 @@ export function experimental_resolveThreadStatus({
     rowStatus: shownRowStatus,
     label: shownRowStatus?.label ?? threadIndicatorLabel(indicator),
     isWorking: isThreadWorking || rowStatus?.tone === "running",
+    isUnread: flags.unreadSuccess || flags.unreadError,
   };
 }

@@ -275,6 +275,7 @@ function ThreadTrailingIndicator({
         indicator={status.indicator}
         rowStatus={status.rowStatus}
         hideIdleDraftLabel={hideIdleDraftLabel}
+        unread={status.isUnread}
       />
     </span>
   );
@@ -630,9 +631,11 @@ function ThreadRowComponent({
               </span>
             ) : (
               <span
+                data-unread={trailingStatus.isUnread ? "" : undefined}
                 className={cn(
                   "bb-thread-title",
                   crossProjectLabel !== null && "min-w-0 truncate",
+                  trailingStatus.isUnread && "font-semibold",
                 )}
                 title={labelTitle}
                 onDoubleClick={startTitleEditing}

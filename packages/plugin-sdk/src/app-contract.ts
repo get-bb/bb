@@ -1825,6 +1825,12 @@ export interface PluginThreadStatus {
    * `rowStatus` has the "running" tone.
    */
   isWorking: boolean;
+  /**
+   * Whether the row's thread, or a hidden root thread of a collapsed group,
+   * finished with a reply the user has not read, even when `indicator` or
+   * `rowStatus` shows something else in its place.
+   */
+  isUnread: boolean;
 }
 
 /**
@@ -1847,6 +1853,12 @@ export interface PluginThreadStatusGlyphProps {
   rowStatus?: PluginSidebarThreadRowStatus | null;
   /** Hides the idle draft glyph from assistive technology. */
   hideIdleDraftLabel?: boolean;
+  /**
+   * Draws a working glyph in the unread color, so a row that is still busy
+   * shows it has a reply to read. Pass `isUnread` from
+   * {@link PluginSdkApp.experimental_resolveThreadStatus}.
+   */
+  unread?: boolean;
   /** "compact" draws a 14 px glyph; "default" matches bb's sidebar rows. */
   size?: "default" | "compact";
 }

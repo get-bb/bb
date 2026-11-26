@@ -105,6 +105,11 @@ draw metadata, such as GitHub PR Status's pull request number. Rows grow to
 two lines only when a plugin shows something for them. `showRowMetadata` defaults to `false`; use
 `bb thread-list prefs set showRowMetadata true` to turn it on.
 
+A thread with a reply you have not read shows its title in bold. When the row
+is still busy (a collapsed child running, or a plugin's running status on the
+row), the working glyph takes the unread color instead of the usual grey, since
+it sits where the unread dot would be.
+
 Organize → Groups → By read status lists threads that show the unread dot above
 the rest, keeping the selected sort within each group. `groupByReadStatus`
 defaults to `false`; use `bb thread-list prefs set groupByReadStatus true` to

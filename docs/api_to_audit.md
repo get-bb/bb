@@ -5394,8 +5394,10 @@ branding separate from provider artwork resolution.
 ## `experimental_ThreadStatusGlyph` (`@get-bb/plugin-sdk/app`)
 
 Renders bb's thread status glyph from `PluginThreadStatusGlyphProps`
-(`indicator`, `archived?`, `rowStatus`, `hideIdleDraftLabel`, `size`); the
-host owns icons, colors, and labels, and the caller resolves the indicator.
+(`indicator`, `archived?`, `rowStatus`, `hideIdleDraftLabel`, `unread`,
+`size`); the host owns icons, colors, and labels, and the caller resolves the
+indicator. `unread` draws a working glyph (the runtime spinner, a working
+activity or draft, a running row status) in the unread color.
 The SDK test fake exposes the props as `data-*` attributes.
 
 **Core callers.** `ThreadStatusGlyph`
@@ -5421,7 +5423,9 @@ A pure function from `PluginThreadStatusInput` (the row's thread or null for a
 group row, the threads it hides while collapsed, whether any of them holds a
 draft, and another plugin's row status) to `PluginThreadStatus`: the
 indicator, the row status when it shows in place of the indicator, the
-accessible label, and whether anything is working. Hidden threads add their
+accessible label, whether anything is working, and whether the row has an
+unread reply even when another indicator or the row status shows in its
+place. Hidden threads add their
 attention and work; their queued messages do not count. The host installs the
 function from `packages/plugin-sdk/src/internal/thread-status.ts`, so a plugin
 built against an older SDK still resolves with the running host's precedence.

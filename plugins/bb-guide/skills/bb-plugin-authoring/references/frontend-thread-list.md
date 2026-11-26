@@ -163,8 +163,9 @@ For multi-row selections (`experimental_bulkItem`), see frontend-sidebar-navigat
 **bb's status glyph on your row.** Pass the row's thread, its hidden children,
 its draft, and `useSidebarThreadRowStatus(threadId)` to
 `experimental_resolveThreadStatus` (bb's lists use the same function), then
-render `experimental_ThreadStatusGlyph` with the result's `indicator` and
-`rowStatus`; `label` and `isWorking` cover anything else you draw.
+render `experimental_ThreadStatusGlyph` with the result's `indicator`,
+`rowStatus`, and `isUnread` as `unread`; `label`, `isWorking`, and `isUnread`
+cover anything else you draw, such as bb's bold title for an unread row.
 
 **Keyboard support is a DOM contract.** bb's thread shortcuts find rows by
 query selector, not by React state. Put both attributes on each row's anchor or

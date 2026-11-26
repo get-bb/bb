@@ -117,4 +117,65 @@ describe("ThreadStatusGlyph", () => {
       expect(screen.queryByLabelText("Improving")).toBeNull();
     },
   );
+
+  it.each([
+    ["runtime", "Thread working"],
+    ["working-draft", "Thread working with unsubmitted draft"],
+    ["workflow", "Workflow running"],
+    ["background-agent", "Background agent running"],
+    ["background-command", "Background command running"],
+    ["plan-mode", "Plan mode active"],
+  ] satisfies [PluginSidebarThreadIndicator, string][])(
+    "draws %s in the unread color only while the thread is unread",
+    (indicator, label) => {
+      const { rerender } = render(<ThreadStatusGlyph indicator={indicator} />);
+      expect(Array.from(screen.getByLabelText(label).classList)).toContain(
+        SIDEBAR_WORKING_STATUS_COLOR_CLASS,
+      );
+
+      rerender(<ThreadStatusGlyph indicator={indicator} unread />);
+      const classes = Array.from(screen.getByLabelText(label).classList);
+      expect(classes).toContain("text-timeline-accent");
+      expect(classes).not.toContain(SIDEBAR_WORKING_STATUS_COLOR_CLASS);
+    },
+  );
+
+  it("draws a running row status in the unread color over an unread thread", () => {
+    const rowStatus = {
+      icon: "AiContentGenerator01",
+      label: "Improving",
+      tone: "running",
+    } as const;
+    const { rerender } = render(
+      <ThreadStatusGlyph indicator="unread-success" rowStatus={rowStatus} />,
+    );
+    const pulse = () => screen.getByLabelText("Improving").parentElement;
+    expect(Array.from(pulse()?.classList ?? [])).toContain("text-success");
+
+    rerender(
+      <ThreadStatusGlyph
+        indicator="unread-success"
+        rowStatus={rowStatus}
+        unread
+      />,
+    );
+    expect(Array.from(pulse()?.classList ?? [])).toContain(
+      "text-timeline-accent",
+    );
+    expect(Array.from(pulse()?.classList ?? [])).not.toContain("text-success");
+  });
+
+  it("keeps the unread dot and idle glyphs in their own colors", () => {
+    const { rerender } = render(
+      <ThreadStatusGlyph indicator="unread-success" unread />,
+    );
+    expect(
+      Array.from(screen.getByLabelText("Unread thread succeeded").classList),
+    ).not.toContain("text-timeline-accent");
+
+    rerender(<ThreadStatusGlyph indicator="waiting-for-input" unread />);
+    expect(
+      Array.from(screen.getByLabelText("Thread needs user input").classList),
+    ).not.toContain("text-timeline-accent");
+  });
 });

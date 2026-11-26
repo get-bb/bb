@@ -1062,6 +1062,83 @@ describe("ThreadRow", () => {
     expect(statusGlyph().getAttribute("data-row-status-tone")).toBe("success");
   });
 
+  it("bolds an unread title and leaves a read one at normal weight", () => {
+    renderThreadRow({
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 2 }),
+    });
+    const unreadTitle = document.querySelector(".bb-thread-title");
+    expect(unreadTitle?.hasAttribute("data-unread")).toBe(true);
+    expect(Array.from(unreadTitle?.classList ?? [])).toContain("font-semibold");
+
+    cleanup();
+    renderThreadRow({
+      thread: createThread({ lastReadAt: 2, latestAttentionAt: 2 }),
+    });
+    const readTitle = document.querySelector(".bb-thread-title");
+    expect(readTitle?.hasAttribute("data-unread")).toBe(false);
+    expect(Array.from(readTitle?.classList ?? [])).not.toContain(
+      "font-semibold",
+    );
+  });
+
+  it("keeps an unread reply visible under a running plugin status", () => {
+    renderThreadRow({
+      pluginStatus: {
+        icon: "AiContentGenerator01",
+        label: "Plugin running a job",
+        tone: "running",
+      },
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 2 }),
+    });
+
+    expect(statusGlyph().getAttribute("data-row-status")).toBe(
+      "Plugin running a job",
+    );
+    expect(statusGlyph().hasAttribute("data-unread")).toBe(true);
+    expect(
+      document.querySelector(".bb-thread-title")?.hasAttribute("data-unread"),
+    ).toBe(true);
+  });
+
+  it("keeps an unread parent visible while a collapsed child runs", () => {
+    renderThreadRow({
+      options: {
+        kind: "parent",
+        depth: 1,
+        isCompact: false,
+        isCollapsed: true,
+        childCount: 1,
+        hiddenThreads: [
+          createThread({
+            id: "thr_running_child",
+            parentThreadId: "thr_test",
+            status: "active",
+            runtimeStatus: "active",
+          }),
+        ],
+        onToggleCollapsed: vi.fn(),
+      },
+      thread: createThread({ lastReadAt: 1, latestAttentionAt: 2 }),
+    });
+
+    expect(renderedIndicators()).toEqual(["runtime"]);
+    expect(statusGlyph().hasAttribute("data-unread")).toBe(true);
+  });
+
+  it("does not mark a running read thread as unread", () => {
+    renderThreadRow({
+      thread: createThread({
+        status: "active",
+        runtimeStatus: "active",
+        lastReadAt: 2,
+        latestAttentionAt: 2,
+      }),
+    });
+
+    expect(renderedIndicators()).toEqual(["runtime"]);
+    expect(statusGlyph().hasAttribute("data-unread")).toBe(false);
+  });
+
   it("keeps the runtime indicator ahead of a plugin status", () => {
     renderThreadRow({
       pluginStatus: {

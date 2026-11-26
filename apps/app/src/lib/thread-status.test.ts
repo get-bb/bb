@@ -40,6 +40,7 @@ interface StatusCase {
   rowStatusShown?: boolean;
   label?: string | null;
   isWorking?: boolean;
+  isUnread?: boolean;
 }
 
 const ROW_STATUS: PluginSidebarThreadRowStatus = {
@@ -56,7 +57,12 @@ const UNREAD_SUCCESS: ThreadSpec = { unread: true };
 const UNREAD_ERROR: ThreadSpec = { status: "error", unread: true };
 
 const CASES: StatusCase[] = [
-  { name: "an idle read thread", thread: {}, indicator: "none" },
+  {
+    name: "an idle read thread",
+    thread: {},
+    indicator: "none",
+    isUnread: false,
+  },
   { name: "an idle draft", thread: {}, draft: true, indicator: "draft" },
   ...(["active", "provisioning", "starting", "stopping"] as const).map(
     (runtime): StatusCase => ({
@@ -91,16 +97,19 @@ const CASES: StatusCase[] = [
     name: "an unread idle root",
     thread: UNREAD_SUCCESS,
     indicator: "unread-success",
+    isUnread: true,
   },
   {
     name: "an unread error root",
     thread: UNREAD_ERROR,
     indicator: "unread-error",
+    isUnread: true,
   },
   {
     name: "an unread parented thread",
     thread: { ...UNREAD_SUCCESS, parented: true },
     indicator: "none",
+    isUnread: false,
   },
   {
     name: "an unread pending thread that never ran",
@@ -111,6 +120,7 @@ const CASES: StatusCase[] = [
     name: "an unread thread still starting",
     thread: { status: "starting", unread: true },
     indicator: "none",
+    isUnread: false,
   },
   {
     name: "pending input over runtime",
@@ -139,6 +149,7 @@ const CASES: StatusCase[] = [
     name: "runtime over unread success",
     thread: { ...UNREAD_SUCCESS, runtime: "active" },
     indicator: "runtime",
+    isUnread: true,
   },
   ...(["workflows", "backgroundAgents", "backgroundCommands"] as const).map(
     (activity): StatusCase => ({
@@ -148,12 +159,7 @@ const CASES: StatusCase[] = [
     }),
   ),
   ...(
-    [
-      "workflows",
-      "backgroundAgents",
-      "backgroundCommands",
-      "planMode",
-    ] as const
+    ["workflows", "backgroundAgents", "backgroundCommands", "planMode"] as const
   ).map((activity): StatusCase => ({
     name: `a working draft with ${activity}`,
     thread: { [activity]: 1 },
@@ -308,6 +314,15 @@ const CASES: StatusCase[] = [
     isWorking: true,
   },
   {
+    name: "a running row status in place of unread success",
+    thread: UNREAD_SUCCESS,
+    rowStatus: RUNNING_ROW_STATUS,
+    indicator: "unread-success",
+    rowStatusShown: true,
+    isWorking: true,
+    isUnread: true,
+  },
+  {
     name: "a running row status hidden by pending input",
     thread: { pending: true },
     rowStatus: RUNNING_ROW_STATUS,
@@ -321,6 +336,15 @@ const CASES: StatusCase[] = [
     hidden: [{ parented: true }, { ...RUNNING, parented: true }],
     indicator: "runtime",
     isWorking: true,
+    isUnread: false,
+  },
+  {
+    name: "an unread collapsed parent with a running descendant",
+    thread: UNREAD_SUCCESS,
+    hidden: [{ ...RUNNING, parented: true }],
+    indicator: "runtime",
+    isWorking: true,
+    isUnread: true,
   },
   {
     name: "a collapsed parent with a blocked descendant",
@@ -351,6 +375,7 @@ const CASES: StatusCase[] = [
       { ...UNREAD_ERROR, parented: true },
     ],
     indicator: "none",
+    isUnread: false,
   },
   {
     name: "a collapsed parent's own queued send",
@@ -389,6 +414,7 @@ const CASES: StatusCase[] = [
     thread: null,
     hidden: [UNREAD_SUCCESS, {}],
     indicator: "unread-success",
+    isUnread: true,
   },
   {
     name: "a collapsed group with an unread error, unread success, work, and input",
@@ -487,6 +513,9 @@ describe("experimental_resolveThreadStatus", () => {
       }
       if (testCase.isWorking !== undefined) {
         expect(status.isWorking).toBe(testCase.isWorking);
+      }
+      if (testCase.isUnread !== undefined) {
+        expect(status.isUnread).toBe(testCase.isUnread);
       }
     });
   });
