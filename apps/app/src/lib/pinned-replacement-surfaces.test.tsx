@@ -194,6 +194,7 @@ const SURFACES: PinnedSurface[] = [
         usePluginSlotKind("codeFenceRenderers"),
         useAtomValue(codeFencePicksAtom),
         useExclusiveBootState(),
+        {},
       ).get("bash");
       return resolved?.status === "ok" ? resolved.slot.pluginId : null;
     },

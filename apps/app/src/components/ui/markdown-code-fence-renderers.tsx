@@ -2,6 +2,7 @@ import {
   createContext,
   memo,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -16,10 +17,20 @@ import type {
   ExperimentalCodeFenceStatus,
 } from "@get-bb/plugin-sdk";
 import { visit } from "unist-util-visit";
+import { useMeasuredValue } from "@bb/shared-ui/hooks/use-measured-value";
+import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { PluginSlotMount } from "@/components/plugin/PluginSlotMount.js";
-import type { ExclusiveBootState } from "@/lib/plugin-replacement-preference";
+import {
+  replacementProviderKey,
+  type ExclusiveBootState,
+} from "@/lib/plugin-replacement-preference";
 import { resolveCodeFenceRendererRegistry } from "@/lib/plugin-slot-resolvers.js";
 import type { PluginCodeFenceRendererSlot } from "@/lib/plugin-slots.js";
+import {
+  measureCodeFenceBox,
+  recallCodeFenceBox,
+  rememberCodeFenceBox,
+} from "./code-fence-box-memory.js";
 import {
   closesAnyIndentMarkdownFence,
   parseMarkdownFenceStart,
@@ -29,10 +40,11 @@ const CODE_FENCE_OFFSET_PROPERTY = "dataCodeFenceOffset";
 const CODE_FENCE_CLOSED_PROPERTY = "dataCodeFenceClosed";
 const MARKDOWN_CONTAINER_PREFIX_PATTERN = /^[ \t>]*/u;
 
-export type CodeFenceRendererRegistry = ReadonlyMap<
-  string,
-  PluginCodeFenceRendererSlot
->;
+export type CodeFenceRenderer =
+  | { status: "ok"; slot: PluginCodeFenceRendererSlot }
+  | { status: "loading" };
+
+export type CodeFenceRendererRegistry = ReadonlyMap<string, CodeFenceRenderer>;
 
 export interface CodeFenceElementProps {
   "data-code-fence-offset"?: string;
@@ -47,16 +59,30 @@ export function buildCodeFenceRendererRegistry(
   slots: readonly PluginCodeFenceRendererSlot[],
   picks: Readonly<Record<string, string>>,
   boot: ExclusiveBootState,
+  remembered: Readonly<Record<string, string>>,
 ): CodeFenceRendererRegistry {
-  const registry = new Map<string, PluginCodeFenceRendererSlot>();
+  const registry = new Map<string, CodeFenceRenderer>();
   for (const [language, resolved] of resolveCodeFenceRendererRegistry(
     slots,
     picks,
     boot,
+    remembered,
   )) {
-    if (resolved.status === "ok") registry.set(language, resolved.slot);
+    if (resolved.status !== "builtin") registry.set(language, resolved);
   }
   return registry;
+}
+
+export function codeFenceRendererKeys(
+  registry: CodeFenceRendererRegistry,
+): Record<string, string> {
+  const keys: Record<string, string> = {};
+  for (const [language, renderer] of registry) {
+    if (renderer.status === "ok") {
+      keys[language] = replacementProviderKey(renderer.slot);
+    }
+  }
+  return keys;
 }
 
 function isClosedCodeFence(node: Code, markdownSource: string): boolean {
@@ -269,23 +295,38 @@ export function CodeFenceRendererHost({
     }
     const index = ordinals.get(block.language) ?? 0;
     ordinals.set(block.language, index + 1);
-    const slot = registry.get(block.language);
+    const renderer = registry.get(block.language);
     mounts.push(
       createPortal(
         <CodeFenceOriginalContext.Provider value={block.original}>
-          {slot === undefined ? (
+          {renderer === undefined ? (
             <CodeFenceOriginal />
-          ) : (
-            <CodeFenceMount
-              code={block.code}
-              index={index}
-              language={block.language}
-              message={message}
-              slot={slot}
-              status={
-                block.closed ? "closed" : streaming ? "streaming" : "unclosed"
-              }
+          ) : renderer.status === "loading" ? (
+            <CodeFenceReservedBox
+              container={entry.container}
+              messageId={message.id}
+              offset={entry.offset}
             />
+          ) : (
+            <>
+              <CodeFenceMount
+                code={block.code}
+                index={index}
+                language={block.language}
+                message={message}
+                slot={renderer.slot}
+                status={
+                  block.closed ? "closed" : streaming ? "streaming" : "unclosed"
+                }
+              />
+              {block.closed && !streaming ? (
+                <CodeFenceBoxRecorder
+                  container={entry.container}
+                  messageId={message.id}
+                  offset={entry.offset}
+                />
+              ) : null}
+            </>
           )}
         </CodeFenceOriginalContext.Provider>,
         entry.container,
@@ -303,6 +344,61 @@ export function CodeFenceRendererHost({
       {mounts}
     </CodeFenceHostContext.Provider>
   );
+}
+
+interface CodeFenceBoxProps {
+  container: HTMLDivElement;
+  messageId: string;
+  offset: number;
+}
+
+function readBlockWidth(element: HTMLElement): number {
+  return element.getBoundingClientRect().width;
+}
+
+function CodeFenceReservedBox({
+  container,
+  messageId,
+  offset,
+}: CodeFenceBoxProps) {
+  const width = useMeasuredValue(container, readBlockWidth, null);
+  const box =
+    width === null ? null : recallCodeFenceBox(messageId, offset, width);
+  if (box === null) {
+    return <CodeFenceOriginal />;
+  }
+  return (
+    <div
+      aria-hidden
+      data-code-fence-reserved=""
+      style={{
+        height: box.height,
+        marginTop: box.marginTop,
+        marginBottom: box.marginBottom,
+      }}
+    />
+  );
+}
+
+function CodeFenceBoxRecorder({
+  container,
+  messageId,
+  offset,
+}: CodeFenceBoxProps) {
+  useEffect(
+    () =>
+      observeSharedResize(container, {
+        read: () =>
+          container.parentElement === null
+            ? null
+            : measureCodeFenceBox(container.parentElement),
+        write: (box) => {
+          if (box !== null) rememberCodeFenceBox(messageId, offset, box);
+        },
+      }),
+    [container, messageId, offset],
+  );
+  return null;
 }
 
 interface CodeFenceMountProps {

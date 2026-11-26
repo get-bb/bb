@@ -163,6 +163,32 @@ export function createRememberedAutomatic(prefix: string): RememberedAutomatic {
   };
 }
 
+export interface RememberedAutomaticMap {
+  read(): Readonly<Record<string, string>>;
+  write(keys: Readonly<Record<string, string>>): void;
+}
+
+export function createRememberedAutomaticMap(
+  prefix: string,
+): RememberedAutomaticMap {
+  const cache = createLastKnownCache({
+    prefix,
+    version: "1",
+    schema: z.record(z.string(), z.string().min(1)),
+  });
+  const key = cache.key();
+  let written: string | null = null;
+  return {
+    read: () => cache.read(key) ?? {},
+    write: (keys) => {
+      const serialized = JSON.stringify(keys);
+      if (serialized === written) return;
+      written = serialized;
+      cache.write(key, keys);
+    },
+  };
+}
+
 export function useExclusiveResolution<
   Slot extends ReplacementProviderIdentity,
 >(

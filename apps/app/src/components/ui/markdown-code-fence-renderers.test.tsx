@@ -29,6 +29,8 @@ import {
   type CodeFenceRendererRegistry,
 } from "./markdown-code-fence-renderers";
 import { MarkdownPreview } from "./markdown-preview";
+import { resetCodeFenceBoxMemoryForTest } from "./code-fence-box-memory";
+import { stubResizeObserverDeliveries } from "@/test/resize-observer-deliveries";
 
 const SETTLED_BOOT = {
   bbPluginIds: new Set<string>(),
@@ -126,6 +128,7 @@ function hostedMarkdown(
 
 afterEach(() => {
   cleanup();
+  resetCodeFenceBoxMemoryForTest();
   resetAllCrashedPluginSlotsForTest();
   resetPluginSlotStoreForTest();
   vi.restoreAllMocks();
@@ -142,6 +145,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(UiFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const view = render(
       assistantMessage(
@@ -185,6 +189,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(UiFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const view = render(
       assistantMessage(registry, "Before\n\n```ui\n{ a }\n```\n\nAfter"),
@@ -206,6 +211,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(UiFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const view = render(
       <MemoryRouter>
@@ -262,6 +268,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(StatefulFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const steps: ReadonlyArray<readonly [string, string, string]> = [
       ["Intro\n\n```ui\n{ par", "{ par", "streaming"],
@@ -311,6 +318,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(UiFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const view = render(
       assistantMessage(
@@ -333,6 +341,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(UiFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const view = render(assistantMessage(registry, "```ui\n{ cut", true));
     expect(renderedFences()).toEqual([
@@ -349,6 +358,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(UiFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const view = render(assistantMessage(registry, "```ui\n{ gone }\n```"));
     expect(screen.getAllByTestId("ui-fence")).toHaveLength(1);
@@ -366,6 +376,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(UiFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     render(
       assistantMessage(
@@ -390,6 +401,7 @@ describe("code fence renderers in assistant messages", () => {
       [slot(FragileFence)],
       {},
       SETTLED_BOOT,
+      {},
     );
     const view = render(
       assistantMessage(registry, "```ui\n{ good }\n```\n\n```ui\n{ bad", true),
@@ -490,7 +502,7 @@ describe("MarkdownPreview inside a code fence host", () => {
   ])("derives the status from the source for %s", (_label, content, status) => {
     render(
       hostedMarkdown(
-        buildCodeFenceRendererRegistry([slot(UiFence)], {}, SETTLED_BOOT),
+        buildCodeFenceRendererRegistry([slot(UiFence)], {}, SETTLED_BOOT, {}),
         content,
       ),
     );
@@ -513,6 +525,7 @@ describe("MarkdownPreview inside a code fence host", () => {
           [slot(DelegatingFence)],
           {},
           SETTLED_BOOT,
+          {},
         ),
         "```ui\n{ delegated }\n```",
       ),
@@ -551,23 +564,127 @@ describe("buildCodeFenceRendererRegistry", () => {
       [bundled, alpha, zeta],
       {},
       boot,
+      {},
     );
-    expect(automatic.get("ui")).toBe(alpha);
-    expect(automatic.get("app")).toBe(alpha);
+    expect(automatic.get("ui")).toEqual({ status: "ok", slot: alpha });
+    expect(automatic.get("app")).toEqual({ status: "ok", slot: alpha });
 
     const picked = buildCodeFenceRendererRegistry(
       [bundled, alpha, zeta],
       { ui: "zeta/generative-ui" },
       boot,
+      {},
     );
-    expect(picked.get("ui")).toBe(zeta);
-    expect(picked.get("app")).toBe(alpha);
+    expect(picked.get("ui")).toEqual({ status: "ok", slot: zeta });
+    expect(picked.get("app")).toEqual({ status: "ok", slot: alpha });
 
     const builtin = buildCodeFenceRendererRegistry(
       [bundled, alpha, zeta],
       { ui: "__builtin__" },
       boot,
+      {},
     );
     expect(builtin.has("ui")).toBe(false);
+  });
+});
+
+describe("a fence whose plugin renderer is still loading", () => {
+  const BOOTING = { bbPluginIds: new Set<string>(), settledOnce: false };
+  const REMEMBERED = { ui: "demo/generative-ui" };
+  const CONTENT =
+    "Before the card.\n\n```ui\n{ pending }\n```\n\nAfter the card.";
+
+  function layOut(columnWidth: number) {
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: HTMLElement) {
+        if (this.hasAttribute("data-code-fence-placeholder")) {
+          return new DOMRect(0, 100, columnWidth, 320);
+        }
+        if (this.textContent === "Before the card.") {
+          return new DOMRect(0, 60, columnWidth, 28);
+        }
+        if (this.textContent === "After the card.") {
+          return new DOMRect(0, 432, columnWidth, 28);
+        }
+        return new DOMRect(0, 0, columnWidth, 0);
+      },
+    );
+  }
+
+  function drawOnce(streaming: boolean, columnWidth = 600) {
+    const deliverResizes = stubResizeObserverDeliveries();
+    layOut(columnWidth);
+    const drawn = render(
+      hostedMarkdown(
+        buildCodeFenceRendererRegistry([slot(UiFence)], {}, SETTLED_BOOT, {}),
+        CONTENT,
+        streaming,
+      ),
+    );
+    deliverResizes();
+    drawn.unmount();
+    vi.restoreAllMocks();
+  }
+
+  function reopen(columnWidth: number, boot = BOOTING) {
+    layOut(columnWidth);
+    return render(
+      hostedMarkdown(
+        buildCodeFenceRendererRegistry([], {}, boot, REMEMBERED),
+        CONTENT,
+      ),
+    );
+  }
+
+  it("holds a remembered language until plugins settle, then gives it back to BB's code block", () => {
+    const ui = slot(UiFence);
+    expect(
+      buildCodeFenceRendererRegistry([], {}, BOOTING, REMEMBERED).get("ui"),
+    ).toEqual({ status: "loading" });
+    expect(
+      buildCodeFenceRendererRegistry([ui], {}, BOOTING, REMEMBERED).get("ui"),
+    ).toEqual({ status: "ok", slot: ui });
+    expect(
+      buildCodeFenceRendererRegistry([], {}, SETTLED_BOOT, REMEMBERED).has(
+        "ui",
+      ),
+    ).toBe(false);
+  });
+
+  it("reserves the box the renderer last drew, margins included, instead of showing the source", () => {
+    drawOnce(false);
+    const { container } = reopen(600);
+    const reserved = container.querySelector<HTMLElement>(
+      "[data-code-fence-reserved]",
+    );
+    expect(reserved?.style.height).toBe("320px");
+    expect(reserved?.style.marginTop).toBe("12px");
+    expect(reserved?.style.marginBottom).toBe("12px");
+    expect(container.textContent).not.toContain("{ pending }");
+  });
+
+  it("keeps the box for each recent column width", () => {
+    drawOnce(false, 600);
+    drawOnce(false, 420);
+    for (const width of [600, 420]) {
+      const { container, unmount } = reopen(width);
+      expect(
+        container.querySelector<HTMLElement>("[data-code-fence-reserved]")
+          ?.style.height,
+      ).toBe("320px");
+      unmount();
+      vi.restoreAllMocks();
+    }
+  });
+
+  it.each([
+    ["the column is a different width", true, 420, BOOTING],
+    ["the renderer only drew it while the reply streamed", false, 600, BOOTING],
+    ["plugins settled without the renderer", true, 600, SETTLED_BOOT],
+  ])("shows BB's code block when %s", (_label, finished, width, boot) => {
+    drawOnce(!finished);
+    const { container } = reopen(width, boot);
+    expect(container.querySelector("[data-code-fence-reserved]")).toBeNull();
+    expect(container.textContent).toContain("{ pending }");
   });
 });
