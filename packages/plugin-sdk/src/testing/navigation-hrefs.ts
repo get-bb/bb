@@ -14,6 +14,7 @@ const SETTINGS_SECTIONS: Record<ExperimentalSettingsSection, true> = {
   projects: true,
   machines: true,
   mobile: true,
+  devices: true,
   "environment-variables": true,
   updates: true,
   plugins: true,

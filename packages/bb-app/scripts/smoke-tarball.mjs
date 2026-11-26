@@ -1230,14 +1230,26 @@ async function smokeFullStackAttempt(binDir, sdkDir, attempt) {
         "--input-type=module",
         "-e",
         [
+          'import { readFileSync } from "node:fs";',
+          'import { join } from "node:path";',
           'import { BBSdk } from "bb-app";',
-          "const bb = new BBSdk({ baseUrl: process.env.BB_SERVER_URL });",
+          'const secret = readFileSync(join(process.env.BB_DATA_DIR, "local-access-token"), "utf8").trim();',
+          "const authorization = `Bearer bbl_${secret}`;",
+          "const bb = new BBSdk({",
+          "  baseUrl: process.env.BB_SERVER_URL,",
+          "  fetch: (input, init) => {",
+          "    const headers = new Headers(init?.headers);",
+          '    headers.set("authorization", authorization);',
+          "    return fetch(input, { ...init, headers });",
+          "  },",
+          "});",
           "await bb.status.get();",
         ].join("\n"),
       ],
       command: "node",
       cwd: sdkDir,
       env: {
+        BB_DATA_DIR: dataDir,
         BB_SERVER_URL: serverUrl,
       },
       label: "bb-app SDK status",
@@ -1254,6 +1266,27 @@ async function smokeFullStack(binDir, sdkDir) {
   await retryPortCollisions("full stack", (attempt) =>
     smokeFullStackAttempt(binDir, sdkDir, attempt),
   );
+}
+
+async function mintServerMachineJoinCode(serverUrl, serverDataDir) {
+  const secret = (
+    await readFile(join(serverDataDir, "local-access-token"), "utf8")
+  ).trim();
+  const response = await fetch(`${serverUrl}/internal/hosts/enroll-key`, {
+    method: "POST",
+    headers: {
+      authorization: `Bearer bbl_${secret}`,
+      "content-type": "application/json",
+    },
+    body: "{}",
+  });
+  if (response.status !== 201) {
+    throw new Error(
+      `Could not mint a join code: ${response.status} ${await response.text()}`,
+    );
+  }
+  const { enrollKey, hostId } = await response.json();
+  return { enrollKey, hostId };
 }
 
 async function smokeDaemonJoinAttempt(binDir, attempt) {
@@ -1311,6 +1344,10 @@ async function smokeDaemonJoinAttempt(binDir, attempt) {
       url: `${serverUrl}/health`,
     });
     for (const spec of daemonSpecs) {
+      const joinCode = await mintServerMachineJoinCode(
+        serverUrl,
+        serverDataDir,
+      );
       await closePortReservation(spec.reservation);
       const daemon = spawnManagedProcess({
         ...createInstalledBinInvocation(binDir, "bb-app", [
@@ -1322,6 +1359,10 @@ async function smokeDaemonJoinAttempt(binDir, attempt) {
           serverUrl,
           "--host-daemon-port",
           String(spec.reservation.port),
+          "--join-code",
+          joinCode.enrollKey,
+          "--host-id",
+          joinCode.hostId,
         ]),
         env: {
           ...isolatedHomeEnv(basename(spec.dataDir)),

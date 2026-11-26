@@ -1,7 +1,7 @@
 import { getAppSettings, setAppSettings } from "@bb/db";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { summarize } from "./render-session.js";
+import { signInBrowserContext, summarize } from "./render-session.js";
 import { useRenderFixture } from "./test-fixture.js";
 
 const IDLE_MS = 10_000;
@@ -34,7 +34,11 @@ describe("render invariants", () => {
       viewport: { width: 1440, height: 900 },
     });
     try {
-      const response = await fetch(`${serverUrl}/api/v1/plugins`);
+      const { localAuthorization } = harness.server;
+      await signInBrowserContext(browserContext, serverUrl, localAuthorization);
+      const response = await fetch(`${serverUrl}/api/v1/plugins`, {
+        headers: { authorization: localAuthorization },
+      });
       const { plugins } = pluginListSchema.parse(await response.json());
       const expected = plugins
         .flatMap((plugin) =>

@@ -2056,6 +2056,8 @@ export function createPluginRuntime(context: PluginRuntimeContext) {
         return context.machineEnrollments.forOwner(row.id);
       },
       getAppUrl: deps.getAppUrl ?? (() => null),
+      tunnelMarker:
+        row.sourceKind === "builtin" ? (deps.tunnelMarker ?? null) : null,
       getLoopbackBaseUrl: () => boundLoopbackBaseUrl,
       rpcCaller: rpcCallers.issue(row.id),
       invalidateRpc: (tags) => deps.hub.notifyPluginChanged(row.id, tags),

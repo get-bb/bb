@@ -10,8 +10,12 @@ import {
   machineEnvironmentView,
   replaceMachineEnvironment,
 } from "../services/machines/environment-settings.js";
-import { getGateAuthKind } from "../request-context.js";
+import {
+  isMachineRequest,
+  type RequestAccessReader,
+} from "../request-access.js";
 import { serverAccessOverview } from "../services/machines/server-access.js";
+import { changeRequireSignIn } from "./access.js";
 import {
   getAppSettings,
   listRunningThreads,
@@ -260,7 +264,7 @@ export function registerSystemRoutes(
     };
   }
   post(routes.setMachineEnvironmentVariable, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
+    if (isMachineRequest(context))
       throw new ApiError(
         403,
         "forbidden",
@@ -278,7 +282,7 @@ export function registerSystemRoutes(
   });
 
   del(routes.deleteMachineEnvironmentVariable, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
+    if (isMachineRequest(context))
       throw new ApiError(
         403,
         "forbidden",
@@ -294,7 +298,7 @@ export function registerSystemRoutes(
     context.json(await machineEnvironmentView(deps.db)),
   );
   put(routes.replaceMachineEnvironment, async (context, payload) => {
-    if (getGateAuthKind(context) === "machine")
+    if (isMachineRequest(context))
       throw new ApiError(
         403,
         "forbidden",
@@ -386,7 +390,11 @@ export function registerSystemRoutes(
   });
 
   put(routes.experiments, (context, payload) => {
-    setExperiments(deps.db, payload);
+    const { requireSignIn, ...experiments } = payload;
+    if (requireSignIn !== undefined) {
+      changeRequireSignIn(context, deps, requireSignIn);
+    }
+    setExperiments(deps.db, experiments);
     deps.hub.notifySystem(["config-changed"]);
     return context.json(getExperiments(deps.db));
   });
@@ -736,8 +744,7 @@ export function registerSystemRoutes(
   get(routes.appUpdate, async (context, query) =>
     context.json(
       await deps.appUpdate.getStatus({
-        forceRefresh:
-          query.force === "true" && getGateAuthKind(context) !== "machine",
+        forceRefresh: query.force === "true" && !isMachineRequest(context),
       }),
     ),
   );
@@ -788,10 +795,8 @@ export function registerSystemRoutes(
   });
 }
 
-function assertCliCommandChangeAllowed(
-  context: Parameters<typeof getGateAuthKind>[0],
-): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertCliCommandChangeAllowed(context: RequestAccessReader): void {
+  if (isMachineRequest(context)) {
     throw new ApiError(
       403,
       "forbidden",
@@ -800,10 +805,8 @@ function assertCliCommandChangeAllowed(
   }
 }
 
-function assertAppUpdateAllowed(
-  context: Parameters<typeof getGateAuthKind>[0],
-): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertAppUpdateAllowed(context: RequestAccessReader): void {
+  if (isMachineRequest(context)) {
     throw new ApiError(
       403,
       "forbidden",

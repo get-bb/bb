@@ -173,7 +173,9 @@ export function orderedServerAccessProviders(
 
 export function isLocalNetworkOn(deps: Pick<Dependencies, "db">): boolean {
   return (
-    serverRoutesEnabled(deps) && getAppSettings(deps.db).localNetworkEnabled
+    serverRoutesEnabled(deps) &&
+    getAppSettings(deps.db).localNetworkEnabled &&
+    getExperiments(deps.db).requireSignIn
   );
 }
 
@@ -187,7 +189,9 @@ async function providerAvailability(
       return {
         availability: {
           status: "setup-required",
-          message: "Add it to let devices on this network reach bb",
+          message: getAppSettings(deps.db).localNetworkEnabled
+            ? "Turn on Require sign-in in Settings → Devices (or run `bb access require-sign-in on`) so bb opens to this network only for signed-in devices"
+            : "Add it to let devices on this network reach bb",
         },
         urls: [],
         answered: true,

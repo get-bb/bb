@@ -8,7 +8,7 @@ import { attachServerUpdateControl } from "./server-update-control.js";
 import { registerServerChoiceIpc } from "./server-choice-ipc.js";
 import { randomUUID } from "node:crypto";
 import { accessSync, constants as fsConstants } from "node:fs";
-import { arch, homedir, release, type as osType } from "node:os";
+import { arch, homedir, hostname, release, type as osType } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import {
   app,
@@ -51,10 +51,13 @@ import {
   type AppKeybindings,
 } from "@bb/domain";
 import {
+  BB_DESKTOP_PAIR_SERVER_NOT_DEVICE_TARGET,
   bbDesktopBrowserImportCookiesRequestSchema,
+  bbDesktopPairServerRequestSchema,
   bbDesktopThemeSchema,
   type BbDesktopInfo,
   type BbDesktopServerList,
+  type BbDesktopPairServerResult,
   type BbDesktopWindowState,
 } from "@bb/desktop-contract";
 import {
@@ -117,6 +120,19 @@ import {
   type CompatibleServerProbeResult,
   type ServerProbeResult,
 } from "./server-probe.js";
+import { WebSocket as NodeWebSocket } from "ws";
+import {
+  createLocalServerFetch,
+  ensureLocalBrowserSession,
+  readLocalServerAuthorization,
+} from "./local-server-access.js";
+import {
+  createDeviceCredentialStore,
+  createDeviceSessionKeeper,
+  pairDevice,
+  type DeviceCredentialStore,
+  type DeviceSessionKeeper,
+} from "./device-access.js";
 import { loadRemoteServerPage } from "./remote-server-load.js";
 import {
   applyServerMove,
@@ -224,6 +240,7 @@ import {
   BB_DESKTOP_SERVER_CHOICES_CHANGED_CHANNEL,
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
+  BB_DESKTOP_PAIR_SERVER_CHANNEL,
   BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
@@ -460,6 +477,8 @@ let builtinServerUrl: string = DEFAULT_BB_SERVER_URL;
 let desktopBridgePath: string | null = null;
 let desktopUserDataPath: string | null = null;
 let builtinDataDir: string | null = null;
+let deviceCredentialStore: DeviceCredentialStore | null = null;
+let deviceSessionKeeper: DeviceSessionKeeper | null = null;
 let serverMoveNoticeStore: ServerMoveNoticeStore | null = null;
 let machineServiceNoticeStore: ServerMoveNoticeStore | null = null;
 let movedMachineConnection: Promise<void> | null = null;
@@ -971,6 +990,27 @@ function formatRealtimeUrl(serverUrl: string): string {
   return url.toString();
 }
 
+function currentLocalServerUrl(): string {
+  return currentRuntime?.serverUrl ?? builtinServerUrl;
+}
+
+function readBuiltinLocalAuthorization(): string | null {
+  return readLocalServerAuthorization(builtinDataDir);
+}
+
+const localServerFetch = createLocalServerFetch({
+  fetchImpl: (input, init) => fetch(input, init),
+  readAuthorization: readBuiltinLocalAuthorization,
+  serverUrl: currentLocalServerUrl,
+});
+
+function desktopClientLabel(): string {
+  const name = hostname()
+    .replace(/\.local$/u, "")
+    .trim();
+  return `bb desktop on ${name.length > 0 ? name : "this computer"}`;
+}
+
 async function fetchSystemConfig(args: SystemConfigRequestArgs) {
   const response = await args.fetchImpl(formatApiUrl(args.serverUrl));
   if (!response.ok) {
@@ -989,7 +1029,7 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
     target: { kind: "system" },
   };
   let reconnectTimer: NodeJS.Timeout | null = null;
-  let socket: WebSocket | null = null;
+  let socket: NodeWebSocket | null = null;
   let stopped = false;
 
   function clearReconnectTimer(): void {
@@ -1010,14 +1050,9 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
     }, 1_000);
   }
 
-  function handleMessage(event: MessageEvent): void {
-    if (typeof event.data !== "string") {
-      return;
-    }
+  function handleMessage(data: string): void {
     try {
-      const parsed = serverMessageLenientSchema.safeParse(
-        JSON.parse(event.data),
-      );
+      const parsed = serverMessageLenientSchema.safeParse(JSON.parse(data));
       if (!parsed.success) {
         return;
       }
@@ -1025,7 +1060,7 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
         parsed.data.entity === "system" &&
         parsed.data.changes.includes("config-changed")
       ) {
-        void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+        void refreshSystemConfig({ fetchImpl: localServerFetch, serverUrl });
       }
     } catch {
       return;
@@ -1036,15 +1071,21 @@ function createSystemConfigSync(serverUrl: string): SystemConfigSync {
     if (stopped) {
       return;
     }
-    socket = new WebSocket(realtimeUrl);
-    socket.addEventListener("open", () => {
-      socket?.send(JSON.stringify(subscribeMessage));
-      void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+    const authorization = readBuiltinLocalAuthorization();
+    const current = new NodeWebSocket(realtimeUrl, {
+      headers: authorization === null ? {} : { authorization },
     });
-    socket.addEventListener("message", handleMessage);
-    socket.addEventListener("close", scheduleReconnect);
-    socket.addEventListener("error", () => {
-      socket?.close();
+    socket = current;
+    current.on("open", () => {
+      current.send(JSON.stringify(subscribeMessage));
+      void refreshSystemConfig({ fetchImpl: localServerFetch, serverUrl });
+    });
+    current.on("message", (data) => {
+      handleMessage(data.toString());
+    });
+    current.on("close", scheduleReconnect);
+    current.on("error", () => {
+      current.close();
     });
   }
 
@@ -1118,7 +1159,7 @@ function stopSystemConfigSync(): void {
 function startSystemConfigSync(serverUrl: string): void {
   systemConfigSync?.stop();
   systemConfigSync = createSystemConfigSync(serverUrl);
-  void refreshSystemConfig({ fetchImpl: fetch, serverUrl });
+  void refreshSystemConfig({ fetchImpl: localServerFetch, serverUrl });
 }
 
 function startRemoteSystemConfigSync(serverUrl: string): void {
@@ -1180,6 +1221,7 @@ async function ensureBuiltinRuntimeAttached(): Promise<boolean> {
   }
 
   const existingProbe = await probeBbServer({
+    fetchImpl: localServerFetch,
     serverUrl: builtinServerUrl,
     timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
   });
@@ -1302,6 +1344,7 @@ async function authenticateConnectTarget(
   const localResult = await installConnectDesktopSession({
     cookieStores,
     mintCookie: createLocalServerCookieSource({
+      fetchImpl: localServerFetch,
       localServerUrl: currentRuntime.serverUrl,
     }),
     remoteServerUrl,
@@ -1508,6 +1551,7 @@ function connectMovedMachine(args: {
       hasLocalRuntime: () => currentRuntime !== null,
       async isLocalAddressFree() {
         const probe = await probeBbServer({
+          fetchImpl: localServerFetch,
           serverUrl: builtinServerUrl,
           timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
         });
@@ -1687,7 +1731,10 @@ function ensureDesktopMachineEnrolled(): void {
     return;
   }
   enrollingDesktopMachine = (async () => {
-    const result = await enrollDesktopMachine({ localServerUrl });
+    const result = await enrollDesktopMachine({
+      fetchImpl: localServerFetch,
+      localServerUrl,
+    });
     if (!result.ok) {
       desktopLogger.info(
         `[desktop] could not enroll this app with bb Connect (${result.code}): ${result.detail}`,
@@ -1862,6 +1909,7 @@ async function applyServerTarget(): Promise<void> {
     return;
   }
   connectSessionRenewal?.stop();
+  stopDeviceSessionKeeper();
   serverTargetGeneration += 1;
   const generation = serverTargetGeneration;
   const isCurrent = (): boolean => serverTargetGeneration === generation;
@@ -1963,12 +2011,84 @@ async function applyServerTarget(): Promise<void> {
     }
   } else {
     stopServerMovedWatcher();
+    await startDeviceSessionKeeper(target.url);
+    if (!isCurrent()) {
+      return;
+    }
     await loadRemoteServerTarget(target.url, isCurrent);
     if (!isCurrent()) {
       return;
     }
   }
   refreshApplicationMenu();
+}
+
+function stopDeviceSessionKeeper(): void {
+  deviceSessionKeeper?.stop();
+  deviceSessionKeeper = null;
+}
+
+async function startDeviceSessionKeeper(serverUrl: string): Promise<void> {
+  stopDeviceSessionKeeper();
+  if (deviceCredentialStore === null) {
+    return;
+  }
+  const keeper = createDeviceSessionKeeper({
+    cookieJar: session.defaultSession.cookies,
+    fetchImpl: (input, init) => net.fetch(input, init),
+    logWarning: (message) => {
+      desktopLogger.warn(message);
+    },
+    now: Date.now,
+    onRevoked: () => {
+      desktopLogger.info(
+        `[desktop] the sign-in for ${new URL(serverUrl).origin} was revoked; the window will ask for a new code`,
+      );
+    },
+    origin: serverUrl,
+    schedule: (task, delayMs) => {
+      const timer = setTimeout(task, delayMs);
+      timer.unref();
+      return () => clearTimeout(timer);
+    },
+    store: deviceCredentialStore,
+  });
+  deviceSessionKeeper = keeper;
+  await keeper.refresh();
+}
+
+async function pairCurrentServer(
+  code: string,
+): Promise<BbDesktopPairServerResult> {
+  const target = serverTargetStore?.getTarget();
+  if (target?.kind !== "custom" || deviceCredentialStore === null) {
+    return {
+      ok: false,
+      code: BB_DESKTOP_PAIR_SERVER_NOT_DEVICE_TARGET,
+      message: "This window signs in like a browser.",
+    };
+  }
+  const paired = await pairDevice({
+    code,
+    fetchImpl: (input, init) => net.fetch(input, init),
+    label: desktopClientLabel(),
+    origin: target.url,
+    store: deviceCredentialStore,
+  });
+  if (!paired.ok) {
+    return { ok: false, code: paired.code, message: paired.message };
+  }
+  await startDeviceSessionKeeper(target.url);
+  const outcome = await deviceSessionKeeper?.refresh();
+  if (outcome?.kind !== "active") {
+    return {
+      ok: false,
+      code: "browser_session_failed",
+      message:
+        "Signed in, but the window could not get its session. Try again.",
+    };
+  }
+  return { ok: true };
 }
 
 async function loadRemoteServerTarget(
@@ -2297,6 +2417,20 @@ async function loadActionView(args: LoadStartupErrorArgs): Promise<void> {
 
 async function loadBbApp(serverUrl: string): Promise<void> {
   bbAppLoaded = true;
+  const localSession = await ensureLocalBrowserSession({
+    cookieJar: session.defaultSession.cookies,
+    fetchImpl: (input, init) => fetch(input, init),
+    label: desktopClientLabel(),
+    now: Date.now,
+    readAuthorization: readBuiltinLocalAuthorization,
+    serverUrl: currentLocalServerUrl(),
+    windowUrl: serverUrl,
+  });
+  if (localSession.kind === "failed" || localSession.kind === "no-token") {
+    desktopLogger.warn(
+      `[desktop] could not sign this window in to the local bb server (${localSession.kind}${localSession.kind === "failed" ? `: ${localSession.detail}` : ""}); it will show the sign-in screen`,
+    );
+  }
   await loadWindowUrl({ url: serverUrl });
   if (shouldOpenDevTools()) {
     desktopWindowFactory?.openDevTools();
@@ -2512,6 +2646,19 @@ function registerDesktopUpdateIpc(): void {
   registerDesktopWindowFocusIpc(applicationWindowWebContentsIds);
   registerDesktopAttentionIpc(applicationWindowWebContentsIds);
   registerDesktopClipboardIpc(applicationWindowWebContentsIds);
+  ipcMain.handle(
+    BB_DESKTOP_PAIR_SERVER_CHANNEL,
+    async (event, payload: unknown): Promise<BbDesktopPairServerResult> => {
+      if (
+        !applicationWindowWebContentsIds.has(event.sender.id) ||
+        event.senderFrame !== event.sender.mainFrame
+      ) {
+        throw new Error("Server sign-in is limited to bb windows");
+      }
+      const request = bbDesktopPairServerRequestSchema.parse(payload);
+      return pairCurrentServer(request.code);
+    },
+  );
   ipcMain.on(BB_DESKTOP_ZOOM_COMMAND_CHANNEL, (event, payload: unknown) => {
     const parsed = bbDesktopZoomCommandSchema.safeParse(payload);
     if (parsed.success) {
@@ -2797,6 +2944,7 @@ async function startOwnedRuntime(
 
   const raceResult = await Promise.race<StartupRaceResult>([
     waitForCompatibleServer({
+      fetchImpl: localServerFetch,
       intervalMs: STARTUP_POLL_INTERVAL_MS,
       serverUrl: args.serverUrl,
       timeoutMs: STARTUP_TIMEOUT_MS,
@@ -2866,6 +3014,7 @@ async function waitForServerToStop(serverUrl: string): Promise<boolean> {
   const deadline = Date.now() + FOREIGN_RUNTIME_STOP_TIMEOUT_MS;
   while (Date.now() <= deadline) {
     const probe = await probeBbServer({
+      fetchImpl: localServerFetch,
       serverUrl,
       timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
     });
@@ -2961,6 +3110,7 @@ async function decideOnExistingServer(
 
 async function initializeRuntime(args: InitializeRuntimeArgs): Promise<void> {
   const existingProbe = await probeBbServer({
+    fetchImpl: localServerFetch,
     serverUrl: args.serverUrl,
     timeoutMs: ATTACH_PROBE_TIMEOUT_MS,
   });
@@ -3068,6 +3218,10 @@ async function runDesktopApp(): Promise<void> {
     void desktopAutoUpdateService?.checkAfterActive();
     refreshRemoteSystemConfig?.();
     connectSessionRenewal?.renewIfDue();
+    void deviceSessionKeeper?.refresh();
+  });
+  powerMonitor.on("resume", () => {
+    void deviceSessionKeeper?.refresh();
   });
   app.on("browser-window-created", (_event, browserWindow) => {
     const webContentsId = browserWindow.webContents.id;
@@ -3236,8 +3390,13 @@ async function runDesktopApp(): Promise<void> {
     encryption: safeStorage,
     userDataPath,
   });
+  deviceCredentialStore = createDeviceCredentialStore({
+    encryption: safeStorage,
+    userDataPath,
+  });
   cachedConnectCredential = await connectCredentialCache.read();
   connectServerSync = createConnectServerSync({
+    fetchImpl: localServerFetch,
     getAccountSession: readConnectAccountSession,
     getCredential: () => cachedConnectCredential,
     getLocalServerUrl: () =>
@@ -3495,8 +3654,12 @@ async function runDesktopApp(): Promise<void> {
   );
   desktopBrowserBrokerClient = createDesktopBrowserBrokerClient({
     broker: desktopBrowserBroker,
-    fetchImpl: (input, init) =>
-      net.fetch(input instanceof URL ? input.toString() : input, init),
+    fetchImpl: createLocalServerFetch({
+      fetchImpl: (input, init) =>
+        net.fetch(input instanceof URL ? input.toString() : input, init),
+      readAuthorization: readBuiltinLocalAuthorization,
+      serverUrl: currentLocalServerUrl,
+    }),
     dataDir,
     homeDir: homedir(),
     getServerUrl() {

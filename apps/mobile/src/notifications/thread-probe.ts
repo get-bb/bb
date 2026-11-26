@@ -1,6 +1,9 @@
+import { getDeviceAuthRegistry } from "@/lib/native/device-auth";
 import { createMobileFetch } from "@/lib/sdk/mobile-fetch";
 
-const probeFetch = createMobileFetch((input, init) => fetch(input, init));
+const probeFetch = createMobileFetch((input, init) =>
+  getDeviceAuthRegistry().fetch(input, init),
+);
 
 export async function hasThreadOnServer(
   serverUrl: string,

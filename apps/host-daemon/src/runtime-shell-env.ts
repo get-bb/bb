@@ -12,6 +12,7 @@ interface ResolveLocalBbExecutablePathOptions {
 }
 
 interface PrepareRuntimeShellEnvOptions {
+  dataDir: string;
   bbExecutableDirectory: string;
   bbExecutablePath?: string;
   hostDaemonPort?: number;
@@ -398,6 +399,7 @@ export function prepareRuntimeShellEnv(
       options.inheritedPath ?? process.env.PATH,
     ),
     BB_CLI: bbExecutablePath,
+    BB_DATA_DIR: options.dataDir,
     BB_SERVER_URL: options.serverUrl,
   };
   assignIfDefined({

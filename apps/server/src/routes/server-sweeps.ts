@@ -11,14 +11,14 @@ import {
 import type { Hono } from "hono";
 import { ApiError } from "../errors.js";
 import {
-  getGateAuthKind,
-  type RequestHeaderReader,
-} from "../request-context.js";
+  isMachineRequest,
+  type RequestAccessReader,
+} from "../request-access.js";
 import { SWEEP_ITEM_RETRY_DELAYS_MS } from "../services/lib/persisted-retry.js";
 import type { AppDeps } from "../types.js";
 
-function assertOwnerRequest(context: RequestHeaderReader): void {
-  if (getGateAuthKind(context) === "machine") {
+function assertOwnerRequest(context: RequestAccessReader): void {
+  if (isMachineRequest(context)) {
     throw new ApiError(
       403,
       "machine_host_management_forbidden",

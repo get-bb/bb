@@ -6,5 +6,6 @@ export {
   shellOpenExternal,
   shellOpenNative,
   shellSetBadge,
+  type NativeShell,
 } from "./native-shell";
 export { NativeShellReporter } from "./NativeShellReporter";

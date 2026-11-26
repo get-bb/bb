@@ -18,6 +18,7 @@ const profiles: ServerProfile[] = [
     serverUrl: "http://user:password@192.168.1.4:38886/team",
     label: "Laptop",
     createdAt: 2,
+    access: null,
   },
 ];
 

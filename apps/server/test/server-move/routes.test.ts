@@ -368,7 +368,10 @@ describe("server move routes", () => {
   it("refuses machine credentials on every server move route", () =>
     withTestHarness(async (harness) => {
       seedTopology(harness);
-      const machine = { "x-bb-gate-auth": "machine" };
+      const machine = {
+        "x-bb-gate-auth": "machine",
+        "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+      };
       const responses = await Promise.all([
         postJson(
           harness,

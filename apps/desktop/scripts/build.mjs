@@ -75,6 +75,7 @@ const desktopBuildDate = readBuildDate(process.env);
 
 const commonOptions = {
   bundle: true,
+  conditions: ["source"],
   define: {
     "process.env.BB_DESKTOP_BUILD_DATE": JSON.stringify(desktopBuildDate),
     "process.env.BB_DESKTOP_COMMIT": JSON.stringify(desktopCommit),

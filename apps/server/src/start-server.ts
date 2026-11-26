@@ -91,6 +91,11 @@ import { createConnectHold } from "./services/server-move/connect-hold.js";
 import { isServerMoveFrozen } from "./services/server-move/freeze-state.js";
 import { reconcileServerMoveRunAtBoot } from "./services/server-move/reconcile.js";
 import {
+  createAccessService,
+  readOrCreateAccessSigningKey,
+  readOrCreateLocalAccessToken,
+} from "./services/access/access-service.js";
+import {
   retireServerProcess as retireProcessWithDeadline,
   SERVER_RETIRE_FORCE_EXIT_MS,
 } from "./services/server-move/retire.js";
@@ -378,6 +383,11 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     platform: process.platform,
     windowsUserPath: createWindowsUserPath(process.env),
   });
+  const access = createAccessService({
+    db,
+    localToken: await readOrCreateLocalAccessToken(runtimeConfig.dataDir),
+    signingKey: await readOrCreateAccessSigningKey(runtimeConfig.dataDir),
+  });
   const {
     app,
     closeWebSockets,
@@ -387,6 +397,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     serverMove,
   } = createApp(
     {
+      access,
       appUpdate,
       appVersion,
       bbAppManagedConfig,
@@ -581,6 +592,7 @@ export async function runServer(serverConfig: ServerConfig): Promise<void> {
     }
     pluginCatalogService.startPeriodicRefresh();
     sweepInterval = setInterval(() => {
+      access.sweepExpired();
       if (!isServerMoveFrozen(db)) {
         void runPeriodicSweeps(sweepDeps);
       }

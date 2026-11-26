@@ -206,6 +206,14 @@ export async function probeBbServer(
     };
   }
 
+  if (configResult.kind === "http-error" && configResult.status === 401) {
+    return {
+      dataDir: null,
+      kind: "compatible",
+      serverUrl: args.serverUrl,
+    };
+  }
+
   if (configResult.kind !== "success") {
     return {
       kind: "incompatible",

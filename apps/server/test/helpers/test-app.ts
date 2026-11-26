@@ -1,5 +1,10 @@
 import { installDefaultEnvironmentProviders } from "./environment-provider.js";
 import { registerTestHarnessWarmup } from "./test-harness-warmup.js";
+import {
+  createAccessService,
+  readOrCreateAccessSigningKey,
+  readOrCreateLocalAccessToken,
+} from "../../src/services/access/access-service.js";
 import { setPluginEnvironmentProviderBridge } from "../../src/services/plugins/plugin-environment-provider-registry.js";
 import { clearAllThreadProvisionSchedules } from "../../src/services/threads/thread-startup-store.js";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -80,6 +85,7 @@ export interface TestAppHarness {
 
 export interface RunningTestServer extends TestAppHarness {
   baseUrl: string;
+  localAuthorization: string;
   close(): Promise<void>;
 }
 
@@ -343,6 +349,11 @@ export async function createTestAppHarness(
   });
   const walCheckpointer = startWalCheckpointer({ logger });
   const deps: ServerAppDeps = {
+    access: createAccessService({
+      db,
+      localToken: await readOrCreateLocalAccessToken(dataDir),
+      signingKey: await readOrCreateAccessSigningKey(dataDir),
+    }),
     appUpdate,
     appVersion,
     bbAppManagedConfig,
@@ -467,6 +478,7 @@ export async function startTestServer(
     pluginService,
     serverMove,
     baseUrl: `http://${TEST_SERVER_HOST}:${resolvedAddress.port}`,
+    localAuthorization: await localAuthorization(harness.config.dataDir),
     async close(): Promise<void> {
       const closeServer = new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -483,4 +495,8 @@ export async function startTestServer(
       await harness.cleanup();
     },
   };
+}
+
+export async function localAuthorization(dataDir: string): Promise<string> {
+  return `Bearer ${await readOrCreateLocalAccessToken(dataDir)}`;
 }

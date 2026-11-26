@@ -46,8 +46,15 @@ function waitForRetryDelay(): Promise<void> {
   );
 }
 
-export function createIntegrationFetch(): typeof fetch {
-  return async (input, init) => {
+export function createIntegrationFetch(authorization: string): typeof fetch {
+  return async (input, requestInit) => {
+    const headers = new Headers(
+      requestInit?.headers ??
+        (input instanceof Request ? input.headers : undefined),
+    );
+    if (!headers.has("authorization"))
+      headers.set("authorization", authorization);
+    const init = { ...requestInit, headers };
     const retryable = isRetryableFetch(input, init);
 
     for (

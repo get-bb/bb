@@ -9,8 +9,15 @@ const profileBaseSchema = z.object({
   createdAt: z.number().int().nonnegative(),
 });
 
+export const directServerAccessSchema = z
+  .object({ credentialId: z.string().min(1) })
+  .strict();
+
 const directServerProfileSchema = profileBaseSchema
-  .extend({ mode: z.literal("direct") })
+  .extend({
+    mode: z.literal("direct"),
+    access: directServerAccessSchema.nullable(),
+  })
   .strict();
 
 const connectServerProfileSchema = profileBaseSchema
@@ -26,6 +33,7 @@ export const serverProfileSchema = z.discriminatedUnion("mode", [
   connectServerProfileSchema,
 ]);
 
+export type DirectServerAccess = z.infer<typeof directServerAccessSchema>;
 export type DirectServerProfile = z.infer<typeof directServerProfileSchema>;
 export type ConnectServerProfile = z.infer<typeof connectServerProfileSchema>;
 export type ServerProfile = z.infer<typeof serverProfileSchema>;
@@ -34,5 +42,6 @@ export type NewServerProfile =
   | Omit<ConnectServerProfile, "id" | "createdAt">;
 
 export type ServerProfilePatch = Partial<
-  Pick<ConnectServerProfile, "label" | "serverUrl" | "handle" | "credential">
+  Pick<ConnectServerProfile, "label" | "serverUrl" | "handle" | "credential"> &
+    Pick<DirectServerProfile, "access">
 >;

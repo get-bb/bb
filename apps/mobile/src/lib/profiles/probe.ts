@@ -2,7 +2,7 @@ import { z } from "zod";
 import { MOBILE_APP_SURFACE_HEADER } from "../sdk/app-surface";
 import { isLoopbackHost } from "./direct-url";
 
-export type ProbeStage = "health" | "config";
+export type ProbeStage = "health" | "config" | "sign-in";
 
 export type ProbeServerResult =
   | {
@@ -18,6 +18,15 @@ const probeConfigSchema = z.object({
 });
 
 const healthSchema = z.object({ ok: z.literal(true) });
+
+const signInRequiredSchema = z.object({
+  code: z.enum([
+    "unauthenticated",
+    "credential_requires_https",
+    "invalid_dpop_proof",
+    "access_token_expired",
+  ]),
+});
 
 export type ProbeFetch = (
   url: string,
@@ -40,11 +49,15 @@ function describeError(error: unknown): string {
   return String(error);
 }
 
+type GetJsonResult =
+  | { ok: true; body: unknown }
+  | { ok: false; error: string; status: number | null; body: unknown };
+
 async function getJson(
   fetchImpl: ProbeFetch,
   url: string,
   timeoutMs: number,
-): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+): Promise<GetJsonResult> {
   try {
     const response = await fetchImpl(url, {
       headers: {
@@ -53,15 +66,29 @@ async function getJson(
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
-      return { ok: false, error: `HTTP ${response.status}` };
+      let body: unknown = null;
+      try {
+        body = await response.json();
+      } catch {}
+      return {
+        ok: false,
+        error: `HTTP ${response.status}`,
+        status: response.status,
+        body,
+      };
     }
     try {
       return { ok: true, body: await response.json() };
     } catch {
-      return { ok: false, error: "Response was not JSON" };
+      return {
+        ok: false,
+        error: "Response was not JSON",
+        status: response.status,
+        body: null,
+      };
     }
   } catch (error) {
-    return { ok: false, error: describeError(error) };
+    return { ok: false, error: describeError(error), status: null, body: null };
   }
 }
 
@@ -94,6 +121,18 @@ export async function probeServer(
     DEFAULT_PROBE_TIMEOUT_MS,
   );
   if (!config.ok) {
+    const signIn = signInRequiredSchema.safeParse(config.body);
+    if (config.status === 401 && signIn.success) {
+      return {
+        ok: false,
+        serverUrl: base,
+        stage: "sign-in",
+        error:
+          signIn.data.code === "credential_requires_https"
+            ? "This phone's sign-in was made over HTTPS. Use the HTTPS address or sign in again."
+            : "This bb needs a sign-in code.",
+      };
+    }
     return { ok: false, serverUrl: base, stage: "config", error: config.error };
   }
   const parsed = probeConfigSchema.safeParse(config.body);

@@ -17,6 +17,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropAccessCredentialsTable,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
@@ -138,6 +139,7 @@ it.each([false, true])(
       dropServerAccessRouteTables(db);
       dropPluginFailureLabelColumns(db);
       rewindMachineTeardownRecoveryColumns(db);
+      dropAccessCredentialsTable(db);
       dropPluginMarketplaceEnabledColumn(db);
       dropQueuedMessageRecheckAtColumn(db);
       dropProjectFolderSchema(db);

@@ -246,7 +246,10 @@ function createAutomationServiceBb() {
         },
       },
     },
-    server: { loopbackBaseUrl: "http://127.0.0.1:38886" },
+    server: {
+      loopbackBaseUrl: "http://127.0.0.1:38886",
+      experimental_dataDir: "/tmp/bb-data",
+    },
     realtime: { publish: () => undefined },
     log: {
       debug: () => undefined,
@@ -939,7 +942,10 @@ describe("automation data access", () => {
             },
           },
         },
-        server: { loopbackBaseUrl: "http://127.0.0.1:38886" },
+        server: {
+          loopbackBaseUrl: "http://127.0.0.1:38886",
+          experimental_dataDir: "/tmp/bb-data",
+        },
         realtime: { publish: () => undefined },
         log: {
           debug: () => undefined,
@@ -1374,7 +1380,10 @@ describe("automation service", () => {
           },
         },
       },
-      server: { loopbackBaseUrl: "http://127.0.0.1:38886" },
+      server: {
+        loopbackBaseUrl: "http://127.0.0.1:38886",
+        experimental_dataDir: "/tmp/bb-data",
+      },
       realtime: { publish: () => undefined },
       log: {
         debug: () => undefined,
@@ -2175,6 +2184,7 @@ describe("script process containment", () => {
           interpreter: "node",
           timeoutMs: 30_000,
           serverUrl: "http://127.0.0.1:1",
+          serverDataDir: "/tmp/bb-data",
           workingDir: scriptsRoot(pluginDataDir),
           signal: new AbortController().signal,
         });
@@ -2293,6 +2303,7 @@ describe("script process containment", () => {
         interpreter: "bash",
         timeoutMs: 10_000,
         serverUrl: "http://127.0.0.1:38886",
+        serverDataDir: "/tmp/bb-data",
         workingDir: scriptsRoot(pluginDataDir),
         signal: scriptRuns.signal,
       });
@@ -2333,6 +2344,7 @@ describe("script process containment", () => {
         interpreter: "bash",
         timeoutMs: 1_000,
         serverUrl: "http://127.0.0.1:38886",
+        serverDataDir: "/tmp/bb-data",
         workingDir: scriptsRoot(pluginDataDir),
         signal: new AbortController().signal,
       });
@@ -2435,7 +2447,10 @@ describe("script project context", () => {
           }),
         },
       },
-      server: { loopbackBaseUrl: "http://127.0.0.1:38886" },
+      server: {
+        loopbackBaseUrl: "http://127.0.0.1:38886",
+        experimental_dataDir: "/tmp/bb-data",
+      },
       realtime: { publish: () => undefined },
       log: {
         debug: () => undefined,

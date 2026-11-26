@@ -71,6 +71,7 @@ describe("resolveShellScreenState", () => {
     const state = resolveShellScreenState({
       ...BASE,
       hasProfile: true,
+      requiresSession: true,
       session: { status: "auth-required", detail: "credential revoked" },
       load: READY,
     });
@@ -79,6 +80,22 @@ describe("resolveShellScreenState", () => {
       title: "Could not sign in",
       detail:
         "bb connect could not renew this phone’s sign-in. Pair again to reconnect.",
+      action: "re-pair",
+    });
+  });
+
+  it("asks a direct server's phone to sign in again with the server's reason", () => {
+    const state = resolveShellScreenState({
+      ...BASE,
+      hasProfile: true,
+      requiresSession: false,
+      session: { status: "auth-required", detail: "sign-in revoked" },
+      load: READY,
+    });
+    expect(state).toEqual({
+      kind: "error",
+      title: "Could not sign in",
+      detail: "sign-in revoked",
       action: "re-pair",
     });
   });

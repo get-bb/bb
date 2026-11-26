@@ -5,6 +5,7 @@ export const experimentKeys = [
   "serverMove",
   "performanceDiagnostics",
   "pluginUpdates",
+  "requireSignIn",
   "serverRoutes",
 ] as const;
 export const experimentKeySchema = z.enum(experimentKeys);
@@ -24,6 +25,7 @@ export const defaultExperiments: Experiments = {
   serverMove: false,
   performanceDiagnostics: false,
   pluginUpdates: false,
+  requireSignIn: false,
   serverRoutes: false,
 };
 
@@ -32,5 +34,6 @@ export const earlyAdopterExperiments: Experiments = {
   serverMove: false,
   performanceDiagnostics: false,
   pluginUpdates: true,
+  requireSignIn: false,
   serverRoutes: true,
 };

@@ -1,3 +1,4 @@
+import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
 import { hostToolchain } from "@bb/process-utils";
 import { randomUUID } from "node:crypto";
 import { dirname } from "node:path";
@@ -29,6 +30,7 @@ import {
 } from "./runtime-shell-env.js";
 import type { HostDaemonLogger } from "./logger.js";
 import {
+  signedMachineProxyTarget,
   startMachineAuthProxy,
   type MachineAuthProxy,
 } from "./machine-auth-proxy.js";
@@ -145,9 +147,20 @@ export async function startHostDaemon(
       persist: persistServerRoutes(dataDir),
       logger,
     });
-    if (options.serverHeaders !== undefined || routes.candidates().length > 1) {
+    const sharesServerDataDir = readLocalAccessTokenSync(dataDir) !== null;
+    const proxyTarget = () =>
+      signedMachineProxyTarget({
+        hostKey,
+        target: routes.active(),
+        sharesServerDataDir,
+      });
+    if (
+      options.serverHeaders !== undefined ||
+      routes.candidates().length > 1 ||
+      Object.keys(proxyTarget().headers).length > 0
+    ) {
       machineAuthProxy = await startMachineAuthProxy({
-        target: () => routes.active(),
+        target: proxyTarget,
       });
     }
     setParcelWatcherBackend(
@@ -167,6 +180,7 @@ export async function startHostDaemon(
     const resolveRuntimeShellEnv = async () => {
       await hostToolchain.refresh();
       return prepareRuntimeShellEnv({
+        dataDir,
         bbExecutableDirectory,
         bbExecutablePath,
         hostDaemonPort: localApiConfig.port,

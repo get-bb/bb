@@ -1,4 +1,3 @@
-import { isLoopbackAddress } from "@bb/config/loopback";
 import { getConnInfo } from "@hono/node-server/conninfo";
 import {
   APP_SURFACE_API,
@@ -9,6 +8,7 @@ import {
   type RequestAppSurface,
 } from "@bb/config/app-surface";
 import type { Context } from "hono";
+import { getRequestAccess, isLoopbackPeer } from "./request-access.js";
 import {
   PLUGIN_RPC_CALLER_HEADER,
   type PluginRpcCallerResolution,
@@ -23,7 +23,7 @@ export interface RequestHeaderReader {
   req: { header(name: string): string | undefined };
 }
 
-interface TrustedRemoteAddressReader {
+export interface TrustedRemoteAddressReader {
   get(key: typeof TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY): string | undefined;
 }
 
@@ -37,7 +37,7 @@ export function captureTrustedRemoteAddress(context: Context): void {
   try {
     context.set(
       TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY,
-      getConnInfo(context).remote.address,
+      getConnInfo(context).remote.address ?? "",
     );
   } catch {
     context.set(TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY, undefined);
@@ -65,16 +65,29 @@ export function getGateMachineId(context: RequestHeaderReader): string | null {
 export function resolveRequestAccessRoute(
   context: Context,
 ): "connect" | "direct" | "loopback" | null {
-  if (
-    context.req.path.startsWith("/internal/") ||
-    getGateAuthKind(context) === "machine"
-  ) {
-    return null;
+  if (context.req.path.startsWith("/internal/")) return null;
+  const access = getRequestAccess(context);
+  switch (access.kind) {
+    case "machine":
+      return null;
+    case "oauth":
+      return "connect";
+    case "owner":
+      switch (access.via) {
+        case "connect":
+          return "connect";
+        case "credential":
+          return "direct";
+        case "open":
+          return isLoopbackPeer(getTrustedRemoteAddress(context))
+            ? "loopback"
+            : "direct";
+        default:
+          return "loopback";
+      }
+    case "anonymous":
+      return access.via;
   }
-  const address = getTrustedRemoteAddress(context);
-  return address === undefined || isLoopbackAddress(address)
-    ? "loopback"
-    : "direct";
 }
 
 export function resolveRequestAppSurface(

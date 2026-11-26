@@ -36,6 +36,7 @@ export * from "./plugin-sdk-version.js";
 export * from "./host-path.js";
 export * from "./project-path.js";
 export * from "./project.js";
+export * from "./access.js";
 export * from "./prompt-attachment-limits.js";
 export * from "./prompt-history.js";
 export * from "./protocol-ids.js";

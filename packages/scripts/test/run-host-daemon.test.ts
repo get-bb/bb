@@ -22,6 +22,7 @@ let runHostDaemon: typeof RunHostDaemonModule;
 type TestFetchInput = RequestInfo | URL;
 
 interface RecordedFetchRequest {
+  authorization: string | null;
   body: string | null;
   url: string;
 }
@@ -157,6 +158,10 @@ describe("run-host-daemon auto join", () => {
   it("skips auto join when auth state already exists", async () => {
     const dataDir = await makeTempDir("bb-run-host-daemon-");
     await fs.writeFile(
+      path.join(dataDir, "local-access-token"),
+      "dev-secret\n",
+    );
+    await fs.writeFile(
       path.join(dataDir, HOST_AUTH_FILE_NAME),
       JSON.stringify({
         hostId: "host_existing",
@@ -178,6 +183,10 @@ describe("run-host-daemon auto join", () => {
 
   it("reuses a persisted host ID when requesting an enroll key", async () => {
     const dataDir = await makeTempDir("bb-run-host-daemon-");
+    await fs.writeFile(
+      path.join(dataDir, "local-access-token"),
+      "dev-secret\n",
+    );
     const persistedHostId = "host_persisted";
     await fs.writeFile(
       path.join(dataDir, HOST_ID_FILE_NAME),
@@ -195,6 +204,7 @@ describe("run-host-daemon auto join", () => {
               ? input.toString()
               : input;
         requests.push({
+          authorization: new Headers(init?.headers).get("authorization"),
           body: typeof init?.body === "string" ? init.body : null,
           url,
         });
@@ -227,6 +237,7 @@ describe("run-host-daemon auto join", () => {
     expect(env.BB_HOST_ID).toBe(persistedHostId);
     expect(env.BB_HOST_ENROLL_KEY).toBe("bbde_test_enroll_key");
     expect(requests).toHaveLength(2);
+    expect(requests[1]?.authorization).toBe("Bearer bbl_dev-secret");
     expect(requests[1]?.url).toBe(
       "http://127.0.0.1:3334/internal/hosts/enroll-key",
     );
@@ -239,6 +250,10 @@ describe("run-host-daemon auto join", () => {
 
   it("requests a fresh enroll key when no host ID is persisted", async () => {
     const dataDir = await makeTempDir("bb-run-host-daemon-");
+    await fs.writeFile(
+      path.join(dataDir, "local-access-token"),
+      "dev-secret\n",
+    );
 
     const requests: RecordedFetchRequest[] = [];
     vi.stubGlobal(
@@ -251,6 +266,7 @@ describe("run-host-daemon auto join", () => {
               ? input.toString()
               : input;
         requests.push({
+          authorization: new Headers(init?.headers).get("authorization"),
           body: typeof init?.body === "string" ? init.body : null,
           url,
         });
@@ -287,6 +303,10 @@ describe("run-host-daemon auto join", () => {
 
   it("surfaces enroll-key request failures", async () => {
     const dataDir = await makeTempDir("bb-run-host-daemon-");
+    await fs.writeFile(
+      path.join(dataDir, "local-access-token"),
+      "dev-secret\n",
+    );
 
     vi.stubGlobal("fetch", async (input: TestFetchInput): Promise<Response> => {
       const url =

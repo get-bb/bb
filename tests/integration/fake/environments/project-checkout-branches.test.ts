@@ -67,7 +67,7 @@ describe.sequential("project checkout branches", () => {
 
       const diff = await getEnvironmentDiff(
         harness.api,
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
       expect(diff.files).toBe("");
@@ -103,7 +103,7 @@ describe.sequential("project checkout branches", () => {
 
       const diff = await getEnvironmentDiff(
         harness.api,
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
       expect(diff.files).toBe("A\tthread.txt\n");

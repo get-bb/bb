@@ -4,6 +4,7 @@ import {
   type PushStore,
   type PushSubscriptionsApi,
 } from "@/data/notifications";
+import { getDeviceAuthRegistry } from "@/lib/native/device-auth";
 import { getPreferencesStorage } from "@/lib/native/preferences-storage";
 import { createMobileFetch } from "@/lib/sdk/mobile-fetch";
 
@@ -17,7 +18,9 @@ export function getPushStore(): PushStore {
 
 export function getPushSubscriptionsApi(): PushSubscriptionsApi {
   api ??= createPushSubscriptionsApi(
-    createMobileFetch((input, init) => fetch(input, init)),
+    createMobileFetch((input, init) =>
+      getDeviceAuthRegistry().fetch(input, init),
+    ),
   );
   return api;
 }

@@ -731,6 +731,18 @@ describe("WebSocketManager liveness", () => {
     expect(onResumed).toHaveBeenLastCalledWith([]);
   });
 
+  it("tells socket-loss listeners about every close, including each refused reconnect", () => {
+    const { manager, socket } = createLiveManager();
+    const losses: string[] = [];
+    manager.onSocketLost(() => losses.push(manager.getConnectionState()));
+
+    socket.close();
+    socket.close();
+    socket.close();
+
+    expect(losses).toEqual(["reconnecting", "reconnecting", "reconnecting"]);
+  });
+
   it("schedules the first automatic reconnect within 500 ms of a close", () => {
     createLiveManager();
     const options = fakeSocketState.instances[0]?.options;

@@ -435,6 +435,24 @@ import type {
   ServerSweepRetryResponse,
 } from "./api/server-sweeps.js";
 import {
+  createLocalSessionRequestSchema,
+  redeemAccessPairingRequestSchema,
+  setRequireSignInRequestSchema,
+  type SetRequireSignInRequest,
+  type SetRequireSignInResponse,
+  type CreateLocalSessionRequest,
+  type RenewAccessTokenResponse,
+  type SessionCookieResponse,
+  type WebsocketTicketResponse,
+  type AccessCredentialListResponse,
+  type AccessPairing,
+  type AccessSessionResponse,
+  type AccessSignOutResponse,
+  type RedeemAccessPairingRequest,
+  type RedeemAccessPairingResponse,
+  type RevokeAccessCredentialResponse,
+} from "./api/access.js";
+import {
   updateUiPreferenceRequestSchema,
   type PathUiPreferenceKey,
   type UiPreferenceResponse,
@@ -457,6 +475,80 @@ type PathThreadBackgroundTaskId = {
 };
 
 export const publicApiRoutes = {
+  access: {
+    session: defineRoute({
+      path: "/access/session",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<AccessSessionResponse>(),
+    }),
+    createPairing: defineRoute({
+      path: "/access/pairings",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<AccessPairing>(),
+    }),
+    redeemPairing: defineRoute({
+      path: "/access/pairings/redeem",
+      method: "post",
+      request: jsonRequest<EmptyInput, RedeemAccessPairingRequest>(
+        redeemAccessPairingRequestSchema,
+      ),
+      response: jsonResponse<RedeemAccessPairingResponse>(),
+    }),
+    listCredentials: defineRoute({
+      path: "/access/credentials",
+      method: "get",
+      request: noRequest(),
+      response: jsonResponse<AccessCredentialListResponse>(),
+    }),
+    revokeCredential: defineRoute({
+      path: "/access/credentials/:id",
+      method: "delete",
+      request: noRequest<PathId>(),
+      response: jsonResponse<RevokeAccessCredentialResponse>(),
+    }),
+    signOut: defineRoute({
+      path: "/access/sign-out",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<AccessSignOutResponse>(),
+    }),
+    renewToken: defineRoute({
+      path: "/access/token",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<RenewAccessTokenResponse>(),
+    }),
+    createLocalSession: defineRoute({
+      path: "/access/local-sessions",
+      method: "post",
+      request: jsonRequest<EmptyInput, CreateLocalSessionRequest>(
+        createLocalSessionRequestSchema,
+      ),
+      response: jsonResponse<SessionCookieResponse>(),
+    }),
+    createDeviceBrowserSession: defineRoute({
+      path: "/access/device-browser-sessions",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<SessionCookieResponse>(),
+    }),
+    createWebsocketTicket: defineRoute({
+      path: "/access/websocket-tickets",
+      method: "post",
+      request: noRequest(),
+      response: jsonResponse<WebsocketTicketResponse>(),
+    }),
+    setRequireSignIn: defineRoute({
+      path: "/access/require-sign-in",
+      method: "put",
+      request: jsonRequest<EmptyInput, SetRequireSignInRequest>(
+        setRequireSignInRequestSchema,
+      ),
+      response: jsonResponse<SetRequireSignInResponse>(),
+    }),
+  },
   promptHistory: {
     list: defineRoute({
       path: "/prompt-history",

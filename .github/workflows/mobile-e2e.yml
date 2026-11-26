@@ -303,6 +303,8 @@ jobs:
           # The first run installs the XCUITest driver on the simulator.
           MAESTRO_DRIVER_STARTUP_TIMEOUT: "180000"
         run: |
+          SERVER_DATA_DIR="$(apps/mobile/e2e/scripts/backend-data-dir.sh e2e-artifacts/backend.log)"
+          export SERVER_DATA_DIR
           # shellcheck disable=SC2086
           apps/mobile/e2e/scripts/ci-run-flows.sh "$SIMULATOR_UDID" "$GITHUB_WORKSPACE/e2e-artifacts/maestro" $FLOWS
 

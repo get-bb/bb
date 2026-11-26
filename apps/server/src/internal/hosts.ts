@@ -1,5 +1,4 @@
 import { upsertHost } from "@bb/db";
-import { isLoopbackAddress } from "@bb/config/loopback";
 import {
   hostDaemonEnrollKeyRequestSchema,
   hostDaemonEnrollRequestSchema,
@@ -12,20 +11,27 @@ import { ApiError } from "../errors.js";
 import {
   getGateAuthKind,
   getGateMachineId,
-  getTrustedRemoteAddress,
   type RequestHeaderReader,
 } from "../request-context.js";
+import {
+  getRequestAccess,
+  type RequestAccessReader,
+} from "../request-access.js";
 import { issueHostEnrollKey } from "../services/hosts/host-enrollment.js";
 import { requireBearerToken } from "./auth.js";
 
-function assertLoopbackRequest(remoteAddress: string | undefined): void {
-  if (remoteAddress && isLoopbackAddress(remoteAddress)) {
+function assertServerMachineRequest(context: RequestAccessReader): void {
+  const access = getRequestAccess(context);
+  if (
+    access.kind === "owner" &&
+    (access.via === "local" || access.via === "in-process")
+  ) {
     return;
   }
   throw new ApiError(
-    400,
-    "unsupported_host",
-    "This enrollment route is available only from the server machine",
+    401,
+    "local_token_required",
+    "This enrollment route needs the server machine's local token from <data dir>/local-access-token",
   );
 }
 
@@ -61,7 +67,7 @@ export function registerInternalHostRoutes(app: Hono, deps: AppDeps): void {
           "Machine credentials cannot mint host enrollment keys",
         );
       }
-      assertLoopbackRequest(getTrustedRemoteAddress(context));
+      assertServerMachineRequest(context);
       const issued = await issueHostEnrollKey(deps, {
         enrollSource: "loopback",
         ...(payload.hostId ? { hostId: payload.hostId } : {}),

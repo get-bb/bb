@@ -1,4 +1,5 @@
 import type { DesktopSession } from "@bb/connect-client";
+import type { DeviceBrowserSession } from "../device-auth";
 
 export interface SessionCookieSpec {
   name: string;
@@ -41,8 +42,37 @@ export function sessionCookieSpec(
     path: "/",
     secure: url.protocol === "https:",
     httpOnly: true,
-    expires: new Date(cookie.expiresAt).toISOString().replace(/Z$/u, "+00:00"),
+    expires: cookieExpiry(cookie.expiresAt),
   };
+}
+
+function cookieExpiry(at: number): string {
+  return new Date(at).toISOString().replace(/Z$/u, "+00:00");
+}
+
+export function deviceBrowserCookieSpec(
+  session: DeviceBrowserSession,
+  serverUrl: string,
+): SessionCookieSpec {
+  const url = new URL(serverUrl);
+  return {
+    name: session.cookieName,
+    value: session.token,
+    domain: url.hostname,
+    path: "/",
+    secure: url.protocol === "https:",
+    httpOnly: true,
+    expires: cookieExpiry(session.expiresAt),
+  };
+}
+
+async function installCookieSpec(
+  cookieStore: CookieStoreLike,
+  serverUrl: string,
+  spec: SessionCookieSpec,
+): Promise<void> {
+  await cookieStore.set(serverUrl, spec, false);
+  await cookieStore.set(serverUrl, spec, true);
 }
 
 export async function installSessionCookie(
@@ -50,7 +80,21 @@ export async function installSessionCookie(
   serverUrl: string,
   session: DesktopSession,
 ): Promise<void> {
-  const spec = sessionCookieSpec(session, serverUrl);
-  await cookieStore.set(serverUrl, spec, false);
-  await cookieStore.set(serverUrl, spec, true);
+  await installCookieSpec(
+    cookieStore,
+    serverUrl,
+    sessionCookieSpec(session, serverUrl),
+  );
+}
+
+export async function installDeviceBrowserCookie(
+  cookieStore: CookieStoreLike,
+  serverUrl: string,
+  session: DeviceBrowserSession,
+): Promise<void> {
+  await installCookieSpec(
+    cookieStore,
+    serverUrl,
+    deviceBrowserCookieSpec(session, serverUrl),
+  );
 }

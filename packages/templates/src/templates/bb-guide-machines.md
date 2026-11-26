@@ -287,8 +287,10 @@ lists each route with its status and address, and offers the others from
 
 - `local-network` (Local network, not added by default): bb also listens on
   this computer's private LAN addresses (`http://192.168.x.y:<port>`); no
-  restart. Anyone on that network can use bb, so add it only for a trusted
-  network; remove it from its ⋯ menu or with
+  restart. It opens only while sign-in is required
+  (`bb access require-sign-in on`); until then its status says so. Devices on
+  the network still sign in, but the traffic is plain HTTP, so add it only for
+  a trusted network; remove it from its ⋯ menu or with
   `bb server access remove local-network`. Starting bb with
   `--server-bind-host 0.0.0.0` already listens everywhere.
 - Plugin providers, such as `connect` (bb connect, `<handle>.getbb.app`) and
@@ -343,6 +345,45 @@ serves it at `<handle>.getbb.app` and shares HTTP ports from any enrolled host
 mobile app (also shown under Settings → Mobile → Add mobile device); `--json`
 prints `{code, serverUrl, apex, expiresAt}`. Without an installed bb, pair a
 dashboard code with `npx -p bb-app@latest bb connect --code <code>`.
+
+## Sign in other devices
+
+Sign-in is optional until it is turned on: with `requireSignIn` off (the
+default), a request without a credential is let in as it always was, and a
+stale or foreign credential is ignored. With it on, every request needs a
+credential and bb trusts no request for its address, so a reverse proxy or TCP
+forwarder on the server machine cannot hand strangers access. On the server
+machine the CLI, agents and scripts present the local token from
+`<data dir>/local-access-token` (mode 0600), which the CLI reads for a loopback
+`BB_SERVER_URL`; set `BB_DATA_DIR` when the server uses a non-default data
+directory. Without a credential the API then answers 401 `unauthenticated`.
+
+- `bb access require-sign-in [on|off] [--json]` shows or changes the setting
+  (also Settings → Devices → Require sign-in, or the `requireSignIn`
+  experiment). Turning it on never locks out the caller: the server machine's
+  CLI uses the local token, a browser is signed in by the same request, and a
+  CLI on another computer that isn't signed in pairs itself first. Machine
+  credentials cannot change it. The Local network server route only opens
+  while it is on.
+
+- `bb access pair [--url <origin>] [--open] [--json]` mints a one-time,
+  10-minute code (`XXXXX-XXXXX`); Settings → Devices shows the same code as a
+  QR code. `--url` prints `<origin>/pair#code=<code>`; `--open` opens that link
+  (default origin `BB_SERVER_URL`) in this computer's browser, which signs it in.
+- `bb access login --code <code> [--label <name>]` signs this CLI in to a
+  remote `BB_SERVER_URL` with a P-256 key it creates. The key and a one-hour
+  access token are stored per origin in `<data dir>/server-credentials.json`
+  (mode 0600); every request carries a DPoP proof, tokens renew automatically,
+  and a copied token is useless without the key. `bb access logout` revokes it
+  and forgets it; `bb access status` shows how the CLI is let in.
+- `bb access list [--json]` lists signed-in devices; `bb access revoke <id>`
+  signs one out and closes its open connections.
+
+A sign-in made over HTTPS is refused over plain HTTP. Ten wrong codes in five
+minutes pause sign-in for everyone for up to five minutes. Agents on another
+enrolled machine reach the server through the daemon's loopback proxy, which
+signs them in with the machine's credential; machine credentials cannot mint
+codes or sign devices out.
 
 ## Move the server
 

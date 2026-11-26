@@ -136,11 +136,13 @@ use an isolated checkout and keep the serving checkout's data/ports stable.
 ```bash
 export BB_SERVER_URL="$(sed -n 's/^Server: //p' "$BB_VERIFY_RUN/before-launch.txt")"
 export BB_HOST_DAEMON_PORT="$(sed -nE 's/^Host daemon: http:\/\/[^:]+:([0-9]+)$/\1/p' "$BB_VERIFY_RUN/before-launch.txt")"
+export BB_DATA_DIR="$(sed -n 's/^Data dir: //p' "$BB_VERIFY_RUN/before-launch.txt")"
+export BB_LOCAL_AUTH="Authorization: Bearer bbl_$(cat "$BB_DATA_DIR/local-access-token")"
 unset BB_THREAD_ID BB_ENVIRONMENT_ID BB_THREAD_STORAGE BB_PROJECT_ID BB_CLI BB_CLI_REEXEC
 pnpm exec turbo run build --filter=@bb/cli
 curl -fsS "$BB_SERVER_URL/health"
 curl -fsS "http://127.0.0.1:$BB_HOST_DAEMON_PORT/health"
-curl -fsS "$BB_SERVER_URL/api/v1/hosts"
+curl -fsS -H "$BB_LOCAL_AUTH" "$BB_SERVER_URL/api/v1/hosts"
 node apps/cli/dist/index.js project list --json
 ```
 

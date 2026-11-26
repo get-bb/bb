@@ -117,6 +117,7 @@ export interface PluginServiceDeps {
     | "setPluginDirectory"
   >;
   getAppUrl?: () => string | null;
+  tunnelMarker?: { header: string; value: string };
   dataDir: string;
   appVersion: string;
   bundledPlugins?: readonly BundledPluginRegistration[];

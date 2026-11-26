@@ -10,16 +10,18 @@ import { describe, expect, it } from "vitest";
 import { createServerErrorHandler } from "../src/errors.js";
 import { TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY } from "../src/request-context.js";
 import { registerInternalHostRoutes } from "../src/internal/hosts.js";
-import type { AppDeps } from "../src/types.js";
+import { resolveRequestAccess } from "../src/request-access.js";
+import type { ServerAppDeps } from "../src/types.js";
 import { readJson } from "./helpers/json.js";
 import {
   createTestAppHarness,
+  localAuthorization,
   testLogger,
   withTestHarness,
 } from "./helpers/test-app.js";
 
 interface CreateHostRouteAppArgs {
-  deps: AppDeps;
+  deps: ServerAppDeps;
   trustedRemoteAddress: string | undefined;
 }
 
@@ -32,6 +34,15 @@ function createInternalHostRouteApp(args: CreateHostRouteAppArgs): Hono {
   app.onError(createServerErrorHandler(testLogger));
   app.use("*", async (context, next) => {
     context.set(TRUSTED_REMOTE_ADDRESS_CONTEXT_KEY, args.trustedRemoteAddress);
+    await resolveRequestAccess(
+      context,
+      {
+        ...args.deps,
+        isPluginCallerToken: () => false,
+        requireSignIn: () => true,
+      },
+      args.trustedRemoteAddress,
+    );
     await next();
   });
   registerInternalHostRoutes(app, args.deps);
@@ -39,7 +50,7 @@ function createInternalHostRouteApp(args: CreateHostRouteAppArgs): Hono {
 }
 
 async function requestHostEnrollKey(
-  deps: AppDeps,
+  deps: ServerAppDeps,
   hostId: string,
 ): Promise<HostDaemonEnrollKeyResponse> {
   const app = createInternalHostRouteApp({
@@ -49,6 +60,7 @@ async function requestHostEnrollKey(
   const response = await app.request("/hosts/enroll-key", {
     method: "POST",
     headers: {
+      authorization: await localAuthorization(deps.config.dataDir),
       "content-type": "application/json",
     },
     body: JSON.stringify({ hostId }),
@@ -70,6 +82,7 @@ describe("host enroll routes", () => {
       const response = await app.request("/hosts/enroll-key", {
         method: "POST",
         headers: {
+          authorization: await localAuthorization(harness.config.dataDir),
           "content-type": "application/json",
         },
         body: JSON.stringify({
@@ -87,11 +100,11 @@ describe("host enroll routes", () => {
     }
   });
 
-  it("rejects non-loopback enroll-key requests without side effects", async () => {
+  it("rejects enroll-key requests without the local token, even from loopback, without side effects", async () => {
     const harness = await createTestAppHarness({ appUrl: undefined });
     const app = createInternalHostRouteApp({
       deps: harness.deps,
-      trustedRemoteAddress: "192.168.1.50",
+      trustedRemoteAddress: "127.0.0.1",
     });
 
     try {
@@ -105,9 +118,9 @@ describe("host enroll routes", () => {
         }),
       });
 
-      expect(response.status).toBe(400);
+      expect(response.status).toBe(401);
       expect(await readJson(response)).toMatchObject({
-        code: "unsupported_host",
+        code: "local_token_required",
       });
       expect(getHost(harness.db, "host_remote_enroll_key")).toBeNull();
     } finally {
@@ -127,6 +140,7 @@ describe("host enroll routes", () => {
         headers: {
           "content-type": "application/json",
           "x-bb-gate-auth": "machine",
+          "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
         },
         body: JSON.stringify({ hostId: "host_forbidden_machine" }),
       });

@@ -13,6 +13,13 @@ afterEach(async () => {
   server = null;
 });
 
+function signedIn(
+  headers: Record<string, string> = {},
+): Record<string, string> {
+  if (server === null) throw new Error("start the test server first");
+  return { authorization: server.localAuthorization, ...headers };
+}
+
 interface RequestArgs {
   headers?: Record<string, string>;
   method?: string;
@@ -27,7 +34,7 @@ async function statusFor(
     new URL(args.path ?? "/api/v1/threads", baseUrl),
     {
       method: args.method ?? "GET",
-      ...(args.headers === undefined ? {} : { headers: args.headers }),
+      headers: signedIn(args.headers),
     },
   );
   return response.status;
@@ -46,7 +53,7 @@ function rawStatus(
         host: url.hostname,
         port: url.port,
         path: url.pathname,
-        headers,
+        headers: signedIn(headers),
         method,
       },
       (response) => {
@@ -60,7 +67,7 @@ function rawStatus(
 }
 
 describe("/api/v1 browser origin guard", () => {
-  it("passes callers that send no Origin: curl, the bb CLI, and the SDK", async () => {
+  it("passes signed-in callers that send no Origin: curl, the bb CLI, and the SDK", async () => {
     server = await startTestServer();
 
     expect(await statusFor(server.baseUrl)).toBe(200);
@@ -80,7 +87,15 @@ describe("/api/v1 browser origin guard", () => {
       }),
     ).not.toBe(415);
 
-    const sdk = createNodeBbSdk({ baseUrl: server.baseUrl });
+    const authorization = server.localAuthorization;
+    const sdk = createNodeBbSdk({
+      baseUrl: server.baseUrl,
+      fetch: (input, init) => {
+        const headers = new Headers(init?.headers);
+        headers.set("authorization", authorization);
+        return fetch(input, { ...init, headers });
+      },
+    });
     await expect(sdk.threads.list({ limit: 1 })).resolves.toBeDefined();
   });
 
@@ -123,8 +138,10 @@ describe("/api/v1 browser origin guard", () => {
 
   it("does not trust an attacker origin through forwarded headers", async () => {
     server = await startTestServer();
+    const authorization = server.localAuthorization;
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         host: new URL(server.baseUrl).host,
         origin: "https://attacker.example",
         "x-forwarded-host": "attacker.example",
@@ -214,6 +231,7 @@ describe("/api/v1 browser origin guard", () => {
   it("accepts direct IP access and a configured Tailscale proxy", async () => {
     server = await startTestServer({ appUrl: "https://box.ts.net" });
     const port = new URL(server.baseUrl).port;
+    const authorization = server.localAuthorization;
 
     for (const host of [
       `192.168.1.5:${port}`,
@@ -221,11 +239,14 @@ describe("/api/v1 browser origin guard", () => {
       `[2001:db8::5]:${port}`,
       "box.ts.net",
     ]) {
-      expect(await rawStatus(server.baseUrl, { host })).toBe(200);
+      expect(await rawStatus(server.baseUrl, { authorization, host })).toBe(
+        200,
+      );
     }
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: `http://192.168.1.5:${port}`,
         host: `192.168.1.5:${port}`,
       }),
@@ -233,6 +254,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: "https://box.ts.net",
         host: "box.ts.net",
         "x-forwarded-proto": "https",
@@ -241,6 +263,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: "https://box.ts.net",
         host: `127.0.0.1:${port}`,
         "x-forwarded-host": "box.ts.net",
@@ -250,6 +273,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: `http://192.168.1.5:${port}`,
         host: `127.0.0.1:${port}`,
         "x-forwarded-host": `192.168.1.5:${port}`,
@@ -258,6 +282,7 @@ describe("/api/v1 browser origin guard", () => {
 
     expect(
       await rawStatus(server.baseUrl, {
+        authorization,
         origin: `http://[::1]:${port}`,
         host: `[::1]:${port}`,
       }),

@@ -1,5 +1,8 @@
 import {
   bbDesktopServerListSchema,
+  bbDesktopPairServerResultSchema,
+  type BbDesktopPairServerRequest,
+  type BbDesktopPairServerResult,
   MACOS_TRAFFIC_LIGHT_INSET_PX,
   MACOS_TRAFFIC_LIGHT_TOP_INSET_PX,
   type BbDesktopServerChoice,
@@ -105,6 +108,7 @@ import {
   BB_DESKTOP_SIGN_IN_TO_CONNECT_CHANNEL,
   BB_DESKTOP_APP_COMMAND_CHANNEL,
   BB_DESKTOP_OPEN_WINDOW_FIND_CHANNEL,
+  BB_DESKTOP_PAIR_SERVER_CHANNEL,
   BB_DESKTOP_RELOAD_WINDOW_CHANNEL,
   BB_DESKTOP_SET_SPLIT_NAVIGATION_ENABLED_CHANNEL,
   BB_DESKTOP_CLOSE_WINDOW_REQUEST_CHANNEL,
@@ -543,6 +547,13 @@ const bbDesktopApi: BbDesktopApi = {
   },
   async openServerDaemonLogs(): Promise<void> {
     await ipcRenderer.invoke(BB_DESKTOP_OPEN_SERVER_DAEMON_LOGS_CHANNEL);
+  },
+  async pairServer(
+    request: BbDesktopPairServerRequest,
+  ): Promise<BbDesktopPairServerResult> {
+    return bbDesktopPairServerResultSchema.parse(
+      await ipcRenderer.invoke(BB_DESKTOP_PAIR_SERVER_CHANNEL, request),
+    );
   },
   reloadWindow(): void {
     ipcRenderer.send(BB_DESKTOP_RELOAD_WINDOW_CHANNEL);

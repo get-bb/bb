@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { createNodeWebsocketFactory } from "@bb/sdk/node";
 import { describe, expect, it } from "vitest";
 import { waitForHostConnected } from "../helpers/assertions.js";
 import { createIntegrationHarness, withHarness } from "../helpers/harness.js";
@@ -7,18 +8,15 @@ import { createIntegrationHarness, withHarness } from "../helpers/harness.js";
 describe("integration harness", () => {
   it("closes live WebSockets and cleans up the temp repo", async () => {
     const harness = await createIntegrationHarness();
-    const socket = new WebSocket(
-      `${harness.serverUrl.replace("http:", "ws:")}/ws`,
-    );
+    const socket = createNodeWebsocketFactory({
+      headers: () => ({ authorization: harness.server.localAuthorization }),
+    })(`${harness.serverUrl.replace("http:", "ws:")}/ws`);
     let cleanup: Promise<void> | null = null;
     try {
       await new Promise<void>((resolve, reject) => {
-        socket.addEventListener("open", () => resolve(), { once: true });
-        socket.addEventListener(
-          "error",
-          () => reject(new Error("Harness WebSocket failed to open")),
-          { once: true },
-        );
+        socket.onopen = () => resolve();
+        socket.onerror = () =>
+          reject(new Error("Harness WebSocket failed to open"));
       });
       const host = await waitForHostConnected(harness.api);
       expect(host.id).toBe(harness.hostId);

@@ -41,6 +41,7 @@ export type WebSocketConnectedEvent =
     };
 type ConnectedCallback = (event: WebSocketConnectedEvent) => void;
 type ConnectionStateCallback = () => void;
+type SocketLostCallback = () => void;
 type ResumedCallback = (
   releasedTargets: readonly RealtimeSubscriptionTarget[],
 ) => void;
@@ -100,6 +101,7 @@ export class WebSocketManager {
   private pendingOpenFileByThreadId = new Map<string, ThreadOpenFile>();
   private connectedCallbacks = new Set<ConnectedCallback>();
   private connectionStateCallbacks = new Set<ConnectionStateCallback>();
+  private socketLostCallbacks = new Set<SocketLostCallback>();
   private resumedCallbacks = new Set<ResumedCallback>();
   private hasConnected = false;
   private connectionState: WebSocketConnectionState = "connecting";
@@ -387,6 +389,9 @@ export class WebSocketManager {
       this.disconnectedAt = at;
     }
     this.setConnectionState(this.hasConnected ? "reconnecting" : "connecting");
+    for (const callback of this.socketLostCallbacks) {
+      callback();
+    }
   }
 
   handleIncomingMessage(data: string): void {
@@ -648,6 +653,13 @@ export class WebSocketManager {
     this.connectionStateCallbacks.add(callback);
     return () => {
       this.connectionStateCallbacks.delete(callback);
+    };
+  }
+
+  onSocketLost(callback: SocketLostCallback): () => void {
+    this.socketLostCallbacks.add(callback);
+    return () => {
+      this.socketLostCallbacks.delete(callback);
     };
   }
 

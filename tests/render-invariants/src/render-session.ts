@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import type { Browser, BrowserContext, Page, Request } from "playwright-core";
 import { z } from "zod";
@@ -40,14 +41,51 @@ export interface RenderSession {
   close(): Promise<void>;
 }
 
+const localSessionSchema = z.object({
+  token: z.string(),
+  cookieName: z.string(),
+});
+
+export async function signInBrowserContext(
+  context: BrowserContext,
+  serverUrl: string,
+  localAuthorization: string,
+): Promise<void> {
+  const response = await fetch(`${serverUrl}/api/v1/access/local-sessions`, {
+    method: "POST",
+    headers: {
+      authorization: localAuthorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ label: `render invariants ${randomUUID()}` }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      `local browser sign-in failed: HTTP ${response.status} ${await response.text()}`,
+    );
+  }
+  const session = localSessionSchema.parse(await response.json());
+  await context.addCookies([
+    {
+      name: session.cookieName,
+      value: session.token,
+      url: serverUrl,
+      httpOnly: true,
+      sameSite: "Lax",
+    },
+  ]);
+}
+
 export async function openThread(
   browser: Browser,
   serverUrl: string,
+  localAuthorization: string,
   threadId: string,
 ): Promise<RenderSession> {
   const context: BrowserContext = await browser.newContext({
     viewport: { width: 1440, height: 900 },
   });
+  await signInBrowserContext(context, serverUrl, localAuthorization);
   await context.addInitScript({ content: PROBE_SCRIPT });
   const page = await context.newPage();
   const pendingRequests = new Set<Request>();

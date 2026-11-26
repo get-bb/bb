@@ -16,6 +16,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropAccessCredentialsTable,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
@@ -112,6 +113,7 @@ describe.each(["project", "thread", "preference"] as const)(
           dropServerAccessRouteTables(db);
           dropPluginFailureLabelColumns(db);
           rewindMachineTeardownRecoveryColumns(db);
+          dropAccessCredentialsTable(db);
           dropPluginMarketplaceEnabledColumn(db);
           dropQueuedMessageRecheckAtColumn(db);
           dropProjectFolderSchema(db);

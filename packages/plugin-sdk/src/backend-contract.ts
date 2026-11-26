@@ -992,6 +992,26 @@ export interface PluginHttp {
     handler: ExperimentalPluginWebSocketHandler,
     opts?: { auth?: PluginHttpAuthMode },
   ): void;
+
+  /**
+   * Internal to bb's bundled plugins: who core decided sent a request this
+   * plugin's route is handling. "server-machine": a local process on the
+   * server machine; "signed-in-device": a device holding a bb sign-in;
+   * "connect-session": a browser the bb connect gate signed in; "machine": an
+   * enrolled machine; "oauth": an OAuth client the bb connect gate admitted;
+   * "open": a caller with no sign-in on a server that doesn't require one;
+   * "anonymous": anyone else.
+   */
+  internal_DO_NOT_USE_requestAccess(
+    context: Context,
+  ):
+    | "server-machine"
+    | "signed-in-device"
+    | "connect-session"
+    | "machine"
+    | "oauth"
+    | "open"
+    | "anonymous";
 }
 
 export interface PluginRpc {
@@ -2078,11 +2098,24 @@ export interface PluginServerApi {
   /**
    * This BB server's own loopback base URL (e.g. "http://127.0.0.1:38886"),
    * which serves the SPA + /api + /ws. For plugins that proxy or relay
-   * traffic back to the server itself (e.g. a tunnel). Bind-gated like
-   * `bb.sdk`: reading it before the server is listening throws, so prefer
-   * reading it from handlers, services, and timers.
+   * traffic back to the server itself (e.g. a tunnel). The server trusts no
+   * request for coming from loopback: call its API through `bb.sdk`, which
+   * signs requests as this plugin, or pass the server's credentials along.
+   * Bind-gated like `bb.sdk`: reading it before the server is listening
+   * throws, so prefer reading it from handlers, services, and timers.
    */
   readonly loopbackBaseUrl: string;
+
+  /**
+   * Internal to bb's bundled plugins: the header and per-start value bb's own
+   * connect tunnel stamps on what it forwards to `loopbackBaseUrl`, so the
+   * server honours the gate's verdict only for tunnelled requests. Throws for
+   * plugins that are not bundled with bb.
+   */
+  readonly internal_DO_NOT_USE_tunnelMarker: {
+    readonly header: string;
+    readonly value: string;
+  };
 
   /**
    * This server's data directory — the one holding `config.json`, `bb.db` and

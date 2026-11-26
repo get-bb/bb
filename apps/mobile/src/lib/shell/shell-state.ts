@@ -43,8 +43,9 @@ export function resolveShellScreenState(
       return {
         kind: "error",
         title: "Could not sign in",
-        detail:
-          "bb connect could not renew this phone’s sign-in. Pair again to reconnect.",
+        detail: input.requiresSession
+          ? "bb connect could not renew this phone’s sign-in. Pair again to reconnect."
+          : input.session.detail,
         action: "re-pair",
       };
     case "error":

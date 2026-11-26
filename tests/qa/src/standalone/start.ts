@@ -13,6 +13,7 @@ import {
   createTestGitRepo,
   killProcess,
   loadDotEnv,
+  readQaServerAuthorization,
   repoRoot,
   reservePort,
   resolveStandaloneParentPid,
@@ -93,7 +94,8 @@ async function main() {
     });
     serverProcess = qaServer.process;
 
-    const enrollKey = await createHostEnrollKey(serverUrl);
+    const serverAuthorization = readQaServerAuthorization(serverDataDir);
+    const enrollKey = await createHostEnrollKey(serverUrl, serverAuthorization);
 
     daemonProcess = spawnLoggedProcess({
       command: "node",
@@ -114,8 +116,8 @@ async function main() {
       logPath: daemonLogPath,
     });
 
-    const host = await waitForConnectedHost(serverUrl);
-    const project = await createProject(serverUrl, {
+    const host = await waitForConnectedHost(serverUrl, serverAuthorization);
+    const project = await createProject(serverUrl, serverAuthorization, {
       name: "Standalone QA Project",
       source: { type: "local_path", hostId: host.id, path: projectRoot },
     });
@@ -136,10 +138,12 @@ async function main() {
       logPath: daemonLogPath,
       parentPid,
       pidPath: daemonRestartPidPath,
+      serverDataDir,
       serverUrl,
     });
 
     const cliEnv = {
+      BB_DATA_DIR: serverDataDir,
       BB_HOST_DAEMON_PORT: String(daemonPort),
       BB_PROJECT_ID: project.id,
       BB_SERVER_URL: serverUrl,

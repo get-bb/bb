@@ -52,7 +52,7 @@ export default defineWorkspaceTestConfig({
       pkgDir: __dirname,
       aliases: { "@": path.resolve(__dirname, "./src") },
       name: "@bb/app",
-      include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+      include: ["src/**/*.test.ts", "src/**/*.test.tsx", ".ladle/**/*.test.ts"],
       exclude: [
         "dist/**",
         "node_modules/**",

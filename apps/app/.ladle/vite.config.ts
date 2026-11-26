@@ -1,10 +1,12 @@
 import path from "path";
 import { defineConfig } from "vite";
+import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
 import tailwindcss from "@tailwindcss/vite";
 import { resolveCurrentDevInstanceConfig } from "@bb/config/runtime";
 import { forkablePluginPaths } from "../vite-forkable-plugin-paths.js";
 import { corePluginSdkApp } from "../vite-core-plugin-sdk-app.js";
 import { pluginZodRuntime } from "../vite-plugin-zod-runtime.js";
+import { signInLocalLadleRequests } from "./dev-server-auth.js";
 import { sharedUiEnvSeam } from "../vite-shared-ui-seam.js";
 
 const repoRoot = path.resolve(__dirname, "../../..");
@@ -12,6 +14,10 @@ const devInstance = resolveCurrentDevInstanceConfig(repoRoot);
 const trustedDevAppHeaders = {
   origin: devInstance.serverUrl,
 };
+
+const signInDevServerProxy = signInLocalLadleRequests(() =>
+  readLocalAccessTokenSync(devInstance.dataDir),
+);
 
 export default defineConfig({
   plugins: [
@@ -47,12 +53,14 @@ export default defineConfig({
         target: devInstance.serverUrl,
         changeOrigin: true,
         headers: trustedDevAppHeaders,
+        configure: signInDevServerProxy,
       },
       "/ws": {
         target: devInstance.serverUrl,
         changeOrigin: true,
         ws: true,
         headers: trustedDevAppHeaders,
+        configure: signInDevServerProxy,
       },
     },
   },

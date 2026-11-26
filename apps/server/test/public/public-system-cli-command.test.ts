@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import type { SystemCliCommandStatus } from "@bb/server-contract";
 import type { CliCommandService } from "../../src/services/system/cli-command.js";
 import { readJson } from "../helpers/json.js";
-import { withTestHarness } from "../helpers/test-app.js";
+import { withTestHarness, type TestAppHarness } from "../helpers/test-app.js";
 
 const API = "/api/v1/system/cli-command";
-const MACHINE_HEADERS = { "x-bb-gate-auth": "machine" };
+function machineHeaders(harness: TestAppHarness): Record<string, string> {
+  return {
+    "x-bb-gate-auth": "machine",
+    "x-bb-tunnel-marker": harness.deps.access.tunnelMarker,
+  };
+}
 
 function recordingService(): {
   calls: string[];
@@ -84,7 +89,7 @@ describe("/api/v1/system/cli-command", () => {
     return withTestHarness({ cliCommandService: service }, async (harness) => {
       for (const action of ["install", "remove"]) {
         const response = await harness.app.request(`${API}/${action}`, {
-          headers: MACHINE_HEADERS,
+          headers: machineHeaders(harness),
           method: "POST",
         });
         expect(response.status).toBe(403);

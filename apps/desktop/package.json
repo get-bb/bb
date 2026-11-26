@@ -46,6 +46,7 @@
     "@bb/config": "workspace:*",
     "@bb/desktop-contract": "workspace:*",
     "@bb/domain": "workspace:*",
+    "@bb/sdk": "workspace:*",
     "@bb/server-archive": "workspace:*",
     "@bb/server-contract": "workspace:*",
     "@bb/test-helpers": "workspace:*",

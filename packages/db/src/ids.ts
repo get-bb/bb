@@ -69,3 +69,7 @@ export function createHostDaemonSessionId(): string {
 export function createTerminalSessionId(): string {
   return createId("term");
 }
+
+export function createAccessCredentialId(): string {
+  return createId("acc");
+}

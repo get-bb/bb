@@ -15,11 +15,13 @@ describe("resetAppState", () => {
       mode: "direct",
       serverUrl: "http://127.0.0.1:1",
       label: "a",
+      access: null,
     });
     const b = await seed.addProfile({
       mode: "direct",
       serverUrl: "http://127.0.0.1:2",
       label: "b",
+      access: null,
     });
     await seed.setActiveProfile(b.id);
 

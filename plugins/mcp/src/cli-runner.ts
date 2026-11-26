@@ -53,11 +53,12 @@ export async function resolveBbBinary(
 
 export function cliEnvironment(
   env: NodeJS.ProcessEnv,
-  serverUrl: string,
+  server: { url: string; dataDir: string },
 ): NodeJS.ProcessEnv {
   const next: NodeJS.ProcessEnv = { ...env };
   for (const key of STRIPPED_ENVIRONMENT_KEYS) delete next[key];
-  next.BB_SERVER_URL = serverUrl;
+  next.BB_SERVER_URL = server.url;
+  next.BB_DATA_DIR = server.dataDir;
   next.NO_COLOR = "1";
   next.FORCE_COLOR = "0";
   return next;
@@ -88,7 +89,7 @@ class BoundedOutput {
 
 export function createCliRunner(options: {
   env: NodeJS.ProcessEnv;
-  serverUrl: () => string;
+  server: () => { url: string; dataDir: string };
   resolveBinary?: (env: NodeJS.ProcessEnv) => Promise<string | null>;
   maxConcurrent?: number;
 }): CliRunner {
@@ -107,7 +108,7 @@ export function createCliRunner(options: {
       const child = spawn(resolved, [...argv], {
         cwd: homedir(),
         detached: ownsProcessGroup,
-        env: cliEnvironment(options.env, options.serverUrl()),
+        env: cliEnvironment(options.env, options.server()),
         stdio: ["pipe", "pipe", "pipe"],
       });
       const stdout = new BoundedOutput();

@@ -111,6 +111,7 @@ interface ResolvedStreamOrigin {
   origin: string;
   publicOrigin: string;
   host?: string;
+  headers?: Readonly<Record<string, string>>;
 }
 
 export interface TunnelSessionSnapshot {
@@ -424,6 +425,7 @@ export class TunnelSession {
       publicOrigin: resolved.publicOrigin,
       loopbackOrigin: new URL(resolved.origin).origin,
       ...(resolved.host !== undefined ? { host: resolved.host } : {}),
+      ...(resolved.headers !== undefined ? { headers: resolved.headers } : {}),
     });
     try {
       const startedAt = performance.now();
@@ -511,6 +513,7 @@ export class TunnelSession {
       publicOrigin: resolved.publicOrigin,
       loopbackOrigin: new URL(resolved.origin).origin,
       ...(resolved.host !== undefined ? { host: resolved.host } : {}),
+      ...(resolved.headers !== undefined ? { headers: resolved.headers } : {}),
     });
     const countsAsRemoteClient = isBareBbRealtimeWs(frame.path, frame.target);
     let socket: NodeWebSocket;

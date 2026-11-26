@@ -209,6 +209,7 @@ describe("prepareRuntimeShellEnv", () => {
 
     const env = prepareRuntimeShellEnv({
       bbExecutableDirectory: "/tmp/bb-bin",
+      dataDir: "/tmp/bb-data",
       inheritedPath: "/usr/bin",
       serverUrl: "http://127.0.0.1:43123",
     });
@@ -221,6 +222,7 @@ describe("prepareRuntimeShellEnv", () => {
     expect(
       prepareRuntimeShellEnv({
         bbExecutableDirectory: "/tmp/bb-bin",
+        dataDir: "/tmp/bb-data",
         hostDaemonPort: 3002,
         inheritedPath: "/usr/bin",
         serverUrl: "http://127.0.0.1:3334",
@@ -228,6 +230,7 @@ describe("prepareRuntimeShellEnv", () => {
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
       BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_DATA_DIR: "/tmp/bb-data",
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -236,6 +239,7 @@ describe("prepareRuntimeShellEnv", () => {
   it("sets the PowerShell execution policy it is given and none otherwise", () => {
     const options = {
       bbExecutableDirectory: "C:\\bb",
+      dataDir: "C:\\bb-data",
       inheritedPath: "C:\\Windows",
       serverUrl: "http://127.0.0.1:43123",
     };
@@ -258,6 +262,7 @@ describe("prepareRuntimeShellEnv", () => {
     expect(
       prepareRuntimeShellEnv({
         bbExecutableDirectory: "/tmp/bb-bin",
+        dataDir: "/tmp/bb-data",
         bbExecutablePath: "/opt/custom/bb",
         inheritedPath: "/usr/bin",
         serverUrl: "http://127.0.0.1:3334",
@@ -274,12 +279,14 @@ describe("prepareRuntimeShellEnv", () => {
     expect(
       prepareRuntimeShellEnv({
         bbExecutableDirectory: "/tmp/bb-bin",
+        dataDir: "/tmp/bb-data",
         hostDaemonPort: 3002,
         serverUrl: "http://127.0.0.1:3334",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/local/bin:/usr/bin`,
       BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_DATA_DIR: "/tmp/bb-data",
       BB_SERVER_URL: "http://127.0.0.1:3334",
       BB_HOST_DAEMON_PORT: "3002",
     });
@@ -289,12 +296,14 @@ describe("prepareRuntimeShellEnv", () => {
     expect(
       prepareRuntimeShellEnv({
         bbExecutableDirectory: "/tmp/bb-bin",
+        dataDir: "/tmp/bb-data",
         inheritedPath: "/usr/bin",
         serverUrl: "http://127.0.0.1:3334",
       }),
     ).toEqual({
       PATH: `/tmp/bb-bin${delimiter}/usr/bin`,
       BB_CLI: path.resolve("/tmp/bb-bin", "bb"),
+      BB_DATA_DIR: "/tmp/bb-data",
       BB_SERVER_URL: "http://127.0.0.1:3334",
     });
   });

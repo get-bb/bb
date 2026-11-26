@@ -69,6 +69,7 @@ describe("experiments settings", () => {
         serverMove: true,
         performanceDiagnostics: false,
         pluginUpdates: false,
+        requireSignIn: false,
         serverRoutes: true,
       });
       expect(
@@ -98,6 +99,7 @@ describe("experiments settings", () => {
       await putExperiments(harness, {
         compactExpiredCache: false,
         pluginUpdates: false,
+        requireSignIn: false,
       });
       expect(
         (
@@ -111,6 +113,7 @@ describe("experiments settings", () => {
         ...earlyAdopterExperiments,
         compactExpiredCache: false,
         pluginUpdates: false,
+        requireSignIn: false,
       });
 
       harness.db.$client.prepare("DELETE FROM system_experiments").run();

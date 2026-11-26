@@ -20,7 +20,9 @@
 # on its own.
 #
 # Environment: SERVER_URL (default http://127.0.0.1:41999; the flows' own
-# env blocks point at the same port), MAESTRO_FLAGS (extra `maestro test`
+# env blocks point at the same port), SERVER_DATA_DIR (the backend's data dir,
+# from e2e/scripts/backend-data-dir.sh; every flow gets a fresh pairing code
+# minted with its local token), MAESTRO_FLAGS (extra `maestro test`
 # flags). Needs maestro + java on PATH. Every flow gets
 # `-e BB_E2E_EMBEDDED_BUNDLE=1` (see ../subflows/launch-app.yaml); pass
 # `--dev-client` as the first argument to drive a dev client through Metro
@@ -46,6 +48,9 @@ if [ ${#FLOWS[@]} -eq 0 ]; then
 fi
 
 export SERVER_URL="${SERVER_URL:-http://127.0.0.1:41999}"
+if [ -z "${SERVER_DATA_DIR:-}" ]; then
+  echo "SERVER_DATA_DIR is unset, so no pairing codes are minted and flows that sign in will fail (see e2e/scripts/backend-data-dir.sh)" >&2
+fi
 mkdir -p "$ARTIFACTS"
 
 failed=()
@@ -54,9 +59,20 @@ for flow in "${FLOWS[@]}"; do
   out="$ARTIFACTS/$flow"
   mkdir -p "$out"
   echo "::group::maestro $flow"
+  PAIRING_ENV=()
+  if [ -n "${SERVER_DATA_DIR:-}" ]; then
+    if ! pairing_code=$(scripts/mint-pairing-code.sh); then
+      echo "FAIL $flow (could not mint a pairing code)"
+      failed+=("$flow")
+      echo "::endgroup::"
+      continue
+    fi
+    PAIRING_ENV=(-e "PAIRING_CODE=$pairing_code")
+  fi
   # shellcheck disable=SC2086
   if maestro --device "$UDID" test \
       ${LAUNCH_ENV[@]+"${LAUNCH_ENV[@]}"} \
+      ${PAIRING_ENV[@]+"${PAIRING_ENV[@]}"} \
       --format junit --output "$out/junit.xml" \
       --test-output-dir "$out" \
       ${MAESTRO_FLAGS:-} \

@@ -41,16 +41,16 @@ describe.sequential("fake provider smoke environment integration", () => {
 
       const status = await getEnvironmentStatus(
         harness.api,
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
       const diff = await getEnvironmentDiff(
         harness.api,
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
       const branches = await getEnvironmentBranches(
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
 
@@ -91,7 +91,7 @@ describe.sequential("fake provider smoke environment integration", () => {
       });
 
       const files = await getEnvironmentDiffFiles(
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
       expect(files.outcome).toBe("available");
@@ -107,7 +107,7 @@ describe.sequential("fake provider smoke environment integration", () => {
 
       if (entry === undefined) throw new Error("feature.ts is not changed");
       const patches = Object.values(
-        await getEnvironmentDiffPatches(harness.serverUrl, environment.id, [
+        await getEnvironmentDiffPatches(harness.server, environment.id, [
           entry,
         ]),
       );
@@ -146,7 +146,7 @@ describe.sequential("fake provider smoke environment integration", () => {
 
       const dirtyStatus = await getEnvironmentStatus(
         harness.api,
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
       expect(dirtyStatus.outcome).toBe("available");
@@ -172,7 +172,7 @@ describe.sequential("fake provider smoke environment integration", () => {
 
       const cleanStatus = await getEnvironmentStatus(
         harness.api,
-        harness.serverUrl,
+        harness.server,
         environment.id,
       );
       expect(cleanStatus.outcome).toBe("available");

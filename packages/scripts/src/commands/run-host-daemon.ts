@@ -1,3 +1,4 @@
+import { readLocalAccessTokenSync } from "@bb/config/local-access-token";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -174,6 +175,7 @@ export async function maybeAddAutoJoinEnv(
     {
       body: JSON.stringify(createAutoJoinRequest({ requestedHostId })),
       headers: {
+        authorization: `Bearer ${requireLocalAccessToken(env.BB_DATA_DIR)}`,
         "content-type": "application/json",
       },
       method: "POST",
@@ -221,3 +223,13 @@ async function main(): Promise<void> {
 }
 
 runMainIfEntrypoint(import.meta.url, main);
+
+function requireLocalAccessToken(dataDir: string): string {
+  const token = readLocalAccessTokenSync(dataDir);
+  if (token === null) {
+    throw new Error(
+      `The dev server has not written ${dataDir}/local-access-token yet; start the server before the host daemon.`,
+    );
+  }
+  return token;
+}

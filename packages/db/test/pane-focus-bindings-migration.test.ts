@@ -14,6 +14,7 @@ import {
   dropThreadParentNotificationsColumn,
   dropQueuedMessageDeliveryColumns,
   dropPluginFailureLabelColumns,
+  dropAccessCredentialsTable,
   dropPluginMarketplaceEnabledColumn,
   rewindMachineTeardownRecoveryColumns,
   dropEnvironmentHoldColumns,
@@ -74,6 +75,7 @@ function upgradeDatabase(overrides: AppKeybindingOverrides | undefined) {
   dropServerAccessRouteTables(db);
   dropPluginFailureLabelColumns(db);
   rewindMachineTeardownRecoveryColumns(db);
+  dropAccessCredentialsTable(db);
   dropPluginMarketplaceEnabledColumn(db);
   dropQueuedMessageRecheckAtColumn(db);
   dropProjectFolderSchema(db);

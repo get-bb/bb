@@ -8,6 +8,7 @@ import {
   type TerminalListScope,
 } from "@bb/sdk";
 import { createNodeWebsocketFactory } from "@bb/sdk/node-websocket";
+import { websocketHeaders } from "../server-auth.js";
 import {
   terminalServerMessageSchema,
   type TerminalSession,
@@ -747,7 +748,7 @@ async function attachTerminal(args: {
     throw new Error("Attach requires an interactive terminal");
   }
 
-  const socket = createNodeWebsocketFactory()(
+  const socket = createNodeWebsocketFactory({ headers: websocketHeaders })(
     terminalWebsocketUrl({
       baseUrl: args.baseUrl,
       terminalId: args.terminalId,

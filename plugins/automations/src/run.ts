@@ -56,7 +56,10 @@ export type ReconcileApi = Pick<BbPluginApi, "realtime" | "log"> & {
 };
 export type ScriptRunApi = Pick<BbPluginApi, "realtime" | "log"> & {
   sdk: { projects: ProjectsSdk };
-  server: Pick<BbPluginApi["server"], "loopbackBaseUrl">;
+  server: Pick<
+    BbPluginApi["server"],
+    "loopbackBaseUrl" | "experimental_dataDir"
+  >;
 };
 
 const sdkThreadSchema = z
@@ -315,6 +318,7 @@ async function runScript(
       timeoutMs: args.execution.timeoutMs,
       env: args.execution.env,
       serverUrl: bb.server.loopbackBaseUrl,
+      serverDataDir: bb.server.experimental_dataDir,
       workingDir,
       signal: args.scriptRuns.signal,
     });

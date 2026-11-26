@@ -98,6 +98,7 @@ function createTunnelFixture(
     defaultBaseUrl: DEFAULT_CONNECT_BASE_URL,
     enabled: true,
     getLoopbackBaseUrl: () => "http://127.0.0.1:38886",
+    getTunnelMarker: () => pluginBb.server.internal_DO_NOT_USE_tunnelMarker,
     log: pluginBb.log,
     onStatusChange,
   });

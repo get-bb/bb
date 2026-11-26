@@ -20,6 +20,8 @@ export interface ShellBridgeCallbacks {
   onPath(path: string): void;
   onOpenNative(screen: NativeScreen): void;
   onSwitchServer(id: string): void;
+  onRenewSession(): Promise<boolean>;
+  onAdoptDevice(code: string): Promise<boolean>;
 }
 
 export interface ShellBridge {
@@ -79,6 +81,26 @@ export function useShellBridge(
             try {
               await openApplicationUrl(message.request.payload.url);
               respond(message.id, { ok: true, result: null });
+            } catch (error) {
+              respond(message.id, { ok: false, error: describeError(error) });
+            }
+            return;
+          }
+          if (message.request.kind === "renew-session") {
+            try {
+              const renewed = await callbacksRef.current.onRenewSession();
+              respond(message.id, { ok: true, result: { renewed } });
+            } catch (error) {
+              respond(message.id, { ok: false, error: describeError(error) });
+            }
+            return;
+          }
+          if (message.request.kind === "adopt-device") {
+            try {
+              const adopted = await callbacksRef.current.onAdoptDevice(
+                message.request.payload.code,
+              );
+              respond(message.id, { ok: true, result: { adopted } });
             } catch (error) {
               respond(message.id, { ok: false, error: describeError(error) });
             }
