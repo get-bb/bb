@@ -219,3 +219,53 @@ it.each([
     ).toEqual({ n: 10 });
   },
 );
+
+it("answers a mention search with the newest 8 open matches through the index", async () => {
+  const openIssues = [3, 9, 1, 7, 5, 2, 8, 4, 6].map((number) => ({
+    ...node(number),
+    updatedAt: `2026-09-1${number}T00:00:00Z`,
+  }));
+  fake.responses.set(
+    "one",
+    response({
+      ...repository(),
+      openIssues: { nodes: openIssues },
+      closedIssues: { nodes: [node(20, "CLOSED")] },
+      openPrs: { nodes: [node(30)] },
+    }),
+  );
+  const { harness, bb } = await start();
+  await harness.behavior.callRpc("refresh");
+  const provider = harness.registrations.mentionProviders.find(
+    (candidate) => candidate.id === "issue",
+  );
+  if (provider === undefined) throw new Error("issue provider missing");
+  const db = bb.storage.database();
+  const prepare = vi.spyOn(db, "prepare");
+  const results = provider.search({
+    query: "title",
+    trigger: "@",
+    projectId: "project-1",
+    threadId: "thread-1",
+    experimental_signal: new AbortController().signal,
+  });
+  const statements = prepare.mock.calls.map(([source]) => source);
+  prepare.mockRestore();
+
+  expect(results).toEqual(
+    [9, 8, 7, 6, 5, 4, 3, 2].map((number) => ({
+      id: `acme/one#${number}`,
+      title: `#${number} Title ${number}`,
+      subtitle: "acme/one",
+    })),
+  );
+  expect(statements).toHaveLength(1);
+  const [statement] = statements;
+  const placeholders = statement.split("?").length - 1;
+  const plan = db
+    .prepare(`EXPLAIN QUERY PLAN ${statement}`)
+    .all(...Array<null>(placeholders).fill(null)) as { detail: string }[];
+  expect(plan.map((row) => row.detail)).toEqual([
+    expect.stringMatching(/^SEARCH items USING INDEX /),
+  ]);
+});
