@@ -15,6 +15,7 @@ export {
 } from "./handshake.js";
 export {
   type NativeScreen,
+  type PageCapability,
   parsePageToShellMessage,
   type BridgeSharePayload,
   type PageToShellMessage,

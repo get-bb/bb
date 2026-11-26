@@ -18,6 +18,8 @@ const GLASS_HEADER = IS_IOS && IOS_SYSTEM_BAR;
 
 const renderHeaderGlass = () => <HeaderGlass />;
 
+const singleWebViewScreen = () => "webview";
+
 export function RootNavigator() {
   const { tokens, mode } = useTheme();
   const navigationTheme = useMemo(() => {
@@ -79,6 +81,7 @@ export function RootNavigator() {
         <Stack.Screen name="index" options={hiddenHeader} />
         <Stack.Screen
           name="webview"
+          dangerouslySingular={singleWebViewScreen}
           options={{ ...hiddenHeader, gestureEnabled: false }}
         />
         <Stack.Screen

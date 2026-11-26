@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { SessionState } from "../session/session-scheduler";
 import {
   resolveShellLoadPath,
+  resolveShellOpen,
   resolveShellScreenState,
   revealsShellFailure,
   shouldReloadForSession,
@@ -175,31 +176,76 @@ describe("revealsShellFailure", () => {
 });
 
 describe("resolveShellLoadPath", () => {
-  it("reloads the page where the user is, not where it was first opened", () => {
+  it("loads a thread the user asked to open that the page has not shown yet", () => {
     expect(
       resolveShellLoadPath({
-        visitedPath: "/projects/p1/threads/thr_new",
-        requestedPath: "/projects/p1/threads/thr_notified",
-      }),
-    ).toBe("/projects/p1/threads/thr_new");
-  });
-
-  it("opens a requested thread before the page reports where it is", () => {
-    expect(
-      resolveShellLoadPath({
-        visitedPath: null,
-        requestedPath: "/projects/p1/threads/thr_notified",
+        openPath: "/projects/p1/threads/thr_notified",
+        visitedPath: "/projects/p1/threads/thr_previous",
       }),
     ).toBe("/projects/p1/threads/thr_notified");
   });
 
-  it("opens the new-thread page on a cold start", () => {
+  it("reloads the page where the user is once the open has loaded", () => {
     expect(
-      resolveShellLoadPath({ visitedPath: null, requestedPath: undefined }),
-    ).toBe("/");
-    expect(resolveShellLoadPath({ visitedPath: null, requestedPath: "" })).toBe(
+      resolveShellLoadPath({
+        openPath: null,
+        visitedPath: "/projects/p1/threads/thr_new",
+      }),
+    ).toBe("/projects/p1/threads/thr_new");
+  });
+
+  it("opens the new-thread page on a cold start", () => {
+    expect(resolveShellLoadPath({ openPath: null, visitedPath: null })).toBe(
       "/",
     );
+  });
+});
+
+describe("resolveShellOpen", () => {
+  it("moves a live page that takes navigation instead of loading a second one", () => {
+    expect(
+      resolveShellOpen({
+        switchingProfile: false,
+        load: READY,
+        pageNavigates: true,
+      }),
+    ).toBe("navigate");
+  });
+
+  it("loads the path when the page is an older bb that cannot navigate on request", () => {
+    expect(
+      resolveShellOpen({
+        switchingProfile: false,
+        load: READY,
+        pageNavigates: false,
+      }),
+    ).toBe("load");
+  });
+
+  it("loads the path while the page is still loading or failed", () => {
+    for (const load of [
+      { kind: "loading" },
+      { kind: "failed", detail: "offline" },
+      { kind: "http-error", status: 502 },
+    ] satisfies ShellLoadPhase[]) {
+      expect(
+        resolveShellOpen({
+          switchingProfile: false,
+          load,
+          pageNavigates: true,
+        }),
+      ).toBe("load");
+    }
+  });
+
+  it("never moves the current server's page to another server's thread", () => {
+    expect(
+      resolveShellOpen({
+        switchingProfile: true,
+        load: READY,
+        pageNavigates: true,
+      }),
+    ).toBe("load");
   });
 });
 

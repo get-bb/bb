@@ -6,11 +6,20 @@ const bridgeResponseSchema = z.discriminatedUnion("ok", [
   z.object({ ok: z.literal(false), error: z.string() }),
 ]);
 
+const appPathSchema = z
+  .string()
+  .max(4096)
+  .refine(
+    (value) => value.startsWith("/") && !value.startsWith("//"),
+    "path must start with a single /",
+  );
+
 export const shellToPageEventSchema = z.discriminatedUnion("type", [
   z
     .object({ type: z.literal("safe-area"), safeArea: safeAreaInsetsSchema })
     .strict(),
   z.object({ type: z.literal("resume") }).strict(),
+  z.object({ type: z.literal("navigate"), path: appPathSchema }).strict(),
   z
     .object({ type: z.literal("servers"), servers: bridgeServersSchema })
     .strict(),

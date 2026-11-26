@@ -61,12 +61,30 @@ const bridgeRequestSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 
+const PAGE_CAPABILITIES = ["navigate"] as const;
+export type PageCapability = (typeof PAGE_CAPABILITIES)[number];
+
+function isPageCapability(value: string): value is PageCapability {
+  return PAGE_CAPABILITIES.some((capability) => capability === value);
+}
+
+const pageCapabilitiesSchema = z
+  .array(z.string().max(64))
+  .max(32)
+  .transform((values) => values.filter(isPageCapability));
+
 export const NATIVE_SCREENS = ["device-settings", "add-server"] as const;
 export const nativeScreenSchema = z.enum(NATIVE_SCREENS);
 export type NativeScreen = z.infer<typeof nativeScreenSchema>;
 
 export const pageToShellMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("ready"), path: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal("capabilities"),
+      capabilities: pageCapabilitiesSchema,
+    })
+    .strict(),
   z
     .object({
       type: z.literal("title"),

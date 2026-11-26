@@ -31,6 +31,7 @@ describe("parsePageToShellMessage", () => {
   it("accepts every message kind the contract defines", () => {
     const cases: unknown[] = [
       { type: "ready", path: "/threads/thr_1" },
+      { type: "capabilities", capabilities: ["navigate"] },
       { type: "title", title: "bb", path: "/" },
       { type: "haptic", kind: "impact-medium" },
       { type: "badge", count: 0 },
@@ -67,6 +68,20 @@ describe("parsePageToShellMessage", () => {
       reason: "message was not a string",
     });
     expect(parsePageToShellMessage("not json").ok).toBe(false);
+  });
+
+  it("keeps the page capabilities this shell knows and drops newer ones", () => {
+    expect(
+      parsePageToShellMessage(
+        json({
+          type: "capabilities",
+          capabilities: ["navigate", "picture-in-picture"],
+        }),
+      ),
+    ).toEqual({
+      ok: true,
+      message: { type: "capabilities", capabilities: ["navigate"] },
+    });
   });
 
   it("drops a message type an older shell does not know", () => {

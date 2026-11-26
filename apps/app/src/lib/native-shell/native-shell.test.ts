@@ -14,7 +14,8 @@ import {
 import { appToast } from "@/components/ui/app-toast";
 import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { createElement } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { NativeShellNavigator } from "./NativeShellNavigator";
 import { NativeShellReporter } from "./NativeShellReporter";
 import {
   getNativeShell,
@@ -151,6 +152,64 @@ it("applies native bottom insets to portaled UI and updates them when the safe a
   expect(
     document.documentElement.style.getPropertyValue("--bb-safe-area-bottom"),
   ).toBe("");
+});
+
+describe("NativeShellNavigator", () => {
+  function CurrentPath() {
+    const location = useLocation();
+    return createElement(
+      "output",
+      { "data-testid": "path" },
+      `${location.pathname}${location.search}`,
+    );
+  }
+
+  function renderNavigator() {
+    return render(
+      createElement(
+        MemoryRouter,
+        { initialEntries: ["/projects/p1/threads/thr_open"] },
+        createElement(NativeShellNavigator),
+        createElement(CurrentPath),
+      ),
+    );
+  }
+
+  function sendEvent(event: unknown): void {
+    act(() => {
+      new Function("window", buildBridgeEventScript(event))(window);
+    });
+  }
+
+  it("tells the shell it can take navigation and moves the live page in place", () => {
+    installShell();
+    const { getByTestId } = renderNavigator();
+    expect(lastMessage()).toEqual({
+      type: "capabilities",
+      capabilities: ["navigate"],
+    });
+    sendEvent({ type: "navigate", path: "/projects/p1/threads/thr_notified" });
+    expect(getByTestId("path").textContent).toBe(
+      "/projects/p1/threads/thr_notified",
+    );
+    sendEvent({ type: "navigate", path: "/?initialPrompt=hello" });
+    expect(getByTestId("path").textContent).toBe("/?initialPrompt=hello");
+  });
+
+  it("ignores a navigation that leaves the app's own paths", () => {
+    installShell();
+    const { getByTestId } = renderNavigator();
+    sendEvent({ type: "navigate", path: "//evil.example/threads" });
+    sendEvent({ type: "navigate", path: "https://evil.example/" });
+    expect(getByTestId("path").textContent).toBe(
+      "/projects/p1/threads/thr_open",
+    );
+  });
+
+  it("stays silent in a plain browser", () => {
+    renderNavigator();
+    expect(posted).toEqual([]);
+  });
 });
 
 describe("application link compatibility", () => {

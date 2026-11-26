@@ -4,6 +4,7 @@ import {
   parsePageToShellMessage,
   type BridgeResponse,
   type NativeScreen,
+  type PageCapability,
   type PageToShellMessage,
   type ShellToPageEvent,
 } from "@bb/mobile-bridge";
@@ -18,6 +19,7 @@ import { updateAppBadgeCount } from "@/notifications/AppBadgeSync";
 export interface ShellBridgeCallbacks {
   onReady(path: string): void;
   onPath(path: string): void;
+  onCapabilities(capabilities: readonly PageCapability[]): void;
   onOpenNative(screen: NativeScreen): void;
   onSwitchServer(id: string): void;
 }
@@ -56,6 +58,9 @@ export function useShellBridge(
           return;
         case "title":
           callbacksRef.current.onPath(message.path);
+          return;
+        case "capabilities":
+          callbacksRef.current.onCapabilities(message.capabilities);
           return;
         case "haptic":
           haptic(message.kind);

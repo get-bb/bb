@@ -95,14 +95,22 @@ export function revealsShellFailure(
 }
 
 export function resolveShellLoadPath(input: {
+  openPath: string | null;
   visitedPath: string | null;
-  requestedPath: string | undefined;
 }): string {
-  if (input.visitedPath !== null) return input.visitedPath;
-  if (input.requestedPath !== undefined && input.requestedPath.length > 0) {
-    return input.requestedPath;
-  }
-  return "/";
+  return input.openPath ?? input.visitedPath ?? "/";
+}
+
+export function resolveShellOpen(input: {
+  switchingProfile: boolean;
+  load: ShellLoadPhase;
+  pageNavigates: boolean;
+}): "navigate" | "load" {
+  return !input.switchingProfile &&
+    input.load.kind === "ready" &&
+    input.pageNavigates
+    ? "navigate"
+    : "load";
 }
 
 export function shouldReloadForSession(
