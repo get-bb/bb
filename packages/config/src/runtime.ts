@@ -317,6 +317,10 @@ export function stripThreadContextEnv(
   return env;
 }
 
+export function hasThreadContextEnv(baseEnv: NodeJS.ProcessEnv): boolean {
+  return THREAD_CONTEXT_ENV_KEYS.some((key) => baseEnv[key] !== undefined);
+}
+
 export function toDevProcessEnv(args: DevProcessEnvArgs): NodeJS.ProcessEnv {
   const env = stripThreadContextEnv(args.baseEnv);
   const inheritedSkillsRootPaths = resolveInheritedDevSkillsRootPaths({

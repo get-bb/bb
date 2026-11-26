@@ -71,6 +71,7 @@ import {
   type ClientConfig,
 } from "@bb/config/client-config";
 import { validateLogLevel } from "@bb/config/log-level";
+import { isLoopbackHostname } from "@bb/config/loopback";
 import { validateOptionalUrl } from "@bb/config/public-url";
 import { parseServerBindHost, type ServerBindHost } from "@bb/config/server";
 import { toOptionalString } from "@bb/config/strings";
@@ -78,6 +79,7 @@ import {
   BB_PROD_HOST_DAEMON_PORT,
   BB_LOOPBACK_HOST,
   BB_PROD_SERVER_PORT,
+  hasThreadContextEnv,
   parseDataDirEnvValue,
   parsePortValue,
   resolveConfiguredDataDir,
@@ -2738,6 +2740,11 @@ interface ResolveBundledCliLaunchArgs {
   platform: NodeJS.Platform;
 }
 
+interface PreserveManagedTerminalCliEnvArgs {
+  env: NodeJS.ProcessEnv;
+  sourceEnv: NodeJS.ProcessEnv;
+}
+
 export function resolveBundledCliLaunch(args: ResolveBundledCliLaunchArgs): {
   command: string;
   args: string[];
@@ -2751,6 +2758,46 @@ export function resolveBundledCliLaunch(args: ResolveBundledCliLaunchArgs): {
   return args.platform === "win32" && win32.extname(args.cliOverride) === ""
     ? { command: args.nodePath, args: [args.cliOverride, ...args.args] }
     : { command: args.cliOverride, args: args.args };
+}
+
+function isSafeLoopbackServerUrl(value: string): boolean {
+  let serverUrl: URL;
+  try {
+    serverUrl = new URL(value);
+  } catch {
+    return false;
+  }
+  return (
+    (serverUrl.protocol === "http:" || serverUrl.protocol === "https:") &&
+    isLoopbackHostname(serverUrl.hostname)
+  );
+}
+
+export function preserveManagedTerminalCliEnv(
+  args: PreserveManagedTerminalCliEnvArgs,
+): NodeJS.ProcessEnv {
+  const sourceServerUrl = toOptionalString(args.sourceEnv.BB_SERVER_URL);
+  if (
+    sourceServerUrl === undefined ||
+    !isSafeLoopbackServerUrl(sourceServerUrl) ||
+    toOptionalString(args.sourceEnv.BB_CLI) === undefined ||
+    !hasThreadContextEnv(args.sourceEnv)
+  ) {
+    return args.env;
+  }
+  const env: NodeJS.ProcessEnv = {
+    ...args.env,
+    BB_SERVER_URL: sourceServerUrl,
+  };
+  const sourceServerHeaders = toOptionalString(
+    args.sourceEnv.BB_SERVER_HEADERS,
+  );
+  if (sourceServerHeaders === undefined) {
+    delete env.BB_SERVER_HEADERS;
+  } else {
+    env.BB_SERVER_HEADERS = sourceServerHeaders;
+  }
+  return env;
 }
 
 export async function runBundledCliCommand(
@@ -2794,7 +2841,10 @@ export async function runBbCli(
   process.exitCode = await runBundledCliCommand({
     args: cliArgs,
     context: runtime.context,
-    env: runtime.env,
+    env: preserveManagedTerminalCliEnv({
+      env: runtime.env,
+      sourceEnv: process.env,
+    }),
   });
 }
 
