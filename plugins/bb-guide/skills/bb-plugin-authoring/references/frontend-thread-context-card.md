@@ -7,17 +7,23 @@ opened as a page whose pane is wide enough to fit the card beside the transcript
 narrow touch screen); `banner` everywhere else, including narrow panes and
 threads shown inside a panel.
 
+`app.slots.experimental_threadContextItem({ id, title, group, order?, banner?, card? })`
+registers one piece of thread context and lets bb place it. `card` is
+`{ row }`, a row in the card's top block, or `{ section }`, a section below
+the rows with a divider above it: the card's counterparts of the Info tab's
+`experimental_threadInfoRow` and `experimental_threadInfoSection`. `banner` is
+`{ summary, action?, details?, useVisible? }`, a segment of the context row
+above the composer (frontend-registration.md). Give the parts you draw: bb
+shows the banner part in `banner` panes, and in `card` panes too when the item
+has no card part, so a pane never shows the same thing twice. Items sort by
+`group`, then `order` (unset last), then registration order, bb's first on a
+tie, on each surface, using the Info tab's `experimental_THREAD_INFO_ROW_GROUPS`
+(`experimental_THREAD_INFO_SECTION_GROUPS` for a card section). bb's parent
+thread and Child threads, the Git plugin's changed files and GitHub PR
+Status's pull request are items. The older
 `app.slots.experimental_threadContextCardRow({ id, group, order?, component })`
-adds a row to the card's top block, and
-`app.slots.experimental_threadContextCardSection({ id, group, order?, component })`
-adds a section below the rows, with a divider above it: the card's
-counterparts of the Info tab's `experimental_threadInfoRow` and
-`experimental_threadInfoSection`, with the same registration shapes. Rows sort by `group`, then `order` (unset
-last), then registration order, bb's first on a tie, using the Info tab's
-`experimental_THREAD_INFO_ROW_GROUPS`; sections sort the same way using
-`experimental_THREAD_INFO_SECTION_GROUPS`. bb's parent row and Child threads
-section, the Git plugin's changes row, and GitHub PR Status's pull request row
-use these slots. Components receive `{ threadId, projectId, environment }`. A
+and `app.slots.experimental_threadContextCardSection({ id, group, order?, component })`
+keep working as card-only items. Card components receive `{ threadId, projectId, environment }`. A
 row component renders `experimental_ThreadContextCardRow` rows; a section
 component renders one `experimental_InfoSection` with its label (and an
 optional count, accessory and trailing control) around those rows, as an Info
@@ -41,14 +47,21 @@ shows five rows and a "N more" toggle. A plugin built against an older SDK that
 passes `title` keeps working: bb draws that title itself and logs a warning.
 
 ```tsx
-app.slots.experimental_threadContextCardRow({ id: "deploy", group: ROW_GROUPS.environment, order: 40, component: DeployRow });
+app.slots.experimental_threadContextItem({
+  id: "deploy",
+  title: "Deploy",
+  group: ROW_GROUPS.environment,
+  order: 40,
+  banner: { summary: DeploySummary, useVisible: useDeployVisible },
+  card: { row: DeployRow },
+});
 function DeployRow({ threadId }: ExperimentalThreadContextCardProps) {
   const deploy = useDeploy(threadId);
   if (!deploy) return null;
   return <ThreadContextCardRow icon="Rocket" label={deploy.label} trailing={deploy.status} onClick={deploy.open} />;
 }
 
-app.slots.experimental_threadContextCardSection({ id: "deploys", group: SECTION_GROUPS.related, order: 40, component: DeploysSection });
+app.slots.experimental_threadContextItem({ id: "deploys", title: "Deploys", group: SECTION_GROUPS.related, order: 40, card: { section: DeploysSection } });
 function DeploysSection({ threadId }: ExperimentalThreadContextCardProps) {
   const deploys = useDeploys(threadId);
   if (deploys.length === 0) return null;
@@ -62,19 +75,10 @@ function DeploysSection({ threadId }: ExperimentalThreadContextCardProps) {
 }
 ```
 
-Context segments keep showing in both kinds. A plugin whose segment shows the
-same content as its card row hides the segment while the pane shows the card,
-with `experimental_useThreadContextKind()`:
-
-```tsx
-app.slots.experimental_threadContextSegment({
-  id: "deploy",
-  title: "Deploy",
-  group: "2_deploy",
-  summary: DeploySummary,
-  useVisible: () => experimental_useThreadContextKind() === "banner",
-});
-```
+A legacy `experimental_threadContextSegment` has no card part, so it keeps
+showing in both kinds. Move it into an item with a card part rather than
+checking `experimental_useThreadContextKind()` in its `useVisible`; in a
+`card` pane bb then skips the banner part's `useVisible` entirely.
 
 ## Segment focus and related threads
 

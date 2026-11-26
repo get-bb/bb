@@ -21,12 +21,9 @@ const sdk = vi.hoisted(() => ({
   settings: { showPullRequest: true } as Record<string, boolean> | undefined,
   mutate: vi.fn(async () => ({ message: "Merged" })),
   isPending: false,
-  threadContextKind: "banner" as "banner" | "card",
 }));
 
-vi.mock("@get-bb/plugin-sdk/app", async () => {
-  const { createContext, useContext } = await import("react");
-  const threadContext = createContext(sdk);
+vi.mock("@get-bb/plugin-sdk/app", () => {
   return {
     experimental_useRpcKeyedQuery: () => ({
       data: sdk.rows,
@@ -39,9 +36,6 @@ vi.mock("@get-bb/plugin-sdk/app", async () => {
     }),
     useBbNavigate: () => ({ openUrl: () => false }),
     useSettings: () => ({ values: sdk.settings, isLoading: false }),
-    experimental_useThreadContextKind: function useThreadContextKind() {
-      return useContext(threadContext).threadContextKind;
-    },
   };
 });
 
@@ -116,7 +110,6 @@ afterEach(() => {
   sdk.rows = {};
   sdk.settings = { showPullRequest: true };
   sdk.isPending = false;
-  sdk.threadContextKind = "banner";
   sdk.mutate.mockClear();
   window.localStorage.clear();
 });
@@ -170,20 +163,6 @@ describe("pull request context segment", () => {
       renderHook(() =>
         usePullRequestSegmentVisible({
           ...input,
-          environment: { id: "env_1" },
-        }),
-      ).result.current,
-    ).toBe(false);
-  });
-
-  it("hides while the pane shows thread context in the card", () => {
-    show(PULL_REQUEST);
-    sdk.threadContextKind = "card";
-    expect(
-      renderHook(() =>
-        usePullRequestSegmentVisible({
-          threadId: "thr_1",
-          projectId: "proj_1",
           environment: { id: "env_1" },
         }),
       ).result.current,

@@ -12,9 +12,11 @@ const Action = () => null;
 const Popup = () => null;
 const Page = () => null;
 const PageSidebar = () => null;
+const ItemSummary = () => null;
+const ItemRow = () => null;
 
 describe("registered components", () => {
-  it("lists every component a registration declares, including nested composer parts, and no other functions", () => {
+  it("lists every component a registration declares, including nested composer and thread context item parts, and no other functions", () => {
     const captured = collectPluginAppRegistrations({
       __bbPluginApp: true,
       setup(app) {
@@ -26,6 +28,13 @@ describe("registered components", () => {
           summary: Summary,
           details: Details,
           useVisible: () => true,
+        });
+        app.slots.experimental_threadContextItem({
+          id: "item",
+          title: "Item",
+          group: "git",
+          banner: { summary: ItemSummary, useVisible: () => true },
+          card: { row: ItemRow },
         });
         app.slots.navPanel({
           id: "panel",
@@ -56,11 +65,13 @@ describe("registered components", () => {
       Banner,
       Action,
       Popup,
+      ItemSummary,
+      ItemRow,
     ]) {
       expect(components).toContain(component);
     }
     expect(
       components.filter((component) => typeof component === "function"),
-    ).toHaveLength(8);
+    ).toHaveLength(10);
   });
 });

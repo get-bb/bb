@@ -7,7 +7,7 @@ import {
   renderHook,
   screen,
 } from "@testing-library/react";
-import type { ReactNode } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Provider as JotaiProvider, createStore } from "jotai";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -17,7 +17,9 @@ import { resetAllCrashedPluginSlotsForTest } from "@/components/plugin/PluginSlo
 import {
   removePluginSlotRegistrations,
   setPluginSlotRegistrations,
+  type PluginThreadContextItemSlot,
 } from "@/lib/plugin-slots";
+import { CORE_PLUGIN_ID } from "@bb/domain";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
 import { ThreadContextCardRow } from "./ThreadContextCardRow";
 import { SurfaceInfoSection } from "./ThreadContextCardSection";
@@ -28,8 +30,6 @@ import {
   resolveThreadContextCardLayout,
   useThreadContextCardTranscriptCenteredMinWidth,
   WithoutThreadContextCard,
-  type CoreThreadContextCardRow,
-  type CoreThreadContextCardSection,
 } from "./PluginThreadContextCard";
 import { useThreadContextKind } from "./thread-context-card-pane";
 
@@ -83,38 +83,49 @@ function Crashes(): never {
   throw new Error("plugin crashed");
 }
 
-const CORE: CoreThreadContextCardRow[] = [
-  {
-    id: "environment",
-    group: "2_environment",
-    order: 10,
-    component: section("Core environment"),
-  },
-];
+function coreItems(
+  row: ComponentType<ExperimentalThreadContextCardProps>,
+  childSection: ComponentType<ExperimentalThreadContextCardProps>,
+): PluginThreadContextItemSlot[] {
+  return [
+    {
+      pluginId: CORE_PLUGIN_ID,
+      generation: 0,
+      id: "environment",
+      group: "2_environment",
+      order: 10,
+      banner: null,
+      card: { kind: "row", component: row },
+    },
+    {
+      pluginId: CORE_PLUGIN_ID,
+      generation: 0,
+      id: "childThreads",
+      group: "1_related",
+      order: 10,
+      banner: null,
+      card: { kind: "section", component: childSection, legacyTitle: null },
+    },
+  ];
+}
 
-const CORE_SECTIONS: CoreThreadContextCardSection[] = [
-  {
-    id: "childThreads",
-    group: "1_related",
-    order: 10,
-    component: titledSection("Child threads", "Core children"),
-  },
-];
+const CORE = coreItems(
+  section("Core environment"),
+  titledSection("Child threads", "Core children"),
+);
 
 function renderPane({
   store = createStore(),
   enabled = true,
   paneWidth = 1600,
   threadIds = ["thr_1"],
-  coreRows = CORE,
-  coreSections = CORE_SECTIONS,
+  core = CORE,
 }: {
   store?: ReturnType<typeof createStore>;
   enabled?: boolean;
   paneWidth?: number;
   threadIds?: readonly string[];
-  coreRows?: readonly CoreThreadContextCardRow[];
-  coreSections?: readonly CoreThreadContextCardSection[];
+  core?: readonly PluginThreadContextItemSlot[];
 } = {}) {
   vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(
     paneWidth,
@@ -127,8 +138,7 @@ function renderPane({
             <ThreadContextCardProvider
               key={threadId}
               enabled={enabled}
-              coreRows={coreRows}
-              coreSections={coreSections}
+              coreItems={core}
               threadId={threadId}
               projectId="proj_1"
               environment={null}
@@ -275,11 +285,7 @@ describe("thread context card", () => {
   it("shows an empty card from the header without changing the pin preference", async () => {
     renderPane({
       paneWidth: 1200,
-      coreRows: CORE.map((row) => ({ ...row, component: Empty })),
-      coreSections: CORE_SECTIONS.map((entry) => ({
-        ...entry,
-        component: Empty,
-      })),
+      core: coreItems(Empty, Empty),
     });
     expect(screen.queryByRole("group", { name: "Thread context" })).toBeNull();
     expect(
@@ -449,8 +455,7 @@ describe("useThreadContextKind", () => {
     return (
       <ThreadContextCardProvider
         enabled={enabled}
-        coreRows={CORE}
-        coreSections={CORE_SECTIONS}
+        coreItems={CORE}
         threadId="thr_1"
         projectId="proj_1"
         environment={null}

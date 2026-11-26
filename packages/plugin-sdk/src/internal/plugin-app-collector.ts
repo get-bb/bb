@@ -19,6 +19,9 @@ export {
   type LegacyNavPanelRegistration,
   type CollectedSidebarNavigationRegistration,
   type CollectedThreadContextCardSectionRegistration,
+  type CollectedThreadContextItemBanner,
+  type CollectedThreadContextItemCard,
+  type CollectedThreadContextItemRegistration,
   collectPluginAppRegistrations,
 } from "./plugin-app-registration-collector.js";
 export {

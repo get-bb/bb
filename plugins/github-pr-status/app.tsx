@@ -14,23 +14,18 @@ import {
   usePullRequestRows,
 } from "./ui/PullRequestRowMetadata";
 
-const CONTEXT_SEGMENT_GROUP = "2_pullRequest";
-
 export default definePluginApp((app) => {
-  app.slots.experimental_threadContextSegment({
+  app.slots.experimental_threadContextItem({
     id: "pull-request",
     title: "Pull request",
-    group: CONTEXT_SEGMENT_GROUP,
-    order: 10,
-    summary: PullRequestSegmentSummary,
-    action: PullRequestSegmentAction,
-    useVisible: usePullRequestSegmentVisible,
-  });
-  app.slots.experimental_threadContextCardRow({
-    id: "pull-request",
     group: experimental_THREAD_INFO_ROW_GROUPS.pullRequest,
     order: 10,
-    component: PullRequestContextCardRow,
+    banner: {
+      summary: PullRequestSegmentSummary,
+      action: PullRequestSegmentAction,
+      useVisible: usePullRequestSegmentVisible,
+    },
+    card: { row: PullRequestContextCardRow },
   });
   app.slots.experimental_threadInfoRow({
     id: "pull-request",

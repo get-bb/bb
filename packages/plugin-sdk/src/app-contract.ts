@@ -1762,6 +1762,16 @@ export type PluginBrowserBbSdk = Omit<BbSdkAreas, "threads"> & {
 };
 
 /** Props for {@link PluginSdkApp.ThreadTitle}. */
+/**
+ * The fields {@link PluginSdkApp.experimental_threadDisplayTitle} reads. A
+ * {@link PluginSidebarThread} and an {@link ExperimentalThread} both fit.
+ */
+export interface ExperimentalThreadDisplayTitleInput {
+  id: string;
+  title: string | null;
+  titleFallback: string | null;
+}
+
 export interface PluginThreadTitleProps {
   /** A thread in the sidebar's live view; renders nothing for an unknown id. */
   threadId: string;
@@ -2162,8 +2172,9 @@ export interface ExperimentalThreadContextSegmentInput {
   threadId: string;
   projectId: string;
   /**
-   * The thread's environment, or null when the thread has no environment,
-   * its host is not active, or the environment is not a usable checkout.
+   * The thread's environment, null only when the thread has no environment
+   * or the row belongs to an embedded `ThreadChat`. Read its state (host,
+   * checkout, git) yourself, as card rows and Info rows do.
    */
   environment: ExperimentalThreadEnvironment | null;
 }
@@ -2191,9 +2202,12 @@ export interface ExperimentalThreadContextSegmentProps extends ExperimentalThrea
 }
 
 /**
- * A segment of the context row above an existing thread's composer. bb's
- * parent thread and changed files register through this slot too. The host
- * mounts each component in its own crash boundary.
+ * A segment of the context row above an existing thread's composer, shown in
+ * every pane. The host mounts each component in its own crash boundary. To
+ * show the same thing in the thread context card, register an
+ * {@link ExperimentalThreadContextItemRegistration} with `banner` and `card`
+ * parts instead: bb then leaves the banner part out of panes that show the
+ * card.
  */
 export interface ExperimentalThreadContextSegmentRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -2220,6 +2234,71 @@ export interface ExperimentalThreadContextSegmentRegistration {
    * it out of `segments`. Omit to always show.
    */
   useVisible?(input: ExperimentalThreadContextSegmentInput): boolean;
+}
+
+/**
+ * The banner part of an {@link ExperimentalThreadContextItemRegistration}: a
+ * segment of the context row above an existing thread's composer, with the
+ * same components and visibility as an
+ * {@link ExperimentalThreadContextSegmentRegistration}.
+ */
+export interface ExperimentalThreadContextItemBanner {
+  /** Renders in the context row. */
+  summary: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /** Renders at the row's end, after every segment's summary. */
+  action?: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /** Renders below the row; show content only while `isExpanded`. */
+  details?: ComponentType<ExperimentalThreadContextSegmentProps>;
+  /**
+   * Runs in plugin scope for each thread; false hides the banner part and
+   * leaves it out of `segments`. Omit to always show.
+   */
+  useVisible?(input: ExperimentalThreadContextSegmentInput): boolean;
+}
+
+/**
+ * The card part of an {@link ExperimentalThreadContextItemRegistration}: one
+ * row in the thread context card's top block, or one section below the rows.
+ * A `row` renders `experimental_ThreadContextCardRow` elements, a `section`
+ * one `experimental_InfoSection`; either renders null to show nothing for the
+ * thread.
+ */
+export type ExperimentalThreadContextItemCard =
+  | { row: ComponentType<ExperimentalThreadContextCardProps> }
+  | { section: ComponentType<ExperimentalThreadContextCardProps> };
+
+/**
+ * One piece of thread context, such as the parent thread or a pull request,
+ * that bb places on the thread's surfaces. Register the parts you draw:
+ * `banner` for the context row above the composer, `card` for the thread
+ * context card at the pane's upper right, or both. bb shows the banner part
+ * in panes whose thread context kind is `banner` (see
+ * {@link PluginSdkApp.experimental_useThreadContextKind}), and also in `card`
+ * panes when the item has no card part. The card part mounts wherever the
+ * card does. The host mounts each component in its own crash boundary.
+ */
+export interface ExperimentalThreadContextItemRegistration {
+  /**
+   * Unique within the plugin across thread context items, segments, and card
+   * rows and sections; letters, digits, `-`, `_`. The banner part's segment
+   * key is `<pluginId>/<id>`.
+   */
+  id: string;
+  /** Accessible name of the group the host wraps around the banner summary. */
+  title: string;
+  /**
+   * Items sort by `group` (string compare), then by `order` within a group
+   * (unset sorts last), then by registration order, with bb's own first on a
+   * tie, on each surface they render on. bb's groups are
+   * {@link PluginSdkApp.experimental_THREAD_INFO_ROW_GROUPS}, and
+   * {@link PluginSdkApp.experimental_THREAD_INFO_SECTION_GROUPS} for an item
+   * whose card part is a section; any other string is a group of its own,
+   * placed where it sorts.
+   */
+  group: string;
+  order?: number;
+  banner?: ExperimentalThreadContextItemBanner;
+  card?: ExperimentalThreadContextItemCard;
 }
 
 /**
@@ -2495,12 +2574,11 @@ export type ExperimentalThreadContextKind = "banner" | "card";
  * `experimental_threadInfoRow`. Render one or more
  * `experimental_ThreadContextCardRow` elements, or null to show nothing for
  * this thread. bb draws the card and places it, and mounts rows only in panes
- * whose thread context kind is `card`. The card is behind the "Thread context
- * card" experiment, off by default, and never shows on a phone (a compact
- * viewport with a coarse pointer); every other pane uses the `banner` kind, so
- * register an `experimental_threadContextSegment` or
- * `experimental_threadInfoRow` as well to reach it. A crash removes only this
- * row for that thread.
+ * whose thread context kind is `card`. The card never shows on a phone (a
+ * compact viewport with a coarse pointer) or for a thread shown inside a
+ * panel; to reach those, register an `experimental_threadContextItem` with
+ * this row as its card part and a banner part, or an
+ * `experimental_threadInfoRow`. A crash removes only this row for that thread.
  */
 export interface ExperimentalThreadContextCardRowRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -2525,8 +2603,8 @@ export interface ExperimentalThreadContextCardRowRegistration {
  * divider above it. Sections start open; bb remembers the ones the person folds
  * by `pluginId/id` across threads and restarts. While folded, the component
  * stays mounted and the `experimental_InfoSection` children unmount. Like
- * card rows, sections mount only where the card shows: behind the "Thread
- * context card" experiment, off by default, and never on a phone. A crash
+ * card rows, sections mount only where the card shows: never on a phone or
+ * for a thread shown inside a panel. A crash
  * removes only this section for that thread.
  */
 export interface ExperimentalThreadContextCardSectionRegistration {
@@ -3836,6 +3914,12 @@ export interface ExperimentalThreadTitleTextProps {
   className?: string;
   /** Shows the title's display text as the native tooltip, for a title that may truncate. */
   tooltip?: boolean;
+  /**
+   * True flows the title in the surrounding line of text, such as "Forked
+   * from <title>"; the default lays it out as its own row that shrinks its
+   * mention chips to fit.
+   */
+  inline?: boolean;
 }
 
 /**
@@ -4477,6 +4561,15 @@ export interface PluginAppSlots {
    */
   experimental_threadRailOutline(
     registration: ExperimentalThreadRailOutlineRegistration,
+  ): void;
+  /**
+   * Add thread context that bb places in the context row above the composer,
+   * the thread context card, or both (see
+   * {@link ExperimentalThreadContextItemRegistration}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_threadContextItem(
+    registration: ExperimentalThreadContextItemRegistration,
   ): void;
   /**
    * Add a row to the thread context card, in panes that show one (see
@@ -6357,9 +6450,10 @@ export interface PluginSdkApp {
   /**
    * How the thread pane the calling component renders in shows its thread
    * context (see {@link ExperimentalThreadContextKind}); `banner` outside a
-   * thread pane. A context segment whose content is also a thread context card
-   * row or section hides itself in `useVisible` while this is `card`; other
-   * segments keep showing above the composer.
+   * thread pane. To keep thread context out of the banner where the card
+   * shows it, register an `experimental_threadContextItem` with `banner` and
+   * `card` parts instead of reading this in `useVisible`. Read it to draw
+   * differently by kind.
    * Experimental: see docs/api_to_audit.md.
    */
   experimental_useThreadContextKind(): ExperimentalThreadContextKind;
@@ -6565,8 +6659,9 @@ export interface PluginSdkApp {
   /**
    * bb's thread context segment groups, for an
    * `experimental_threadContextSegment` that joins one: `thread` (Parent
-   * thread) and `git` (Changed files). A plugin names its own
-   * group to sort between them, such as `"2_pullRequest"`. Experimental: see
+   * thread) and `git` (Changed files). They hold the same values as
+   * {@link PluginSdkApp.experimental_THREAD_INFO_ROW_GROUPS}, which thread
+   * context items use, so segments and items interleave. Experimental: see
    * docs/api_to_audit.md.
    */
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS: {
@@ -6574,17 +6669,18 @@ export interface PluginSdkApp {
     readonly git: "3_git";
   };
   /**
-   * bb's thread Info row groups, for an `experimental_threadInfoRow` that
-   * joins one: `thread` (Parent, Notify parent, Project), `environment`
-   * (Environment, Machine, provisioning failure, Directory), `git` (Branch,
-   * Merge base, Git status), `pullRequest`, and `lifecycle` (Archived).
-   * Experimental: see docs/api_to_audit.md.
+   * bb's thread Info row groups, for an `experimental_threadInfoRow`,
+   * `experimental_threadContextCardRow`, or `experimental_threadContextItem`
+   * that joins one: `thread` (Parent, Notify parent, Project), `environment`
+   * (Environment, Machine, provisioning failure, Directory), `pullRequest`,
+   * `git` (Branch, Merge base, Git status, Changed files), and `lifecycle`
+   * (Archived). Experimental: see docs/api_to_audit.md.
    */
   experimental_THREAD_INFO_ROW_GROUPS: {
     readonly thread: "1_thread";
     readonly environment: "2_environment";
+    readonly pullRequest: "2_pullRequest";
     readonly git: "3_git";
-    readonly pullRequest: "4_pullRequest";
     readonly lifecycle: "5_lifecycle";
   };
   /**
@@ -6760,6 +6856,16 @@ export interface PluginSdkApp {
   experimental_resolveThreadStatus(
     input: PluginThreadStatusInput,
   ): PluginThreadStatus;
+  /**
+   * The title bb shows for a thread, before mentions resolve: `title`, else
+   * `titleFallback`, else `Thread ` and the id's first 8 characters. Pass it
+   * to `experimental_ThreadTitleText` to draw mention chips, or to
+   * `experimental_useThreadTitleDisplayText` for plain text. A pure function,
+   * not a hook. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_threadDisplayTitle(
+    thread: ExperimentalThreadDisplayTitleInput,
+  ): string;
   /**
    * Every `experimental_threadRowMetadata` contribution for one thread row (see
    * {@link ExperimentalThreadRowMetadataRegistration}), the items bb's sidebar

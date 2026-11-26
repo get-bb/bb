@@ -19,6 +19,7 @@ export {
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "./thread-info-groups.js";
+export { experimental_threadDisplayTitle } from "./thread-display-title.js";
 export { BbHttpError as experimental_BbHttpError } from "@bb/sdk/http-error";
 export type {
   ExperimentalDesktopBrowsersArea,

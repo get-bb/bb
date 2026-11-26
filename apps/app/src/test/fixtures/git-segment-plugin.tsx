@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, type ReactNode } from "react";
 import type { ExperimentalThreadContextSegmentProps } from "@get-bb/plugin-sdk";
-import { experimental_THREAD_CONTEXT_SEGMENT_GROUPS } from "@get-bb/plugin-sdk/app";
+import { experimental_THREAD_INFO_ROW_GROUPS } from "@get-bb/plugin-sdk/app";
 import type {
   WorkspaceChangedFilesSection,
 } from "../../../../../plugins/git/ui/workspace-change-summary";
@@ -79,16 +79,19 @@ export function registerGitSegmentFixture(): void {
   setPluginSlotRegistrations(
     GIT_SEGMENT_FIXTURE_PLUGIN_ID,
     makePluginRegistrationSet({
-      threadContextSegments: [
+      threadContextItems: [
         {
           id: "changed-files",
-          title: "Changed files",
-          group: experimental_THREAD_CONTEXT_SEGMENT_GROUPS.git,
+          group: experimental_THREAD_INFO_ROW_GROUPS.git,
           order: 10,
-          summary: fixtureChangedFilesPart("summary"),
-          action: fixtureChangedFilesPart("action"),
-          details: fixtureChangedFilesPart("details"),
-          useVisible: useFixtureVisible,
+          banner: {
+            title: "Changed files",
+            summary: fixtureChangedFilesPart("summary"),
+            action: fixtureChangedFilesPart("action"),
+            details: fixtureChangedFilesPart("details"),
+            useVisible: useFixtureVisible,
+          },
+          card: { kind: "row", component: () => null },
         },
       ],
     }),

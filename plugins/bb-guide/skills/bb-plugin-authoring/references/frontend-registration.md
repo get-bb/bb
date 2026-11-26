@@ -249,18 +249,20 @@ component); register it in a thread tab of your own to show the same rows.
 ### Context beside a thread's composer
 
 `app.slots.experimental_threadContextSegment({ id, title, group, order?, summary, action?, details?, useVisible? })`
-adds a segment to the context row above an open thread's composer; bb's parent
-thread and the Git plugin's changed files use it too. `group`/`order` sort as for Info rows; bb's
-groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, and any other string
-sorts in place (GitHub PR Status uses `"2_pullRequest"`). Each component mounts
+adds a segment to the context row above an open thread's composer, in every
+pane. To show the same thing in the thread context card, register an
+`experimental_threadContextItem` with these components as its `banner` part
+and a `card` part instead; bb's parent thread, the Git plugin's changed files
+and GitHub PR Status do (frontend-thread-context-card.md). `group`/`order` sort as for Info rows; bb's
+groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, the same values as
+`experimental_THREAD_INFO_ROW_GROUPS`, and any other string sorts in place. Each component mounts
 in its own crash boundary: `summary` in the row, `action` at its end, `details`
-below it. Props carry `threadId`, `projectId`, `environment` (null without a
-usable environment), the visible `segments` as `{ key, pluginId }` in row
+below it. Props carry `threadId`, `projectId`, `environment` (the thread's, null only
+without one or in an embedded `ThreadChat`; check git yourself), the visible `segments` as `{ key, pluginId }` in row
 order (`key` is `<pluginId>/<id>`; bb's own use `bb--core`), `isExpanded`/
 `onToggle` (one segment is expanded at a time) and `toggleRef`/`collapseRef`
 (bb moves focus between them). `useVisible(input)` false leaves it out. Focus
-handoff, related-thread data, and hiding while the pane shows the context card
-(`experimental_useThreadContextKind()`): frontend-thread-context-card.md.
+handoff, related-thread data, and the card: frontend-thread-context-card.md.
 
 ### An action in every thread menu
 

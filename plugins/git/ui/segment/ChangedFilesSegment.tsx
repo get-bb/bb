@@ -1,6 +1,5 @@
 import { useMemo, type ReactNode } from "react";
 import {
-  experimental_useThreadContextKind,
   type ExperimentalThreadContextSegmentInput,
   type ExperimentalThreadContextSegmentProps,
 } from "@get-bb/plugin-sdk/app";
@@ -37,9 +36,7 @@ export function useChangedFilesSegmentVisible({
   environment,
 }: ExperimentalThreadContextSegmentInput): boolean {
   const show = useShowGitChanges();
-  const kind = experimental_useThreadContextKind();
-  const environmentId =
-    show && kind === "banner" ? (environment?.id ?? null) : null;
+  const environmentId = show ? (environment?.id ?? null) : null;
   const { workspace } = useGitStatus(environmentId);
   return (
     environmentId !== null &&

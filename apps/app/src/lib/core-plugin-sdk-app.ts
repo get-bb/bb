@@ -21,6 +21,7 @@ export { InfoList as experimental_InfoList } from "@/components/secondary-panel/
 export { SurfaceInfoSection as experimental_InfoSection } from "@/components/plugin/ThreadContextCardSection";
 export { PluginUrlLink as UrlLink } from "@/components/plugin/PluginUrlLink";
 export { ThreadStatusGlyph as experimental_ThreadStatusGlyph } from "@/components/thread/ThreadStatusGlyph";
+export { ThreadContextCardRow as experimental_ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
 export { DetailRow as experimental_DetailRow } from "@/components/ui/detail-card";
 export { useSdk } from "@/lib/plugin-navigation-hooks";
 export {

@@ -338,6 +338,7 @@ export {
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "./thread-info-groups.js";
+export { experimental_threadDisplayTitle } from "./thread-display-title.js";
 export const experimental_useExperiment = runtimeFunction(
   "experimental_useExperiment",
 );
