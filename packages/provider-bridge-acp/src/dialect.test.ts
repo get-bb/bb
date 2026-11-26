@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CURSOR_ACP_DIALECT,
+  DEVIN_ACP_DIALECT,
   GENERIC_ACP_DIALECT,
   GROK_ACP_DIALECT,
   OMP_ACP_DIALECT,
@@ -39,6 +40,10 @@ describe("resolveAcpDialect", () => {
     expect(resolveAcpDialect({ command: "/usr/local/bin/opencode" })).toBe(
       OPENCODE_ACP_DIALECT,
     );
+    expect(resolveAcpDialect({ command: "devin" })).toBe(DEVIN_ACP_DIALECT);
+    expect(resolveAcpDialect({ command: "/usr/local/bin/devin" })).toBe(
+      DEVIN_ACP_DIALECT,
+    );
   });
 
   it("is generic for a dialect id it does not ship", () => {
@@ -70,7 +75,7 @@ describe("registerAcpDialect", () => {
 
   it("refuses an empty id and every id the bridge ships", () => {
     expect(() => registerAcpDialect({ id: " " })).toThrow("non-empty id");
-    for (const id of ["acp", "cursor", "grok", "omp", "opencode"]) {
+    for (const id of ["acp", "cursor", "devin", "grok", "omp", "opencode"]) {
       expect(() => registerAcpDialect({ id })).toThrow(
         `ACP dialect id "${id}" is reserved by a built-in dialect.`,
       );

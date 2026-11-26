@@ -5571,6 +5571,85 @@ describe("acp bridge: work the agent starts on its own", () => {
     }
   });
 
+  it("shows a compaction row for a vendor compaction a Devin agent starts on its own", async () => {
+    const { providerThreadId } = await startThread({ dialectId: "devin" });
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(providerThreadId, "then-devin-auto-compaction");
+      await waitForTurnStartedCount(2);
+      await waitFor(
+        () =>
+          threadEventsOfType("thread/compacted").length === 1
+            ? true
+            : undefined,
+        "vendor compaction end",
+      );
+      await vi.advanceTimersByTimeAsync(5_000);
+      await waitFor(
+        () => (turnStatuses().length === 2 ? true : undefined),
+        "agent turn completion",
+      );
+      expect(turnStatuses()).toEqual(["completed", "completed"]);
+      const compactionItems = (type: string) =>
+        threadEventsOfType(type).filter(
+          (event) =>
+            (event.item as { type?: string } | undefined)?.type ===
+            "contextCompaction",
+        );
+      expect(compactionItems("item/started")).toHaveLength(1);
+      expect(compactionItems("item/completed")).toHaveLength(1);
+      expect(threadEventsOfType("provider/unhandled")).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("shows one compaction row when a Devin agent reports /compact with vendor notifications", async () => {
+    const { providerThreadId } = await startThread({
+      dialectId: "devin",
+      envVars: { FAKE_ACP_DEVIN_COMPACT_VENDOR: "1" },
+    });
+
+    const turnId = sendTurnRequest("turn/start", providerThreadId, {
+      input: compactCommandInput(),
+    });
+    expect((await waitForResponse(turnId)).error).toBeUndefined();
+
+    expect(await waitForTurnCompleted()).toMatchObject({ status: "completed" });
+    await waitFor(
+      () => (threadEventsOfType("thread/compacted").length > 0 ? true : undefined),
+      "manual compaction end",
+    );
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(threadEventsOfType("thread/compacted")).toHaveLength(1);
+    expect(
+      threadEventsOfType("item/started").filter(
+        (event) =>
+          (event.item as { type?: string } | undefined)?.type ===
+          "contextCompaction",
+      ),
+    ).toHaveLength(1);
+  });
+
+  it("does not show a vendor compaction for a non-Devin dialect", async () => {
+    const { providerThreadId } = await startThread();
+    vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });
+    try {
+      await runPromptedTurn(providerThreadId, "then-devin-auto-compaction");
+      await vi.advanceTimersByTimeAsync(5_000);
+      expect(threadEventsOfType("thread/compacted")).toEqual([]);
+      expect(
+        threadEventsOfType("item/started").filter(
+          (event) =>
+            (event.item as { type?: string } | undefined)?.type ===
+            "contextCompaction",
+        ),
+      ).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps the agent's turn open while a tool it announced is running, and settles it as interrupted when the user sends a message", async () => {
     const { providerThreadId } = await startThread();
     vi.useFakeTimers({ toFake: [...FAKED_TIMERS] });

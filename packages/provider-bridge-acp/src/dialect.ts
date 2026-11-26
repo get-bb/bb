@@ -35,8 +35,18 @@ type AcpCompactionOutcome =
   | { status: "skipped"; detail: string }
   | { status: "failed"; error: string };
 
+export interface AcpVendorCompaction {
+  sessionId: string;
+  status: string;
+  error?: string;
+}
+
 export interface AcpDialect {
   readonly id: string;
+  compactionNotification?(
+    method: string,
+    params: unknown,
+  ): AcpVendorCompaction | undefined;
   toolIdentity?(event: AcpToolCallUpdateEvent): AcpToolIdentity | undefined;
   classifyToolCall?(
     event: AcpToolCallUpdateEvent,
@@ -478,9 +488,43 @@ export const OPENCODE_ACP_DIALECT: AcpDialect = {
   presentModel: presentProviderPrefixedModel,
 };
 
+const DEVIN_COMPACTION_METHOD = "_cognition.ai/compaction";
+const devinCompactionParamsSchema = z
+  .object({
+    sessionId: z.string().min(1),
+    status: z.string().min(1),
+    error: z.string().nullish(),
+  })
+  .passthrough();
+
+function devinCompactionNotification(
+  method: string,
+  params: unknown,
+): AcpVendorCompaction | undefined {
+  if (method !== DEVIN_COMPACTION_METHOD) {
+    return undefined;
+  }
+  const parsed = devinCompactionParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    return undefined;
+  }
+  const { sessionId, status, error } = parsed.data;
+  return {
+    sessionId,
+    status: status === "started" ? "in_progress" : status,
+    ...(error ? { error } : {}),
+  };
+}
+
+export const DEVIN_ACP_DIALECT: AcpDialect = {
+  id: "devin",
+  compactionNotification: devinCompactionNotification,
+};
+
 const BUILT_IN_DIALECTS: readonly AcpDialect[] = [
   GENERIC_ACP_DIALECT,
   CURSOR_ACP_DIALECT,
+  DEVIN_ACP_DIALECT,
   GROK_ACP_DIALECT,
   OMP_ACP_DIALECT,
   OPENCODE_ACP_DIALECT,
@@ -504,6 +548,7 @@ export function registerAcpDialect(dialect: AcpDialect): void {
 
 const DIALECT_IDS_BY_COMMAND: Readonly<Record<string, string>> = {
   "cursor-agent": CURSOR_ACP_DIALECT.id,
+  devin: DEVIN_ACP_DIALECT.id,
   grok: GROK_ACP_DIALECT.id,
   omp: OMP_ACP_DIALECT.id,
   opencode: OPENCODE_ACP_DIALECT.id,

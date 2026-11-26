@@ -344,6 +344,18 @@ function notifyUpdate(update, targetSessionId = activeSessionId) {
   });
 }
 
+function notifyDevinCompaction(status, summary) {
+  send({
+    jsonrpc: "2.0",
+    method: "_cognition.ai/compaction",
+    params: {
+      sessionId: activeSessionId,
+      status,
+      ...(summary === undefined ? {} : { summary }),
+    },
+  });
+}
+
 function messageChunk(text) {
   return {
     sessionUpdate: "agent_message_chunk",
@@ -676,6 +688,28 @@ async function handlePrompt(message) {
         ),
       );
     }
+    if (process.env.FAKE_ACP_DEVIN_COMPACT_VENDOR === "1") {
+      setTimeout(() => {
+        notifyDevinCompaction("started");
+        notifyDevinCompaction("completed", "vendor summary");
+      }, UNPROMPTED_DELAY_MS);
+    }
+  } else if (text.includes("then-devin-auto-compaction")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyDevinCompaction("started");
+      setTimeout(() => {
+        notifyDevinCompaction("completed", "auto summary");
+      }, UNPROMPTED_DELAY_MS * 4);
+    }, UNPROMPTED_DELAY_MS);
+  } else if (text.includes("then-devin-failed-compaction")) {
+    notifyUpdate(messageChunk("prompted reply"));
+    setTimeout(() => {
+      notifyDevinCompaction("started");
+      setTimeout(() => {
+        notifyDevinCompaction("failed");
+      }, UNPROMPTED_DELAY_MS * 4);
+    }, UNPROMPTED_DELAY_MS);
   } else if (text.includes("then-unprompted-finished-compaction")) {
     notifyUpdate(messageChunk("prompted reply"));
     setTimeout(() => {

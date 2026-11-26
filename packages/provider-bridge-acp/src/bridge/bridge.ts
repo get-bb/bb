@@ -81,6 +81,7 @@ import {
 } from "../delta-translation.js";
 import {
   compactionOutcomeForEndTurn,
+  type AcpVendorCompaction,
   grokContextUsageFromPromptResult,
   grokContextWindowSizeFromSessionModels,
   resolveAcpDialect,
@@ -234,6 +235,9 @@ interface AcpThreadSession {
   compactionUpdateOutcome: AcpCompactionUpdateOutcome | undefined;
   openAgentCompactionIds: Set<string>;
   finishedAgentCompactionIds: Set<string>;
+  vendorCompactionId: string | undefined;
+  vendorCompactionCount: number;
+  manualCompactionEchoPending: boolean;
   queuedInputs: AcpPendingTurnInput[];
   promptRequestPending: boolean;
   cancelRequested: boolean;
@@ -2517,6 +2521,9 @@ async function startAgentSession(
     compactionUpdateOutcome: undefined,
     openAgentCompactionIds: new Set(),
     finishedAgentCompactionIds: new Set(),
+    vendorCompactionId: undefined,
+    vendorCompactionCount: 0,
+    manualCompactionEchoPending: false,
     queuedInputs: [],
     promptRequestPending: false,
     cancelRequested: false,
@@ -3280,6 +3287,7 @@ function runTurn(
   turnAlreadyOpen = false,
 ): void {
   setActivePromptKind(session, "turn");
+  session.manualCompactionEchoPending = false;
   if (!turnAlreadyOpen) {
     emitForSession(session, ACP_TURN_STARTED_METHOD, {
       threadId: session.bbThreadId,
@@ -3629,6 +3637,8 @@ function startCompaction(
   session.awaitingFirstPrompt = false;
   session.compactionAgentMessage = "";
   session.compactionUpdateOutcome = undefined;
+  session.manualCompactionEchoPending =
+    session.dialect.compactionNotification !== undefined;
   emitForSession(session, ACP_COMPACTION_STARTED_METHOD, {
     threadId: session.bbThreadId,
   });
@@ -3758,6 +3768,13 @@ function handleAgentNotification(
   params: unknown,
 ): void {
   if (method !== "session/update") {
+    const vendorCompaction = session.dialect.compactionNotification?.(
+      method,
+      params,
+    );
+    if (vendorCompaction !== undefined) {
+      handleVendorCompaction(session, vendorCompaction);
+    }
     return;
   }
   if (session.stopping) {
@@ -3825,6 +3842,49 @@ function handleAgentNotification(
     trackAgentCompaction(session, parsedCompaction.data);
   }
   emitSessionUpdate(session, update, rawUpdate);
+}
+
+function handleVendorCompaction(
+  session: AcpThreadSession,
+  vendor: AcpVendorCompaction,
+): void {
+  if (
+    session.stopping ||
+    session.loading ||
+    session.providerThreadId === "" ||
+    vendor.sessionId !== session.providerThreadId
+  ) {
+    return;
+  }
+  const terminal = TERMINAL_COMPACTION_STATUSES.has(vendor.status);
+  if (session.vendorCompactionId === undefined) {
+    session.vendorCompactionCount += 1;
+    session.vendorCompactionId = `${session.providerThreadId}:${session.vendorCompactionCount}`;
+  }
+  const update: AcpCompactionUpdate = {
+    sessionUpdate: "compaction_update",
+    compactionId: session.vendorCompactionId,
+    status: vendor.status,
+    ...(vendor.error === undefined ? {} : { error: vendor.error }),
+  };
+  if (terminal) {
+    session.vendorCompactionId = undefined;
+  }
+  if (session.activePromptKind === "compaction") {
+    recordCompactionUpdateOutcome(session, update);
+    if (terminal) {
+      session.manualCompactionEchoPending = false;
+    }
+    return;
+  }
+  if (session.manualCompactionEchoPending) {
+    if (terminal) {
+      session.manualCompactionEchoPending = false;
+    }
+    return;
+  }
+  trackAgentCompaction(session, update);
+  emitSessionUpdate(session, update, update);
 }
 
 type AcpCompactionUpdateOutcome =
