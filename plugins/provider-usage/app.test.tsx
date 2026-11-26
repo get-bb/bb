@@ -16,6 +16,89 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+it("identifies visible percentages as quota used across provider tabs and windows", async () => {
+  const { ProviderUsageStatusContent } = await import("./app.js");
+  const providers: UsageProvider[] = ["Codex", "Claude Code"].map(
+    (displayName) => ({
+      id: displayName,
+      providerId: displayName,
+      displayName,
+      accountLabel: null,
+      logoUrl: null,
+      icon: null,
+      strings: { iconTint: null },
+      signInHint: "Sign in.",
+      expiredHint: "Sign in again.",
+      usage: {
+        status: "ok",
+        accountEmail: null,
+        planLabel: null,
+        windows: [
+          {
+            label: "Five-hour limit",
+            usedPercent: 100,
+            resetsAt: new Date(Date.now() + 3 * 3600_000).toISOString(),
+            cost: null,
+          },
+          {
+            label: "Weekly limit",
+            usedPercent: 25,
+            resetsAt: null,
+            cost: null,
+          },
+        ],
+      },
+    }),
+  );
+  const slot = renderSlot(
+    { component: ProviderUsageStatusContent },
+    {
+      pluginId: "bb--provider-usage",
+      dismiss: () => {},
+      threadMachineId: null,
+      refreshEnabled: false,
+      snapshot: {
+        data: {
+          machines: [
+            {
+              id: "quota-direction-machine",
+              displayName: "Test machine",
+              status: "connected",
+              error: null,
+              providers,
+            },
+          ],
+        },
+        error: null,
+        isRefreshing: false,
+      },
+    },
+  );
+
+  for (const name of ["All accounts", "Codex", "Claude Code"]) {
+    fireEvent.click(slot.getByRole("tab", { name }));
+    const label = slot.getByText("Quota used");
+    expect(label.closest('[hidden], [aria-hidden="true"]')).toBeNull();
+    const rowCount = name === "All accounts" ? 2 : 1;
+    expect(slot.getAllByText("100%")).toHaveLength(rowCount);
+    expect(slot.getAllByText("25%")).toHaveLength(rowCount);
+    expect(
+      slot.getAllByRole("button", {
+        name: /Five-hour limit: 100% used\. Resets /,
+      }),
+    ).toHaveLength(rowCount);
+    const weeklyWindows = slot.getAllByRole("button", {
+      name: "Weekly limit: 25% used. Reset time not reported",
+    });
+    expect(weeklyWindows).toHaveLength(rowCount);
+    expect(slot.getAllByText("3h")).toHaveLength(rowCount);
+    fireEvent.click(weeklyWindows[0]!);
+    expect(
+      slot.getAllByText("Reset time not reported.").length,
+    ).toBeGreaterThan(0);
+  }
+});
+
 function threadOnMachine(
   hostId: string,
   hostName: string,
