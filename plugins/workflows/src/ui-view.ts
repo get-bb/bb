@@ -1,4 +1,4 @@
-import { parseWorkflowSource } from "./parser.js";
+import { readWorkflowMetadata } from "./parser.js";
 import type { WorkflowRunInspection } from "./service.js";
 import { displayWidth, truncateToWidth } from "./text-measure.js";
 import type {
@@ -43,7 +43,7 @@ function callView(
 export function buildWorkflowRunView(
   run: WorkflowRunInspection,
 ): WorkflowRunView {
-  const metadata = parseWorkflowSource(run.source).metadata;
+  const metadata = readWorkflowMetadata(run.source);
   const calls = run.calls.map(callView);
   const declaredPhaseTitles = new Set(
     metadata.phases.map((phase) => phase.title),

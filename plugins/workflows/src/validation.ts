@@ -144,9 +144,9 @@ const storedAgentOptionsSchema = z
   .strict();
 
 export function parseStoredAgentOptions(value: unknown): WorkflowAgentOptions {
-  const options = storedAgentOptionsSchema.parse(value) as WorkflowAgentOptions;
+  const options = storedAgentOptionsSchema.parse(value);
   if (options.outputSchema !== null) {
-    assertValidJsonSchema(options.outputSchema, "stored agent outputSchema");
+    assertSafeJsonSchema(options.outputSchema, "stored agent outputSchema");
   }
   return options;
 }
@@ -163,7 +163,7 @@ function optionalNonEmptyString(
   return value;
 }
 
-export function assertValidJsonSchema(
+function assertSafeJsonSchema(
   schema: JsonValue,
   path: string,
 ): asserts schema is JsonSchema {
@@ -278,6 +278,13 @@ export function assertValidJsonSchema(
   }
 
   assertSupportedSchema(schema, path);
+}
+
+export function assertValidJsonSchema(
+  schema: JsonValue,
+  path: string,
+): asserts schema is JsonSchema {
+  assertSafeJsonSchema(schema, path);
   try {
     new Ajv({ strict: false, allErrors: true }).compile(schema);
   } catch (error) {

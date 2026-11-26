@@ -225,7 +225,7 @@ function inspectAgentOptions(
   }
 }
 
-function readMetadata(node: ObjectExpression): ParsedWorkflow["metadata"] {
+function readMetadata(node: ObjectExpression) {
   const value = literalValue(node, "meta");
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("meta must be an object literal");
@@ -255,12 +255,6 @@ function readMetadata(node: ObjectExpression): ParsedWorkflow["metadata"] {
   ) {
     throw new Error("meta.description must be a non-empty string");
   }
-  const inputSchema = value.inputSchema ?? null;
-  const outputSchema = value.outputSchema ?? null;
-  if (inputSchema !== null)
-    assertValidJsonSchema(inputSchema, "meta.inputSchema");
-  if (outputSchema !== null)
-    assertValidJsonSchema(outputSchema, "meta.outputSchema");
   const phasesValue = value.phases === undefined ? [] : value.phases;
   if (!Array.isArray(phasesValue)) {
     throw new Error("meta.phases must be an array");
@@ -301,8 +295,8 @@ function readMetadata(node: ObjectExpression): ParsedWorkflow["metadata"] {
   return {
     name: value.name,
     description: value.description,
-    inputSchema,
-    outputSchema,
+    inputSchema: value.inputSchema ?? null,
+    outputSchema: value.outputSchema ?? null,
     phases,
   };
 }
@@ -413,7 +407,7 @@ function rejectUnsafeSyntax(
   });
 }
 
-export function inspectWorkflowSource(source: string): InspectedWorkflowSource {
+function parseWorkflowProgram(source: string) {
   assertValidWorkflowSourceText(source);
   let program: Program;
   try {
@@ -458,12 +452,26 @@ export function inspectWorkflowSource(source: string): InspectedWorkflowSource {
     }
   }
 
+  return { program, metaEnd: declaration.end, meta: binding.init };
+}
+
+export function readWorkflowMetadata(source: string) {
+  return readMetadata(parseWorkflowProgram(source).meta);
+}
+
+export function inspectWorkflowSource(source: string): InspectedWorkflowSource {
+  const { program, metaEnd, meta } = parseWorkflowProgram(source);
   const literalSelections: LiteralAgentSelection[] = [];
   rejectUnsafeSyntax(program, literalSelections);
-  const body = source.slice(declaration.end).trim();
+  const body = source.slice(metaEnd).trim();
   if (body === "") throw new Error("Workflow body cannot be empty");
+  const { inputSchema, outputSchema, ...metadata } = readMetadata(meta);
+  if (inputSchema !== null)
+    assertValidJsonSchema(inputSchema, "meta.inputSchema");
+  if (outputSchema !== null)
+    assertValidJsonSchema(outputSchema, "meta.outputSchema");
   return {
-    workflow: { metadata: readMetadata(binding.init), body },
+    workflow: { metadata: { ...metadata, inputSchema, outputSchema }, body },
     literalSelections,
   };
 }
