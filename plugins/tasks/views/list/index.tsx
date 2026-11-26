@@ -106,7 +106,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
   }, [preferenceScope]);
   const filters = preference.filters;
   const sort = preference.sort;
-  const collapsed = preference.collapsedTaskIds;
+  const expanded = preference.expandedTaskIds;
   const updatePreference = useCallback(
     (update: (current: ListPreference) => ListPreference) => {
       setPreference((current) => {
@@ -125,9 +125,9 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
     (taskId: string) =>
       updatePreference((current) => ({
         ...current,
-        collapsedTaskIds: current.collapsedTaskIds.includes(taskId)
-          ? current.collapsedTaskIds.filter((id) => id !== taskId)
-          : [...current.collapsedTaskIds, taskId],
+        expandedTaskIds: current.expandedTaskIds.includes(taskId)
+          ? current.expandedTaskIds.filter((id) => id !== taskId)
+          : [...current.expandedTaskIds, taskId],
       })),
     [updatePreference],
   );
@@ -256,13 +256,13 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       groupTasksByStatus(sortTasks(displayTasks ?? [], sort)).map((group) => {
         let windowCount = group.tasks.length;
         for (const task of group.tasks) {
-          if (!parentIsOpen(task.id, collapsed, matchCriteria, visibleChildren))
+          if (!parentIsOpen(task.id, expanded, matchCriteria, visibleChildren))
             continue;
           windowCount += visibleChildren.get(task.id)?.length ?? 0;
         }
         return { ...group, count: group.tasks.length, windowCount };
       }),
-    [displayTasks, sort, collapsed, matchCriteria, visibleChildren],
+    [displayTasks, sort, expanded, matchCriteria, visibleChildren],
   );
 
   const showProject = projectId === null;
@@ -375,7 +375,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
       for (const task of group.tasks) {
         const open = parentIsOpen(
           task.id,
-          collapsed,
+          expanded,
           matchCriteria,
           visibleChildren,
         );
@@ -386,7 +386,7 @@ export function ListView({ projectId, activeOnly = false }: ListViewProps) {
               {...rowProps(task)}
               subTasks={childTotals.get(task.id)}
               subTasksOpen={open}
-              subTasksLocked={open && collapsed.includes(task.id)}
+              subTasksLocked={open && !expanded.includes(task.id)}
               onToggleSubTasks={toggleSubTasks}
             />,
           );

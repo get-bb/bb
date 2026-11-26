@@ -286,15 +286,23 @@ describe("visible task tree", () => {
       true,
     ],
     ["no filter", criteria(), false],
-  ] as const)("respects saved collapse with %s", (_name, match, expected) => {
-    const visible = visibleChildrenByParent(all, match, "manual");
-    const collapsed = [demoParent.id];
-    const open = parentIsOpen(demoParent.id, collapsed, match, visible);
-    expect(open).toBe(expected);
+  ] as const)(
+    "opens a collapsed parent only for matching sub-tasks with %s",
+    (_name, match, expected) => {
+      const visible = visibleChildrenByParent(all, match, "manual");
+      const open = parentIsOpen(demoParent.id, [], match, visible);
+      expect(open).toBe(expected);
+      expect(
+        open ? visible.get(demoParent.id)?.map((child) => child.id) : [],
+      ).toEqual(expected ? [demoChildPalette.id] : []);
+    },
+  );
+
+  it("keeps a parent the user expanded open without a filter", () => {
+    const visible = visibleChildrenByParent(all, criteria(), "manual");
     expect(
-      open ? visible.get(demoParent.id)?.map((child) => child.id) : [],
-    ).toEqual(expected ? [demoChildPalette.id] : []);
-    expect(collapsed).toEqual([demoParent.id]);
+      parentIsOpen(demoParent.id, [demoParent.id], criteria(), visible),
+    ).toBe(true);
   });
 
   it.each<{

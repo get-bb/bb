@@ -176,7 +176,7 @@ export interface TaskMatchCriteria {
 
 export function parentIsOpen(
   parentId: string,
-  collapsed: readonly string[],
+  expanded: readonly string[],
   criteria: TaskMatchCriteria,
   visibleChildren: ReadonlyMap<string, readonly Task[]>,
 ): boolean {
@@ -187,7 +187,7 @@ export function parentIsOpen(
     criteria.labelIds !== null ||
     criteria.activeIds !== null;
   return (
-    !collapsed.includes(parentId) ||
+    expanded.includes(parentId) ||
     (filtering && (visibleChildren.get(parentId)?.length ?? 0) > 0)
   );
 }

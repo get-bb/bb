@@ -344,28 +344,26 @@ describe("sub-task nesting", () => {
   const childRow = (slot: ReturnType<typeof renderList>) =>
     slot.container.querySelector(`[data-task-key="${child.key}"]`);
 
-  it("nests sub-tasks under their parent and remembers a collapsed parent", async () => {
+  it("starts collapsed and remembers a parent the user expanded", async () => {
     const slot = renderList([parent, child]);
     const row = await rowFor(slot, parent.key);
     expect(within(row).getByText("1/1")).toBeTruthy();
+    expect(childRow(slot)).toBeNull();
+    fireEvent.click(toggle(row, /Expand sub-tasks/));
     expect((await rowFor(slot, child.key)).className).toContain("pl-9");
-    fireEvent.click(toggle(row, /Collapse sub-tasks/));
-    await waitFor(() => expect(childRow(slot)).toBeNull());
     cleanup();
 
     const reopened = renderList([parent, child]);
     const reopenedRow = await rowFor(reopened, parent.key);
-    expect(childRow(reopened)).toBeNull();
-    fireEvent.click(toggle(reopenedRow, /Expand sub-tasks/));
     expect(await rowFor(reopened, child.key)).toBeTruthy();
+    fireEvent.click(toggle(reopenedRow, /Collapse sub-tasks/));
+    await waitFor(() => expect(childRow(reopened)).toBeNull());
   });
 
   it("opens a collapsed parent while searching without changing its saved state", async () => {
     const slot = renderList([parent, child]);
-    fireEvent.click(
-      toggle(await rowFor(slot, parent.key), /Collapse sub-tasks/),
-    );
-    await waitFor(() => expect(childRow(slot)).toBeNull());
+    await rowFor(slot, parent.key);
+    expect(childRow(slot)).toBeNull();
     const search = slot.getByRole("searchbox", { name: "Search tasks" });
     fireEvent.change(search, { target: { value: "needle" } });
     await rowFor(slot, child.key);
@@ -380,7 +378,7 @@ describe("sub-task nesting", () => {
 
   it("sizes the key column from sub-task keys too", async () => {
     const slot = renderList([parent, child]);
-    await rowFor(slot, child.key);
+    await rowFor(slot, parent.key);
     expect(
       Array.from(
         slot.container.querySelectorAll<HTMLElement>("[data-key-sizer]"),

@@ -15,13 +15,13 @@ type ListPreferenceScope = "all" | "active" | `project:${string}`;
 export interface ListPreference {
   filters: ListFilterState;
   sort: TaskSort;
-  collapsedTaskIds: string[];
+  expandedTaskIds: string[];
 }
 
 export const DEFAULT_LIST_PREFERENCE: ListPreference = {
   filters: EMPTY_FILTERS,
   sort: "manual",
-  collapsedTaskIds: [],
+  expandedTaskIds: [],
 };
 
 interface StoredDocumentV1 {
@@ -84,7 +84,7 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
     return {
       filters: { ...EMPTY_FILTERS },
       sort: DEFAULT_LIST_PREFERENCE.sort,
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     };
   }
   const record = raw as Record<string, unknown>;
@@ -105,7 +105,7 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
       labelNames: uniqueStrings(filtersRaw.labelNames),
     },
     sort: sanitizeSort(record.sort),
-    collapsedTaskIds: uniqueStrings(record.collapsedTaskIds),
+    expandedTaskIds: uniqueStrings(record.expandedTaskIds),
   };
 }
 
@@ -158,7 +158,7 @@ export function loadListPreference(scope: ListPreferenceScope): ListPreference {
     return {
       filters: { ...EMPTY_FILTERS },
       sort: DEFAULT_LIST_PREFERENCE.sort,
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     };
   }
   return sanitizeListPreference(document.scopes[scope]);

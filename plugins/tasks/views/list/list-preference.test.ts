@@ -39,17 +39,17 @@ describe("sanitizeListPreference", () => {
     expect(sanitizeListPreference(undefined)).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
     expect(sanitizeListPreference(null)).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
     expect(sanitizeListPreference("nope")).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
   });
 
@@ -62,7 +62,7 @@ describe("sanitizeListPreference", () => {
           labelNames: [" Bug ", "", "Bug", "Feature", 12],
         },
         sort: "priority-please",
-        collapsedTaskIds: [],
+        expandedTaskIds: [],
       }),
     ).toEqual({
       filters: {
@@ -71,7 +71,7 @@ describe("sanitizeListPreference", () => {
         labelNames: ["Bug", "Feature"],
       },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
   });
 
@@ -84,7 +84,7 @@ describe("sanitizeListPreference", () => {
           labelNames: ["infra"],
         },
         sort: "due",
-        collapsedTaskIds: [],
+        expandedTaskIds: [],
       }),
     ).toEqual({
       filters: {
@@ -93,29 +93,29 @@ describe("sanitizeListPreference", () => {
         labelNames: ["infra"],
       },
       sort: "due",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
   });
 });
 
-describe("collapsed sub-task parents", () => {
+describe("expanded sub-task parents", () => {
   it("keeps unique task ids and drops anything else", () => {
     expect(
       sanitizeListPreference({
         sort: "manual",
-        collapsedTaskIds: ["task-a", "task-a", "", 3, null, "task-b"],
-      }).collapsedTaskIds,
+        expandedTaskIds: ["task-a", "task-a", "", 3, null, "task-b"],
+      }).expandedTaskIds,
     ).toEqual(["task-a", "task-b"]);
   });
 
-  it("stores collapsed parents per scope beside filters and sort", () => {
+  it("stores expanded parents per scope beside filters and sort", () => {
     storeListPreference("all", {
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: ["task-a"],
+      expandedTaskIds: ["task-a"],
     });
-    expect(loadListPreference("all").collapsedTaskIds).toEqual(["task-a"]);
-    expect(loadListPreference("active").collapsedTaskIds).toEqual([]);
+    expect(loadListPreference("all").expandedTaskIds).toEqual(["task-a"]);
+    expect(loadListPreference("active").expandedTaskIds).toEqual([]);
   });
 });
 
@@ -124,7 +124,7 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { ...DEFAULT_LIST_PREFERENCE.filters },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
   });
 
@@ -132,17 +132,17 @@ describe("loadListPreference / storeListPreference", () => {
     storeListPreference("all", {
       filters: { statuses: ["todo"], priorities: [], labelNames: [] },
       sort: "priority",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
     storeListPreference("all", {
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
   });
 
@@ -164,7 +164,7 @@ describe("loadListPreference / storeListPreference", () => {
           all: {
             filters: { statuses: ["bogus"], priorities: ["high"] },
             sort: "priority",
-            collapsedTaskIds: [],
+            expandedTaskIds: [],
           },
         },
       }),
@@ -172,7 +172,7 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: [], priorities: ["high"], labelNames: [] },
       sort: "priority",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
   });
 
@@ -191,12 +191,12 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: ["todo"], priorities: [], labelNames: [] },
       sort: "due",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
     storeListPreference("all", {
       filters: { statuses: ["done"], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
     expect(storage.getItem(LIST_PREFERENCE_STORAGE_KEY)).toBe(future);
   });
@@ -208,7 +208,7 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
-      collapsedTaskIds: [],
+      expandedTaskIds: [],
     });
   });
 });
