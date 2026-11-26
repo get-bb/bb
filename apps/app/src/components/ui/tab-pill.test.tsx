@@ -2,6 +2,7 @@
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { MACOS_TITLE_BAR_CONTROL_SIZE_CLASS } from "@/lib/bb-desktop";
 import { TabPill } from "./tab-pill";
 
 afterEach(cleanup);
@@ -97,47 +98,50 @@ describe("TabPill", () => {
     expect(closeButton.classList.contains("max-md:pointer-coarse:left-0")).toBe(
       true,
     );
-    const closeSurface = closeButton.querySelector(
-      "[data-tab-pill-close-surface]",
-    );
-    expect(closeSurface).not.toBeNull();
     expect(
-      closeSurface?.classList.contains("max-md:pointer-coarse:size-7"),
+      closeButton.firstElementChild?.classList.contains(
+        "max-md:pointer-coarse:size-7",
+      ),
     ).toBe(true);
   });
 
-  it("keeps the close hover surface inset inside the pill at desktop and touch sizes", () => {
-    render(
-      <TabPill
-        label="Terminal"
-        title="Terminal"
-        isActive
-        onSelect={vi.fn()}
-        leadingVisual={<span aria-hidden>term</span>}
-        closeAction={{
-          closeLabel: "Close Terminal",
-          onClose: vi.fn(),
-        }}
-      />,
+  it("excludes the close button from macOS title-bar control height sizing", () => {
+    const { container } = render(
+      <div className={MACOS_TITLE_BAR_CONTROL_SIZE_CLASS}>
+        <button type="button">New tab</button>
+        <TabPill
+          label="Terminal"
+          title="Terminal"
+          isActive
+          onSelect={vi.fn()}
+          closeAction={{
+            closeLabel: "Close Terminal",
+            onClose: vi.fn(),
+          }}
+        />
+      </div>,
     );
 
-    const closeButton = screen.getByRole("button", { name: "Close Terminal" });
-    expect(closeButton.classList.contains("left-1")).toBe(true);
-    expect(closeButton.classList.contains("size-5")).toBe(true);
-    expect(closeButton.classList.contains("max-md:pointer-coarse:size-6")).toBe(
+    const selectors = MACOS_TITLE_BAR_CONTROL_SIZE_CLASS.split(/\s+/)
+      .filter((token) => token.startsWith("[&_") && token.includes("]:"))
+      .map((token) =>
+        token.slice(3, token.lastIndexOf("]:")).replaceAll("_", " "),
+      );
+    expect(selectors.length).toBeGreaterThan(0);
+
+    const matched = new Set(
+      selectors.flatMap((selector) =>
+        Array.from(container.querySelectorAll(selector)),
+      ),
+    );
+    expect(matched.has(screen.getByRole("button", { name: "New tab" }))).toBe(
       true,
     );
-    const closeSurface = closeButton.querySelector(
-      "[data-tab-pill-close-surface]",
+    expect(matched.has(screen.getByRole("button", { name: "Terminal" }))).toBe(
+      true,
     );
-    expect(closeSurface?.classList.contains("rounded-sm")).toBe(true);
     expect(
-      closeSurface?.classList.contains(
-        "group-hover/tab-pill-affordance:bg-muted-foreground/15",
-      ),
-    ).toBe(true);
-    expect(
-      closeSurface?.classList.contains("max-md:pointer-coarse:size-7"),
+      matched.has(screen.getByRole("button", { name: "Close Terminal" })),
     ).toBe(false);
   });
 

@@ -179,7 +179,6 @@ function TabPillCloseButton({
       )}
     >
       <span
-        data-tab-pill-close-surface=""
         className={cn(
           TAB_PILL_AFFORDANCE_SURFACE_CLASS,
           enlargeCloseTargetOnCoarsePointer && "max-md:pointer-coarse:size-7",
