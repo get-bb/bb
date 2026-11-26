@@ -11,6 +11,7 @@ import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { defaultAppSettings, type AppCommandId } from "@bb/domain";
+import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu";
 import {
   AppCommandProvider,
   useAppCommandContext,
@@ -708,6 +709,49 @@ describe("AppCommandProvider", () => {
     screen.getByText("Drawer entry").dispatchEvent(event);
 
     expect(event.defaultPrevented).toBe(false);
+    expect(testState.calls).toEqual([]);
+  });
+
+  it("runs thread.new while a text selection menu is open, unless a dialog is", () => {
+    renderProvider(
+      <>
+        <Handler command="thread.new" name="thread.new" result={true} />
+        <p>Selected timeline text</p>
+        <TimelineSelectionMenu
+          selection={{
+            text: "Selected timeline text",
+            rect: new DOMRect(10, 10, 100, 20),
+            sourceSeqEnd: 1,
+          }}
+          onAddToChat={() => {}}
+          onDismiss={() => {}}
+        />
+      </>,
+    );
+    const pressNewThread = () => {
+      const event = new KeyboardEvent("keydown", {
+        bubbles: true,
+        cancelable: true,
+        ctrlKey: true,
+        key: "o",
+        shiftKey: true,
+      });
+      screen.getByText("Selected timeline text").dispatchEvent(event);
+      return event;
+    };
+
+    expect(screen.getByRole("button", { name: "Add to chat" })).toBeTruthy();
+    expect(pressNewThread().defaultPrevented).toBe(true);
+    expect(testState.calls).toEqual(["thread.new"]);
+
+    testState.calls.length = 0;
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("data-state", "open");
+    document.body.append(dialog);
+    const preventedUnderDialog = pressNewThread().defaultPrevented;
+    dialog.remove();
+    expect(preventedUnderDialog).toBe(false);
     expect(testState.calls).toEqual([]);
   });
 });

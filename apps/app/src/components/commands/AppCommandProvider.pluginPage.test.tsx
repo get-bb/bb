@@ -12,6 +12,7 @@ import {
   setPluginSlotRegistrations,
 } from "@/lib/plugin-slots";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { TimelineSelectionMenu } from "@/components/thread/timeline/TimelineSelectionMenu";
 import {
   AppCommandProvider,
   useAppCommandFocusedPluginPage,
@@ -180,6 +181,36 @@ describe("plugin page key scope", () => {
     expect(calls).toEqual([]);
     fireEvent.keyDown(document.body, { key: "c", code: "KeyC" });
     expect(calls).toEqual(["new-task"]);
+  });
+
+  it("fires an app command while a text selection menu is open, unless a dialog is", () => {
+    const calls: string[] = [];
+    const view = render(
+      <AppCommandProvider>
+        <Harness calls={calls} focusedPage={null} />
+        <TimelineSelectionMenu
+          selection={{
+            text: "selected",
+            rect: new DOMRect(10, 10, 100, 20),
+            sourceSeqEnd: 1,
+          }}
+          onAddToChat={() => {}}
+          onDismiss={() => {}}
+        />
+      </AppCommandProvider>,
+    );
+    expect(view.getByRole("button", { name: "Add to chat" })).toBeTruthy();
+
+    fireEvent.keyDown(document.body, { key: "y", code: "KeyY", altKey: true });
+    expect(calls).toEqual(["sync"]);
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("data-state", "open");
+    document.body.append(dialog);
+    fireEvent.keyDown(document.body, { key: "y", code: "KeyY", altKey: true });
+    dialog.remove();
+    expect(calls).toEqual(["sync"]);
   });
 
   it("keeps the page scope when the user rebinds the command", () => {
