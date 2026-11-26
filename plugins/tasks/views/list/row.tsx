@@ -1,35 +1,20 @@
-import {
-  memo,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { memo, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import type {
   Label,
   Project,
   Task,
   TaskThread,
 } from "../../shared/contract.js";
-import {
-  experimental_matchesShortcutKey as matchesShortcutKey,
-  useBbNavigate,
-} from "@get-bb/plugin-sdk/app";
+import { experimental_matchesShortcutKey as matchesShortcutKey } from "@get-bb/plugin-sdk/app";
 import { Icon } from "@/components/ui/icon";
 import { observeSharedResize } from "@/lib/shared-resize-observer";
 import { cn } from "@/lib/utils";
 import type { TaskRowMeta } from "./data.js";
 import {
-  mergePendingThreads,
-  useTaskPendingThreads,
-  type PendingThread,
-} from "./data.js";
-import {
   activeWorkLabel,
   formatDueDate,
-  formatElapsed,
   partitionLabels,
+  type SubTaskProgress,
 } from "./lib.js";
 import type { EditFn } from "./property-menus.js";
 import {
@@ -42,36 +27,15 @@ import {
 const RAIL_CHIP_CLASS =
   "flex items-center gap-1 rounded-md border border-border px-1.5 py-px text-xs text-muted-foreground";
 
-function ActiveChip({
-  threads,
-  start,
-}: {
-  threads: readonly TaskThread[];
-  start?: number;
-}) {
-  const [now, setNow] = useState(Date.now);
-  useEffect(() => {
-    if (start === undefined) return;
-    setNow(Date.now());
-    const interval = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(interval);
-  }, [start]);
-  if (threads.length === 0 && start === undefined) return null;
+function ActiveChip({ threads }: { threads: readonly TaskThread[] }) {
+  if (threads.length === 0) return null;
   return (
-    <span
-      title={threads.length > 0 ? activeWorkLabel(threads) : undefined}
-      className={RAIL_CHIP_CLASS}
-    >
+    <span title={activeWorkLabel(threads)} className={RAIL_CHIP_CLASS}>
       <span
         aria-hidden
         className="size-1.5 shrink-0 animate-pulse rounded-full bg-success"
       />
       Active
-      {start !== undefined ? (
-        <span className="tabular-nums text-success">
-          {formatElapsed(Math.max(0, Math.floor((now - start) / 1000)))}
-        </span>
-      ) : null}
     </span>
   );
 }
@@ -134,15 +98,12 @@ function LabelChips({
 
 interface TaskRowProps {
   task: Task;
-  timing?: { start: number; working: boolean };
   child?: boolean;
-  subTasks?: {
-    done: number;
-    total: number;
-    open: boolean;
-    disabled: boolean;
-    toggle: () => void;
-  };
+  muted?: boolean;
+  subTasks?: SubTaskProgress;
+  subTasksOpen?: boolean;
+  subTasksLocked?: boolean;
+  onToggleSubTasks?: (taskId: string) => void;
   meta: TaskRowMeta | undefined;
   project: Project | undefined;
   showProject: boolean;
@@ -153,13 +114,6 @@ interface TaskRowProps {
   onMoveToProject: (task: Task, projectId: string) => void;
   onOpen: (taskKey: string) => void;
   pending: boolean;
-  muted?: boolean;
-  pendingThreadById: ReadonlyMap<string, number>;
-  rolledUpPendingThreads: readonly PendingThread[] | undefined;
-  onPendingThreads: (
-    taskId: string,
-    pending: readonly PendingThread[] | undefined,
-  ) => void;
 }
 
 const KEY_TYPOGRAPHY = "text-xs tabular-nums";
@@ -209,31 +163,14 @@ export function KeyColumnScope({
   );
 }
 
-export function SubTaskRow({
-  open,
-  ...rowProps
-}: Omit<TaskRowProps, "child"> & { open: boolean }) {
-  return (
-    <div
-      aria-hidden={!open}
-      inert={!open}
-      className={cn(
-        "grid transition-[grid-template-rows,opacity] duration-200 ease-out motion-reduce:transition-none",
-        open ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-      )}
-    >
-      <div className="min-h-0 overflow-hidden">
-        <TaskRow {...rowProps} child />
-      </div>
-    </div>
-  );
-}
-
 export const TaskRow = memo(function TaskRow({
   task,
-  timing,
   child = false,
+  muted = false,
   subTasks,
+  subTasksOpen = false,
+  subTasksLocked = false,
+  onToggleSubTasks,
   meta,
   project,
   showProject,
@@ -244,18 +181,8 @@ export const TaskRow = memo(function TaskRow({
   onMoveToProject,
   onOpen,
   pending,
-  muted = false,
-  pendingThreadById,
-  rolledUpPendingThreads,
-  onPendingThreads,
 }: TaskRowProps) {
   const [openMenu, setOpenMenu] = useState<"status" | "priority" | null>(null);
-  const navigate = useBbNavigate();
-  const pendingThreads = useTaskPendingThreads(task.id, pendingThreadById);
-  useEffect(() => {
-    onPendingThreads(task.id, pendingThreads);
-  }, [onPendingThreads, task.id, pendingThreads]);
-  const needsYou = mergePendingThreads(pendingThreads, rolledUpPendingThreads);
 
   return (
     <TaskContextMenu
@@ -319,34 +246,18 @@ export const TaskRow = memo(function TaskRow({
           {task.title}
         </span>
         <span className="col-start-3 row-start-2 flex min-w-0 items-center gap-1.5 justify-self-end text-xs text-subtle-foreground @max-md:overflow-hidden @md:shrink-0">
-          <ActiveChip
-            threads={meta?.activeThreads ?? []}
-            start={
-              timing?.working && !needsYou?.length ? timing.start : undefined
-            }
-          />
-          {needsYou !== undefined && needsYou.length > 0 ? (
+          {meta ? <ActiveChip threads={meta.activeThreads} /> : null}
+          {subTasks !== undefined ? (
             <button
               type="button"
-              aria-label={`Open the thread waiting on you for ${task.key}`}
-              title="An attached thread is blocked on your answer"
-              className="relative text-xs font-medium text-attention underline-offset-2 hover:underline"
-              onClick={() => navigate.toThread(needsYou[0]!.id)}
-            >
-              Needs you
-            </button>
-          ) : null}
-          {subTasks && subTasks.total > 0 ? (
-            <button
-              type="button"
-              aria-expanded={subTasks.open}
-              aria-label={`${subTasks.open ? "Collapse" : "Expand"} sub-tasks of ${task.key}`}
-              disabled={subTasks.disabled}
-              onClick={subTasks.toggle}
+              aria-expanded={subTasksOpen}
+              aria-label={`${subTasksOpen ? "Collapse" : "Expand"} sub-tasks of ${task.key}`}
+              disabled={subTasksLocked}
+              onClick={() => onToggleSubTasks?.(task.id)}
               className={cn(RAIL_CHIP_CLASS, "relative disabled:opacity-70")}
             >
               <Icon
-                name={subTasks.open ? "ChevronDown" : "ChevronRight"}
+                name={subTasksOpen ? "ChevronDown" : "ChevronRight"}
                 className="size-3"
               />
               {subTasks.done}/{subTasks.total}

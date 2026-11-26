@@ -10,7 +10,7 @@ import {
   tasksRpcContract,
   type TasksRpcContract,
 } from "../shared/contract.js";
-import type { TaskStatus, TaskThread } from "../shared/contract.js";
+import type { TaskStatus } from "../shared/contract.js";
 import type { MentionItem } from "../editor/extensions.js";
 import { readQuerySnapshot, writeQuerySnapshot } from "./query-snapshot.js";
 
@@ -88,9 +88,6 @@ export const selectLabels = (result: TasksResult<"listLabels">) =>
   result.labels;
 export const selectCards = (result: TasksResult<"listTaskCardMeta">) =>
   result.cards;
-export const selectTaskThreads = (
-  result: TasksResult<"listTaskThreads">,
-): TaskThread[] => result.taskThreads;
 export const selectProjects = (result: TasksResult<"listProjects">) =>
   result.projects;
 export const selectPresets = (result: TasksResult<"listPresets">) =>

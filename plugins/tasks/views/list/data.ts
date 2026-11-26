@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo } from "react";
 import {
   experimental_useRpcKeyedQuery,
   experimental_useRpcMutation,
@@ -7,7 +7,6 @@ import {
   CLOSED_TASK_STATUSES,
   OPEN_TASK_STATUSES,
   selectCards,
-  selectTaskThreads,
   selectTasks,
   useTasksQuery,
   type TasksInput,
@@ -50,64 +49,57 @@ export function widestKeysByPrefix(tasks: readonly Task[]): string[] {
   return [...widest.values()];
 }
 
-export function listTasksQuery(
-  projectId: string | null,
-  activeOnly: boolean,
-): TasksInput<"listAllTasks"> {
-  return {
-    ...(projectId === null ? {} : { projectId }),
-    activeOnly,
-    ...(activeOnly ? {} : { parentTaskId: null }),
-  };
-}
+const NO_TASKS: readonly Task[] = [];
 
-function mergeOpenFirst(open: readonly Task[], closed: readonly Task[]) {
+function mergeById(...lists: readonly (readonly Task[] | undefined)[]) {
   const byId = new Map<string, Task>();
-  for (const task of open) byId.set(task.id, task);
-  for (const task of closed) byId.set(task.id, task);
+  for (const list of lists) {
+    for (const task of list ?? []) byId.set(task.id, task);
+  }
   return [...byId.values()];
 }
 
 export function useListTasks(projectId: string | null, activeOnly: boolean) {
-  const query = listTasksQuery(projectId, activeOnly);
-  const single = activeOnly;
-  const openInput = { ...query, statuses: [...OPEN_TASK_STATUSES] };
-  const closedInput = { ...query, statuses: [...CLOSED_TASK_STATUSES] };
-  const all = useTasksQuery("listAllTasks", query, selectTasks, {
-    enabled: single,
+  const scope = projectId === null ? {} : { projectId };
+  const openInput = { ...scope, statuses: [...OPEN_TASK_STATUSES] };
+  const closedInput = { ...scope, statuses: [...CLOSED_TASK_STATUSES] };
+  const open = useTasksQuery("listAllTasks", openInput, selectTasks);
+  const closed = useTasksQuery("listAllTasks", closedInput, selectTasks);
+  const activeInput = { ...scope, activeOnly: true };
+  const active = useTasksQuery("listAllTasks", activeInput, selectTasks, {
+    enabled: activeOnly,
   });
-  const open = useTasksQuery("listAllTasks", openInput, selectTasks, {
-    enabled: !single,
-  });
-  const closed = useTasksQuery("listAllTasks", closedInput, selectTasks, {
-    enabled: !single,
-  });
-  const merged = useMemo(
+  const activeTasks = activeOnly ? active.data : NO_TASKS;
+  const data = useMemo(
     () =>
-      open.data === undefined
+      open.data === undefined || activeTasks === undefined
         ? undefined
-        : closed.data === undefined
-          ? open.data
-          : mergeOpenFirst(open.data, closed.data),
-    [open.data, closed.data],
+        : mergeById(open.data, closed.data, activeTasks),
+    [open.data, closed.data, activeTasks],
   );
-  const current = single ? all.data : merged;
-  const isLoading = single ? all.isLoading : open.isLoading || closed.isLoading;
-  const [previous, setPrevious] = useState<Task[] | undefined>(undefined);
-  if (current !== undefined && current !== previous) setPrevious(current);
-  const reads = single ? [query] : [openInput, closedInput];
+  const activeIds = useMemo(
+    (): ReadonlySet<string> | null =>
+      activeOnly ? new Set((activeTasks ?? []).map((task) => task.id)) : null,
+    [activeOnly, activeTasks],
+  );
   const { refresh: refreshOpen } = open;
   const { refresh: refreshClosed } = closed;
-  const refreshOpenFirst = useCallback(() => {
+  const { refresh: refreshActive } = active;
+  const refresh = useCallback(() => {
     refreshOpen();
     refreshClosed();
-  }, [refreshOpen, refreshClosed]);
+    if (activeOnly) refreshActive();
+  }, [refreshOpen, refreshClosed, refreshActive, activeOnly]);
   return {
-    data: current ?? (isLoading ? previous : undefined),
-    error: single ? all.error : (open.error ?? closed.error),
-    isLoading,
-    reads,
-    refresh: single ? all.refresh : refreshOpenFirst,
+    data,
+    activeIds,
+    error: open.error ?? closed.error ?? (activeOnly ? active.error : null),
+    isLoading:
+      open.isLoading || closed.isLoading || (activeOnly && active.isLoading),
+    reads: activeOnly
+      ? [openInput, closedInput, activeInput]
+      : [openInput, closedInput],
+    refresh,
   };
 }
 
@@ -173,60 +165,4 @@ export function useTaskListMeta(projectId: string | null) {
     [cards.data],
   );
   return { data };
-}
-
-export interface PendingThread {
-  id: string;
-  attentionAt: number;
-}
-
-export function useTaskPendingThreads(
-  taskId: string,
-  pendingThreadById: ReadonlyMap<string, number>,
-): readonly PendingThread[] | undefined {
-  const attached = useTasksQuery(
-    "listTaskThreads",
-    { taskId },
-    selectTaskThreads,
-    { enabled: pendingThreadById.size > 0 },
-  );
-  return useMemo(() => {
-    const threads = attached.data;
-    if (threads === undefined) return undefined;
-    const pending: PendingThread[] = [];
-    for (const thread of threads) {
-      const attentionAt = pendingThreadById.get(thread.threadId);
-      if (attentionAt !== undefined) {
-        pending.push({ id: thread.threadId, attentionAt });
-      }
-    }
-    pending.sort((a, b) => a.attentionAt - b.attentionAt);
-    return pending;
-  }, [attached.data, pendingThreadById]);
-}
-
-export function mergePendingThreads(
-  own: readonly PendingThread[] | undefined,
-  rolledUp: readonly PendingThread[] | undefined,
-): readonly PendingThread[] | undefined {
-  if (own === undefined) return rolledUp;
-  if (rolledUp === undefined || rolledUp.length === 0) return own;
-  return [...own, ...rolledUp].sort((a, b) => a.attentionAt - b.attentionAt);
-}
-
-const selectTimings = (result: {
-  timings: { taskId: string; start: number; working: boolean }[];
-}) => result.timings;
-
-export function useTaskListTiming(projectId: string | null) {
-  const timings = useTasksQuery(
-    "listTaskTiming",
-    projectId === null ? {} : { projectId },
-    selectTimings,
-  );
-  return useMemo(
-    () =>
-      new Map((timings.data ?? []).map((timing) => [timing.taskId, timing])),
-    [timings.data],
-  );
 }

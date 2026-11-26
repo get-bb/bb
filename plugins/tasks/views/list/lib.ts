@@ -8,6 +8,11 @@ import {
 import type { TaskSort } from "../../shared/pagination.js";
 import { sortTasks } from "../../shared/sort.js";
 
+export interface SubTaskProgress {
+  done: number;
+  total: number;
+}
+
 export const STATUS_LABELS: Record<TaskStatus, string> = {
   backlog: "Backlog",
   todo: "Todo",
@@ -231,49 +236,16 @@ export function visibleChildrenByParent(
   return result;
 }
 
-export function activeTopRows(
-  activeTasks: readonly Task[],
-  allTasks: readonly Task[],
-): Task[] {
-  const activeTopIds = new Set(
-    activeTasks
-      .filter((task) => task.parentTaskId === null)
-      .map((task) => task.id),
-  );
-  return [
-    ...activeTasks.filter((task) => task.parentTaskId === null),
-    ...allTasks.filter(
-      (task) => task.parentTaskId === null && !activeTopIds.has(task.id),
-    ),
-  ];
-}
-
 export function displayRows(
   rows: readonly Task[],
   criteria: TaskMatchCriteria,
-  childrenByParent: ReadonlyMap<string, readonly Task[]>,
+  visibleChildren: ReadonlyMap<string, readonly Task[]>,
 ): Task[] {
   return rows.filter(
     (task) =>
       taskMatches(task, criteria) ||
-      (childrenByParent.get(task.id) ?? []).some((child) =>
-        taskMatches(child, criteria),
-      ),
+      (visibleChildren.get(task.id)?.length ?? 0) > 0,
   );
-}
-
-export function subTaskTotals(children: readonly Task[]): {
-  done: number;
-  total: number;
-} {
-  let done = 0;
-  let total = 0;
-  for (const child of children) {
-    if (child.status === "canceled") continue;
-    total += 1;
-    if (child.status === "done") done += 1;
-  }
-  return { done, total };
 }
 
 export function childrenForList(
@@ -282,39 +254,25 @@ export function childrenForList(
   sort: TaskSort,
 ) {
   const visible = visibleChildrenByParent(all, criteria, sort);
-  const totals = new Map<string, { done: number; total: number }>();
+  const totals = new Map<string, SubTaskProgress>();
   for (const [parentId, children] of all) {
-    totals.set(parentId, subTaskTotals(children));
+    totals.set(parentId, {
+      done: children.filter((child) => child.status === "done").length,
+      total: children.length,
+    });
   }
   return { visible, totals };
 }
 
-export function listCounts(
+export function visibleTaskCount(
   rows: readonly Task[],
   criteria: TaskMatchCriteria,
-  visibleChildrenByParent: ReadonlyMap<string, readonly Task[]>,
-  activeOnly: boolean,
-): { tasks: number; subTasks: number } {
-  let subTasks = 0;
+  visibleChildren: ReadonlyMap<string, readonly Task[]>,
+): number {
+  let count = 0;
   for (const task of rows) {
-    subTasks += visibleChildrenByParent.get(task.id)?.length ?? 0;
+    if (taskMatches(task, criteria)) count += 1;
+    count += visibleChildren.get(task.id)?.length ?? 0;
   }
-  const matchingTasks = rows.filter((task) =>
-    taskMatches(task, criteria),
-  ).length;
-  const tasks = activeOnly ? matchingTasks + subTasks : matchingTasks;
-  return { tasks, subTasks };
-}
-
-export function formatElapsed(seconds: number): string {
-  const clamped = Math.max(0, Math.floor(seconds));
-  const hours = Math.floor(clamped / 3600);
-  const days = Math.floor(hours / 24);
-  const minutes = Math.floor((clamped % 3600) / 60);
-  return [
-    ...(days > 0 ? [`${days}d`] : []),
-    ...(hours > 0 ? [`${hours % 24}h`] : []),
-    ...(minutes > 0 || hours > 0 ? [`${minutes}m`] : []),
-    `${clamped % 60}s`,
-  ].join(" ");
+  return count;
 }

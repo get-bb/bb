@@ -3,21 +3,18 @@ import type { Label, Task, TaskThread } from "../../shared/contract.js";
 import type { TaskSort } from "../../shared/pagination.js";
 import { isActiveThread } from "../detail/meta.js";
 import {
-  activeTopRows,
   activeWorkLabel,
   childrenByParent,
   childrenForList,
   displayRows,
   formatDueDate,
-  formatElapsed,
   groupTasksByStatus,
   labelFilterOptions,
-  listCounts,
   parentIsOpen,
   partitionLabels,
   selectedLabelIds,
-  subTaskTotals,
   taskMatches,
+  visibleTaskCount,
   visibleChildrenByParent,
   type TaskMatchCriteria,
 } from "./lib.js";
@@ -357,7 +354,11 @@ describe("visible task tree", () => {
       muted: [],
     },
   ])("$name", ({ criteria, sort, rows, childrenOfParent, muted }) => {
-    const display = displayRows(topRows, criteria, all);
+    const display = displayRows(
+      topRows,
+      criteria,
+      visibleChildrenByParent(all, criteria, sort),
+    );
     expect(display.map((task) => task.id)).toEqual(rows);
     expect(display.map((task) => taskMatches(task, criteria))).toEqual(
       rows.map((id) => !muted.includes(id)),
@@ -370,71 +371,33 @@ describe("visible task tree", () => {
   });
 });
 
-describe("list counts", () => {
-  it.each<[string, TaskMatchCriteria, number, number]>([
-    ["counts tasks and sub-tasks separately", criteria(), 2, 3],
+describe("visibleTaskCount", () => {
+  it.each<[string, TaskMatchCriteria, number]>([
+    ["counts parents and sub-tasks together", criteria(), 5],
     [
-      "narrows both counts to matches while searching",
+      "counts only matches while searching, not the muted parent",
       criteria({ search: "palette" }),
-      0,
       1,
     ],
-  ])("%s", (_name, criteria, tasks, subTasks) => {
-    const all = childrenByParent(demoTasks);
-    const display = displayRows([demoParent, demoOther], criteria, all);
-    expect(
-      listCounts(
-        display,
-        criteria,
-        visibleChildrenByParent(all, criteria, "manual"),
-        false,
-      ),
-    ).toEqual({ tasks, subTasks });
+  ])("%s", (_name, criteria, expected) => {
+    const visible = visibleChildrenByParent(
+      childrenByParent(demoTasks),
+      criteria,
+      "manual",
+    );
+    const display = displayRows([demoParent, demoOther], criteria, visible);
+    expect(visibleTaskCount(display, criteria, visible)).toBe(expected);
   });
 });
 
-describe("subTaskTotals", () => {
-  const activeChild = demoTask(6, {
-    parentTaskId: demoParent.id,
-    status: "in_progress",
-  });
-  it.each<[string, Task[], TaskMatchCriteria, { done: number; total: number }]>(
-    [
-      [
-        "excludes canceled sub-tasks from the done/total count",
-        demoTasks.slice(2),
-        criteria(),
-        { done: 1, total: 2 },
-      ],
-      ["returns zero for no sub-tasks", [], criteria(), { done: 0, total: 0 }],
-      [
-        "counts only non-canceled done sub-tasks",
-        [demoChildCanceled, demoChildPalette],
-        criteria(),
-        { done: 1, total: 1 },
-      ],
-      [
-        "counts all non-canceled children in active view",
-        [...demoTasks.slice(2), activeChild],
-        criteria({ activeIds: new Set([activeChild.id]) }),
-        { done: 1, total: 3 },
-      ],
-      [
-        "counts all non-canceled children under a filter",
-        [...demoTasks.slice(2), activeChild],
-        criteria({ search: "palette" }),
-        { done: 1, total: 3 },
-      ],
-    ],
-  )("%s", (_name, children, match, expected) => {
-    const { visible, totals } = childrenForList(
-      childrenByParent(children),
-      match,
+describe("sub-task progress", () => {
+  it("counts every sub-task, including canceled, like the board and detail page", () => {
+    const { totals } = childrenForList(
+      childrenByParent(demoTasks.slice(2)),
+      criteria({ search: "palette" }),
       "manual",
     );
-    if (match.activeIds || match.search)
-      expect(visible.get(demoParent.id)).toHaveLength(1);
-    expect(totals.get(demoParent.id) ?? subTaskTotals([])).toEqual(expected);
+    expect(totals.get(demoParent.id)).toEqual({ done: 1, total: 3 });
   });
 });
 
@@ -454,40 +417,18 @@ describe("active view rows", () => {
       status: "in_progress",
     });
     const idle = demoTask(19, { key: "TSK-19", title: "Idle" });
-    const all = childrenByParent([parent, child, solo, idle]);
-    const active = criteria({
-      activeIds: new Set([child.id, solo.id]),
-    });
-    const rows = displayRows(
-      activeTopRows([child, solo], [parent, child, solo, idle]),
+    const active = criteria({ activeIds: new Set([child.id, solo.id]) });
+    const visible = visibleChildrenByParent(
+      childrenByParent([parent, child, solo, idle]),
       active,
-      all,
+      "manual",
     );
-    expect(rows.map((task) => task.id)).toEqual([solo.id, parent.id]);
+    const rows = displayRows([parent, solo, idle], active, visible);
+    expect(rows.map((task) => task.id)).toEqual([parent.id, solo.id]);
     expect(rows.map((task) => taskMatches(task, active))).toEqual([
-      true,
       false,
+      true,
     ]);
-    expect(
-      listCounts(
-        rows,
-        active,
-        visibleChildrenByParent(all, active, "manual"),
-        true,
-      ),
-    ).toEqual({ tasks: 2, subTasks: 1 });
-  });
-});
-
-describe("formatElapsed", () => {
-  it.each<[string, number, string]>([
-    ["clamps a negative duration to zero", -5, "0s"],
-    ["renders bare seconds under a minute", 59, "59s"],
-    ["renders minutes", 65, "1m 5s"],
-    ["keeps the minute slot at the hour mark", 3605, "1h 0m 5s"],
-    ["renders hours and minutes", 3665, "1h 1m 5s"],
-    ["wraps hours into days", 90065, "1d 1h 1m 5s"],
-  ])("%s", (_name, seconds, expected) => {
-    expect(formatElapsed(seconds)).toBe(expected);
+    expect(visibleTaskCount(rows, active, visible)).toBe(2);
   });
 });

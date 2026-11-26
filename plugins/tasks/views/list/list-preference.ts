@@ -15,11 +15,13 @@ type ListPreferenceScope = "all" | "active" | `project:${string}`;
 export interface ListPreference {
   filters: ListFilterState;
   sort: TaskSort;
+  collapsedTaskIds: string[];
 }
 
 export const DEFAULT_LIST_PREFERENCE: ListPreference = {
   filters: EMPTY_FILTERS,
   sort: "manual",
+  collapsedTaskIds: [],
 };
 
 interface StoredDocumentV1 {
@@ -56,7 +58,7 @@ function uniqueValidValues<T extends string>(
   return result;
 }
 
-function uniqueLabelNames(values: unknown): string[] {
+function uniqueStrings(values: unknown): string[] {
   if (!Array.isArray(values)) return [];
   const seen = new Set<string>();
   const result: string[] = [];
@@ -82,6 +84,7 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
     return {
       filters: { ...EMPTY_FILTERS },
       sort: DEFAULT_LIST_PREFERENCE.sort,
+      collapsedTaskIds: [],
     };
   }
   const record = raw as Record<string, unknown>;
@@ -99,9 +102,10 @@ export function sanitizeListPreference(raw: unknown): ListPreference {
         filtersRaw.priorities,
         PRIORITY_SET,
       ),
-      labelNames: uniqueLabelNames(filtersRaw.labelNames),
+      labelNames: uniqueStrings(filtersRaw.labelNames),
     },
     sort: sanitizeSort(record.sort),
+    collapsedTaskIds: uniqueStrings(record.collapsedTaskIds),
   };
 }
 
@@ -154,6 +158,7 @@ export function loadListPreference(scope: ListPreferenceScope): ListPreference {
     return {
       filters: { ...EMPTY_FILTERS },
       sort: DEFAULT_LIST_PREFERENCE.sort,
+      collapsedTaskIds: [],
     };
   }
   return sanitizeListPreference(document.scopes[scope]);

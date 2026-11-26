@@ -39,14 +39,17 @@ describe("sanitizeListPreference", () => {
     expect(sanitizeListPreference(undefined)).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
+      collapsedTaskIds: [],
     });
     expect(sanitizeListPreference(null)).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
+      collapsedTaskIds: [],
     });
     expect(sanitizeListPreference("nope")).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
+      collapsedTaskIds: [],
     });
   });
 
@@ -59,6 +62,7 @@ describe("sanitizeListPreference", () => {
           labelNames: [" Bug ", "", "Bug", "Feature", 12],
         },
         sort: "priority-please",
+        collapsedTaskIds: [],
       }),
     ).toEqual({
       filters: {
@@ -67,6 +71,7 @@ describe("sanitizeListPreference", () => {
         labelNames: ["Bug", "Feature"],
       },
       sort: "manual",
+      collapsedTaskIds: [],
     });
   });
 
@@ -79,6 +84,7 @@ describe("sanitizeListPreference", () => {
           labelNames: ["infra"],
         },
         sort: "due",
+        collapsedTaskIds: [],
       }),
     ).toEqual({
       filters: {
@@ -87,7 +93,29 @@ describe("sanitizeListPreference", () => {
         labelNames: ["infra"],
       },
       sort: "due",
+      collapsedTaskIds: [],
     });
+  });
+});
+
+describe("collapsed sub-task parents", () => {
+  it("keeps unique task ids and drops anything else", () => {
+    expect(
+      sanitizeListPreference({
+        sort: "manual",
+        collapsedTaskIds: ["task-a", "task-a", "", 3, null, "task-b"],
+      }).collapsedTaskIds,
+    ).toEqual(["task-a", "task-b"]);
+  });
+
+  it("stores collapsed parents per scope beside filters and sort", () => {
+    storeListPreference("all", {
+      filters: { statuses: [], priorities: [], labelNames: [] },
+      sort: "manual",
+      collapsedTaskIds: ["task-a"],
+    });
+    expect(loadListPreference("all").collapsedTaskIds).toEqual(["task-a"]);
+    expect(loadListPreference("active").collapsedTaskIds).toEqual([]);
   });
 });
 
@@ -96,6 +124,7 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { ...DEFAULT_LIST_PREFERENCE.filters },
       sort: "manual",
+      collapsedTaskIds: [],
     });
   });
 
@@ -103,14 +132,17 @@ describe("loadListPreference / storeListPreference", () => {
     storeListPreference("all", {
       filters: { statuses: ["todo"], priorities: [], labelNames: [] },
       sort: "priority",
+      collapsedTaskIds: [],
     });
     storeListPreference("all", {
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
+      collapsedTaskIds: [],
     });
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
+      collapsedTaskIds: [],
     });
   });
 
@@ -132,6 +164,7 @@ describe("loadListPreference / storeListPreference", () => {
           all: {
             filters: { statuses: ["bogus"], priorities: ["high"] },
             sort: "priority",
+            collapsedTaskIds: [],
           },
         },
       }),
@@ -139,6 +172,7 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: [], priorities: ["high"], labelNames: [] },
       sort: "priority",
+      collapsedTaskIds: [],
     });
   });
 
@@ -157,10 +191,12 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: ["todo"], priorities: [], labelNames: [] },
       sort: "due",
+      collapsedTaskIds: [],
     });
     storeListPreference("all", {
       filters: { statuses: ["done"], priorities: [], labelNames: [] },
       sort: "manual",
+      collapsedTaskIds: [],
     });
     expect(storage.getItem(LIST_PREFERENCE_STORAGE_KEY)).toBe(future);
   });
@@ -172,6 +208,7 @@ describe("loadListPreference / storeListPreference", () => {
     expect(loadListPreference("all")).toEqual({
       filters: { statuses: [], priorities: [], labelNames: [] },
       sort: "manual",
+      collapsedTaskIds: [],
     });
   });
 });

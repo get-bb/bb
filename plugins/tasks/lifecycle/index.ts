@@ -11,7 +11,6 @@ import {
 import type { TaskThread, TaskThreadLiveStatus } from "../db";
 import { createSystemComment } from "../delegate";
 import { errorMessage } from "../shared/errors";
-import { TASK_META_TAG } from "../shared/tags";
 
 const TERMINAL_LIVE_STATUSES = new Set<TaskThreadLiveStatus>(["completed"]);
 
@@ -179,21 +178,12 @@ export async function registerLifecycle(
   store: TasksApiStore,
 ): Promise<void> {
   bb.events.on("thread.created", ({ thread }) => {
-    if (thread.parentThreadId !== null)
-      bb.rpc.experimental_invalidate([TASK_META_TAG]);
     transitionTrackedThread(bb, store, thread.id, liveStatusFromThread(thread));
   });
   bb.events.on("thread.active", ({ thread }) => {
-    if (thread.parentThreadId !== null)
-      bb.rpc.experimental_invalidate([TASK_META_TAG]);
     transitionTrackedThread(bb, store, thread.id, "working");
   });
-  bb.events.on("experimental_thread.parentChanged", () => {
-    bb.rpc.experimental_invalidate([TASK_META_TAG]);
-  });
   bb.events.on("experimental_thread.settled", async (event) => {
-    if (event.thread.parentThreadId !== null)
-      bb.rpc.experimental_invalidate([TASK_META_TAG]);
     const liveStatus = await liveStatusFromSettled(bb, store, event);
     if (liveStatus === null) return;
     transitionTrackedThread(bb, store, event.thread.id, liveStatus);

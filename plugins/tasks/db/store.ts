@@ -1748,17 +1748,6 @@ export function createTasksStore(db: PluginDatabase) {
       .map(taskThreadFromRow);
   }
 
-  function listProjectTaskThreads(projectId: string | null): TaskThread[] {
-    return db
-      .prepare<[string | null, string | null], TaskThreadRow>(
-        `SELECT tt.* FROM task_threads tt
-       JOIN tasks t ON t.id = tt.task_id
-       WHERE (? IS NULL OR t.project_id = ?)`,
-      )
-      .all(projectId, projectId)
-      .map(taskThreadFromRow);
-  }
-
   function listTaskCardMeta(projectId: string | null): TaskCardMeta[] {
     const projectClause =
       projectId === null ? "" : "AND t.project_id = @projectId";
@@ -1999,7 +1988,6 @@ export function createTasksStore(db: PluginDatabase) {
     getTaskThreadByThreadId,
     listTaskThreadsByThreadId,
     listTaskThreads,
-    listProjectTaskThreads,
     listTaskCardMeta,
     updateTaskThreadStatus,
     deleteTaskThread,
