@@ -5,15 +5,19 @@ import {
   makeQueueEntry,
   makeThreadResponse,
 } from "@get-bb/plugin-sdk/testing";
-import { afterEach, describe, expect, it } from "vitest";
+import Ajv from "ajv";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  createRun,
   getCall,
   getCallByChildThread,
   getRunRequired,
   migrations,
+  startCall,
 } from "./data.js";
 import plugin from "./server.js";
 import { createWorkflowService } from "./service.js";
+import { DEFAULT_WORKFLOW_SETTINGS } from "./settings.js";
 
 async function eventually(
   assertion: () => void | Promise<void>,
@@ -94,6 +98,92 @@ describe("workflows plugin", () => {
     expect(
       run?.parse({ name: "demo", args: { nested: [1, { deep: null }] } }),
     ).toMatchObject({ ok: true });
+  });
+
+  it("builds run views without compiling stored or source schemas", async () => {
+    const { bb, harness } = createFakePluginHost({ pluginId: "workflows" });
+    hosts.push(harness);
+    await plugin(bb);
+    const db = bb.storage.database();
+    const schema = {
+      type: "object",
+      required: ["answer"],
+      properties: { answer: { type: "number" } },
+    };
+    const run = createRun(db, {
+      projectId: "project-test",
+      originThreadId: "thread-test",
+      environmentId: "environment-1",
+      originProvider: "codex",
+      originModel: "gpt-test",
+      originReasoningLevel: "medium",
+      originPermissionMode: "full",
+      name: "schema-view",
+      source: `export const meta = {
+      name: "schema-view",
+      description: "Schema view test",
+      phases: [{ title: "Solve" }],
+      outputSchema: ${JSON.stringify(schema)},
+    };
+    phase("Solve");
+    return await agent("Find the answer", {
+      title: "Solve",
+      outputSchema: ${JSON.stringify(schema)},
+    });`,
+      sourceHash: "hash",
+      argsJson: "null",
+      settingsJson: JSON.stringify(DEFAULT_WORKFLOW_SETTINGS),
+      resumedFromRunId: null,
+    });
+    db.prepare("UPDATE workflow_runs SET status = 'running' WHERE id = ?").run(
+      run.id,
+    );
+    for (let callIndex = 0; callIndex < 50; callIndex += 1) {
+      startCall(db, {
+        runId: run.id,
+        callIndex,
+        cacheKey: `cache-${callIndex}`,
+        prompt: "Find the answer",
+        options: {
+          selection: null,
+          outputSchema: schema,
+          title: `Solve ${callIndex}`,
+          phase: "Solve",
+        },
+        selection: {
+          providerId: "codex",
+          model: "gpt-test",
+          reasoningLevel: "medium",
+          permissionMode: "full",
+        },
+        replay: null,
+      });
+    }
+
+    const compile = vi.spyOn(Ajv.prototype, "compile");
+    try {
+      const view = await harness.callRpc("workflowRunView", {
+        threadId: "thread-test",
+        runId: run.id,
+      });
+      const active = await harness.callRpc("workflowActiveRuns", {
+        threadId: "thread-test",
+      });
+      expect(compile).not.toHaveBeenCalled();
+      expect(view).toMatchObject({
+        run: {
+          description: "Schema view test",
+          phases: [{ title: "Solve", detail: null }],
+        },
+      });
+      expect(
+        (view as { run: { phases: Array<{ calls: unknown[] }> } }).run.phases[0]
+          ?.calls,
+      ).toHaveLength(50);
+      expect(active).toMatchObject({ runs: [{ id: run.id }] });
+    } finally {
+      compile.mockRestore();
+    }
   });
 
   it(
