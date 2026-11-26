@@ -1088,7 +1088,11 @@ export function ModelReasoningPicker({
         <ResetBrowseStateOnContentUnmount onReset={resetBrowseState} />
         {handoffMode ? <HandoffModeHeader onBack={exitHandoffMode} /> : null}
         {showProviderTabs ? (
-          <div className="flex shrink-0 items-center gap-0.5 border-b border-border bg-background px-2.5 pt-1">
+          <div
+            role="group"
+            aria-label="Providers"
+            className="flex shrink-0 items-center gap-0.5 border-b border-border bg-background px-2.5 pt-1"
+          >
             {providerOptions.map((provider) => {
               const TabIcon = provider.icon;
               const isActive = provider.value === activeProviderId;
@@ -1105,6 +1109,7 @@ export function ModelReasoningPicker({
                       ? `${provider.label} (current thread)`
                       : provider.label
                   }
+                  aria-pressed={isActive}
                   onMouseDown={(event) => event.preventDefault()}
                   onPointerEnter={() => prefetchProviderTab(provider.value)}
                   onFocus={() => prefetchProviderTab(provider.value)}
@@ -1115,7 +1120,7 @@ export function ModelReasoningPicker({
                     handleProviderSelect(provider.value);
                   }}
                   className={cn(
-                    "flex items-center justify-center border-b-2 focus-visible:outline-none",
+                    "flex items-center justify-center border-b-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset",
                     LIST_HOVER_TRANSITION,
                     COARSE_POINTER_PROVIDER_TAB_SIZE_CLASS,
                     isActive
@@ -1139,6 +1144,12 @@ export function ModelReasoningPicker({
               );
             })}
           </div>
+        ) : null}
+
+        {showProviderTabs ? (
+          <h3 className="shrink-0 px-3 pt-2 text-xs font-medium text-muted-foreground">
+            {activeProviderLabel}
+          </h3>
         ) : null}
 
         {showSearchInput ? (
