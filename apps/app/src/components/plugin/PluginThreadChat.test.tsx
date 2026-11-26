@@ -328,9 +328,10 @@ describe("PluginThreadChat", () => {
     });
   });
 
-  it("forwards leadingContent and maps messageActions to consumer actions", async () => {
+  it("keeps running a retired messageActions list as instance message actions and warns once", async () => {
     const { wrapper: Wrapper } = createQueryClientTestHarness();
     const run = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(
       <Wrapper>
         <MemoryRouter>
@@ -349,20 +350,26 @@ describe("PluginThreadChat", () => {
       unknown
     >;
     expect(timelineHost.leadingContent).toBeTruthy();
-    const actions = timelineHost.consumerMessageActions as Array<
+    const actions = timelineHost.instanceMessageActions as Array<
       Record<string, unknown>
     >;
     expect(actions).toHaveLength(1);
     expect(actions[0]).toEqual(
       expect.objectContaining({
-        id: "send-to-main",
-        pluginId: null,
+        id: "thread-chat/send-to-main",
+        pluginId: "demo",
         icon: "ArrowTurnBackward",
-        label: "Send to main thread",
-        roles: ["assistant"],
-        run,
+        title: "Send to main thread",
+        experimental_roles: ["assistant"],
+        experimental_placements: ["inline"],
       }),
     );
+    const retiredWarnings = warn.mock.calls.filter(([message]) =>
+      String(message).includes('ThreadChat "messageActions" is retired'),
+    );
+    expect(retiredWarnings).toHaveLength(1);
+    expect(String(retiredWarnings[0]![0])).toContain("[plugin:demo]");
+    warn.mockRestore();
   });
 
   it("maps variant full to the page measure and forwards focus requests", async () => {

@@ -12,8 +12,8 @@ import { MessageActionSurfaceProvider } from "@/lib/message-action-surface";
 import { nanoid } from "nanoid";
 import { defaultAppSettings, type Environment } from "@bb/domain";
 import type { ThreadResponse, TimelineRow } from "@bb/server-contract";
+import { appendQuoteAndAttachmentsToDraft } from "@get-bb/plugin-sdk/internal/composer-handle";
 import {
-  appendQuoteAndAttachmentsToDraft,
   arePromptDraftStatesEqual,
   isPromptDraftEmpty,
   promptInputToDraft,
@@ -28,10 +28,8 @@ import {
   isRunningThreadRuntimeDisplayStatus,
   ThreadTimelineSurface,
   type ThreadTimelineAddToChatHandler,
-  type ThreadTimelineConsumerMessageAction,
   type ThreadTimelineEditMessageHandler,
   type ThreadTimelineEditMessageTarget,
-  type ThreadTimelineForkMessageHandler,
   type ThreadTimelineInlineMessageEditor,
   type ThreadTimelineUnreadDividerPlacement,
   type TimelineTitleActionResolver,
@@ -89,6 +87,7 @@ import {
   type ThreadDetailSentMessageEdit,
 } from "./ThreadDetailPromptArea";
 import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
+import type { PluginMessageActionSlot } from "@/lib/plugin-slots";
 
 const THREAD_DETAIL_COMPOSER_ID = "thread-detail-follow-up-composer";
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
@@ -105,11 +104,11 @@ export type ThreadScreenPresentation =
   | { kind: "transcript"; layout: "contained" | "document" };
 
 export interface ThreadScreenTimelineHost {
-  consumerMessageActions: readonly ThreadTimelineConsumerMessageAction[];
+  instanceMessageActions: readonly PluginMessageActionSlot[];
   environmentHostName: string | null;
   leadingContent: ReactNode;
   messageActionSurface: ExperimentalMessageActionSurface;
-  onForkMessage: ThreadTimelineForkMessageHandler | null;
+  canFork: boolean;
   onTitleAction: TimelineTitleActionResolver | null;
   unreadDividerAutoScroll: boolean;
   unreadDividerPlacement: ThreadTimelineUnreadDividerPlacement | null;
@@ -612,12 +611,10 @@ export function ThreadScreen({
             isPanelPresentation ? "mx-2 mt-4 text-destructive" : undefined
           }
           leadingContent={timelineHost.leadingContent}
-          consumerMessageActions={timelineHost.consumerMessageActions}
-          onForkMessage={timelineHost.onForkMessage ?? undefined}
+          instanceMessageActions={timelineHost.instanceMessageActions}
+          canFork={timelineHost.canFork}
           onEditMessage={handleEditSentMessage}
           inlineMessageEditor={inlineMessageEditor}
-          onMessageAddToChat={selectionAddToChat}
-          onSelectionAddToChat={selectionAddToChat}
           onLoadOlderRows={timeline.loadOlderTimelineRows}
           onTitleAction={timelineHost.onTitleAction ?? undefined}
           projectId={projectId}

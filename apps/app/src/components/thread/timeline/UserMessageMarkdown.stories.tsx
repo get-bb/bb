@@ -1,4 +1,6 @@
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
+import { useStoryMessageActions } from "@/components/thread/timeline/story-message-actions";
+import type { PluginComposerHost } from "@/components/plugin/plugin-composer-host";
 import type { TimelineConversationTurnRequest } from "@bb/server-contract";
 import type { ReactNode } from "react";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
@@ -50,14 +52,19 @@ function mentionAt(
 function UserMessage({
   text,
   mentions = [],
-  onAddToChat,
+  composerHost,
   revealMessageActions = false,
 }: {
   text: string;
   mentions?: readonly PromptTextMention[];
-  onAddToChat?: (text: string) => void;
+  composerHost?: PluginComposerHost;
   revealMessageActions?: boolean;
 }) {
+  const actions = useStoryMessageActions({
+    role: "user",
+    text,
+    ...(composerHost === undefined ? {} : { composerHost }),
+  });
   return (
     <TimelineStage revealMessageActions={revealMessageActions}>
       <ConversationMessageContent
@@ -67,7 +74,7 @@ function UserMessage({
         senderThreadTitle={null}
         senderIsPluginSideChat={false}
         resolveMentionLink={resolveMentionLink}
-        onAddToChat={onAddToChat}
+        actions={actions}
         systemMessageKind="unlabeled"
         systemMessageSubject={null}
         text={text}
@@ -142,7 +149,6 @@ const LONG_BODY = [
 
 export function Overview() {
   const promptDraft = useStoryPromptDraft();
-  const handleAddToChat = promptDraft.addQuote;
 
   return (
     <StoryCard>
@@ -150,7 +156,10 @@ export function Overview() {
         label="formatting (hover)"
         hint="production behavior — hover or focus the message to reveal actions"
       >
-        <UserMessage text={FORMATTING_BODY} onAddToChat={handleAddToChat} />
+        <UserMessage
+          text={FORMATTING_BODY}
+          composerHost={promptDraft.composerHost}
+        />
       </StoryRow>
       <StoryRow
         label="mentions"
@@ -159,7 +168,7 @@ export function Overview() {
         <UserMessage
           text={MENTIONS_BODY}
           mentions={MENTIONS}
-          onAddToChat={handleAddToChat}
+          composerHost={promptDraft.composerHost}
           revealMessageActions
         />
       </StoryRow>
@@ -169,7 +178,7 @@ export function Overview() {
       >
         <UserMessage
           text={QUOTE_BODY}
-          onAddToChat={handleAddToChat}
+          composerHost={promptDraft.composerHost}
           revealMessageActions
         />
       </StoryRow>
@@ -179,7 +188,7 @@ export function Overview() {
       >
         <UserMessage
           text={LONG_BODY}
-          onAddToChat={handleAddToChat}
+          composerHost={promptDraft.composerHost}
           revealMessageActions
         />
       </StoryRow>

@@ -15,16 +15,14 @@ import {
 import { ThreadTimelineLoadingSkeleton } from "./ThreadTimelineLoadingSkeleton.js";
 import { ThreadTimelineRows } from "./ThreadTimelineRows.js";
 import { useAutoLoadOlderRows } from "./useAutoLoadOlderRows.js";
+import type { PluginMessageActionSlot } from "@/lib/plugin-slots";
 import { TimelineStatusIndicator } from "./TimelineStatusIndicator.js";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
 import { TimelineReasoningExpansionProvider } from "./TimelineReasoningExpansion.js";
 import { TimelineWorkingIndicator } from "./TimelineWorkingIndicator.js";
 import type {
-  ThreadTimelineForkMessageHandler,
   ThreadTimelineEditMessageHandler,
   ThreadTimelineInlineMessageEditor,
-  ThreadTimelineAddToChatHandler,
-  ThreadTimelineConsumerMessageAction,
   ThreadTimelineUnreadDividerPlacement,
 } from "./types.js";
 
@@ -44,12 +42,10 @@ export interface ThreadTimelineSurfaceProps {
   timelineError: boolean;
   loadingContent?: ReactNode;
   leadingContent?: ReactNode;
-  onForkMessage?: ThreadTimelineForkMessageHandler;
+  canFork?: boolean;
   onEditMessage?: ThreadTimelineEditMessageHandler;
   inlineMessageEditor?: ThreadTimelineInlineMessageEditor;
-  onMessageAddToChat?: ThreadTimelineAddToChatHandler;
-  onSelectionAddToChat?: ThreadTimelineAddToChatHandler;
-  consumerMessageActions?: readonly ThreadTimelineConsumerMessageAction[];
+  instanceMessageActions?: readonly PluginMessageActionSlot[];
   onLoadOlderRows?: () => Promise<void> | void;
   onTitleAction?: TimelineTitleActionResolver;
   projectId?: string;
@@ -139,12 +135,10 @@ export function ThreadTimelineSurface({
   timelineError,
   loadingContent,
   leadingContent,
-  onForkMessage,
+  canFork,
   onEditMessage,
   inlineMessageEditor,
-  onMessageAddToChat,
-  onSelectionAddToChat,
-  consumerMessageActions,
+  instanceMessageActions,
   onLoadOlderRows,
   onTitleAction,
   projectId,
@@ -217,12 +211,10 @@ export function ThreadTimelineSurface({
         ) : timelineRowsWithPendingStop.length > 0 ? (
           <ThreadTimelineRows
             canSpawnChild={canSpawnChild}
-            onForkMessage={onForkMessage}
+            canFork={canFork}
             onEditMessage={onEditMessage}
             inlineMessageEditor={inlineMessageEditor}
-            onMessageAddToChat={onMessageAddToChat}
-            onSelectionAddToChat={onSelectionAddToChat}
-            consumerMessageActions={consumerMessageActions}
+            instanceMessageActions={instanceMessageActions}
             onTitleAction={onTitleAction}
             projectId={projectId}
             resolveMentionLink={resolveMentionLink}

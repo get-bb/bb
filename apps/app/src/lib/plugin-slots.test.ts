@@ -159,6 +159,8 @@ describe("plugin slot store structural sharing", () => {
             id: "copy",
             title: "copy",
             experimental_surfaces: ["thread-view", "embedded-chat"],
+            experimental_roles: ["user", "assistant"],
+            experimental_placements: ["inline", "selection"],
             run: () => {},
           },
         ],
@@ -209,6 +211,8 @@ describe("plugin slot store structural sharing", () => {
             id: "a-copy",
             title: "a-copy",
             experimental_surfaces: ["thread-view", "embedded-chat"],
+            experimental_roles: ["user", "assistant"],
+            experimental_placements: ["inline", "selection"],
             run: () => {},
           },
         ],
@@ -247,6 +251,8 @@ describe("plugin slot batches", () => {
             id: "a",
             title: "a",
             experimental_surfaces: ["thread-view", "embedded-chat"],
+            experimental_roles: ["user", "assistant"],
+            experimental_placements: ["inline", "selection"],
             run: () => {},
           },
         ],
@@ -260,16 +266,19 @@ describe("plugin slot batches", () => {
             id: "b",
             title: "b",
             experimental_surfaces: ["thread-view", "embedded-chat"],
+            experimental_roles: ["user", "assistant"],
+            experimental_placements: ["inline", "selection"],
             run: () => {},
           },
         ],
       }),
     );
     expect(listener).not.toHaveBeenCalled();
-    expect(getPluginSlotSnapshot().messageActions.map((a) => a.id)).toEqual([
-      "a",
-      "b",
-    ]);
+    expect(
+      getPluginSlotSnapshot()
+        .messageActions.filter((action) => action.pluginId !== "bb--core")
+        .map((action) => action.id),
+    ).toEqual(["a", "b"]);
     close();
     expect(listener).toHaveBeenCalledTimes(1);
     close();
@@ -291,6 +300,8 @@ describe("plugin slot batches", () => {
               id: "fast",
               title: "fast",
               experimental_surfaces: ["thread-view", "embedded-chat"],
+              experimental_roles: ["user", "assistant"],
+              experimental_placements: ["inline", "selection"],
               run: () => {},
             },
           ],

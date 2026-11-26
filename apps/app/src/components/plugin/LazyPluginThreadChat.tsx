@@ -1,9 +1,9 @@
-import type { ThreadChatProps } from "@get-bb/plugin-sdk";
+import type { PluginThreadChatProps } from "./PluginThreadChat";
 import { cn } from "@bb/shared-ui/lib/utils";
 import { defineSplit } from "@/lib/define-split";
 import { ThreadChatLoadingBody } from "@/components/thread/timeline/ThreadChatLoading";
 
-export const LazyPluginThreadChat = defineSplit<ThreadChatProps>({
+export const LazyPluginThreadChat = defineSplit<PluginThreadChatProps>({
   id: "plugin-thread-chat",
   tier: "intent",
   load: () =>

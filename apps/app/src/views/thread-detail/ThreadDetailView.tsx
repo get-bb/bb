@@ -29,8 +29,6 @@ import { useImmediateRouteNavigate } from "@/components/ui/app-route-anchor";
 import { useAtom } from "jotai";
 import { useDesktopBrowserReveal } from "@/lib/use-desktop-browser-reveal";
 import {
-  type ThreadTimelineConsumerMessageAction,
-  type ThreadTimelineForkMessageHandler,
   type ThreadTimelineLinkHandler,
   type ThreadTimelineLocalFileLink,
 } from "@/components/thread/timeline";
@@ -43,7 +41,6 @@ import {
   PluginDetailTabContent,
   usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
-import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useEnvironment } from "../../hooks/queries/environment-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { PageShell } from "@/components/ui/page-shell.js";
@@ -132,7 +129,10 @@ import {
   type OpenAttachmentRequest,
 } from "@/components/secondary-panel/AttachmentOpenerContext";
 import { SelectionAddToChatContext } from "@/components/thread/SelectionAddToChatContext";
-import { usePluginSlotKind } from "@/lib/plugin-slots";
+import {
+  usePluginSlotKind,
+  type PluginMessageActionSlot,
+} from "@/lib/plugin-slots";
 import { getFileExtension } from "@/lib/plugin-slot-resolvers";
 import { Icon } from "@bb/shared-ui/icon";
 import { getBbDesktopInfo, isDesktopBrowserAvailable } from "@/lib/bb-desktop";
@@ -196,8 +196,7 @@ import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const THREAD_HEADER_ACTIONS_GROUP = "0_header";
 const THREAD_DETAIL_SCREEN_PRESENTATION = { kind: "page" } as const;
-const NO_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
-  [];
+const NO_INSTANCE_MESSAGE_ACTIONS: readonly PluginMessageActionSlot[] = [];
 
 type OpenFilePreviewHandler = (relativePath: string) => void;
 
@@ -540,16 +539,6 @@ function ThreadDetailViewInternal(
   )
     ? resolvedThreadEnvironmentHost
     : null;
-  const forkThreadFromMessage = useForkThreadFromMessage({
-    navigateInPane,
-    sourceThread: thread ?? null,
-  });
-  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
-    (target) => {
-      void forkThreadFromMessage(target);
-    },
-    [forkThreadFromMessage],
-  );
   const threadProviderInfo = useSystemProviderInfo(
     thread?.environmentId
       ? {
@@ -1395,10 +1384,10 @@ function ThreadDetailViewInternal(
       timelineEnabled={timelineEnabled}
       timelineHost={{
         environmentHostName: threadEnvironmentHost?.name ?? null,
-        consumerMessageActions: NO_CONSUMER_MESSAGE_ACTIONS,
+        instanceMessageActions: NO_INSTANCE_MESSAGE_ACTIONS,
         leadingContent: null,
         messageActionSurface: "thread-view",
-        onForkMessage: isForkAvailable ? handleForkMessage : null,
+        canFork: isForkAvailable,
         onTitleAction: handleTimelineTitleAction,
         unreadDividerAutoScroll: unreadDividerState.autoScroll,
         unreadDividerPlacement: unreadDividerState.placement,

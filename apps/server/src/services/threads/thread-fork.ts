@@ -4,8 +4,10 @@ import type { PromptInput, Thread } from "@bb/domain";
 import type { ForkThreadRequest } from "@bb/server-contract";
 import type { LoggedPendingInteractionWorkSessionDeps } from "../../types.js";
 import { ApiError } from "../../errors.js";
-import { resolveExistingThreadPermissionMode } from "./thread-execution-plan.js";
-import { getLastExecutionOptions } from "./thread-events.js";
+import {
+  resolveExistingThreadPermissionMode,
+  tryResolveExistingThreadExecutionPlan,
+} from "./thread-execution-plan.js";
 import { createThreadFromRequest } from "./thread-create.js";
 
 type ThreadForkDeps = LoggedPendingInteractionWorkSessionDeps;
@@ -66,7 +68,14 @@ export async function createThreadForkFromRequest(
   const sourceThread = requireForkSourceThread(deps, request.sourceThreadId);
   requireForkCapableProvider(deps, sourceThread);
   const sourceEnvironment = requireSourceEnvironment(deps, sourceThread);
-  const sourceExecution = getLastExecutionOptions(deps, sourceThread.id);
+  const sourceExecution =
+    (
+      await tryResolveExistingThreadExecutionPlan(deps, {
+        executionSource: "client/thread/start",
+        input: {},
+        threadId: sourceThread.id,
+      })
+    )?.resolvedExecution ?? null;
   const visibleInput = request.input ?? [];
   const agentContextSeed = request.agentContextSeed ?? [];
   const input: PromptInput[] = [...agentContextSeed, ...visibleInput];
@@ -91,6 +100,7 @@ export async function createThreadForkFromRequest(
       originKind: "fork",
       permissionMode:
         request.permissionMode ??
+        sourceExecution?.permissionMode ??
         resolveExistingThreadPermissionMode(deps, sourceThread.id),
       ...(sourceExecution?.model ? { model: sourceExecution.model } : {}),
       ...(sourceExecution?.reasoningLevel
@@ -101,6 +111,8 @@ export async function createThreadForkFromRequest(
         : {}),
       projectId: sourceThread.projectId,
       providerId: sourceThread.providerId,
+      sectionId: sourceThread.sectionId,
+      pinned: sourceThread.pinnedAt !== null,
       ...(request.sourceSeqEnd === undefined
         ? {}
         : { sourceSeqEnd: request.sourceSeqEnd }),

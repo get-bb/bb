@@ -1,6 +1,9 @@
 import type { TimelineRow } from "@bb/server-contract";
+import { StoryConversationMessage } from "@/components/thread/timeline/story-message-actions";
 import { ConversationMessageContent } from "@/components/thread/timeline/ConversationMessageContent";
 import { ThreadTimelineRows } from "@/components/thread/timeline/ThreadTimelineRows";
+import { PluginComposerHostProvider } from "@/components/plugin/plugin-composer-host";
+import { useStoryPromptDraft } from "@/components/thread/timeline/StoryDraftPromptBox";
 import { PAGE_SHELL_CONTENT_STYLE } from "@/components/ui/page-shell-content-style";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { StoryCard, StoryRow } from "../../../../../.ladle/story-card";
@@ -227,35 +230,30 @@ export function Overview() {
 const overflowStoryPluginActions = [
   {
     key: "story/summarize",
-    pluginId: null,
     icon: "Sparkles",
     label: "Summarize",
     onSelect: noop,
   },
   {
     key: "story/translate",
-    pluginId: null,
     icon: "Globe",
     label: "Translate",
     onSelect: noop,
   },
   {
     key: "story/save",
-    pluginId: null,
     icon: "Bookmark",
     label: "Save to notes",
     onSelect: noop,
   },
   {
     key: "story/pin",
-    pluginId: null,
     icon: "Pin",
     label: "Pin message",
     onSelect: noop,
   },
   {
     key: "story/share",
-    pluginId: null,
     icon: "Share",
     label: "Share",
     onSelect: noop,
@@ -263,6 +261,7 @@ const overflowStoryPluginActions = [
 ];
 
 export function ActionOverflow() {
+  const promptDraft = useStoryPromptDraft();
   return (
     <StoryCard>
       <StoryRow
@@ -271,7 +270,7 @@ export function ActionOverflow() {
       >
         <TimelineStage>
           <div className="[&_button]:opacity-100">
-            <ConversationMessageContent
+            <StoryConversationMessage
               role="assistant"
               id="row_story_overflow_wide"
               threadId="thr_story"
@@ -282,8 +281,8 @@ export function ActionOverflow() {
               mobileActionDisplay="inline"
               streaming={false}
               timestamp={0}
-              onAddToChat={noop}
-              onFork={noop}
+              composerHost={promptDraft.composerHost}
+              canFork
               pluginActions={overflowStoryPluginActions}
             />
           </div>
@@ -294,7 +293,7 @@ export function ActionOverflow() {
         hint="a 160px column collapses trailing actions into the overflow menu"
       >
         <div className="w-[160px] [&_button]:opacity-100">
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="assistant"
             id="row_story_overflow_narrow"
             threadId="thr_story"
@@ -305,8 +304,8 @@ export function ActionOverflow() {
             mobileActionDisplay="inline"
             streaming={false}
             timestamp={0}
-            onAddToChat={noop}
-            onFork={noop}
+            composerHost={promptDraft.composerHost}
+            canFork
             pluginActions={overflowStoryPluginActions}
           />
         </div>
@@ -316,6 +315,7 @@ export function ActionOverflow() {
 }
 
 export function MobileActionsAndSelection() {
+  const promptDraft = useStoryPromptDraft(MOBILE_REVIEW_THREAD_ID);
   return (
     <div className="mx-auto w-full max-w-[390px] rounded-lg border border-border bg-background p-4">
       <p className="mb-4 text-xs leading-relaxed text-muted-foreground">
@@ -325,14 +325,15 @@ export function MobileActionsAndSelection() {
         a mouse or long-press agent text on touch to exercise the floating
         selection menu.
       </p>
-      <ThreadTimelineRows
-        canSpawnChild
-        onForkMessage={noop}
-        onSelectionAddToChat={noop}
-        threadId={MOBILE_REVIEW_THREAD_ID}
-        threadRuntimeDisplayStatus="idle"
-        timelineRows={mobileReviewRows}
-      />
+      <PluginComposerHostProvider value={promptDraft.composerHost}>
+        <ThreadTimelineRows
+          canSpawnChild
+          canFork
+          threadId={MOBILE_REVIEW_THREAD_ID}
+          threadRuntimeDisplayStatus="idle"
+          timelineRows={mobileReviewRows}
+        />
+      </PluginComposerHostProvider>
     </div>
   );
 }

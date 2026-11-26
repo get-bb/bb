@@ -1,6 +1,7 @@
 export { definePluginApp } from "@/lib/plugin-app-definition";
 export { lazyComponent as experimental_lazy } from "@/lib/lazy-component";
 export { copyToClipboard as experimental_copyToClipboard } from "@/lib/clipboard";
+export { appendQuoteToComposerDraft as experimental_appendQuoteToDraft } from "@get-bb/plugin-sdk/internal/composer-handle";
 export { showMutationErrorToast as experimental_showErrorToast } from "@/lib/mutation-errors";
 export { useThreadContextKind as experimental_useThreadContextKind } from "@/components/plugin/thread-context-card-pane";
 export {

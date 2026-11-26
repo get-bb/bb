@@ -30,10 +30,7 @@ import {
   parseAutomationDueMessage,
 } from "@bb/client-core";
 import type { TimelineTitleActionResolver } from "./TimelineTitleView.js";
-import type {
-  ThreadTimelineAddToChatHandler,
-  UserAttachmentImageSrcResolver,
-} from "./types.js";
+import type { UserAttachmentImageSrcResolver } from "./types.js";
 import {
   ConversationAttachments,
   buildAttachmentItems,
@@ -73,7 +70,7 @@ import {
   SelectableMessageProse,
   type MessageProseSelection,
 } from "./SelectableMessageProse.js";
-import type { ThreadTimelinePluginMessageAction } from "./types.js";
+import type { ThreadTimelineMessageAction } from "./types.js";
 import type { PromptDraftAttachment } from "@bb/client-core";
 import {
   useMessageLinkRouting,
@@ -84,8 +81,7 @@ import { markStreamTrace } from "@/lib/stream-trace";
 interface ConversationMessageContentBaseProps {
   actionMetadata?: ReactNode;
   attachments: TimelineConversationAttachments | null;
-  onCopyLink?: () => void;
-  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
+  actions?: readonly ThreadTimelineMessageAction[];
   projectId?: string;
   resolveUserAttachmentImageSrc?: UserAttachmentImageSrcResolver;
   text: string;
@@ -97,8 +93,6 @@ interface ConversationMessageContentUserProps extends ConversationMessageContent
   mobileActionDisplay?: "inline" | "overflow";
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
-  onAddToChat?: ThreadTimelineAddToChatHandler;
-  onEdit?: () => void;
   resolveMentionLink?: PromptMentionLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
   senderThreadId: TimelineUserConversationRow["senderThreadId"];
@@ -130,9 +124,6 @@ const STREAMING_TAIL_MARKDOWN_CLASS_NAME =
 interface ConversationMessageContentAssistantProps
   extends ConversationMessageContentBaseProps, AssistantMessageRowIdentity {
   role: "assistant";
-  onAddToChat?: ThreadTimelineAddToChatHandler;
-  onFork?: () => void;
-  forkDisabled?: boolean;
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   showActions: boolean;
   mobileActionDisplay: "inline" | "overflow";
@@ -145,15 +136,11 @@ type ConversationMessageContentProps =
 
 interface UserConversationMessageProps {
   actionMetadata?: ReactNode;
-  addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
-  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
+  actions: readonly ThreadTimelineMessageAction[];
   initiator: TimelineUserConversationRow["initiator"];
   mentions: readonly PromptTextMention[];
   mobileActionDisplay: "inline" | "overflow";
-  onAddToChat?: ThreadTimelineAddToChatHandler;
-  onCopyLink?: () => void;
-  onEdit?: () => void;
   projectId?: string;
   resolveMentionLink?: PromptMentionLinkResolver;
   onTitleAction?: TimelineTitleActionResolver;
@@ -171,13 +158,8 @@ interface UserConversationMessageProps {
 
 interface AssistantConversationMessageProps extends AssistantMessageRowIdentity {
   actionMetadata?: ReactNode;
-  addToChatAttachments: readonly PromptDraftAttachment[];
   attachmentItems: ConversationAttachmentItems;
-  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
-  onAddToChat?: ThreadTimelineAddToChatHandler;
-  onCopyLink?: () => void;
-  onFork?: () => void;
-  forkDisabled?: boolean;
+  actions: readonly ThreadTimelineMessageAction[];
   onSelectProse?: (selection: MessageProseSelection | null) => void;
   projectId?: string;
   showActions: boolean;
@@ -296,7 +278,9 @@ function CollapsibleMessageText({
   );
 }
 
-function buildAddToChatAttachments(
+const NO_MESSAGE_ACTIONS: readonly ThreadTimelineMessageAction[] = [];
+
+export function buildAddToChatAttachments(
   attachments: TimelineConversationAttachments | null,
 ): PromptDraftAttachment[] {
   if (!attachments) {
@@ -325,15 +309,11 @@ function buildAddToChatAttachments(
 
 function UserConversationMessage({
   actionMetadata,
-  addToChatAttachments,
   attachmentItems,
+  actions,
   initiator,
   mentions,
   mobileActionDisplay,
-  onAddToChat,
-  onCopyLink,
-  onEdit,
-  pluginActions = [],
   projectId,
   resolveMentionLink,
   onTitleAction,
@@ -453,19 +433,9 @@ function UserConversationMessage({
           </div>
           <MessageActionBar
             timestamp={timestamp}
-            messageText={messageText}
             alignment="end"
             mobileActionDisplay={mobileActionDisplay}
-            addToChatAttachments={addToChatAttachments}
-            copyImageUrl={
-              attachmentItems.imageItems.find(
-                (item) => item.mediaType !== "video",
-              )?.src
-            }
-            onAddToChat={onAddToChat}
-            onCopyLink={onCopyLink}
-            onEdit={onEdit}
-            pluginActions={pluginActions}
+            actions={actions}
             metadata={actionMetadata}
           />
         </div>
@@ -476,15 +446,10 @@ function UserConversationMessage({
 
 function AssistantConversationMessage({
   actionMetadata,
-  addToChatAttachments,
   attachmentItems,
+  actions,
   id,
-  onAddToChat,
-  onCopyLink,
-  onFork,
-  forkDisabled,
   onSelectProse,
-  pluginActions,
   projectId,
   showActions,
   mobileActionDisplay,
@@ -597,20 +562,9 @@ function AssistantConversationMessage({
       {showActions ? (
         <MessageActionBar
           timestamp={timestamp}
-          messageText={text}
           alignment="start"
           mobileActionDisplay={mobileActionDisplay}
-          addToChatAttachments={addToChatAttachments}
-          copyImageUrl={
-            attachmentItems.imageItems.find(
-              (item) => item.mediaType !== "video",
-            )?.src
-          }
-          onAddToChat={onAddToChat}
-          onCopyLink={onCopyLink}
-          onFork={onFork}
-          disabled={forkDisabled}
-          pluginActions={pluginActions}
+          actions={actions}
           metadata={actionMetadata}
         />
       ) : null}
@@ -631,24 +585,15 @@ export function ConversationMessageContent(
       }),
     [attachments, projectId, resolveUserAttachmentImageSrc],
   );
-  const addToChatAttachments = useMemo(
-    () => buildAddToChatAttachments(attachments),
-    [attachments],
-  );
-
   if (props.role === "user") {
     return (
       <UserConversationMessage
         actionMetadata={props.actionMetadata}
-        addToChatAttachments={addToChatAttachments}
         attachmentItems={attachmentItems}
-        pluginActions={props.pluginActions}
+        actions={props.actions ?? NO_MESSAGE_ACTIONS}
         initiator={props.initiator}
         mentions={props.mentions}
         mobileActionDisplay={props.mobileActionDisplay ?? "overflow"}
-        onAddToChat={props.onAddToChat}
-        onCopyLink={props.onCopyLink}
-        onEdit={props.onEdit}
         projectId={projectId}
         resolveMentionLink={props.resolveMentionLink}
         onTitleAction={props.onTitleAction}
@@ -669,14 +614,9 @@ export function ConversationMessageContent(
   return (
     <AssistantConversationMessage
       actionMetadata={props.actionMetadata}
-      addToChatAttachments={addToChatAttachments}
       attachmentItems={attachmentItems}
+      actions={props.actions ?? NO_MESSAGE_ACTIONS}
       id={props.id}
-      pluginActions={props.pluginActions}
-      onAddToChat={props.onAddToChat}
-      onCopyLink={props.onCopyLink}
-      onFork={props.onFork}
-      forkDisabled={props.forkDisabled}
       onSelectProse={props.onSelectProse}
       projectId={projectId}
       showActions={props.showActions}

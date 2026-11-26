@@ -862,6 +862,8 @@ describe("collectPluginAppRegistrations", () => {
         title: "Summarize",
         icon: "Zap",
         experimental_surfaces: ["thread-view", "embedded-chat"],
+        experimental_roles: ["user", "assistant"],
+        experimental_placements: ["inline", "selection"],
         run,
       },
     ]);

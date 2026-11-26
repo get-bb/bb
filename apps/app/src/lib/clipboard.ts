@@ -59,6 +59,7 @@ async function fetchClipboardImage(imageUrl: string): Promise<Blob> {
 export interface ClipboardContent {
   text: string;
   html?: string;
+  imageUrl?: string;
 }
 
 async function writeWithDesktopClipboard(
@@ -134,6 +135,9 @@ function writeWithCopyCommand({ text, html }: ClipboardContent): boolean {
 export async function copyToClipboard(
   content: ClipboardContent,
 ): Promise<boolean> {
+  if (content.imageUrl !== undefined) {
+    return copyTextAndImageToClipboard(content.text, content.imageUrl);
+  }
   return (
     (await writeWithDesktopClipboard(content)) ||
     (await writeWithClipboardApi(content)) ||
@@ -205,9 +209,9 @@ export async function copyToClipboardWithToast(
     imageUrl,
   }: CopyToClipboardOptions = {},
 ): Promise<boolean> {
-  const copied = imageUrl
-    ? await copyTextAndImageToClipboard(text, imageUrl)
-    : await copyToClipboard({ text });
+  const copied = await copyToClipboard(
+    imageUrl === undefined ? { text } : { text, imageUrl },
+  );
   if (copied) {
     if (successMessage) appToast.success(successMessage);
     return true;

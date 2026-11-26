@@ -1,5 +1,5 @@
 import type { TimelineConversationAttachments } from "@bb/server-contract";
-import type { ThreadTimelinePluginMessageAction } from "@/components/thread/timeline/types";
+import { StoryConversationMessage } from "@/components/thread/timeline/story-message-actions";
 import type { PromptMentionResource, PromptTextMention } from "@bb/domain";
 import { renderTemplate } from "@bb/templates";
 import type { ReactNode } from "react";
@@ -519,7 +519,6 @@ const mentionedMessageMentions: PromptTextMention[] = [
 
 export function Overview() {
   const promptDraft = useStoryPromptDraft();
-  const handleAddToChat = promptDraft.addQuote;
 
   return (
     <StoryCard>
@@ -528,7 +527,7 @@ export function Overview() {
         hint="a short accepted message keeps its bubble width when edit becomes available"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -541,7 +540,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
           />
         </TimelineStage>
@@ -578,7 +577,7 @@ export function Overview() {
         hint="production behavior — hover or focus the message to reveal actions"
       >
         <TimelineStage>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -591,13 +590,13 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
       <StoryRow label="short">
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -610,7 +609,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -619,7 +618,7 @@ export function Overview() {
         hint="thread mentions link; file mentions are display-only pills with full-path hover"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -633,7 +632,7 @@ export function Overview() {
             mentions={mentionedMessageMentions}
             projectId="proj_bb"
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -642,7 +641,7 @@ export function Overview() {
         hint="multi-line markdown with code fence + bullets"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -655,7 +654,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -664,7 +663,7 @@ export function Overview() {
         hint="turnRequest.kind = steer, status = pending — interruption mid-turn"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -677,7 +676,7 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={pendingSteer}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -686,7 +685,7 @@ export function Overview() {
         hint="steer that the runtime has acknowledged and folded into the turn"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -699,13 +698,13 @@ export function Overview() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedSteer}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
       <StoryRow label="with image" hint="single localImage attachment">
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -719,7 +718,7 @@ export function Overview() {
             mentions={[]}
             turnRequest={acceptedMessage}
             resolveUserAttachmentImageSrc={resolveImageSrc}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -728,7 +727,7 @@ export function Overview() {
         hint="2 local images + 1 web image + 1 local file"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -742,7 +741,7 @@ export function Overview() {
             mentions={[]}
             turnRequest={acceptedMessage}
             resolveUserAttachmentImageSrc={resolveImageSrc}
-            onAddToChat={handleAddToChat}
+            composerHost={promptDraft.composerHost}
           />
         </TimelineStage>
       </StoryRow>
@@ -904,24 +903,21 @@ export function Overview() {
   );
 }
 
-const overflowStoryActions: ThreadTimelinePluginMessageAction[] = [
+const overflowStoryActions = [
   {
     key: "story/summarize",
-    pluginId: null,
     icon: "Sparkles",
     label: "Summarize",
     onSelect: handleStoryMessageEdit,
   },
   {
     key: "story/translate",
-    pluginId: null,
     icon: "Globe",
     label: "Translate",
     onSelect: handleStoryMessageEdit,
   },
   {
     key: "story/save",
-    pluginId: null,
     icon: "Bookmark",
     label: "Save to notes",
     onSelect: handleStoryMessageEdit,
@@ -959,7 +955,7 @@ export function ActionOverflow() {
         hint="copy + edit + add-to-chat under a two-letter bubble"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -972,7 +968,7 @@ export function ActionOverflow() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={promptDraft.addQuote}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
           />
         </TimelineStage>
@@ -982,7 +978,7 @@ export function ActionOverflow() {
         hint="six actions under a two-letter bubble"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -995,7 +991,7 @@ export function ActionOverflow() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={promptDraft.addQuote}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
             pluginActions={overflowStoryActions}
           />
@@ -1006,7 +1002,7 @@ export function ActionOverflow() {
         hint="a wide bubble fits every action inline"
       >
         <TimelineStage revealMessageActions>
-          <ConversationMessageContent
+          <StoryConversationMessage
             role="user"
             initiator="user"
             senderThreadId={null}
@@ -1019,7 +1015,7 @@ export function ActionOverflow() {
             attachments={null}
             mentions={[]}
             turnRequest={acceptedMessage}
-            onAddToChat={promptDraft.addQuote}
+            composerHost={promptDraft.composerHost}
             onEdit={handleStoryMessageEdit}
             pluginActions={overflowStoryActions}
           />

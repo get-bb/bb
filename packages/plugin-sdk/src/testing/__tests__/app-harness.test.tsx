@@ -474,13 +474,14 @@ function ThreadChatPage({ subPath }: PluginNavPanelProps) {
       focusRequest={2}
       className="demo-chat"
       leadingContent={<div>Replying to something earlier</div>}
-      messageActions={[
+      experimental_messageActions={[
         {
           id: "send-to-main",
           title: "Send to main thread",
           icon: "ArrowTurnBackward",
-          roles: ["assistant"],
-          run: (message) => {
+          experimental_roles: ["assistant"],
+          experimental_placements: ["inline"],
+          run: ({ message }) => {
             messageActionRuns.push(message);
           },
         },
@@ -1527,9 +1528,14 @@ describe("loadPluginApp", () => {
         text: "An answer.",
         sourceSeqEnd: 12,
         experimental_messageSeq: 12,
+        experimental_settled: true,
+        experimental_attachments: [],
+        experimental_imageUrls: [],
       },
       selectedText: "answer",
       composer: null,
+      experimental_invokedFrom: "selection",
+      experimental_messageRequests: { edit: null },
     });
     expect(messageActionRuns).toHaveLength(1);
     expect(messageActionRuns[0]).toMatchObject({
@@ -1582,14 +1588,16 @@ describe("loadPluginApp", () => {
     expect(stub.className).toBe("demo-chat");
   });
 
-  it("renders leadingContent and drives messageActions through the stub", () => {
+  it("renders leadingContent and drives experimental_messageActions through the stub", () => {
     const chatPanel = app.navPanels.find((panel) => panel.id === "chat")!;
     const slot = renderSlot(chatPanel, { subPath: "thr_42" });
     expect(
       slot.getByTestId("bb-thread-chat-leading-content").textContent,
     ).toContain("Replying to something earlier");
 
-    const action = slot.getByTestId("bb-thread-chat-action-send-to-main");
+    const action = slot.getByTestId(
+      "bb-thread-chat-experimental-action-send-to-main",
+    );
     expect(action.getAttribute("data-roles")).toBe("assistant");
     fireEvent.click(action);
     expect(messageActionRuns).toEqual([
@@ -1600,6 +1608,9 @@ describe("loadPluginApp", () => {
         text: "test message text",
         sourceSeqEnd: 1,
         experimental_messageSeq: 1,
+        experimental_settled: true,
+        experimental_attachments: [],
+        experimental_imageUrls: [],
       },
     ]);
   });

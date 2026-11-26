@@ -408,6 +408,82 @@ Before stabilizing, decide whether surfaces should instead follow panel
 capability (whether the surface's panel can host the tab the action opens), and
 whether more surfaces (New thread previews, plugin documents) need names.
 
+## Message action roles, placement, order, availability and bb's message flows (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.203.
+
+`app.slots.messageAction` registrations take `experimental_roles` (user,
+assistant; omitted is both), `experimental_placements` (`"inline"`, `"menu"`,
+`"selection"`; omitted is `["inline", "selection"]`, what every action got
+before; `"inline"` and `"menu"` exclude each other), `experimental_order`
+(ascending across the row, its overflow menu and the selection menu; unset
+sorts last; ties keep registration order, the rule its sibling order fields
+use) and `experimental_availability(input)`, a pure per-message function that
+returns `"enabled"`, `"disabled"` or `"hidden"`. Its input
+(`ExperimentalMessageActionAvailabilityInput`) carries the thread id, the
+message, `selectedText` for the selection menu, `messageRequests`, the
+`composer` `run` will get (or null) and the thread's `canSpawnChild`. A throw or an invalid result hides the action on that
+message and logs. `run` may resolve `true` so an inline button shows a check
+mark for 2 seconds. Validation lives in `collectMessageActionRegistration`
+(`packages/plugin-sdk/src/internal/plugin-app-registration-collector.ts`),
+which fills every default once.
+
+`PluginMessageActionContext` gains `experimental_invokedFrom` (`"button"`,
+`"menu"` or `"selection"`), `experimental_selectedMarkdown` (the selection's
+Markdown source) and `experimental_messageRequests`
+(`ExperimentalMessageRequests`): bb's own `edit()` for the message, null
+when bb would not offer it there. Edit is a request because bb's inline
+sent-message editor has no public API; Add to chat and Fork are not, because
+they do. Add to chat is
+not a request: it is `composer.replace` with `experimental_appendQuoteToDraft`
+(below), so a plugin quotes into the draft exactly as bb does. The context's
+`composer` is the message's thread composer on this surface, or the inline
+editor of that thread's queued message while one is open, else null.
+The availability input's `canFork` says whether bb offers its Fork on the
+message; bb's Fork into new thread is `sdk.threads.fork({ sourceThreadId,
+sourceSeqEnd, origin: "app" })` then `navigate.toThread`, so a plugin forks
+exactly as bb does. The fork route takes the source's next-turn model and
+reasoning level, section and pin, and the plugin-bound `fork` puts the new
+thread in the app's cache before the caller navigates.
+`ThreadChatMessageReference` gains `experimental_settled`,
+`experimental_attachments` (as `ComposerAttachment`s) and
+`experimental_imageUrls`. `ExperimentalClipboardContent.imageUrl` copies an
+image with the text through bb's own image clipboard writer.
+
+`ThreadChatProps.experimental_messageActions` takes the same registrations for
+one embedded chat; they are validated by the same function and resolved,
+filtered and ordered with the registered ones. It replaces
+`ThreadChatProps.messageActions` (`ThreadChatMessageAction`, with `roles` and
+`run(message)`), which is gone from the types and docs. Compiled plugins that
+still pass it keep working: `PluginThreadChat` adapts each entry into an
+inline-only registration (`collectThreadChatMessageActions` in
+`apps/app/src/lib/plugin-message-actions.ts`) and warns once per plugin to
+move to `experimental_messageActions`.
+
+Core callers: bb's Copy link, Copy, Edit, Add to chat (row menu and selection
+menu; `composer.replace` with `experimental_appendQuoteToDraft`, then
+`composer.focus()`) and Fork (`sdk.threads.fork`, then `navigate.toThread`)
+are registrations in
+`apps/app/src/core-contributions/message-actions.ts`, collected with the plugin
+registrations in `apps/app/src/lib/plugin-slots.ts` and resolved for every
+surface by `buildMessageActions` (`apps/app/src/lib/plugin-message-actions.ts`).
+The action row (`MessageActionBar`) and the selection menu
+(`TimelineSelectionMenu`) render only that resolved list. First-party plugin
+callers: Side chat ("Reply in side chat" is assistant-only; "Send to main
+thread" uses `experimental_messageActions`) and Conductor ("Fork to new
+workspace" is assistant-only and hidden unless `canFork`).
+
+Inline actions that do not fit the row join its overflow menu as one block,
+in row order, where the row's first inline action sorts among the menu
+actions. That keeps an unordered plugin action's overflow row between bb's
+Copy link and Add to chat, as before.
+
+Before stabilizing, audit whether the overflow block rule is the right one for
+plugin-ordered menus, whether availability needs a `useData`-style hook for per-message plugin state, whether
+the selection menu needs a separate order, whether `messageRequests` should
+shrink to a flat `experimental_edit` now that it holds only Edit, and whether generated
+messages (automations, other threads, bb) should get actions.
+
 ## `app.commands.register`
 
 Unprefixed by explicit request. Registers frontend commands
@@ -3002,6 +3078,30 @@ Docs: `frontend-hooks-and-ui.md`.
    marketplace audit found it in 22 repositories, which feed it to Monaco,
    Shiki and terminal renderers. Confirm the payload serves the terminal
    engines before the prefix drops.
+
+## `app.experimental_appendQuoteToDraft` (`@get-bb/plugin-sdk/app`)
+
+A pure function, `(draft, text, attachments?) => ComposerDraftSnapshot`:
+bb's Add to chat quoting. It appends `text` to the draft as a `> ` blockquote
+on its own lines (blank text adds nothing, blank lines between quoted blocks
+collapse) and adds each attachment whose path the draft does not hold yet,
+returning the same draft when nothing changes. Plugins pass it to
+`composer.replace`.
+
+**Core callers.** The implementation is `appendQuoteAndAttachmentsToDraft` in
+`packages/plugin-sdk/src/internal/composer-draft-transforms.ts`, the only copy:
+bb's message Add to chat (`apps/app/src/core-contributions/message-actions.ts`,
+through this export), the diff, file-preview and terminal selection Add to
+chat (`useThreadComposerAddToChat` in `ThreadScreen.tsx`), root compose's
+quote (`RootComposeView.tsx`) and the retired `composer.addQuote`. The test
+harness runs the same function.
+
+Docs: `frontend-renderer-slots.md`.
+
+**Audit before stabilizing.** Whether the quote should carry a source link or
+mention back to the quoted message, whether the attachment merge should
+consider names as well as paths, and whether a cursor-position variant is
+needed beside the append-at-end one.
 
 ## `app.experimental_copyToClipboard` (`@get-bb/plugin-sdk/app`)
 

@@ -1,3 +1,4 @@
+import coreMessageActions from "@/core-contributions/message-actions";
 import coreThreadInfo from "@/core-contributions/thread-info";
 import coreMessageTime from "@/core-contributions/message-time";
 import { collectCoreContributionSlots } from "@/lib/core-contributions";
@@ -70,6 +71,10 @@ const coreThreadInfoRows = collectCoreContributionSlots(
 const coreThreadInfoSections = collectCoreContributionSlots(
   coreThreadInfo,
   "threadInfoSections",
+);
+const coreMessageActionSlots = collectCoreContributionSlots(
+  coreMessageActions,
+  "messageActions",
 );
 
 export interface PluginRegistrationSet {
@@ -295,7 +300,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   composers: [],
   messageDirectives: [],
   codeFenceRenderers: [],
-  messageActions: [],
+  messageActions: coreMessageActionSlots,
   messageMetadata: coreMessageMetadata,
   commandPaletteActions: [],
   providerIcons: [],
@@ -482,6 +487,9 @@ function collectKind<K extends SlotKind>(
   }
   if (kind === "threadInfoSections") {
     for (const slot of coreThreadInfoSections) collected.push(slot);
+  }
+  if (kind === "messageActions") {
+    for (const slot of coreMessageActionSlots) collected.push(slot);
   }
   for (const pluginId of pluginIds) {
     const flattened = flattenedByPluginId.get(pluginId);

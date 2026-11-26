@@ -20,8 +20,47 @@ import {
   findMessageActionTooltipCollisionBoundary,
   MessageActionBar,
 } from "./MessageActionBar";
+import type { ThreadTimelineMessageAction } from "./types";
 
 const TIMESTAMP = Date.UTC(2026, 8, 30, 16, 5);
+
+type BarActionOptions = { run?: () => void; pluginId?: string };
+
+function barAction(
+  label: string,
+  icon: string,
+  placement: "inline" | "menu",
+  { run = () => {}, pluginId = "bb--core" }: BarActionOptions = {},
+): ThreadTimelineMessageAction {
+  return {
+    key: `${pluginId}/${label}`,
+    pluginId,
+    icon,
+    label,
+    placement,
+    disabled: false,
+    run: async () => {
+      run();
+      return false;
+    },
+  };
+}
+
+const copyLinkAction = (options?: BarActionOptions) =>
+  barAction("Copy link", "Link", "menu", options);
+const copyAction = (options?: BarActionOptions) =>
+  barAction("Copy message", "Copy", "inline", options);
+const editAction = (options?: BarActionOptions) =>
+  barAction("Edit message", "Edit", "inline", options);
+const pluginAction = (
+  label: string,
+  icon: string,
+  options?: BarActionOptions,
+) => barAction(label, icon, "inline", options);
+const addToChatAction = (options?: BarActionOptions) =>
+  barAction("Add to chat", "MessageSquarePlus", "menu", options);
+const forkAction = (options?: BarActionOptions) =>
+  barAction("Fork into new thread", "Fork", "menu", options);
 
 afterEach(() => {
   cleanup();
@@ -123,21 +162,18 @@ describe("MessageActionBar", () => {
     const { container } = render(
       <MessageActionBar
         timestamp={TIMESTAMP}
-        messageText="An answer."
         alignment="start"
         mobileActionDisplay="inline"
-        onEdit={vi.fn()}
-        onCopyLink={onCopyLink}
-        onAddToChat={vi.fn()}
-        onFork={vi.fn()}
-        pluginActions={[
-          {
-            key: "demo/summarize/1",
+        actions={[
+          copyLinkAction({ run: onCopyLink }),
+          copyAction(),
+          editAction(),
+          addToChatAction(),
+          forkAction(),
+          pluginAction("Summarize", "Zap", {
+            run: onPluginSelect,
             pluginId: "demo",
-            icon: "Zap",
-            label: "Summarize",
-            onSelect: onPluginSelect,
-          },
+          }),
         ]}
       />,
     );
@@ -163,9 +199,7 @@ describe("MessageActionBar", () => {
         .map((item) => item.textContent),
     ).toEqual(["Copy link", "Add to chat", "Fork into new thread"]);
     expect(menu.getAttribute("data-side")).toBe("bottom");
-    fireEvent.click(
-      within(menu).getByRole("menuitem", { name: "Copy link" }),
-    );
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy link" }));
     expect(onCopyLink).toHaveBeenCalledTimes(1);
   });
 
@@ -174,28 +208,16 @@ describe("MessageActionBar", () => {
     render(
       <MessageActionBar
         timestamp={TIMESTAMP}
-        messageText="An answer."
         alignment="end"
         mobileActionDisplay="inline"
-        onEdit={vi.fn()}
-        onCopyLink={vi.fn()}
-        onAddToChat={vi.fn()}
-        onFork={vi.fn()}
-        pluginActions={[
-          {
-            key: "demo/summarize/1",
-            pluginId: null,
-            icon: "Zap",
-            label: "Summarize",
-            onSelect: vi.fn(),
-          },
-          {
-            key: "demo/translate/1",
-            pluginId: null,
-            icon: "Languages",
-            label: "Translate",
-            onSelect: vi.fn(),
-          },
+        actions={[
+          copyLinkAction(),
+          copyAction(),
+          editAction(),
+          addToChatAction(),
+          forkAction(),
+          pluginAction("Summarize", "Zap"),
+          pluginAction("Translate", "Languages"),
         ]}
       />,
     );
@@ -225,10 +247,9 @@ describe("MessageActionBar", () => {
       <Profiler id="action-bar" onRender={() => (commits += 1)}>
         <MessageActionBar
           timestamp={TIMESTAMP}
-          messageText="An answer."
           alignment="end"
           mobileActionDisplay="inline"
-          onEdit={vi.fn()}
+          actions={[copyAction(), editAction()]}
         />
       </Profiler>,
     );
@@ -256,12 +277,9 @@ describe("MessageActionBar", () => {
     render(
       <MessageActionBar
         timestamp={TIMESTAMP}
-        messageText="An answer."
         alignment="end"
         mobileActionDisplay="inline"
-        onEdit={vi.fn()}
-        onAddToChat={vi.fn()}
-        onFork={vi.fn()}
+        actions={[copyAction(), editAction(), addToChatAction(), forkAction()]}
       />,
     );
     resizeObserver.reportWidth(30);
@@ -283,9 +301,9 @@ describe("MessageActionBar", () => {
     render(
       <MessageActionBar
         timestamp={TIMESTAMP}
-        messageText="An answer."
         alignment="start"
         mobileActionDisplay="inline"
+        actions={[copyAction()]}
       />,
     );
 
@@ -306,20 +324,14 @@ describe("MessageActionBar", () => {
       <main data-testid="app-root">
         <MessageActionBar
           timestamp={TIMESTAMP}
-          messageText="An answer."
           alignment="start"
           mobileActionDisplay="inline"
-          onEdit={vi.fn()}
-          onAddToChat={vi.fn()}
-          onFork={onFork}
-          pluginActions={[
-            {
-              key: "demo/summarize/1",
-              pluginId: null,
-              icon: "Zap",
-              label: "Summarize",
-              onSelect: onPluginSelect,
-            },
+          actions={[
+            copyAction(),
+            editAction(),
+            addToChatAction(),
+            forkAction({ run: onFork }),
+            pluginAction("Summarize", "Zap", { run: onPluginSelect }),
           ]}
         />
       </main>,
@@ -377,13 +389,15 @@ describe("MessageActionBar", () => {
     render(
       <MessageActionBar
         timestamp={TIMESTAMP}
-        messageText="An earlier answer."
         alignment="start"
         mobileActionDisplay="overflow"
-        onEdit={vi.fn()}
-        onCopyLink={onCopyLink}
-        onAddToChat={vi.fn()}
-        onFork={vi.fn()}
+        actions={[
+          copyLinkAction({ run: onCopyLink }),
+          copyAction(),
+          editAction(),
+          addToChatAction(),
+          forkAction(),
+        ]}
       />,
     );
 
@@ -412,9 +426,9 @@ describe("MessageActionBar", () => {
     render(
       <MessageActionBar
         timestamp={TIMESTAMP}
-        messageText="An answer."
         alignment="end"
         mobileActionDisplay="inline"
+        actions={[copyAction()]}
       />,
     );
     const trigger = screen.getByRole("button", { name: "Message actions" });
@@ -425,5 +439,55 @@ describe("MessageActionBar", () => {
     expect(row?.hasAttribute("data-menu-open")).toBe(true);
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(row?.hasAttribute("data-menu-open")).toBe(false);
+  });
+
+  it("confirms an inline run that resolves true with a check mark and ignores clicks meanwhile", async () => {
+    vi.useFakeTimers();
+    const run = vi.fn(async () => true);
+    render(
+      <MessageActionBar
+        timestamp={TIMESTAMP}
+        alignment="start"
+        mobileActionDisplay="inline"
+        actions={[{ ...copyAction(), run }]}
+      />,
+    );
+    const button = screen.getByRole("button", { name: "Copy message" });
+    await act(async () => {
+      fireEvent.click(button);
+    });
+    expect(run).toHaveBeenCalledWith("button");
+    expect(button.querySelector('[data-icon="Check"]')).not.toBeNull();
+    fireEvent.click(button);
+    expect(run).toHaveBeenCalledTimes(1);
+    act(() => {
+      vi.advanceTimersByTime(2000);
+    });
+    expect(button.querySelector('[data-icon="Check"]')).toBeNull();
+    expect(button.querySelector('[data-icon="Copy"]')).not.toBeNull();
+    vi.useRealTimers();
+  });
+
+  it("runs menu rows with the menu invocation and shows disabled rows inert", () => {
+    const run = vi.fn(async () => true);
+    render(
+      <MessageActionBar
+        timestamp={TIMESTAMP}
+        alignment="start"
+        mobileActionDisplay="inline"
+        actions={[
+          { ...copyLinkAction(), run },
+          { ...forkAction(), disabled: true },
+        ]}
+      />,
+    );
+    const menu = openDesktopMenu();
+    expect(
+      within(menu)
+        .getByRole("menuitem", { name: "Fork into new thread" })
+        .hasAttribute("data-disabled"),
+    ).toBe(true);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Copy link" }));
+    expect(run).toHaveBeenCalledWith("menu");
   });
 });

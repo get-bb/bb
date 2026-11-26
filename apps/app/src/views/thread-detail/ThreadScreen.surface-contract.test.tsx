@@ -313,6 +313,8 @@ beforeEach(() => {
           title: "Summarize",
           icon: "Zap",
           experimental_surfaces: ["thread-view", "embedded-chat"],
+          experimental_roles: ["user", "assistant"],
+          experimental_placements: ["inline", "selection"],
           run: vi.fn(),
         },
         {
@@ -320,6 +322,8 @@ beforeEach(() => {
           title: "Thread view only",
           icon: "Zap",
           experimental_surfaces: ["thread-view"],
+          experimental_roles: ["user", "assistant"],
+          experimental_placements: ["inline", "selection"],
           run: vi.fn(),
         },
         {
@@ -327,6 +331,8 @@ beforeEach(() => {
           title: "ThreadChat only",
           icon: "Zap",
           experimental_surfaces: ["embedded-chat"],
+          experimental_roles: ["user", "assistant"],
+          experimental_placements: ["inline", "selection"],
           run: vi.fn(),
         },
       ],

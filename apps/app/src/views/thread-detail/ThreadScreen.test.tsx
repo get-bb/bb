@@ -65,14 +65,14 @@ vi.mock("@/hooks/mutations/thread-runtime-mutations", () => {
 vi.mock("@/components/thread/timeline", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/components/thread/timeline")>();
+  const { useSelectionAddToChat } =
+    await import("@/components/thread/SelectionAddToChatContext");
   return {
     ...actual,
     useThreadTimelineController: () => mocks.timeline,
     ThreadTimelineSurface: (props: Record<string, unknown>) => {
       mocks.surfaceProps.push(props);
-      const addToChat = props.onSelectionAddToChat as
-        | ((text: string) => void)
-        | undefined;
+      const addToChat = useSelectionAddToChat();
       return (
         <button type="button" onClick={() => addToChat?.("Quoted line")}>
           Add selection to chat
@@ -151,11 +151,11 @@ function screenElement(presentation: ThreadScreenPresentation) {
       thread={THREAD}
       timelineEnabled
       timelineHost={{
-        consumerMessageActions: [],
+        instanceMessageActions: [],
         environmentHostName: null,
         leadingContent: null,
         messageActionSurface: "thread-view",
-        onForkMessage: null,
+        canFork: false,
         onTitleAction: null,
         unreadDividerAutoScroll: false,
         unreadDividerPlacement: null,
@@ -250,7 +250,7 @@ describe("ThreadScreen", () => {
     expect(mocks.surfaceProps.at(-1)!.showOngoingIndicator).toBe(false);
   });
 
-  it("quotes a timeline selection into the thread draft and focuses the composer", () => {
+  it("quotes a diff or file selection into the thread draft and focuses the composer", () => {
     renderScreen({ kind: "page" });
     const focusKeyBefore =
       mocks.promptAreaProps.at(-1)!.composerFocusRequestKey;

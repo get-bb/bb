@@ -86,7 +86,9 @@ interface BeginCreateThreadTransactionArgs {
 
 interface CreateThreadSuccessArgs {
   queryClient: QueryClient;
-  request: AppCreateThreadRequest;
+  request: Pick<AppCreateThreadRequest, "input" | "projectId"> & {
+    environment: AppCreateThreadRequest["environment"] | null;
+  };
   thread: ThreadResponse;
 }
 
@@ -575,8 +577,11 @@ function prependThreadPromptHistory(
   );
 }
 
-function hasUnmanagedCheckoutIntent(request: AppCreateThreadRequest): boolean {
+function hasUnmanagedCheckoutIntent(
+  request: CreateThreadSuccessArgs["request"],
+): boolean {
   return (
+    request.environment !== null &&
     request.environment.type === "host" &&
     request.environment.workspace.type === "unmanaged" &&
     request.environment.workspace.branch !== undefined
@@ -783,7 +788,7 @@ export function applyCreateThreadResult({
 }: CreateThreadSuccessArgs): void {
   queryClient.setQueryData<ThreadResponse>(threadQueryKey(thread.id), thread);
   const environmentId =
-    request.environment.type === "reuse"
+    request.environment?.type === "reuse"
       ? request.environment.environmentId
       : thread.environmentId;
   const cachedHostId =
@@ -793,10 +798,10 @@ export function applyCreateThreadResult({
           environmentQueryKey(environmentId),
         )?.hostId ?? null);
   const selectedHostId =
-    request.environment.type === "provider" &&
+    request.environment?.type === "provider" &&
     request.environment.machine?.type === "existing"
       ? request.environment.machine.hostId
-      : request.environment.type === "host"
+      : request.environment?.type === "host"
         ? (request.environment.hostId ?? null)
         : null;
   optimisticallyInsertThread(

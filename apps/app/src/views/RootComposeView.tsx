@@ -1,5 +1,5 @@
 import { AppPanelTabsPublisher } from "@/lib/app-panel-tabs";
-import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { appendQuoteAndAttachmentsToDraft } from "@get-bb/plugin-sdk/internal/composer-handle";
 import type { ComposerAttachment, NewThreadRequest } from "@get-bb/plugin-sdk";
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
 

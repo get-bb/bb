@@ -8,16 +8,20 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AppNavigationHostProvider } from "@/lib/app-navigation-host";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useState, type ComponentProps, type ReactElement } from "react";
-import { MemoryRouter, useNavigate } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { COMPACT_VIEWPORT_QUERY } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { POINTER_COARSE_QUERY } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import type { PluginMessageActionRegistration } from "@get-bb/plugin-sdk";
+import type {
+  ExperimentalMessageActionAvailabilityInput,
+  PluginMessageActionRegistration,
+} from "@get-bb/plugin-sdk";
 import {
   conversationRow,
   delegationRow,
@@ -29,19 +33,55 @@ import {
   type PluginRegistrationSet,
 } from "@/lib/plugin-slots";
 import { ThreadTimelineRows } from "./ThreadTimelineRows";
+import { collectMessageActionRegistration } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
+import { collectThreadChatMessageActions } from "@/lib/plugin-message-actions";
 import { makePluginRegistrationSet } from "@/test/fixtures/plugins";
+import { makeThreadResponse } from "@/test/fixtures/thread-responses";
+import { sdk } from "@/lib/sdk";
+import { PluginActionContextProvider } from "@/lib/plugin-action-context-provider";
+import { createDeferredPromise } from "@bb/test-helpers";
+import type { ThreadResponse } from "@bb/server-contract";
+import {
+  PluginComposerHostProvider,
+  type PluginComposerHost,
+} from "@/components/plugin/plugin-composer-host";
+import { emptyPromptDraftState, type PromptDraftState } from "@bb/client-core";
+
+function testComposer(threadId = "thread-1") {
+  let draft: PromptDraftState = emptyPromptDraftState();
+  const focus = vi.fn();
+  const host: PluginComposerHost = {
+    scope: {
+      kind: "thread",
+      threadId,
+      projectId: "proj_test",
+      environmentId: null,
+    },
+    textEffectKey: `test-composer:${threadId}`,
+    getCurrent: () => draft,
+    subscribeDraft: () => () => {},
+    setDraft: (next) => {
+      draft = next;
+    },
+    focus,
+  };
+  return { host, focus, draft: () => draft };
+}
+
+function quoted(text: string): string {
+  return `${text
+    .split("\n")
+    .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+    .join("\n")}\n`;
+}
 
 function messageActionRegistrationSet(
   messageActions: readonly PluginMessageActionRegistration[],
 ): PluginRegistrationSet {
   return makePluginRegistrationSet({
-    messageActions: messageActions.map((action) => ({
-      ...action,
-      experimental_surfaces: action.experimental_surfaces ?? [
-        "thread-view",
-        "embedded-chat",
-      ],
-    })),
+    messageActions: messageActions.map((action) =>
+      collectMessageActionRegistration("slots.messageAction", action),
+    ),
   });
 }
 
@@ -66,6 +106,11 @@ function selectMessageMenuItem(name: string) {
     screen.getByRole("button", { name: "Message actions" }),
   );
   fireEvent.click(screen.getByRole("menuitem", { name }));
+}
+
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{location.pathname}</span>;
 }
 
 function SameThreadSearchNavigationHarness() {
@@ -282,24 +327,25 @@ describe("ThreadTimelineRows actions", () => {
   it("uses inline mobile candidates only for the last assistant message", () => {
     mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
     const { container } = renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "earlier_agent_message",
-            role: "assistant",
-            text: "An earlier answer.",
-          }),
-          conversationRow({
-            id: "latest_agent_message",
-            role: "assistant",
-            text: "The latest answer.",
-          }),
-        ]}
-        canSpawnChild
-        onForkMessage={vi.fn()}
-        onMessageAddToChat={vi.fn()}
-        threadRuntimeDisplayStatus="idle"
-      />,
+      <PluginComposerHostProvider value={testComposer("thread-1").host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              id: "earlier_agent_message",
+              role: "assistant",
+              text: "An earlier answer.",
+            }),
+            conversationRow({
+              id: "latest_agent_message",
+              role: "assistant",
+              text: "The latest answer.",
+            }),
+          ]}
+          canSpawnChild
+          canFork
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     const earlierMessage = container.querySelector(
@@ -326,22 +372,23 @@ describe("ThreadTimelineRows actions", () => {
   it("uses inline mobile candidates only for the last user message", () => {
     mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
     const { container } = renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "earlier_user_message",
-            role: "user",
-            text: "An earlier request.",
-          }),
-          conversationRow({
-            id: "latest_user_message",
-            role: "user",
-            text: "The latest request.",
-          }),
-        ]}
-        onSelectionAddToChat={vi.fn()}
-        threadRuntimeDisplayStatus="idle"
-      />,
+      <PluginComposerHostProvider value={testComposer("thread-1").host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              id: "earlier_user_message",
+              role: "user",
+              text: "An earlier request.",
+            }),
+            conversationRow({
+              id: "latest_user_message",
+              role: "user",
+              text: "The latest request.",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     const earlierMessage = container.querySelector(
@@ -473,31 +520,32 @@ describe("ThreadTimelineRows actions", () => {
 
   it("adds a copy action to a remote-image-only row", () => {
     const { container } = renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "actionable_user_message",
-            role: "user",
-            text: "A request with actions.",
-          }),
-          conversationRow({
-            id: "remote_image_only_message",
-            role: "user",
-            text: "",
-            attachments: {
-              webImages: 1,
-              localImages: 0,
-              localFiles: 0,
-              imageUrls: ["https://example.com/remote.png"],
-              localImagePaths: [],
-              localFilePaths: [],
-              localFileDetails: [],
-            },
-          }),
-        ]}
-        onSelectionAddToChat={vi.fn()}
-        threadRuntimeDisplayStatus="idle"
-      />,
+      <PluginComposerHostProvider value={testComposer("thread-1").host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              id: "actionable_user_message",
+              role: "user",
+              text: "A request with actions.",
+            }),
+            conversationRow({
+              id: "remote_image_only_message",
+              role: "user",
+              text: "",
+              attachments: {
+                webImages: 1,
+                localImages: 0,
+                localFiles: 0,
+                imageUrls: ["https://example.com/remote.png"],
+                localImagePaths: [],
+                localFilePaths: [],
+                localFileDetails: [],
+              },
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     const actionableMessage = container.querySelector(
@@ -653,54 +701,60 @@ describe("ThreadTimelineRows actions", () => {
   });
 
   it("passes agent message text to add-to-chat", () => {
-    const onMessageAddToChat = vi.fn();
+    const composer = testComposer();
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "assistant",
-            text: "Quote this agent response.",
-          }),
-        ]}
-        onMessageAddToChat={onMessageAddToChat}
-        threadRuntimeDisplayStatus="idle"
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Quote this agent response.",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     selectMessageMenuItem("Add to chat");
-    expect(onMessageAddToChat).toHaveBeenCalledWith(
-      "Quote this agent response.",
-    );
+    expect(composer.draft()).toEqual({
+      text: "> Quote this agent response.\n",
+      mentions: [],
+      attachments: [],
+    });
+    expect(composer.focus).toHaveBeenCalledTimes(1);
   });
 
   it("passes agent message attachments to add-to-chat", () => {
-    const onMessageAddToChat = vi.fn();
+    const composer = testComposer();
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "assistant",
-            text: "Quote this agent response.",
-            attachments: {
-              webImages: 1,
-              localImages: 1,
-              localFiles: 1,
-              imageUrls: ["https://example.com/remote.png"],
-              localImagePaths: ["uploads/screenshot.png"],
-              localFilePaths: ["uploads/spec.md"],
-              localFileDetails: [],
-            },
-          }),
-        ]}
-        onMessageAddToChat={onMessageAddToChat}
-        threadRuntimeDisplayStatus="idle"
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Quote this agent response.",
+              attachments: {
+                webImages: 1,
+                localImages: 1,
+                localFiles: 1,
+                imageUrls: ["https://example.com/remote.png"],
+                localImagePaths: ["uploads/screenshot.png"],
+                localFilePaths: ["uploads/spec.md"],
+                localFileDetails: [],
+              },
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     selectMessageMenuItem("Add to chat");
-    expect(onMessageAddToChat).toHaveBeenCalledWith(
-      "Quote this agent response.",
-      [
+    expect(composer.draft()).toEqual({
+      text: "> Quote this agent response.\n",
+      mentions: [],
+      attachments: [
         {
           type: "localImage",
           path: "uploads/screenshot.png",
@@ -712,58 +766,59 @@ describe("ThreadTimelineRows actions", () => {
           name: "spec.md",
         },
       ],
-    );
+    });
   });
 
   it("passes regular user message text to add-to-chat", () => {
-    const onSelectionAddToChat = vi.fn();
+    const composer = testComposer();
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "user",
-            text: "  Quote this user prompt.  ",
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              role: "user",
+              text: "  Quote this user prompt.  ",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     selectMessageMenuItem("Add to chat");
-    expect(onSelectionAddToChat).toHaveBeenCalledWith(
-      "Quote this user prompt.",
-    );
+    expect(composer.draft().text).toBe("> Quote this user prompt.\n");
   });
 
   it("passes user message attachments to add-to-chat", () => {
-    const onSelectionAddToChat = vi.fn();
+    const composer = testComposer();
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "user",
-            text: "  Quote this user prompt.  ",
-            attachments: {
-              webImages: 1,
-              localImages: 1,
-              localFiles: 1,
-              imageUrls: ["https://example.com/remote.png"],
-              localImagePaths: ["uploads/screenshot.png"],
-              localFilePaths: ["uploads/spec.md"],
-              localFileDetails: [],
-            },
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              role: "user",
+              text: "  Quote this user prompt.  ",
+              attachments: {
+                webImages: 1,
+                localImages: 1,
+                localFiles: 1,
+                imageUrls: ["https://example.com/remote.png"],
+                localImagePaths: ["uploads/screenshot.png"],
+                localFilePaths: ["uploads/spec.md"],
+                localFileDetails: [],
+              },
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     selectMessageMenuItem("Add to chat");
-    expect(onSelectionAddToChat).toHaveBeenCalledWith(
-      "Quote this user prompt.",
-      [
+    expect(composer.draft()).toEqual({
+      text: "> Quote this user prompt.\n",
+      mentions: [],
+      attachments: [
         {
           type: "localImage",
           path: "uploads/screenshot.png",
@@ -775,50 +830,55 @@ describe("ThreadTimelineRows actions", () => {
           name: "spec.md",
         },
       ],
-    );
+    });
   });
 
   it("shows add-to-chat for attachment-only user messages", () => {
-    const onSelectionAddToChat = vi.fn();
+    const composer = testComposer();
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "user",
-            text: "",
-            attachments: {
-              webImages: 0,
-              localImages: 0,
-              localFiles: 1,
-              imageUrls: [],
-              localImagePaths: [],
-              localFilePaths: ["uploads/spec.md"],
-              localFileDetails: [],
-            },
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              role: "user",
+              text: "",
+              attachments: {
+                webImages: 0,
+                localImages: 0,
+                localFiles: 1,
+                imageUrls: [],
+                localImagePaths: [],
+                localFilePaths: ["uploads/spec.md"],
+                localFileDetails: [],
+              },
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     selectMessageMenuItem("Add to chat");
-    expect(onSelectionAddToChat).toHaveBeenCalledWith("", [
-      {
-        type: "localFile",
-        path: "uploads/spec.md",
-        name: "spec.md",
-      },
-    ]);
+    expect(composer.draft()).toEqual({
+      text: "",
+      mentions: [],
+      attachments: [
+        {
+          type: "localFile",
+          path: "uploads/spec.md",
+          name: "spec.md",
+        },
+      ],
+    });
   });
 
-  it("hides user message add-to-chat when no add handler is supplied", () => {
+  it("hides user message add-to-chat when the thread has no composer here", () => {
     const markup = toMarkup(
       <ThreadTimelineRows
         timelineRows={[
           conversationRow({
             role: "user",
-            text: "No add-to-chat handler here.",
+            text: "No composer for this thread here.",
           }),
         ]}
         threadRuntimeDisplayStatus="idle"
@@ -838,17 +898,18 @@ describe("ThreadTimelineRows actions", () => {
   ] as const)(
     "adds a %s selection to chat with its Markdown preserved",
     async (mode) => {
-      const onSelectionAddToChat = vi.fn();
+      const composer = testComposer();
       const markdown =
         "- **First** [docs](https://example.com)\n- Second\n\n```ts\nconst x = 1;\n\nconst y = 2;\n```\n\n`pnpm --version`";
       const { container } = renderWithRouter(
-        <ThreadTimelineRows
-          timelineRows={[
-            conversationRow({ role: "assistant", text: markdown }),
-          ]}
-          threadRuntimeDisplayStatus="idle"
-          onSelectionAddToChat={onSelectionAddToChat}
-        />,
+        <PluginComposerHostProvider value={composer.host}>
+          <ThreadTimelineRows
+            timelineRows={[
+              conversationRow({ role: "assistant", text: markdown }),
+            ]}
+            threadRuntimeDisplayStatus="idle"
+          />
+        </PluginComposerHostProvider>,
       );
       const prose = container.querySelector("[data-sidebar-swipe-selectable]")!;
       const range = document.createRange();
@@ -880,13 +941,13 @@ describe("ThreadTimelineRows actions", () => {
       fireEvent.click(
         await screen.findByRole("button", { name: "Add to chat" }),
       );
-      expect(onSelectionAddToChat).toHaveBeenCalledWith(expected);
+      expect(composer.draft().text).toBe(quoted(expected));
       expect(selection.rangeCount).toBe(0);
     },
   );
 
   it("does not let the previously selected row clear a new row selection", async () => {
-    const onSelectionAddToChat = vi.fn();
+    const composer = testComposer();
     const frameCallbacks: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       frameCallbacks.push(callback);
@@ -902,24 +963,25 @@ describe("ThreadTimelineRows actions", () => {
     };
 
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "earlier_selection_row",
-            role: "assistant",
-            text: "Select this earlier answer.",
-            sourceSeqEnd: 20,
-          }),
-          conversationRow({
-            id: "later_selection_row",
-            role: "assistant",
-            text: "Select this later answer.",
-            sourceSeqEnd: 40,
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              id: "earlier_selection_row",
+              role: "assistant",
+              text: "Select this earlier answer.",
+              sourceSeqEnd: 20,
+            }),
+            conversationRow({
+              id: "later_selection_row",
+              role: "assistant",
+              text: "Select this later answer.",
+              sourceSeqEnd: 40,
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     const laterTextNode = screen.getByText(
@@ -940,12 +1002,12 @@ describe("ThreadTimelineRows actions", () => {
     await flushSelectionFrames();
     fireEvent.click(await screen.findByRole("button", { name: "Add to chat" }));
 
-    expect(onSelectionAddToChat).toHaveBeenLastCalledWith("earlier answer");
+    expect(composer.draft().text).toBe("> earlier answer\n");
   });
 
   it("shows the floating selection menu on coarse pointers", async () => {
     mockSelectionMenuMedia({ isPointerCoarse: true });
-    const onSelectionAddToChat = vi.fn();
+    const composer = testComposer();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());
       return 1;
@@ -953,16 +1015,17 @@ describe("ThreadTimelineRows actions", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
 
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "assistant",
-            text: "Mobile selection should expose chat actions.",
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Mobile selection should expose chat actions.",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
     const textNode = screen.getByText(
       "Mobile selection should expose chat actions.",
@@ -981,12 +1044,12 @@ describe("ThreadTimelineRows actions", () => {
       name: "Add to chat",
     });
     fireEvent.click(addToChat);
-    expect(onSelectionAddToChat).toHaveBeenCalledWith("chat actions");
+    expect(composer.draft().text).toBe("> chat actions\n");
   });
 
   it("keeps the floating selection menu on compact fine-pointer viewports", async () => {
     mockSelectionMenuMedia({ isCompactViewport: true });
-    const onSelectionAddToChat = vi.fn();
+    const composer = testComposer();
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
       callback(performance.now());
       return 1;
@@ -994,16 +1057,17 @@ describe("ThreadTimelineRows actions", () => {
     vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
 
     renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            role: "assistant",
-            text: "Compact fine pointer keeps the floating selection menu.",
-          }),
-        ]}
-        threadRuntimeDisplayStatus="idle"
-        onSelectionAddToChat={onSelectionAddToChat}
-      />,
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Compact fine pointer keeps the floating selection menu.",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
     const textNode = screen.getByText(
       "Compact fine pointer keeps the floating selection menu.",
@@ -1375,6 +1439,9 @@ describe("ThreadTimelineRows actions", () => {
       text: "An assistant answer.",
       sourceSeqEnd: 9,
       experimental_messageSeq: 9,
+      experimental_settled: true,
+      experimental_attachments: [],
+      experimental_imageUrls: [],
     });
     expect(context.selectedText).toBeUndefined();
     const panelTab = {
@@ -1397,22 +1464,28 @@ describe("ThreadTimelineRows actions", () => {
     expect(panel.openTab).toHaveBeenCalledWith(intent);
   });
 
-  it("omits plugin message actions when the surface has no thread identity", () => {
+  it("runs actions against the message's thread when the surface has no thread identity", () => {
+    const run = vi.fn();
     setPluginSlotRegistrations(
       "demo",
       messageActionRegistrationSet([
-        { id: "summarize", title: "Summarize", run: vi.fn() },
+        { id: "summarize", title: "Summarize", run },
       ]),
     );
-    const markup = toMarkup(
+    renderWithRouter(
       <ThreadTimelineRows
         timelineRows={[
-          conversationRow({ role: "assistant", text: "An answer." }),
+          conversationRow({
+            role: "assistant",
+            text: "An answer.",
+            threadId: "thr_row",
+          }),
         ]}
         threadRuntimeDisplayStatus="idle"
       />,
     );
-    expect(markup).not.toContain('aria-label="Summarize"');
+    fireEvent.click(screen.getByRole("button", { name: "Summarize" }));
+    expect(run.mock.calls[0]![0].threadId).toBe("thr_row");
   });
 
   it("contains plugin message action errors without breaking the timeline", () => {
@@ -1481,16 +1554,19 @@ describe("ThreadTimelineRows actions", () => {
             threadId: "thr_main",
           }),
         ]}
-        consumerMessageActions={[
-          {
-            id: "send-to-main",
-            pluginId: null,
-            icon: "ArrowTurnBackward",
-            label: "Send to main thread",
-            roles: ["assistant"],
-            run,
-          },
-        ]}
+        instanceMessageActions={collectThreadChatMessageActions({
+          pluginId: "demo",
+          retiredActions: [
+            {
+              id: "send-to-main",
+              icon: "ArrowTurnBackward",
+              title: "Send to main thread",
+              roles: ["assistant"],
+              run,
+            },
+          ],
+          registrations: undefined,
+        })}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -1513,6 +1589,9 @@ describe("ThreadTimelineRows actions", () => {
       text: "An assistant answer.",
       sourceSeqEnd: 9,
       experimental_messageSeq: 9,
+      experimental_settled: true,
+      experimental_attachments: [],
+      experimental_imageUrls: [],
     });
   });
 
@@ -1535,17 +1614,19 @@ describe("ThreadTimelineRows actions", () => {
             threadId: "thr_main",
           }),
         ]}
-        consumerMessageActions={[
-          {
-            id: "explodes",
-            pluginId: null,
-            icon: null,
-            label: "Explodes",
-            run: () => {
-              throw new Error("kaboom");
+        instanceMessageActions={collectThreadChatMessageActions({
+          pluginId: "demo",
+          retiredActions: [
+            {
+              id: "explodes",
+              title: "Explodes",
+              run: () => {
+                throw new Error("kaboom");
+              },
             },
-          },
-        ]}
+          ],
+          registrations: undefined,
+        })}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -1554,7 +1635,9 @@ describe("ThreadTimelineRows actions", () => {
     expect(buttons).toHaveLength(2);
     fireEvent.click(buttons[0]!);
     expect(warn).toHaveBeenCalledWith(
-      expect.stringContaining('messageAction "explodes" failed: kaboom'),
+      expect.stringContaining(
+        'messageAction "thread-chat/explodes" failed: kaboom',
+      ),
     );
   });
 
@@ -1581,15 +1664,13 @@ describe("ThreadTimelineRows actions", () => {
             messageSeq: 12,
           },
         ]}
-        consumerMessageActions={[
-          {
-            id: "link",
-            pluginId: null,
-            icon: null,
-            label: "Consumer link",
-            run: consumerRun,
-          },
-        ]}
+        instanceMessageActions={collectThreadChatMessageActions({
+          pluginId: "demo",
+          retiredActions: [
+            { id: "link", title: "Consumer link", run: consumerRun },
+          ],
+          registrations: undefined,
+        })}
         threadRuntimeDisplayStatus="idle"
       />,
     );
@@ -1603,6 +1684,466 @@ describe("ThreadTimelineRows actions", () => {
       sourceSeqEnd: 19,
       experimental_messageSeq: 12,
     });
+  });
+
+  it("shows an action only on the message roles it names", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "reply",
+          title: "Reply here",
+          experimental_roles: ["assistant"],
+          run: vi.fn(),
+        },
+      ]),
+    );
+    renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={[
+          conversationRow({ id: "user_row", role: "user", text: "Ask." }),
+          conversationRow({
+            id: "assistant_row",
+            role: "assistant",
+            text: "Answer.",
+          }),
+        ]}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    const rows = screen
+      .getAllByRole("button", { name: "Reply here" })
+      .map((button) =>
+        button
+          .closest("[data-timeline-row-id]")
+          ?.getAttribute("data-timeline-row-id"),
+      );
+    expect(rows).toEqual(["assistant_row"]);
+  });
+
+  it("hides or disables an action per message from its availability input", () => {
+    const run = vi.fn();
+    const availability = vi.fn(
+      ({
+        canFork,
+        canSpawnChild,
+      }: ExperimentalMessageActionAvailabilityInput) =>
+        !canFork
+          ? ("hidden" as const)
+          : canSpawnChild
+            ? ("enabled" as const)
+            : ("disabled" as const),
+    );
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "fork-elsewhere",
+          title: "Fork elsewhere",
+          experimental_availability: availability,
+          run,
+        },
+      ]),
+    );
+    const rows = [
+      conversationRow({ id: "assistant_row", role: "assistant", text: "Hi." }),
+    ];
+    const { rerender } = renderWithRouter(
+      <ThreadTimelineRows
+        threadId="thr_main"
+        timelineRows={rows}
+        threadRuntimeDisplayStatus="idle"
+      />,
+    );
+    expect(screen.queryByRole("button", { name: "Fork elsewhere" })).toBeNull();
+    expect(availability.mock.calls[0]![0]).toMatchObject({
+      threadId: "thr_main",
+      message: { id: "assistant_row", experimental_settled: true },
+      messageRequests: { edit: null },
+      composer: null,
+      canFork: false,
+      canSpawnChild: false,
+    });
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadTimelineRows
+            threadId="thr_main"
+            timelineRows={rows}
+            canFork
+            threadRuntimeDisplayStatus="idle"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    const disabled = screen.getByRole("button", { name: "Fork elsewhere" });
+    expect(disabled.hasAttribute("disabled")).toBe(true);
+
+    rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <ThreadTimelineRows
+            threadId="thr_main"
+            timelineRows={rows}
+            canSpawnChild
+            canFork
+            threadRuntimeDisplayStatus="idle"
+          />
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Fork elsewhere" }));
+    const context = run.mock.calls[0]![0];
+    expect(context.experimental_invokedFrom).toBe("button");
+  });
+
+  it("forks through the public fork API once per click and opens the fork", async () => {
+    const pending = createDeferredPromise<ThreadResponse>();
+    const fork = vi.spyOn(sdk.threads, "fork").mockReturnValue(pending.promise);
+    renderWithRouter(
+      <PluginActionContextProvider>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Fork from here.",
+              sourceSeqEnd: 7,
+              threadId: "thr_main",
+            }),
+          ]}
+          canFork
+          canSpawnChild
+          threadRuntimeDisplayStatus="idle"
+        />
+        <LocationProbe />
+      </PluginActionContextProvider>,
+    );
+
+    selectMessageMenuItem("Fork into new thread");
+    selectMessageMenuItem("Fork into new thread");
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    expect(fork).toHaveBeenCalledTimes(1);
+    expect(fork).toHaveBeenCalledWith({
+      sourceThreadId: "thr_main",
+      sourceSeqEnd: 7,
+      origin: "app",
+    });
+
+    await act(async () => {
+      pending.resolve(
+        makeThreadResponse({
+          id: "thr_fork",
+          projectId: "proj_main",
+          originKind: "fork",
+          sourceThreadId: "thr_main",
+        }),
+      );
+      await pending.promise;
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/projects/proj_main/threads/thr_fork",
+      ),
+    );
+  });
+
+  it("stays on the source thread when the fork is rejected and lets the user retry", async () => {
+    const fork = vi
+      .spyOn(sdk.threads, "fork")
+      .mockRejectedValue(new Error("fork_source_session_unavailable"));
+    renderWithRouter(
+      <PluginActionContextProvider>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              role: "assistant",
+              text: "Fork from here.",
+              threadId: "thr_main",
+            }),
+          ]}
+          canFork
+          canSpawnChild
+          threadRuntimeDisplayStatus="idle"
+        />
+        <LocationProbe />
+      </PluginActionContextProvider>,
+    );
+
+    selectMessageMenuItem("Fork into new thread");
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(1));
+    await act(async () => {});
+    selectMessageMenuItem("Fork into new thread");
+    await waitFor(() => expect(fork).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("location").textContent).toBe("/");
+  });
+
+  it("gives message actions only their own thread's composer, including its queued-message editor", () => {
+    const availability = vi.fn(
+      ({ composer }: ExperimentalMessageActionAvailabilityInput) =>
+        composer === null ? ("hidden" as const) : ("enabled" as const),
+    );
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "needs-composer",
+          title: "Needs composer",
+          experimental_availability: availability,
+          run: vi.fn(),
+        },
+      ]),
+    );
+    const rows = [
+      conversationRow({
+        id: "assistant_row",
+        role: "assistant",
+        text: "Quote me.",
+        threadId: "thr_main",
+      }),
+    ];
+    const timeline = (host: PluginComposerHost) => (
+      <QueryClientProvider client={new QueryClient()}>
+        <MemoryRouter>
+          <PluginComposerHostProvider value={host}>
+            <ThreadTimelineRows
+              threadId="thr_main"
+              timelineRows={rows}
+              threadRuntimeDisplayStatus="idle"
+            />
+          </PluginComposerHostProvider>
+        </MemoryRouter>
+      </QueryClientProvider>
+    );
+    const otherThread = testComposer("thr_other");
+    const { rerender } = render(timeline(otherThread.host));
+    expect(screen.queryByRole("button", { name: "Needs composer" })).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Message actions" }),
+    );
+    expect(screen.queryByRole("menuitem", { name: "Add to chat" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    const queuedEdit = testComposer("thr_main");
+    rerender(
+      timeline({
+        ...queuedEdit.host,
+        scope: {
+          kind: "queued-message",
+          threadId: "thr_main",
+          queuedMessageId: "queued_1",
+          projectId: "proj_test",
+          environmentId: null,
+        },
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Needs composer" }),
+    ).not.toBeNull();
+    selectMessageMenuItem("Add to chat");
+    expect(queuedEdit.draft().text).toBe("> Quote me.\n");
+    expect(otherThread.draft().text).toBe("");
+  });
+
+  it("orders a menu-only action among bb's own menu rows and keeps it out of the row", () => {
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "between",
+          title: "Between add and fork",
+          experimental_placements: ["menu"],
+          experimental_order: 15,
+          run: vi.fn(),
+        },
+      ]),
+    );
+    renderWithRouter(
+      <PluginComposerHostProvider value={testComposer("thr_main").host}>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          projectId="proj_main"
+          timelineRows={[
+            conversationRow({
+              id: "assistant_row",
+              role: "assistant",
+              text: "Hi.",
+            }),
+          ]}
+          canSpawnChild
+          canFork
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Between add and fork" }),
+    ).toBeNull();
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Message actions" }),
+    );
+    expect(
+      screen.getAllByRole("menuitem").map((item) => item.textContent),
+    ).toEqual([
+      "Copy link",
+      "Add to chat",
+      "Between add and fork",
+      "Fork into new thread",
+    ]);
+  });
+
+  it("lists an unordered plugin action's overflow row between bb's Copy link and Add to chat", async () => {
+    mockSelectionMenuMedia({ isCompactViewport: true, isPointerCoarse: true });
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        { id: "summarize", title: "Summarize", run: vi.fn() },
+      ]),
+    );
+    const { container } = renderWithRouter(
+      <PluginComposerHostProvider value={testComposer("thr_main").host}>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          projectId="proj_main"
+          timelineRows={[
+            conversationRow({
+              id: "earlier_row",
+              role: "assistant",
+              text: "A.",
+            }),
+            conversationRow({
+              id: "latest_row",
+              role: "assistant",
+              text: "B.",
+            }),
+          ]}
+          canSpawnChild
+          canFork
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
+    );
+    const trigger = container.querySelector<HTMLButtonElement>(
+      '[data-timeline-row-id="earlier_row"] [aria-label="Message actions"]',
+    );
+    fireEvent.click(trigger!);
+    const drawer = await screen.findByRole("dialog", {
+      name: "Message actions",
+    });
+    const items = await within(drawer).findAllByRole("menuitem");
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Copy link",
+      "Copy message",
+      "Summarize",
+      "Add to chat",
+      "Fork into new thread",
+    ]);
+  });
+
+  it("shows a selection-only action in the selection menu after bb's Add to chat, with the selection's Markdown", async () => {
+    const run = vi.fn();
+    const composer = testComposer("thr_main");
+    setPluginSlotRegistrations(
+      "demo",
+      messageActionRegistrationSet([
+        {
+          id: "quote",
+          title: "Quote selection",
+          experimental_placements: ["selection"],
+          run,
+        },
+      ]),
+    );
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      callback(performance.now());
+      return 1;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+    renderWithRouter(
+      <PluginComposerHostProvider value={composer.host}>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({
+              id: "selectable_row",
+              role: "assistant",
+              text: "Select part of this answer.",
+            }),
+          ]}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
+    );
+    expect(
+      screen.queryByRole("button", { name: "Quote selection" }),
+    ).toBeNull();
+    const textNode = screen.getByText("Select part of this answer.").firstChild;
+    mockWindowSelection({ node: textNode!, text: "part of this answer" });
+    fireEvent(document, new Event("selectionchange"));
+    const quote = await screen.findByRole("button", {
+      name: "Quote selection",
+    });
+    const menuLabels = [
+      ...quote.parentElement!.parentElement!.querySelectorAll("button"),
+    ].map((button) => button.textContent);
+    expect(menuLabels).toEqual(["Add to chat", "Quote selection"]);
+    fireEvent.click(quote);
+    const context = run.mock.calls[0]![0];
+    expect(context.experimental_invokedFrom).toBe("selection");
+    expect(context.selectedText).toBe("part of this answer");
+    expect(context.experimental_selectedMarkdown).toBe("part of this answer");
+  });
+
+  it("runs ThreadChat's own registrations with the full message action context", () => {
+    const run = vi.fn();
+    renderWithRouter(
+      <PluginComposerHostProvider value={testComposer("thr_main").host}>
+        <ThreadTimelineRows
+          threadId="thr_main"
+          timelineRows={[
+            conversationRow({ id: "user_row", role: "user", text: "Ask." }),
+            conversationRow({
+              id: "assistant_row",
+              role: "assistant",
+              text: "Answer.",
+            }),
+          ]}
+          instanceMessageActions={collectThreadChatMessageActions({
+            pluginId: "demo",
+            retiredActions: undefined,
+            registrations: [
+              {
+                id: "send-to-main",
+                title: "Send to main thread",
+                experimental_roles: ["assistant"],
+                experimental_placements: ["menu"],
+                run,
+              },
+            ],
+          })}
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
+    );
+    const menus = screen.getAllByRole("button", { name: "Message actions" });
+    fireEvent.pointerDown(menus[0]!);
+    expect(
+      screen.queryByRole("menuitem", { name: "Send to main thread" }),
+    ).toBeNull();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    fireEvent.pointerDown(menus[1]!);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Send to main thread" }),
+    );
+    const context = run.mock.calls[0]![0];
+    expect(context.threadId).toBe("thr_main");
+    expect(context.message.id).toBe("assistant_row");
+    expect(context.experimental_invokedFrom).toBe("menu");
+    expect(context.composer).not.toBeNull();
   });
 
   it("passes the highlighted text to plugin selection actions", async () => {
@@ -1660,6 +2201,9 @@ describe("ThreadTimelineRows actions", () => {
       text: "Select part of this answer.",
       sourceSeqEnd: 11,
       experimental_messageSeq: 11,
+      experimental_settled: true,
+      experimental_attachments: [],
+      experimental_imageUrls: [],
     });
     expect(context.openPanel({ actionId: "panel" })).toBe(false);
   });
@@ -1730,24 +2274,25 @@ describe("ThreadTimelineRows shared message column width", () => {
     vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
 
     const { container } = renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "earlier_agent_message",
-            role: "assistant",
-            text: "An earlier answer.",
-          }),
-          conversationRow({
-            id: "latest_agent_message",
-            role: "assistant",
-            text: "The latest answer.",
-          }),
-        ]}
-        canSpawnChild
-        onForkMessage={vi.fn()}
-        onMessageAddToChat={vi.fn()}
-        threadRuntimeDisplayStatus="idle"
-      />,
+      <PluginComposerHostProvider value={testComposer("thread-1").host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              id: "earlier_agent_message",
+              role: "assistant",
+              text: "An earlier answer.",
+            }),
+            conversationRow({
+              id: "latest_agent_message",
+              role: "assistant",
+              text: "The latest answer.",
+            }),
+          ]}
+          canSpawnChild
+          canFork
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
 
     act(() => {
@@ -1808,24 +2353,25 @@ describe("ThreadTimelineRows shared message column width", () => {
     vi.stubGlobal("ResizeObserver", ControlledResizeObserver);
 
     const { container } = renderWithRouter(
-      <ThreadTimelineRows
-        timelineRows={[
-          conversationRow({
-            id: "earlier_agent_message",
-            role: "assistant",
-            text: "An earlier answer.",
-          }),
-          conversationRow({
-            id: "latest_agent_message",
-            role: "assistant",
-            text: "The latest answer.",
-          }),
-        ]}
-        canSpawnChild
-        onForkMessage={vi.fn()}
-        onMessageAddToChat={vi.fn()}
-        threadRuntimeDisplayStatus="idle"
-      />,
+      <PluginComposerHostProvider value={testComposer("thread-1").host}>
+        <ThreadTimelineRows
+          timelineRows={[
+            conversationRow({
+              id: "earlier_agent_message",
+              role: "assistant",
+              text: "An earlier answer.",
+            }),
+            conversationRow({
+              id: "latest_agent_message",
+              role: "assistant",
+              text: "The latest answer.",
+            }),
+          ]}
+          canSpawnChild
+          canFork
+          threadRuntimeDisplayStatus="idle"
+        />
+      </PluginComposerHostProvider>,
     );
     const reportListWidth = (width: number) => {
       act(() => {

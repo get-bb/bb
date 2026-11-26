@@ -174,6 +174,7 @@ import {
   type ExperimentalVoiceInputTextareaProps,
   type PluginEnvironmentProviderInputsRegistration,
   type PluginMachineProviderInputsRegistration,
+  type ThreadChatMessageReference,
   type ThreadChatProps,
   type DiffProps,
   type SourceCodeProps,
@@ -190,6 +191,7 @@ import { sliceUtf16Head } from "@bb/text-utils";
 import { isComposerDraftEmpty } from "../internal/composer-view.js";
 import {
   appendComposerDraft,
+  appendQuoteToComposerDraft,
   composerDraftFromInsertParts,
   createComposerHandleBinding,
   reconcileComposerMentions,
@@ -199,6 +201,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
 import { experimental_resolveThreadStatus } from "../internal/thread-status.js";
+import { makeActionContext } from "./fixtures.js";
 import {
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
@@ -945,11 +948,31 @@ function isPluginAppDefinition(value: unknown): value is PluginAppDefinition {
  * Stand-in for the host-owned ThreadChat component: a recognizable stub that
  * records every public prop as a data attribute so plugin tests can assert
  * what their slot component passed without the real chat engine.
- * `leadingContent` renders inside the stub; each `messageActions` entry
- * renders as a button (`data-testid="bb-thread-chat-action-<id>"`) that
- * invokes its `run` with a synthetic assistant message reference, so plugin
- * tests can drive the action without the real timeline.
+ * `leadingContent` renders inside the stub. Each `experimental_messageActions`
+ * entry renders as a button
+ * (`data-testid="bb-thread-chat-experimental-action-<id>"`, ids also listed in
+ * `data-message-actions`) that runs it with a {@link makeActionContext}
+ * context, a synthetic message reference of its first role, a null composer,
+ * an inline-button invocation, and no Edit request, so plugin tests can drive
+ * the action without the real timeline.
  */
+function testMessageReference(
+  threadId: string,
+  role: "user" | "assistant",
+): ThreadChatMessageReference {
+  return {
+    id: "test-message",
+    threadId,
+    role,
+    text: "test message text",
+    sourceSeqEnd: 1,
+    experimental_messageSeq: 1,
+    experimental_settled: true,
+    experimental_attachments: [],
+    experimental_imageUrls: [],
+  };
+}
+
 function TestThreadChat({
   threadId,
   variant = "full",
@@ -958,7 +981,7 @@ function TestThreadChat({
   permissionPolicy = "inherit",
   className,
   leadingContent,
-  messageActions,
+  experimental_messageActions,
 }: ThreadChatProps) {
   return (
     <div
@@ -968,7 +991,7 @@ function TestThreadChat({
       data-layout={layout}
       data-focus-request={focusRequest ?? 0}
       data-permission-policy={permissionPolicy}
-      data-message-actions={(messageActions ?? [])
+      data-message-actions={(experimental_messageActions ?? [])
         .map((action) => action.id)
         .join(" ")}
       className={className}
@@ -977,20 +1000,23 @@ function TestThreadChat({
         <div data-testid="bb-thread-chat-leading-content">{leadingContent}</div>
       )}
       ThreadChat stub ({threadId})
-      {(messageActions ?? []).map((action) => (
+      {(experimental_messageActions ?? []).map((action) => (
         <button
           key={action.id}
           type="button"
-          data-testid={`bb-thread-chat-action-${action.id}`}
-          data-roles={action.roles === undefined ? "" : action.roles.join(" ")}
+          data-testid={`bb-thread-chat-experimental-action-${action.id}`}
+          data-roles={(action.experimental_roles ?? []).join(" ")}
           onClick={() => {
             void action.run({
-              id: "test-message",
+              ...makeActionContext(),
               threadId,
-              role: action.roles?.[0] ?? "assistant",
-              text: "test message text",
-              sourceSeqEnd: 1,
-              experimental_messageSeq: 1,
+              message: testMessageReference(
+                threadId,
+                action.experimental_roles?.[0] ?? "assistant",
+              ),
+              composer: null,
+              experimental_invokedFrom: "button",
+              experimental_messageRequests: { edit: null },
             });
           }}
         >
@@ -2129,6 +2155,7 @@ const testPluginSdkApp = {
   ): Promise<boolean> {
     return activeClipboard?.(content) ?? Promise.resolve(true);
   },
+  experimental_appendQuoteToDraft: appendQuoteToComposerDraft,
   experimental_showErrorToast(options: TestErrorToast): void {
     activeErrorToasts?.push({ ...options });
   },

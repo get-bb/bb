@@ -1,15 +1,15 @@
 import {
+  forwardRef,
   useCallback,
   useRef,
   useState,
+  type ComponentPropsWithoutRef,
   type ReactNode,
   type RefObject,
 } from "react";
-import { CopyButton } from "../../ui/copy-button.js";
 import { Icon } from "@bb/shared-ui/icon";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
-import { copyToClipboardWithToast } from "@/lib/clipboard";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,80 +25,38 @@ import {
 import { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from "@bb/shared-ui/hover-reveal";
 import { observeSharedResize } from "@bb/shared-ui/lib/shared-resize-observer";
 import { cn } from "@bb/shared-ui/lib/utils";
-import type { PromptDraftAttachment } from "@bb/client-core";
-import { PluginItemIcon, pluginIconName } from "@/components/plugin/PluginIcon";
-import type { ThreadTimelinePluginMessageAction } from "./types.js";
+import { useCopiedFeedback } from "@bb/shared-ui/copy-button";
+import { CONTROL_HOVER_TRANSITION } from "@bb/shared-ui/motion";
+import { PluginItemIcon } from "@/components/plugin/PluginIcon";
+import type { ThreadTimelineMessageAction } from "./types.js";
 import { formatDayMessageTime, MessageTime } from "@bb/shared-ui/message-time";
 
-function PluginActionIcon({
-  pluginId,
-  icon,
+function MessageActionIcon({
+  action,
+  confirmed,
   className,
 }: {
-  pluginId: string | null;
-  icon: string | null;
+  action: ThreadTimelineMessageAction;
+  confirmed: boolean;
   className?: string;
 }) {
-  return pluginId === null ? (
-    <Icon
-      name={pluginIconName(icon)}
-      className={cn("size-4 shrink-0", className)}
-      aria-hidden="true"
-    />
+  return confirmed ? (
+    <Icon name="Check" className={className} aria-hidden="true" />
   ) : (
-    <PluginItemIcon pluginId={pluginId} icon={icon} className={className} />
+    <PluginItemIcon
+      pluginId={action.pluginId}
+      icon={action.icon}
+      className={className}
+    />
   );
 }
 
 interface MessageActionBarProps {
   timestamp: number;
-  messageText: string;
   alignment: "start" | "end";
   mobileActionDisplay: "inline" | "overflow";
-  addToChatAttachments?: readonly PromptDraftAttachment[];
-  copyImageUrl?: string;
-  onAddToChat?: (
-    text: string,
-    attachments?: readonly PromptDraftAttachment[],
-  ) => void;
-  onCopyLink?: () => void;
-  onEdit?: () => void;
-  onFork?: () => void;
-  disabled?: boolean;
-  pluginActions?: readonly ThreadTimelinePluginMessageAction[];
+  actions: readonly ThreadTimelineMessageAction[];
   metadata?: ReactNode;
-}
-
-interface MessageOverflowAction {
-  icon: "Copy" | "Link" | "Edit" | "MessageSquarePlus" | "Fork";
-  plugin?: { pluginId: string | null; icon: string | null };
-  key?: string;
-  label: string;
-  onSelect: () => void;
-  disabled?: boolean;
-  copyText?: string;
-  copyImageUrl?: string;
-  kind?: "copy";
-}
-
-function MessageActionIcon({
-  action,
-  className,
-  ariaHidden,
-}: {
-  action: MessageOverflowAction;
-  className?: string;
-  ariaHidden?: "true";
-}) {
-  return action.plugin ? (
-    <PluginActionIcon
-      pluginId={action.plugin.pluginId}
-      icon={action.plugin.icon}
-      className={className}
-    />
-  ) : (
-    <Icon name={action.icon} className={className} aria-hidden={ariaHidden} />
-  );
 }
 
 const DESKTOP_ACTION_WIDTH_PX = 20;
@@ -200,8 +158,7 @@ function useMessageActionRowFit({
   };
 }
 
-const ACTION_BUTTON_CLASS =
-  "inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground disabled:pointer-events-none disabled:opacity-40";
+const ACTION_BUTTON_CLASS = `inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-40`;
 const HOVER_REVEAL_CLASS = cn(
   "opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100",
   HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,
@@ -233,36 +190,57 @@ export function findMessageActionTooltipCollisionBoundary(
   return node?.closest<HTMLElement>("[data-thread-window]") ?? undefined;
 }
 
+function useConfirmedRun(action: ThreadTimelineMessageAction) {
+  const { copied: confirmed, markCopied: markConfirmed } = useCopiedFeedback();
+  const run = () => {
+    if (confirmed) return;
+    void action.run("button").then((succeeded) => {
+      if (succeeded) markConfirmed();
+    });
+  };
+  return { confirmed, run };
+}
+
+const InlineMessageAction = forwardRef<
+  HTMLButtonElement,
+  Omit<ComponentPropsWithoutRef<"button">, "className" | "onClick"> & {
+    action: ThreadTimelineMessageAction;
+    className: string;
+  }
+>(function InlineMessageAction({ action, className, ...rest }, ref) {
+  const { confirmed, run } = useConfirmedRun(action);
+  return (
+    <button
+      ref={ref}
+      type="button"
+      {...rest}
+      className={cn(ACTION_BUTTON_CLASS, className)}
+      onClick={run}
+      disabled={action.disabled}
+      aria-label={action.label}
+    >
+      <MessageActionIcon
+        action={action}
+        confirmed={confirmed}
+        className="size-3"
+      />
+    </button>
+  );
+});
+
 function DesktopMessageAction({
   action,
   className,
   collisionBoundary,
 }: {
-  action: MessageOverflowAction;
+  action: ThreadTimelineMessageAction;
   className: string;
   collisionBoundary: HTMLElement | undefined;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        {action.kind === "copy" ? (
-          <CopyButton
-            text={action.copyText ?? ""}
-            imageUrl={action.copyImageUrl}
-            label={action.label}
-            className={className}
-          />
-        ) : (
-          <button
-            type="button"
-            className={cn(ACTION_BUTTON_CLASS, className)}
-            onClick={action.onSelect}
-            disabled={action.disabled}
-            aria-label={action.label}
-          >
-            <MessageActionIcon action={action} className="size-3" />
-          </button>
-        )}
+        <InlineMessageAction action={action} className={className} />
       </TooltipTrigger>
       <TooltipContent
         side={ACTION_TOOLTIP_SIDE}
@@ -277,16 +255,18 @@ function DesktopMessageAction({
 function MessageActionMenuItems({
   actions,
 }: {
-  actions: readonly MessageOverflowAction[];
+  actions: readonly ThreadTimelineMessageAction[];
 }) {
   return actions.map((action) => (
     <DropdownMenuItem
-      key={action.key ?? action.label}
+      key={action.key}
       disabled={action.disabled}
-      onSelect={action.onSelect}
+      onSelect={() => {
+        void action.run("menu");
+      }}
       textValue={action.label}
     >
-      <MessageActionIcon action={action} ariaHidden="true" />
+      <MessageActionIcon action={action} confirmed={false} />
       {action.label}
     </DropdownMenuItem>
   ));
@@ -309,24 +289,13 @@ function MessageTimestampFooter({ timestamp }: { timestamp: number }) {
 
 export function MessageActionBar({
   timestamp,
-  messageText,
   alignment,
   mobileActionDisplay,
-  addToChatAttachments = [],
-  copyImageUrl,
-  onAddToChat,
-  onCopyLink,
-  onEdit,
-  onFork,
-  disabled,
-  pluginActions = [],
+  actions,
   metadata,
 }: MessageActionBarProps) {
   const isCompactViewport = useIsCompactViewport();
   const isPointerCoarse = usePointerCoarse();
-  const hasCopy = messageText.length > 0 || copyImageUrl !== undefined;
-  const hasAddToChat =
-    (hasCopy || addToChatAttachments.length > 0) && onAddToChat !== undefined;
   const [collisionBoundary, setCollisionBoundary] = useState<
     HTMLElement | undefined
   >();
@@ -336,70 +305,9 @@ export function MessageActionBar({
     mobileActionDisplay === "inline"
       ? MOBILE_INLINE_ACTION_CLASS
       : MOBILE_OVERFLOW_ACTION_CLASS;
-  const handleAddToChat = useCallback(() => {
-    if (!onAddToChat) return;
-    if (addToChatAttachments.length > 0) {
-      onAddToChat(messageText, addToChatAttachments);
-      return;
-    }
-    onAddToChat(messageText);
-  }, [addToChatAttachments, messageText, onAddToChat]);
-  const inlineCandidates: MessageOverflowAction[] = [
-    ...(hasCopy
-      ? [
-          {
-            icon: "Copy" as const,
-            label: "Copy message",
-            onSelect: () => {
-              void copyToClipboardWithToast(messageText, {
-                errorMessage: "Failed to copy",
-                imageUrl: copyImageUrl,
-              });
-            },
-            copyText: messageText,
-            copyImageUrl,
-            kind: "copy" as const,
-          },
-        ]
-      : []),
-    ...(onEdit
-      ? [
-          {
-            icon: "Edit" as const,
-            label: "Edit message",
-            onSelect: onEdit,
-          },
-        ]
-      : []),
-    ...pluginActions.map((action) => ({
-      icon: "Copy" as const,
-      plugin: { pluginId: action.pluginId, icon: action.icon },
-      key: action.key,
-      label: action.label,
-      onSelect: action.onSelect,
-    })),
-  ];
-  const trailingMenuActions: MessageOverflowAction[] = [
-    ...(hasAddToChat
-      ? [
-          {
-            icon: "MessageSquarePlus" as const,
-            label: "Add to chat",
-            onSelect: handleAddToChat,
-          },
-        ]
-      : []),
-    ...(onFork
-      ? [
-          {
-            icon: "Fork" as const,
-            label: "Fork into new thread",
-            onSelect: onFork,
-            disabled,
-          },
-        ]
-      : []),
-  ];
+  const inlineCandidates = actions.filter(
+    (action) => action.placement === "inline",
+  );
   const usesOverflowOnly = isCompactTouch && mobileActionDisplay === "overflow";
   const {
     slotRef: measureSlotRef,
@@ -417,19 +325,13 @@ export function MessageActionBar({
     setCollisionBoundary(findMessageActionTooltipCollisionBoundary(node));
   };
   const inlineCount = usesOverflowOnly ? 0 : fittedInlineCount;
-  const menuActions = [
-    ...(onCopyLink
-      ? [
-          {
-            icon: "Link" as const,
-            label: "Copy link",
-            onSelect: onCopyLink,
-          },
-        ]
-      : []),
-    ...inlineCandidates.slice(isCompactViewport ? 0 : inlineCount),
-    ...trailingMenuActions,
-  ];
+  const overflowedInline = inlineCandidates.slice(
+    isCompactViewport ? 0 : inlineCount,
+  );
+  const menuActions = actions.flatMap((action) => {
+    if (action.placement === "menu") return [action];
+    return action === inlineCandidates[0] ? overflowedInline : [];
+  });
 
   const rowPositionClass = cn(
     ACTION_ROW_POSITION_CLASS,
@@ -463,7 +365,7 @@ export function MessageActionBar({
                 .slice(0, inlineCount)
                 .map((action) => (
                   <DesktopMessageAction
-                    key={action.key ?? action.label}
+                    key={action.key}
                     action={action}
                     className={cn(HOVER_REVEAL_CLASS, mobileDirectActionClass)}
                     collisionBoundary={collisionBoundary}
@@ -507,32 +409,13 @@ export function MessageActionBar({
 function MobileInlineActions({
   actions,
 }: {
-  actions: readonly MessageOverflowAction[];
+  actions: readonly ThreadTimelineMessageAction[];
 }) {
-  return actions.map((action) =>
-    action.kind === "copy" ? (
-      <CopyButton
-        key={action.key ?? action.label}
-        text={action.copyText ?? ""}
-        imageUrl={action.copyImageUrl}
-        label={action.label}
-        className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
-      />
-    ) : (
-      <button
-        key={action.key ?? action.label}
-        type="button"
-        className={cn(
-          ACTION_BUTTON_CLASS,
-          HOVER_REVEAL_CLASS,
-          MOBILE_INLINE_ACTION_CLASS,
-        )}
-        onClick={action.onSelect}
-        disabled={action.disabled}
-        aria-label={action.label}
-      >
-        <MessageActionIcon action={action} className="size-3" />
-      </button>
-    ),
-  );
+  return actions.map((action) => (
+    <InlineMessageAction
+      key={action.key}
+      action={action}
+      className={cn(HOVER_REVEAL_CLASS, MOBILE_INLINE_ACTION_CLASS)}
+    />
+  ));
 }

@@ -1,4 +1,5 @@
-import { appendQuoteAndAttachmentsToDraft } from "@bb/client-core";
+import { appendQuoteAndAttachmentsToDraft } from "@get-bb/plugin-sdk/internal/composer-handle";
+import type { ComposerAttachment } from "@get-bb/plugin-sdk";
 // @vitest-environment jsdom
 
 import { createCoreComposerActions } from "@/lib/plugin-composer-handle";
@@ -286,7 +287,7 @@ describe("usePromptDraftStorage", () => {
 function addQuote(
   source: ReturnType<typeof getPromptDraftAccessor>,
   text: string,
-  attachments?: Parameters<typeof appendQuoteAndAttachmentsToDraft>[2],
+  attachments?: readonly ComposerAttachment[],
 ) {
   const composer = createCoreComposerActions({ ...source, focus: () => {} });
   composer.replace((current) =>

@@ -1,9 +1,14 @@
 import { useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
-  ThreadChatMessageAction,
+  PluginMessageActionRegistration,
   ThreadChatProps,
 } from "@get-bb/plugin-sdk";
+import { CORE_PLUGIN_ID } from "@bb/domain";
+import {
+  collectThreadChatMessageActions,
+  type RetiredThreadChatMessageAction,
+} from "@/lib/plugin-message-actions";
 import {
   formatEnvironmentDisplay,
   type EnvironmentDisplayHostContext,
@@ -12,10 +17,6 @@ import { EmptyStatePanel } from "@bb/shared-ui/empty-state";
 import { cn } from "@bb/shared-ui/lib/utils";
 import type { PromptMentionLinkResolver } from "@bb/client-core";
 import { isThreadForkable } from "@bb/client-core";
-import {
-  type ThreadTimelineConsumerMessageAction,
-  type ThreadTimelineForkMessageHandler,
-} from "@/components/thread/timeline";
 import {
   ThreadTimelineNavigationProvider,
   useThreadTimelineNavigation,
@@ -31,7 +32,6 @@ import { useSystemProviderInfo } from "@/hooks/queries/system-queries";
 import { useThread } from "@/hooks/queries/thread-queries";
 import { useThreadTimelineSubscription } from "@/hooks/queries/thread-panel-queries";
 import { useMarkThreadRead } from "@/hooks/mutations/thread-state-mutations";
-import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
 import { useHostDaemon } from "@/hooks/useHostDaemon";
 import { useThreadReadTracking } from "@/hooks/useThreadReadTracking";
 import { useHosts } from "@/hooks/queries/host-queries";
@@ -61,8 +61,9 @@ import {
 } from "@/views/thread-detail/ThreadScreen";
 import { openThread } from "@/lib/split-layout/openThread";
 
-const NO_CONSUMER_MESSAGE_ACTIONS: readonly ThreadTimelineConsumerMessageAction[] =
-  [];
+export type PluginThreadChatProps = ThreadChatProps & {
+  messageActions?: readonly RetiredThreadChatMessageAction[];
+};
 
 export function PluginThreadChat({
   threadId,
@@ -73,7 +74,8 @@ export function PluginThreadChat({
   className,
   leadingContent,
   messageActions,
-}: ThreadChatProps) {
+  experimental_messageActions,
+}: PluginThreadChatProps) {
   const containerClassName = cn(
     layout === "contained" ? "flex h-full min-h-0 flex-col" : "flex flex-col",
     className,
@@ -88,6 +90,7 @@ export function PluginThreadChat({
         permissionPolicy={permissionPolicy}
         leadingContent={leadingContent}
         messageActions={messageActions}
+        experimentalMessageActions={experimental_messageActions}
       />
     </div>
   );
@@ -100,7 +103,10 @@ interface PluginThreadChatBodyProps {
   focusRequest: number | undefined;
   permissionPolicy: "inherit" | "editable";
   leadingContent: ReactNode;
-  messageActions: readonly ThreadChatMessageAction[] | undefined;
+  messageActions: readonly RetiredThreadChatMessageAction[] | undefined;
+  experimentalMessageActions:
+    | readonly PluginMessageActionRegistration[]
+    | undefined;
 }
 
 function PluginThreadChatBody({
@@ -111,6 +117,7 @@ function PluginThreadChatBody({
   permissionPolicy,
   leadingContent,
   messageActions,
+  experimentalMessageActions,
 }: PluginThreadChatBodyProps) {
   const threadQuery = useThread(threadId, { enabled: threadId.length > 0 });
   const thread = threadQuery.data;
@@ -160,16 +167,6 @@ function PluginThreadChatBody({
       openThread({ navigate, ...target });
     },
     [navigate, paneNavigateInPane],
-  );
-  const forkThreadFromMessage = useForkThreadFromMessage({
-    navigateInPane: navigateToThread,
-    sourceThread: thread ?? null,
-  });
-  const handleForkMessage = useCallback<ThreadTimelineForkMessageHandler>(
-    (target) => {
-      void forkThreadFromMessage(target);
-    },
-    [forkThreadFromMessage],
   );
   const isForkAvailable =
     hasComposer &&
@@ -226,21 +223,14 @@ function PluginThreadChatBody({
       ? timelineNavigation.workspaceRootPath
       : undefined);
   const pluginId = useContext(PluginContext);
-  const consumerMessageActions = useMemo<
-    readonly ThreadTimelineConsumerMessageAction[]
-  >(
+  const instanceMessageActions = useMemo(
     () =>
-      messageActions === undefined || messageActions.length === 0
-        ? NO_CONSUMER_MESSAGE_ACTIONS
-        : messageActions.map((action) => ({
-            id: action.id,
-            pluginId: action.icon !== undefined ? null : pluginId,
-            icon: action.icon ?? null,
-            label: action.title,
-            ...(action.roles !== undefined ? { roles: action.roles } : {}),
-            run: action.run,
-          })),
-    [messageActions, pluginId],
+      collectThreadChatMessageActions({
+        pluginId: pluginId ?? CORE_PLUGIN_ID,
+        retiredActions: messageActions,
+        registrations: experimentalMessageActions,
+      }),
+    [experimentalMessageActions, messageActions, pluginId],
   );
 
   const resolveMentionLink = useCallback<PromptMentionLinkResolver>(
@@ -371,7 +361,7 @@ function PluginThreadChatBody({
             thread={thread}
             timelineEnabled
             timelineHost={{
-              consumerMessageActions,
+              instanceMessageActions,
               environmentHostName:
                 environmentHost !== null &&
                 isHostAmbiguous(hasMultipleMachines, environmentHost.type)
@@ -379,7 +369,7 @@ function PluginThreadChatBody({
                   : null,
               leadingContent: leadingContent ?? null,
               messageActionSurface: "embedded-chat",
-              onForkMessage: isForkAvailable ? handleForkMessage : null,
+              canFork: isForkAvailable,
               onTitleAction: handleTimelineTitleAction,
               unreadDividerAutoScroll: unreadDividerState.autoScroll,
               unreadDividerPlacement: unreadDividerState.placement,

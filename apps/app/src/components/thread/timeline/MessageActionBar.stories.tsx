@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { MessageActionBar } from "@/components/thread/timeline/MessageActionBar";
+import { useStoryMessageActions } from "@/components/thread/timeline/story-message-actions";
+import { useStoryPromptDraft } from "@/components/thread/timeline/StoryDraftPromptBox";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 
 export default {
   title: "thread/timeline/Message Action Bar",
 };
 
-const noop = () => undefined;
 const STORY_TIMESTAMP = Date.UTC(2026, 8, 30, 16, 5);
 
 function HoverRevealStage({ children }: { children: ReactNode }) {
@@ -17,41 +18,71 @@ function HoverRevealStage({ children }: { children: ReactNode }) {
   );
 }
 
+function StoryBar({
+  text,
+  mobileActionDisplay,
+  role,
+  withComposer = false,
+  canFork,
+  forkDisabled,
+}: {
+  text: string;
+  mobileActionDisplay: "inline" | "overflow";
+  role: "user" | "assistant";
+  withComposer?: boolean;
+  canFork?: boolean;
+  forkDisabled?: boolean;
+}) {
+  const promptDraft = useStoryPromptDraft();
+  const actions = useStoryMessageActions({
+    role,
+    text,
+    ...(withComposer ? { composerHost: promptDraft.composerHost } : {}),
+    ...(canFork === undefined ? {} : { canFork }),
+    ...(forkDisabled === undefined ? {} : { forkDisabled }),
+  });
+  return (
+    <MessageActionBar
+      timestamp={STORY_TIMESTAMP}
+      alignment="end"
+      mobileActionDisplay={mobileActionDisplay}
+      actions={actions}
+    />
+  );
+}
+
 export function Overview() {
   return (
     <>
       <StoryCard>
         <StoryRow label="main timeline" hint="Copy + menu">
           <HoverRevealStage>
-            <MessageActionBar
-              timestamp={STORY_TIMESTAMP}
-              messageText="An agent message you can fork or reply to."
-              alignment="end"
+            <StoryBar
+              role="assistant"
+              text="An agent message you can fork or reply to."
               mobileActionDisplay="inline"
-              onFork={noop}
+              canFork
             />
           </HoverRevealStage>
         </StoryRow>
         <StoryRow label="user message" hint="Copy + menu">
           <HoverRevealStage>
-            <MessageActionBar
-              timestamp={STORY_TIMESTAMP}
-              messageText="A user message you can quote into the composer."
-              alignment="end"
+            <StoryBar
+              role="user"
+              text="A user message you can quote into the composer."
               mobileActionDisplay="overflow"
-              onAddToChat={noop}
+              withComposer
             />
           </HoverRevealStage>
         </StoryRow>
         <StoryRow label="disabled" hint="thread not forkable → greyed">
           <HoverRevealStage>
-            <MessageActionBar
-              timestamp={STORY_TIMESTAMP}
-              messageText="Fork/Reply greyed when the thread can't fork."
-              alignment="end"
+            <StoryBar
+              role="assistant"
+              text="Fork/Reply greyed when the thread can't fork."
               mobileActionDisplay="inline"
-              onFork={noop}
-              disabled
+              canFork
+              forkDisabled
             />
           </HoverRevealStage>
         </StoryRow>

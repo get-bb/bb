@@ -75,44 +75,6 @@ export function emptyPromptDraftState(): PromptDraftState {
   };
 }
 
-function normalizeQuotedSelectionText(text: string): string {
-  const lines = text.replace(/\r\n|\r/gu, "\n").split("\n");
-  const normalizedLines: string[] = [];
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]!;
-    const previousLine = normalizedLines.at(-1);
-    const nextLine = lines[index + 1];
-    if (
-      line.trim().length === 0 &&
-      previousLine?.startsWith(">") === true &&
-      nextLine?.startsWith(">") === true
-    ) {
-      continue;
-    }
-    normalizedLines.push(line);
-  }
-
-  return normalizedLines.join("\n").trim();
-}
-
-export function appendQuoteToDraftText<Draft extends { text: string }>(
-  state: Draft,
-  quotedText: string,
-): Draft {
-  const trimmed = normalizeQuotedSelectionText(quotedText);
-  if (trimmed === "") return state;
-
-  const block = trimmed
-    .split("\n")
-    .map((line) => (line.length > 0 ? `> ${line}` : ">"))
-    .join("\n");
-
-  const text = state.text === "" ? `${block}\n` : `${state.text}\n${block}\n`;
-
-  return { ...state, text };
-}
-
 function appendMissingAttachments(
   existing: readonly PromptDraftAttachment[],
   additions: readonly PromptDraftAttachment[],
@@ -129,25 +91,6 @@ function appendMissingAttachments(
     mergedAttachments.push(attachment);
   }
   return mergedAttachments;
-}
-
-export function appendQuoteAndAttachmentsToDraft<
-  Draft extends { text: string; attachments: readonly PromptDraftAttachment[] },
->(
-  state: Draft,
-  quotedText: string,
-  attachments: readonly PromptDraftAttachment[],
-): Draft {
-  const quotedState = appendQuoteToDraftText(state, quotedText);
-  const mergedAttachments = appendMissingAttachments(
-    quotedState.attachments,
-    attachments,
-  );
-  if (mergedAttachments.length === quotedState.attachments.length) {
-    return quotedState;
-  }
-
-  return { ...quotedState, attachments: mergedAttachments };
 }
 
 const UNSENT_DRAFT_SEPARATOR = "\n\n";

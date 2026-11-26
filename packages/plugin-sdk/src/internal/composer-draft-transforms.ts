@@ -1,4 +1,9 @@
-import type { ComposerDraft, ComposerMention } from "../app-contract.js";
+import type {
+  ComposerAttachment,
+  ComposerDraft,
+  ComposerDraftSnapshot,
+  ComposerMention,
+} from "../app-contract.js";
 
 export function removeComposerMentions<Draft extends ComposerDraft>(
   draft: Draft,
@@ -82,4 +87,83 @@ export function reconcileComposerMentions(
     }
     return [];
   });
+}
+
+function normalizeQuotedSelectionText(text: string): string {
+  const lines = text.replace(/\r\n|\r/gu, "\n").split("\n");
+  const normalizedLines: string[] = [];
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index]!;
+    const previousLine = normalizedLines.at(-1);
+    const nextLine = lines[index + 1];
+    if (
+      line.trim().length === 0 &&
+      previousLine?.startsWith(">") === true &&
+      nextLine?.startsWith(">") === true
+    ) {
+      continue;
+    }
+    normalizedLines.push(line);
+  }
+
+  return normalizedLines.join("\n").trim();
+}
+
+export function appendQuoteToDraftText<Draft extends { text: string }>(
+  state: Draft,
+  quotedText: string,
+): Draft {
+  const trimmed = normalizeQuotedSelectionText(quotedText);
+  if (trimmed === "") return state;
+
+  const block = trimmed
+    .split("\n")
+    .map((line) => (line.length > 0 ? `> ${line}` : ">"))
+    .join("\n");
+
+  const text = state.text === "" ? `${block}\n` : `${state.text}\n${block}\n`;
+
+  return { ...state, text };
+}
+
+function appendMissingAttachments<Attachment extends { path: string }>(
+  existing: readonly Attachment[],
+  additions: readonly Attachment[],
+): Attachment[] {
+  const existingAttachmentPaths = new Set(
+    existing.map((attachment) => attachment.path),
+  );
+  const mergedAttachments = [...existing];
+  for (const attachment of additions) {
+    if (existingAttachmentPaths.has(attachment.path)) {
+      continue;
+    }
+    existingAttachmentPaths.add(attachment.path);
+    mergedAttachments.push(attachment);
+  }
+  return mergedAttachments;
+}
+
+export function appendQuoteAndAttachmentsToDraft<
+  Draft extends { text: string; attachments: readonly { path: string }[] },
+>(state: Draft, quotedText: string, attachments: Draft["attachments"]): Draft {
+  const quotedState = appendQuoteToDraftText(state, quotedText);
+  const mergedAttachments = appendMissingAttachments(
+    quotedState.attachments,
+    attachments,
+  );
+  if (mergedAttachments.length === quotedState.attachments.length) {
+    return quotedState;
+  }
+
+  return { ...quotedState, attachments: mergedAttachments };
+}
+
+export function appendQuoteToComposerDraft(
+  draft: ComposerDraftSnapshot,
+  text: string,
+  attachments: readonly ComposerAttachment[] = [],
+): ComposerDraftSnapshot {
+  return appendQuoteAndAttachmentsToDraft(draft, text, attachments);
 }

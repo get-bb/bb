@@ -1702,6 +1702,14 @@ export interface PluginCodeThemeState {
 export interface ExperimentalClipboardContent {
   text: string;
   html?: string;
+  /**
+   * An image to copy with the text, such as one of
+   * `ThreadChatMessageReference.experimental_imageUrls`. bb fetches it and
+   * writes it as PNG beside the text, plus HTML holding both, in place of
+   * `html`. The copy fails, writing nothing, when the image cannot be
+   * fetched or written; bb Desktop accepts only same-origin http(s) images.
+   */
+  imageUrl?: string;
 }
 
 /**
@@ -3901,6 +3909,28 @@ export interface ThreadChatMessageReference {
    * which can differ from the acceptance sequence in `sourceSeqEnd`.
    */
   experimental_messageSeq: number;
+  /**
+   * False while the message can still change: an assistant message that is
+   * still streaming, or a user message whose request is still pending (queued
+   * or not yet accepted). bb's Copy link waits for true. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_settled: boolean;
+  /**
+   * The files the user attached to the message, in the shape
+   * `PluginComposerApi.replace` takes, so they can be added to a draft as
+   * bb's Add to chat does with `experimental_appendQuoteToDraft`. Empty for
+   * assistant messages and for messages with only remote images.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_attachments: readonly ComposerAttachment[];
+  /**
+   * The URLs bb displays the message's images from, in display order, without
+   * videos. Pass one to `experimental_copyToClipboard` as `imageUrl` to copy
+   * it, as bb's Copy does with the first. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_imageUrls: readonly string[];
 }
 
 /** Stable identity and creation time of one rendered conversation message. */
@@ -3947,6 +3977,95 @@ export interface ExperimentalMessageMetadataRegistration {
 
 /** A timeline a `messageAction` can show in; see {@link PluginMessageActionRegistration.experimental_surfaces}. */
 export type ExperimentalMessageActionSurface = "thread-view" | "embedded-chat";
+
+/**
+ * Where a `messageAction` shows; see
+ * {@link PluginMessageActionRegistration.experimental_placements}.
+ *
+ * - `"inline"`: an icon button in the message's action row. When the row is
+ *   too narrow for every inline action, the ones that do not fit move into
+ *   the row's overflow ("…") menu as one block, in row order, placed where
+ *   the row's first inline action sorts among the menu actions. On compact
+ *   screens the menu lists every inline action, and on touch screens every
+ *   message but the latest shows only the menu.
+ * - `"menu"`: a row in the overflow menu only.
+ * - `"selection"`: a button in the menu that appears over text selected in
+ *   an assistant message. Its `run` gets `selectedText`.
+ */
+export type ExperimentalMessageActionPlacement =
+  | "inline"
+  | "menu"
+  | "selection";
+
+/**
+ * The control the user activated to run a `messageAction`: an inline
+ * `"button"` in the action row, a `"menu"` row in the overflow menu, or a
+ * button in the `"selection"` menu.
+ */
+export type ExperimentalMessageActionInvocation =
+  | "button"
+  | "menu"
+  | "selection";
+
+/**
+ * bb's own flows on one message that have no public API of their own, the
+ * ones bb's Edit action runs. Each is null when bb would not offer that
+ * action on this message right now. Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalMessageRequests {
+  /**
+   * Opens bb's inline editor on this user message; sending the edit rewinds
+   * the thread to it. Null unless this is a user message the user typed,
+   * sent on its own (not grouped with others), accepted, and without remote
+   * images, and the thread can be edited now: it has a composer here, its
+   * provider supports editing, no question or approval is pending, no send
+   * is in flight, and no other message is being edited.
+   */
+  edit: (() => void) | null;
+}
+
+/**
+ * What a `messageAction`'s `experimental_availability` receives for one
+ * message. Experimental: see docs/api_to_audit.md.
+ */
+export interface ExperimentalMessageActionAvailabilityInput {
+  /** The thread whose timeline shows the message. */
+  threadId: string;
+  message: ThreadChatMessageReference;
+  /**
+   * Present only when bb asks for the selection menu: the text the user
+   * highlighted in `message`.
+   */
+  selectedText?: string;
+  messageRequests: ExperimentalMessageRequests;
+  /**
+   * The composer `run` gets as `composer` for this message, or null when it
+   * will get none.
+   */
+  composer: PluginComposerApi | null;
+  /**
+   * Whether bb offers its Fork on this message: false when the thread's
+   * provider cannot fork, the thread has no environment or is archived, or
+   * this `ThreadChat` has no composer. bb's own Fork into new thread is
+   * `sdk.threads.fork({ sourceThreadId: threadId, sourceSeqEnd:
+   * message.sourceSeqEnd })` then `navigate.toThread`.
+   */
+  canFork: boolean;
+  /**
+   * The thread's `canSpawnChild`: false when it is at bb's thread-nesting
+   * limit, where bb shows its own Fork disabled.
+   */
+  canSpawnChild: boolean;
+}
+
+/**
+ * How a `messageAction` shows on one message: `"enabled"`, `"disabled"`
+ * (visible but inert), or `"hidden"`.
+ */
+export type ExperimentalMessageActionAvailability =
+  | "enabled"
+  | "disabled"
+  | "hidden";
 
 /**
  * bb's own Archive and Delete flows, the ones its thread menus and selection
@@ -4025,21 +4144,49 @@ export interface PluginMessageActionContext extends ExperimentalPluginActionCont
    */
   selectedText?: string;
   /**
+   * Present with `selectedText`: the selection as the Markdown source it was
+   * rendered from (code spans, emphasis and lists keep their syntax), which
+   * bb's Add to chat quotes. Falls back to `selectedText` when bb cannot map
+   * the selection to its source. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_selectedMarkdown?: string;
+  /**
    * The composer of the thread the message is in, or null when that thread's
-   * composer is not available on this surface. The same handle
-   * `useComposer()` returns there.
+   * composer is not available on this surface, as in a `ThreadChat` with
+   * `variant: "timeline"`. While the user edits one of the thread's queued
+   * messages, this is that message's editor. The same handle `useComposer()`
+   * returns there. bb's Add to chat quotes into it with
+   * `experimental_appendQuoteToDraft`.
    */
   composer: PluginComposerApi | null;
+  /**
+   * The control the user activated (see
+   * {@link ExperimentalMessageActionInvocation}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_invokedFrom: ExperimentalMessageActionInvocation;
+  /**
+   * bb's own Edit for this message (see
+   * {@link ExperimentalMessageRequests}). Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_messageRequests: ExperimentalMessageRequests;
 }
 
 /**
  * An action on chat messages in every thread timeline, including embedded
- * `ThreadChat` timelines unless `experimental_surfaces` narrows it: an icon
- * button in the per-message action bar (user and assistant messages) and an
- * entry in the assistant-message text-selection menu. Host-rendered chrome —
- * the plugin supplies title, icon, and `run` behavior only. Resolved icon
- * names take precedence over plugin branding; omitted or unknown names fall
- * back to branding.
+ * `ThreadChat` timelines unless `experimental_surfaces` narrows it. By
+ * default it is an icon button in the message's action row on user and
+ * assistant messages, and a button in the assistant-message text-selection
+ * menu; `experimental_roles`, `experimental_placements` and
+ * `experimental_availability` narrow that. Host-rendered chrome — the plugin
+ * supplies title, icon, and `run` behavior only. Resolved icon names take
+ * precedence over plugin branding; omitted or unknown names fall back to
+ * branding.
+ *
+ * bb's own Copy, Edit, Copy link, Add to chat and Fork are registrations of
+ * this same shape. Generated messages (from automations, other threads or
+ * bb itself) show no actions.
  */
 export interface PluginMessageActionRegistration {
   /** Unique within the plugin; letters, digits, `-`, `_`. */
@@ -4054,10 +4201,42 @@ export interface PluginMessageActionRegistration {
    */
   experimental_surfaces?: readonly ExperimentalMessageActionSurface[];
   /**
-   * Runs when the user activates the action. Errors (sync or async) are
-   * contained and logged; they never break the timeline.
+   * Message roles the action shows on. Omit for both. Experimental: see
+   * docs/api_to_audit.md.
    */
-  run(context: PluginMessageActionContext): void | Promise<void>;
+  experimental_roles?: readonly ("user" | "assistant")[];
+  /**
+   * Where the action shows (see {@link ExperimentalMessageActionPlacement}).
+   * `"inline"` and `"menu"` exclude each other. Omit for
+   * `["inline", "selection"]`. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_placements?: readonly ExperimentalMessageActionPlacement[];
+  /**
+   * Sorts the action row, its overflow menu and the selection menu.
+   * Ascending; unset sorts last; ties keep registration order. bb's own:
+   * Copy link -30, Copy -20, Edit -10, Add to chat 10, Fork 20, and the
+   * selection menu's Add to chat -10. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_order?: number;
+  /**
+   * Decides how the action shows on one message; omit to show it enabled
+   * wherever its roles and placements allow. bb calls it while rendering the
+   * message, once for the action row and again for the selection menu, so it
+   * must be pure and synchronous. A throw hides the action on that message and
+   * is logged. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_availability?(
+    input: ExperimentalMessageActionAvailabilityInput,
+  ): ExperimentalMessageActionAvailability;
+  /**
+   * Runs when the user activates the action. Resolve `true` to confirm
+   * success on an inline button: it shows a check mark for 2 seconds and
+   * ignores clicks meanwhile. Errors (sync or async) are contained and
+   * logged; they never break the timeline.
+   */
+  run(
+    context: PluginMessageActionContext,
+  ): void | boolean | Promise<void | boolean>;
 }
 
 /**
@@ -5335,31 +5514,6 @@ export type ExperimentalComposerSubmitOptions = ComposerSubmitOptions;
 // ---------------------------------------------------------------------------
 
 /**
- * A consumer-supplied action on the messages of one `ThreadChat` instance,
- * rendered in the embedded timeline's per-message action bar alongside the
- * native and slot-registered `messageAction` actions. Unlike the
- * `messageAction` slot this is scoped to the rendering component, not
- * registered globally.
- */
-export interface ThreadChatMessageAction {
-  /** Unique within this ThreadChat instance; letters, digits, `-`, `_`. */
-  id: string;
-  /** Tooltip / menu label for the action. */
-  title: string;
-  icon?: BbIconName;
-  /**
-   * Message roles the action applies to. Omitted = both user and assistant
-   * messages.
-   */
-  roles?: readonly ("user" | "assistant")[];
-  /**
-   * Runs when the user activates the action. Errors (sync or async) are
-   * contained and logged; they never break the timeline.
-   */
-  run(message: ThreadChatMessageReference): void | Promise<void>;
-}
-
-/**
  * Props of the host-owned `ThreadChat` component — one thread's chat
  * (timeline, and for the composer variants the full send/queue/draft
  * engine), rendered by the BB app inside a plugin slot. This is the
@@ -5396,10 +5550,13 @@ export interface ThreadChatProps {
   /** Rendered above the conversation, scrolling with it. */
   leadingContent?: ReactNode;
   /**
-   * Actions rendered in this instance's per-message action bar (see
-   * {@link ThreadChatMessageAction}).
+   * Message actions for this instance only, validated and shown like
+   * `slots.messageAction` registrations (ids must be unique within the
+   * list); in ties of `experimental_order` they follow every registered
+   * action. `experimental_surfaces` is ignored. They run with
+   * the rendering plugin's context. Experimental: see docs/api_to_audit.md.
    */
-  messageActions?: readonly ThreadChatMessageAction[];
+  experimental_messageActions?: readonly PluginMessageActionRegistration[];
 }
 
 // ---------------------------------------------------------------------------
@@ -6825,6 +6982,20 @@ export interface PluginSdkApp {
   experimental_copyToClipboard(
     content: ExperimentalClipboardContent,
   ): Promise<boolean>;
+  /**
+   * bb's Add to chat quoting: returns `draft` with `text` appended as a `> `
+   * blockquote on its own lines and every attachment in `attachments` whose
+   * path the draft does not hold yet. Blank text adds no quote, and the
+   * draft comes back unchanged when nothing is added. Pure; pass it to
+   * `composer.replace`, as bb's own Add to chat does:
+   * `composer.replace((current) => experimental_appendQuoteToDraft(current, text))`.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_appendQuoteToDraft(
+    draft: ComposerDraftSnapshot,
+    text: string,
+    attachments?: readonly ComposerAttachment[],
+  ): ComposerDraftSnapshot;
   /**
    * Shows the error toast bb's own actions show when a request fails. A plain
    * function, callable from components, action callbacks, and command
