@@ -429,6 +429,19 @@ const PI_MODEL_SELECTION_KEYS = new Set([
   "set_thinking_level",
 ]);
 
+function codexSandboxReadResult(message) {
+  if (message.method === "configRequirements/read") {
+    return { requirements: null };
+  }
+  if (
+    message.method === "config/read" &&
+    typeof message.params?.cwd === "string"
+  ) {
+    return { config: {}, origins: {} };
+  }
+  return null;
+}
+
 function servePiCatalog(entries) {
   const { models, state } = recordedPiModels(entries);
   const channel = connectChannel(DIALECTS["pi-rpc"].channel);
@@ -885,6 +898,17 @@ function main() {
     ) {
       answerPiModelSelection(live);
       return;
+    }
+    if (
+      args.dialect === "json-rpc" &&
+      live.classified.kind === "request" &&
+      nextBridgeExpectationKey() !== live.classified.key
+    ) {
+      const result = codexSandboxReadResult(live.message);
+      if (result !== null) {
+        emit({ jsonrpc: "2.0", id: live.classified.id, result });
+        return;
+      }
     }
     if (
       args.dialect === "pi-rpc" &&
