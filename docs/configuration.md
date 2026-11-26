@@ -1764,9 +1764,9 @@ provider child. Recordings can contain secrets; redact them with
 [provider-bridge-protocol.md](provider-bridge-protocol.md) and
 [debugging-and-qa.md](debugging-and-qa.md).
 
-App production builds cache React Compiler output at
+App builds, the app dev server, and app tests cache React Compiler output at
 `<git-common-dir>/bb-cache/react-compiler`; it has no configuration and can be
-deleted while no build runs.
+deleted while none of them runs.
 
 Desktop Settings → Server → **Show This Mac** (or **Show This Computer** off macOS)
 defaults to checked and is disabled while This Mac/Computer is selected.

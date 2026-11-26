@@ -688,6 +688,15 @@ for unchanged modules. The compiler validates source, configuration, toolchain,
 and environment identity and rebuilds corrupt entries. Cache restoration is
 optional and bounded to one minute.
 
+App tests use the same cache, but CI app test shards do not restore or save it.
+Inside one run, the shared and isolated Vitest projects reuse each other's
+transforms. A local measurement of app shard 3/8 (`BB_CI_TEST_SHARD=3/8`,
+`VITEST_MAX_WORKERS=2`, pinned to four CPUs, two alternating rounds, 701
+identical test results in every run) gave: before the cache, 131.2 s and
+113.2 s; empty cache, 113.1 s and 98.5 s; warm cache, 64.5 s and 62.9 s. Vitest
+transform time fell from 80-91 s to 14-15 s with a warm cache. The shard's cache
+holds 43 MB.
+
 [Benchmark run 39842305719](https://github.com/get-bb/bb/actions/runs/39842305719)
 used the same source, Node 22, pnpm 9.15, and four-vCPU runners for three
 cold/warm pairs per platform, alternating order. Prerequisites were prepared

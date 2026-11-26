@@ -3,16 +3,18 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import * as cacache from "cacache";
-import { build } from "vite";
+import { build, createServer } from "vite";
 import { afterEach, expect, it, vi } from "vitest";
 import {
   compilerCacheNamespace,
   cachedReactCompiler,
   compilerTransformKey,
   containsWorktreePath,
+  testReactCompiler,
 } from "../../vite-react-compiler.js";
 
 const workspace = fileURLToPath(new URL("../../../../", import.meta.url));
+const appDirectory = fileURLToPath(new URL("../../", import.meta.url));
 
 afterEach(() => vi.unstubAllEnvs());
 
@@ -106,6 +108,54 @@ it("reuses exact compiler output and maps, invalidates inputs, and repairs corru
     await rm(root, { recursive: true, force: true });
   }
 }, 30_000);
+
+it.each([
+  ["dev server", cachedReactCompiler],
+  ["test", testReactCompiler],
+])(
+  "reuses %s compiler output across servers",
+  async (_name, compiler) => {
+    vi.stubEnv("ENABLE_REACT_COMPILER_TIMINGS", undefined);
+    const temporary = resolve(appDirectory, ".tmp");
+    await mkdir(temporary, { recursive: true });
+    const root = await mkdtemp(resolve(temporary, "react-compiler-test-"));
+    const directory = resolve(root, "cache");
+    const input = resolve(root, "component.tsx");
+    try {
+      await writeFile(
+        input,
+        "export function Component({ name }: { name: string }) { return <div>Hello {name}</div>; }",
+      );
+      async function transform() {
+        const plugin = await compiler(directory);
+        const server = await createServer({
+          configFile: false,
+          root,
+          logLevel: "silent",
+          appType: "custom",
+          server: { middlewareMode: true, ws: false },
+          optimizeDeps: { noDiscovery: true },
+          plugins: [react(), plugin],
+        });
+        try {
+          const result = await server.transformRequest(input);
+          return { code: result?.code, stats: plugin.api.compilerCache };
+        } finally {
+          await server.close();
+        }
+      }
+      const cold = await transform();
+      expect(cold.code).toContain("$[0] !== name");
+      expect(cold.stats).toEqual({ hits: 0, misses: 1 });
+      const warm = await transform();
+      expect(warm.stats).toEqual({ hits: 1, misses: 0 });
+      expect(warm.code).toBe(cold.code);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+  30_000,
+);
 
 it("shares relative identities while separating transform inputs", () => {
   const key = compilerTransformKey(
