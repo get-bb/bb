@@ -15,6 +15,7 @@ import {
   defaultAppSettings,
   type Environment,
   PERSONAL_PROJECT_ID,
+  type ProjectExecutionDefaults,
   type ThreadListEntry,
   type ThreadSessionOption,
 } from "@bb/domain";
@@ -129,6 +130,8 @@ const mocks = vi.hoisted(() => ({
   machineProviders: [] as SystemMachineProvider[],
   modelsLoading: false,
   modelsLoadingListeners: new Set<() => void>(),
+  projectDefaults: undefined as ProjectExecutionDefaults | null | undefined,
+  projectDefaultsListeners: new Set<() => void>(),
   permissionCeiling: undefined as "accept-edits" | "auto" | "full" | undefined,
   modelSessionOptions: undefined as ThreadSessionOption[] | undefined,
   openCreateDialogThen: vi.fn(),
@@ -136,7 +139,22 @@ const mocks = vi.hoisted(() => ({
 
 beforeEach(() => {
   vi.mocked(sdk.environments.get).mockReset();
+  mocks.projectDefaults = undefined;
 });
+
+function subscribeToProjectDefaults(onChange: () => void) {
+  mocks.projectDefaultsListeners.add(onChange);
+  return () => {
+    mocks.projectDefaultsListeners.delete(onChange);
+  };
+}
+
+function resolveProjectDefaults(defaults: ProjectExecutionDefaults | null) {
+  act(() => {
+    mocks.projectDefaults = defaults;
+    for (const listener of mocks.projectDefaultsListeners) listener();
+  });
+}
 
 function subscribeToModelsLoading(onChange: () => void) {
   mocks.modelsLoadingListeners.add(onChange);
@@ -270,6 +288,22 @@ const OTHER_PROJECT = makeProjectWithThreadsResponse({
   name: "Project Two",
   sources: [{ ...PROJECT.sources[0], id: "src_2", projectId: "proj_2" }],
 });
+
+const UNCACHED_DEFAULTS_PROJECT = makeProjectWithThreadsResponse({
+  ...PROJECT,
+  id: "proj_3",
+  name: "Project Three",
+  defaultExecutionOptions: null,
+  sources: [{ ...PROJECT.sources[0], id: "src_3", projectId: "proj_3" }],
+});
+
+const UNCACHED_PROJECT_DEFAULTS: ProjectExecutionDefaults = {
+  providerId: "codex",
+  model: "gpt-5.6-sol",
+  serviceTier: "default",
+  reasoningLevel: "high",
+  permissionMode: "full",
+};
 
 vi.mock("@/hooks/queries/sidebar-navigation-query", () => ({
   useSidebarNavigation: () =>
@@ -471,7 +505,15 @@ vi.mock("@/hooks/queries/project-queries", () => ({
 }));
 
 vi.mock("@/hooks/queries/project-default-execution-options-query", () => ({
-  useProjectDefaultExecutionOptions: () => ({ data: undefined }),
+  useProjectDefaultExecutionOptions: () => {
+    const data = useSyncExternalStore(
+      subscribeToProjectDefaults,
+      () => mocks.projectDefaults,
+    );
+    return data === undefined
+      ? { data }
+      : { data, isSuccess: true, isError: false, isPlaceholderData: false };
+  },
 }));
 
 vi.mock("@/hooks/mutations/project-mutations", () => ({
@@ -3602,6 +3644,53 @@ describe("NewThreadComposer setSelection", () => {
     expect(
       window.localStorage.getItem("bb.promptbox.model-claude-code-1"),
     ).toBe("gpt-5.6-sol");
+  });
+
+  it("shows loading pickers until the project's saved defaults arrive, then shows them over the tab's provider", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", "claude-code");
+    mocks.extraProjects = [UNCACHED_DEFAULTS_PROJECT];
+    render(rootLikeElement("proj_3"));
+
+    expect(latestPromptBoxProps().execution.provider.selectedId).toBe("");
+    expect(latestPromptBoxProps().execution.model.selected).toBe("");
+    expect(latestPromptBoxProps().execution.model.isLoading).toBe(true);
+
+    resolveProjectDefaults(UNCACHED_PROJECT_DEFAULTS);
+
+    await waitFor(() => {
+      expect(latestPromptBoxProps().execution.provider.selectedId).toBe(
+        "codex",
+      );
+      expect(latestPromptBoxProps().execution.model.selected).toBe(
+        "gpt-5.6-sol",
+      );
+      expect(latestPromptBoxProps().modeConfig.permission.value).toBe("full");
+    });
+  });
+
+  it("applies a requested provider once the project's saved defaults arrive", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", "claude-code");
+    mocks.extraProjects = [UNCACHED_DEFAULTS_PROJECT];
+    render(rootLikeElement("proj_3"));
+
+    let result: ExperimentalComposerSelection | null = null;
+    void currentHost().setSelection!({ providerId: "claude-code" }).then(
+      (value) => {
+        result = value;
+      },
+    );
+    await expect(
+      waitFor(() => expect(result).not.toBeNull(), { timeout: 100 }),
+    ).rejects.toThrow();
+
+    resolveProjectDefaults(UNCACHED_PROJECT_DEFAULTS);
+
+    await waitFor(() => {
+      expect(result).toMatchObject({ providerId: "claude-code" });
+    });
+    expect(latestPromptBoxProps().execution.provider.selectedId).toBe(
+      "claude-code",
+    );
   });
 
   it("waits for the model catalog before reporting, bounded by the settle timeout", async () => {

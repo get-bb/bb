@@ -61,7 +61,9 @@ import {
   buildExecutionInputSources,
   formatModelLabel,
   getInitialThreadPromptSelections,
+  hasTouchedThreadPromptField,
   resolvePermissionModeSelection,
+  resolveStoredCreateSelection,
   syncUntouchedThreadPromptSelections,
   type ScopedExecutionInputSources,
   type ThreadPromptField,
@@ -200,6 +202,7 @@ type InitialReadyProviderResolution =
   | { status: "resolved"; providerId: string | null };
 
 const NO_PROMPT_MODEL_REASONING_OPTIONS: UsePromptModelReasoningOptions = {};
+const NO_TOUCHED_THREAD_FIELDS: ReadonlySet<ThreadPromptField> = new Set();
 
 function addTouchedThreadFields(
   current: ReadonlySet<ThreadPromptField>,
@@ -320,24 +323,31 @@ export function useThreadCreationOptions(
   );
   const [syncedNextThreadSelections, setSyncedNextThreadSelections] =
     useState(nextThreadSelections);
-  if (usesLocalThreadSelections) {
-    if (threadResetKey !== resetKey) {
-      setThreadResetKey(resetKey);
-      setTouchedThreadFields(new Set());
+  if (threadResetKey !== resetKey) {
+    setThreadResetKey(resetKey);
+    setTouchedThreadFields(new Set());
+    if (usesLocalThreadSelections) {
       setLocalProvidersUsingDefaults(new Set());
       setThreadSelections(nextThreadSelections);
       setSyncedNextThreadSelections(nextThreadSelections);
-    } else if (syncedNextThreadSelections !== nextThreadSelections) {
-      setSyncedNextThreadSelections(nextThreadSelections);
-      setThreadSelections((currentSelections) =>
-        syncUntouchedThreadPromptSelections({
-          currentSelections,
-          nextSelections: nextThreadSelections,
-          touchedFields: touchedThreadFields,
-        }),
-      );
     }
+  } else if (
+    usesLocalThreadSelections &&
+    syncedNextThreadSelections !== nextThreadSelections
+  ) {
+    setSyncedNextThreadSelections(nextThreadSelections);
+    setThreadSelections((currentSelections) =>
+      syncUntouchedThreadPromptSelections({
+        currentSelections,
+        nextSelections: nextThreadSelections,
+        touchedFields: touchedThreadFields,
+      }),
+    );
   }
+  const touchedFieldsPendingReset = threadResetKey !== resetKey;
+  const currentTouchedThreadFields = touchedFieldsPendingReset
+    ? NO_TOUCHED_THREAD_FIELDS
+    : touchedThreadFields;
   const renderedThreadSelections = useMemo(() => {
     if (!usesLocalThreadSelections) {
       return nextThreadSelections;
@@ -360,10 +370,22 @@ export function useThreadCreationOptions(
   ]);
 
   const selectedProviderIdBeforeReadyFallback = usesStoredCreateSelections
-    ? storedProviderId || renderedThreadSelections.selectedProviderId
+    ? (resolveStoredCreateSelection({
+        initialValue: renderedThreadSelections.selectedProviderId,
+        storedValue: storedProviderId,
+        touched: hasTouchedThreadPromptField(currentTouchedThreadFields, [
+          "selectedProviderId",
+        ]),
+      }) ?? "")
     : renderedThreadSelections.selectedProviderId;
   const rawPermissionMode = usesStoredCreateSelections
-    ? storedPermissionMode || renderedThreadSelections.permissionMode
+    ? (resolveStoredCreateSelection({
+        initialValue: initialPermissionMode,
+        storedValue: storedPermissionMode,
+        touched: hasTouchedThreadPromptField(currentTouchedThreadFields, [
+          "permissionMode",
+        ]),
+      }) ?? renderedThreadSelections.permissionMode)
     : renderedThreadSelections.permissionMode;
   const rawEnvironmentSelectionValue =
     scope === "new-thread"
@@ -522,23 +544,41 @@ export function useThreadCreationOptions(
     effectiveProviderId.length > 0 &&
     effectiveProviderId === renderedThreadSelections.selectedProviderId;
   const rawSelectedModel = usesStoredCreateSelections
-    ? storedSelectedModel ||
-      (effectiveProviderMatchesInitialProvider
-        ? renderedThreadSelections.selectedModel
-        : "")
+    ? (resolveStoredCreateSelection({
+        initialValue: effectiveProviderMatchesInitialProvider
+          ? renderedThreadSelections.selectedModel
+          : undefined,
+        storedValue: storedSelectedModel,
+        touched: hasTouchedThreadPromptField(currentTouchedThreadFields, [
+          "selectedProviderId",
+          "selectedModel",
+        ]),
+      }) ?? "")
     : renderedThreadSelections.selectedModel;
   const rawServiceTier = usesStoredCreateSelections
-    ? storedServiceTier ||
-      (effectiveProviderMatchesInitialProvider
-        ? renderedThreadSelections.serviceTier
-        : undefined)
+    ? resolveStoredCreateSelection({
+        initialValue: effectiveProviderMatchesInitialProvider
+          ? renderedThreadSelections.serviceTier
+          : undefined,
+        storedValue: storedServiceTier,
+        touched: hasTouchedThreadPromptField(currentTouchedThreadFields, [
+          "serviceTier",
+        ]),
+      })
     : renderedThreadSelections.serviceTier;
   const preferredReasoningLevel: ReasoningLevel | undefined =
     usesStoredCreateSelections
-      ? storedReasoningLevel ||
-        (effectiveProviderMatchesInitialProvider
-          ? initialReasoningLevel
-          : undefined)
+      ? resolveStoredCreateSelection({
+          initialValue: effectiveProviderMatchesInitialProvider
+            ? initialReasoningLevel
+            : undefined,
+          storedValue: storedReasoningLevel,
+          touched: hasTouchedThreadPromptField(currentTouchedThreadFields, [
+            "selectedProviderId",
+            "selectedModel",
+            "reasoningLevel",
+          ]),
+        })
       : localProvidersUsingDefaults.has(effectiveProviderId)
         ? undefined
         : renderedThreadSelections.reasoningLevel;
@@ -799,8 +839,6 @@ export function useThreadCreationOptions(
         : permissionModes,
   });
   const environmentSelectionValue = rawEnvironmentSelectionValue;
-  const touchedFieldsPendingReset =
-    usesLocalThreadSelections && threadResetKey !== resetKey;
   const fellBackFromUnofferedProvider =
     rawSelectedProviderId.length > 0 &&
     effectiveProviderId.length > 0 &&
@@ -833,11 +871,10 @@ export function useThreadCreationOptions(
           reasoningLevel: storedReasoningLevel,
           permissionMode: storedPermissionMode,
         },
-        touchedFields: touchedFieldsPendingReset
-          ? new Set<ThreadPromptField>()
-          : touchedThreadFields,
+        touchedFields: currentTouchedThreadFields,
       }),
     [
+      currentTouchedThreadFields,
       effectiveProviderId,
       effectiveInitialProviderSource,
       isSessionOptionModelSwitch,
@@ -852,8 +889,6 @@ export function useThreadCreationOptions(
       storedReasoningLevel,
       storedSelectedModel,
       storedServiceTier,
-      touchedFieldsPendingReset,
-      touchedThreadFields,
     ],
   );
 

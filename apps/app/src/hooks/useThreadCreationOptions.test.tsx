@@ -8,7 +8,11 @@ import type {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { sdk } from "@/lib/sdk";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import type { ProviderModelCatalogScope } from "@bb/domain";
+import type {
+  PermissionMode,
+  ProviderModelCatalogScope,
+  ReasoningLevel,
+} from "@bb/domain";
 import type { QueryClient } from "@tanstack/react-query";
 import {
   hostsQueryKey,
@@ -314,6 +318,21 @@ function claudeThreadCreationArgs(resetKey: string, initialModel: string) {
     initialPermissionMode: "full" as const,
   };
 }
+
+interface NewThreadHookProps {
+  resetKey: string;
+  initialProviderId?: string;
+  initialModel?: string;
+  initialReasoningLevel?: ReasoningLevel;
+  initialPermissionMode?: PermissionMode;
+}
+
+const PROJECT_DEFAULT_PROPS: Omit<NewThreadHookProps, "resetKey"> = {
+  initialProviderId: PROJECT_PROVIDER_ID,
+  initialModel: "project-remembered",
+  initialReasoningLevel: "medium",
+  initialPermissionMode: "auto",
+};
 
 function setProjectScopedValue(baseKey: string, value: string): void {
   window.localStorage.setItem(
@@ -1127,7 +1146,7 @@ describe("useThreadCreationOptions", () => {
     });
   });
 
-  it("routes root-composer provider discovery through the selected project host", async () => {
+  it("routes the project's default provider discovery through the selected project host", async () => {
     window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
     window.localStorage.setItem(
       `bb.promptbox.model-${GLOBAL_PROVIDER_ID}-1`,
@@ -1171,8 +1190,8 @@ describe("useThreadCreationOptions", () => {
             value === "provider:project-checkout"
               ? { hostId: "project-host" }
               : {},
-          initialProviderId: "initial-provider",
-          initialModel: "initial-model",
+          initialProviderId: PROJECT_PROVIDER_ID,
+          initialModel: "project-model",
           initialServiceTier: "fast",
           initialReasoningLevel: "medium",
           initialPermissionMode: "full",
@@ -1186,34 +1205,106 @@ describe("useThreadCreationOptions", () => {
         expect.objectContaining({
           environmentId: undefined,
           hostId: "project-host",
-          providerId: GLOBAL_PROVIDER_ID,
+          providerId: PROJECT_PROVIDER_ID,
         }),
       );
       expect(sdk.system.executionOptions).not.toHaveBeenCalledWith(
         expect.objectContaining({
           environmentId: undefined,
           hostId: "project-host",
-          providerId: PROJECT_PROVIDER_ID,
+          providerId: GLOBAL_PROVIDER_ID,
         }),
       );
-      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
       expect(result.current.selectedProviderComposerActions).toEqual([
         { kind: "skills", trigger: "/" },
-        {
-          kind: "plan",
-          command: { trigger: "/", name: "plan", trailingText: " " },
-        },
       ]);
-      expect(result.current.selectedModel).toBe("global-model");
-      expect(result.current.serviceTier).toBe("default");
-      expect(result.current.reasoningLevel).toBe("high");
-      expect(result.current.permissionMode).toBe("accept-edits");
+      expect(result.current.selectedModel).toBe("project-model");
+      expect(result.current.serviceTier).toBe("fast");
+      expect(result.current.reasoningLevel).toBe("medium");
+      expect(result.current.permissionMode).toBe("full");
       expect(result.current.environmentSelectionValue).toBe(
         "provider:project-checkout",
       );
       expect(result.current.executionOptionsRouting).toEqual({
         hostId: "project-host",
       });
+    });
+  });
+
+  it("shows the project's saved defaults over the tab's remembered selection once they arrive", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    window.localStorage.setItem(
+      `bb.promptbox.model-${GLOBAL_PROVIDER_ID}-1`,
+      "global-remembered",
+    );
+    window.localStorage.setItem("bb.promptbox.permission-mode", "full");
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { result, rerender } = renderHook(
+      (props: NewThreadHookProps) =>
+        useThreadCreationOptions({ scope: "new-thread", ...props }),
+      {
+        wrapper: createQueryClientTestHarness().wrapper,
+        initialProps: { resetKey: "project-one" },
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("global-remembered");
+    });
+
+    rerender({ ...PROJECT_DEFAULT_PROPS, resetKey: "project-one" });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("project-remembered");
+      expect(result.current.reasoningLevel).toBe("medium");
+      expect(result.current.permissionMode).toBe("auto");
+      expect(result.current.executionInputSources.providerId).toBeUndefined();
+      expect(result.current.executionInputSources.model).toBeUndefined();
+    });
+  });
+
+  it("keeps a picked provider until the project changes", async () => {
+    window.localStorage.setItem("bb.promptbox.provider", GLOBAL_PROVIDER_ID);
+    vi.mocked(sdk.system.executionOptions).mockImplementation(async (args) =>
+      providerExecutionOptionsResponse(args?.providerId),
+    );
+    const { result, rerender } = renderHook(
+      (props: NewThreadHookProps) =>
+        useThreadCreationOptions({ scope: "new-thread", ...props }),
+      {
+        wrapper: createQueryClientTestHarness().wrapper,
+        initialProps: { ...PROJECT_DEFAULT_PROPS, resetKey: "project-one" },
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+    });
+    act(() => {
+      result.current.setSelectedProviderId(GLOBAL_PROVIDER_ID);
+    });
+    rerender({
+      ...PROJECT_DEFAULT_PROPS,
+      initialModel: "project-default",
+      resetKey: "project-one",
+    });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(GLOBAL_PROVIDER_ID);
+      expect(result.current.executionInputSources.providerId).toBe("explicit");
+    });
+
+    rerender({ ...PROJECT_DEFAULT_PROPS, resetKey: "project-two" });
+
+    await waitFor(() => {
+      expect(result.current.selectedProviderId).toBe(PROJECT_PROVIDER_ID);
+      expect(result.current.selectedModel).toBe("project-remembered");
+      expect(result.current.executionInputSources.providerId).toBeUndefined();
     });
   });
 
@@ -1848,12 +1939,7 @@ describe("useThreadCreationOptions", () => {
     const { wrapper } = createQueryClientTestHarness();
 
     const { result } = renderHook(
-      () =>
-        useThreadCreationOptions({
-          scope: "new-thread",
-          initialProviderId: PROJECT_PROVIDER_ID,
-          initialModel: "project-remembered",
-        }),
+      () => useThreadCreationOptions({ scope: "new-thread" }),
       { wrapper },
     );
 

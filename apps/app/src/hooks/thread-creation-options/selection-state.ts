@@ -111,6 +111,12 @@ interface ResolvePermissionModeSelectionArgs {
   permissionModes: readonly PermissionMode[];
 }
 
+interface ResolveStoredCreateSelectionArgs<TValue extends string> {
+  initialValue: TValue | undefined;
+  storedValue: TValue | "";
+  touched: boolean;
+}
+
 function hasValue(value: string): boolean {
   return value.length > 0;
 }
@@ -202,6 +208,24 @@ export function syncUntouchedThreadPromptSelections({
   }
 
   return changed ? updatedSelections : currentSelections;
+}
+
+export function hasTouchedThreadPromptField(
+  touchedFields: ReadonlySet<ThreadPromptField>,
+  fields: readonly ThreadPromptField[],
+): boolean {
+  return fields.some((field) => touchedFields.has(field));
+}
+
+export function resolveStoredCreateSelection<TValue extends string>({
+  initialValue,
+  storedValue,
+  touched,
+}: ResolveStoredCreateSelectionArgs<TValue>): TValue | undefined {
+  if (!touched && initialValue) {
+    return initialValue;
+  }
+  return storedValue || initialValue;
 }
 
 export function updateThreadPromptSelections({

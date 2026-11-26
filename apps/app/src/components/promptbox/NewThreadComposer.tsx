@@ -1147,6 +1147,8 @@ export function NewThreadComposer({
       seed?.model === undefined ||
       seed?.reasoningLevel === undefined ||
       seed?.permissionMode === undefined);
+  const projectDefaultsPending =
+    projectDefaultsUnavailable && projectDefaultsState.status === "pending";
   const creationOptions = useThreadCreationOptions({
     scope: selectionScope,
     preferenceProjectId: projectId,
@@ -2018,6 +2020,7 @@ export function NewThreadComposer({
       version,
       isSettled:
         modelCatalogIsSettled &&
+        !projectDefaultsPending &&
         !environmentInputsPending &&
         selectedReuseEnvironment?.status !== "pending",
       requestedProjectId: requestedCandidate,
@@ -2272,16 +2275,16 @@ export function NewThreadComposer({
             providerRouting: executionOptionsRouting,
             provider: {
               options: providerOptions,
-              selectedId: selectedProviderId,
+              selectedId: projectDefaultsPending ? "" : selectedProviderId,
               onChange: locks.provider ? undefined : handleProviderChange,
               hasMultiple: hasMultipleProviders,
             },
             model: {
-              active: activeModel,
-              selected: selectedModel,
+              active: projectDefaultsPending ? undefined : activeModel,
+              selected: projectDefaultsPending ? "" : selectedModel,
               options: modelOptions,
               moreOptions: moreModelOptions,
-              isLoading: isLoadingModels,
+              isLoading: isLoadingModels || projectDefaultsPending,
               loadFailed: modelLoadFailed,
               loadError: modelLoadError,
               onChange: handleModelChange,
@@ -2345,6 +2348,7 @@ export function NewThreadComposer({
       moreModelOptions,
       permissionMode,
       permissionModeOptions,
+      projectDefaultsPending,
       projectId,
       projectOptions,
       projectSources,
