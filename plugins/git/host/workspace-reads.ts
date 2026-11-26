@@ -235,16 +235,19 @@ interface IndexCopy {
   retired: boolean;
 }
 
-function removeIfUnused(copy: IndexCopy): void {
-  if (!copy.retired || copy.users > 0) return;
-  void copy.env.then(
+function removeTempDir(dir: string): Promise<void> {
+  return fs
+    .rm(dir, { recursive: true, force: true, maxRetries: 2 })
+    .catch(() => undefined);
+}
+
+function removeIfUnused(copy: IndexCopy): Promise<void> {
+  if (!copy.retired || copy.users > 0) return Promise.resolve();
+  return copy.env.then(
     (env) =>
       env.GIT_INDEX_FILE === undefined
         ? undefined
-        : fs.rm(path.dirname(env.GIT_INDEX_FILE), {
-            recursive: true,
-            force: true,
-          }),
+        : removeTempDir(path.dirname(env.GIT_INDEX_FILE)),
     () => undefined,
   );
 }
@@ -608,7 +611,7 @@ export class WorkspaceReads {
     this.indexCopy = null;
     if (indexCopy !== null) {
       indexCopy.retired = true;
-      removeIfUnused(indexCopy);
+      await removeIfUnused(indexCopy);
     }
   }
 
@@ -870,7 +873,7 @@ export class WorkspaceReads {
   ): Promise<void> {
     if (supersede) retained.superseded = true;
     if (!retained.superseded || retained.users > 0) return;
-    await fs.rm(retained.dir, { recursive: true, force: true });
+    await removeTempDir(retained.dir);
   }
 
   private readonly gitRunner: GitRunner = (args, options) =>
@@ -921,7 +924,7 @@ export class WorkspaceReads {
       return await run(await copy.env);
     } finally {
       copy.users -= 1;
-      removeIfUnused(copy);
+      void removeIfUnused(copy);
     }
   }
 
@@ -955,7 +958,7 @@ export class WorkspaceReads {
     if (copy?.signature !== signature) {
       if (copy !== null) {
         copy.retired = true;
-        removeIfUnused(copy);
+        void removeIfUnused(copy);
       }
       const created: IndexCopy = {
         signature,
@@ -2340,7 +2343,7 @@ export class WorkspaceReads {
       await fs.rm(indexPath, { force: true });
       return await work(env, []);
     } finally {
-      if (!retained) await fs.rm(tempDir, { recursive: true, force: true });
+      if (!retained) await removeTempDir(tempDir);
     }
   }
 
