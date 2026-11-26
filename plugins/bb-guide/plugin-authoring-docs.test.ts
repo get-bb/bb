@@ -8,13 +8,6 @@ const SKILL_ROOT = fileURLToPath(
   new URL("./skills/bb-plugin-authoring/", import.meta.url),
 );
 
-const SDK_DECLARATIONS = fileURLToPath(
-  new URL(
-    "../../packages/plugin-sdk/bundled-types/bb-plugin-sdk.d.ts",
-    import.meta.url,
-  ),
-);
-
 const COMPILER_OPTIONS: ts.CompilerOptions = {
   strict: true,
   noEmit: true,
@@ -23,6 +16,14 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
   module: ts.ModuleKind.NodeNext,
   moduleResolution: ts.ModuleResolutionKind.NodeNext,
 };
+
+const SDK_DECLARATIONS =
+  ts.resolveModuleName(
+    "@get-bb/plugin-sdk",
+    fileURLToPath(import.meta.url),
+    COMPILER_OPTIONS,
+    ts.sys,
+  ).resolvedModule?.resolvedFileName ?? "@get-bb/plugin-sdk";
 
 const FIELD_DOCUMENTED_TYPES = [
   "PluginAppBuilder",
