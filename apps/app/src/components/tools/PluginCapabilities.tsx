@@ -318,7 +318,9 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
-      slots.threadContextSegments,
+      slots.threadContextItems.flatMap(({ pluginId, id, banner }) =>
+        banner === null ? [] : [{ pluginId, id, title: banner.title }],
+      ),
       "thread-context",
       "Adds context beside a thread's composer.",
     ),
@@ -366,13 +368,13 @@ function pluginAppSurfaceItems(
     ),
     ...namedSlotItems(
       pluginId,
-      slots.threadContextCardRows,
+      slots.threadContextItems.filter(({ card }) => card?.kind === "row"),
       "thread-context-card-row",
       "Adds a row to the thread context card.",
     ),
     ...namedSlotItems(
       pluginId,
-      slots.threadContextCardSections,
+      slots.threadContextItems.filter(({ card }) => card?.kind === "section"),
       "thread-context-card-section",
       "Adds a section to the thread context card.",
     ),

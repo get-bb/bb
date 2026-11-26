@@ -14,9 +14,24 @@ type ListFieldOf<Registration> = Registration extends unknown
     }[keyof Registration & string]
   : never;
 
+type PartFieldOf<Registration> = Registration extends unknown
+  ? {
+      [Field in keyof Registration & string]-?: NonNullable<
+        Registration[Field]
+      > extends readonly unknown[]
+        ? never
+        : NonNullable<Registration[Field]> extends (...args: never[]) => unknown
+          ? never
+          : NonNullable<Registration[Field]> extends object
+            ? `${Field}.${FieldOf<NonNullable<Registration[Field]>>}`
+            : never;
+    }[keyof Registration & string]
+  : never;
+
 export type PluginAppComponentPath<Registration> =
   | FieldOf<Registration>
-  | ListFieldOf<Registration>;
+  | ListFieldOf<Registration>
+  | PartFieldOf<Registration>;
 
 type Kind = keyof CollectedPluginAppRegistrations;
 
@@ -49,6 +64,12 @@ export const PLUGIN_APP_COMPONENT_FIELDS: {
   threadLists: ["component"],
   experimentalSidebarNavigations: ["component", "headerComponent"],
   threadHeaderActions: ["component"],
+  threadContextItems: [
+    "banner.summary",
+    "banner.action",
+    "banner.details",
+    "card.component",
+  ],
   threadContextSegments: ["summary", "action", "details"],
   threadInfoRows: ["component"],
   threadRowMetadata: ["component"],
@@ -83,6 +104,13 @@ function valueAt(record: object, field: string): unknown {
 }
 
 function componentsAt(registration: object, path: string): unknown[] {
+  const [part, partField] = path.split(".");
+  if (partField !== undefined && !path.includes("[].")) {
+    const value = valueAt(registration, part ?? "");
+    return typeof value === "object" && value !== null
+      ? [valueAt(value, partField)]
+      : [];
+  }
   const [list, field] = path.split("[].");
   if (field === undefined) return [valueAt(registration, path)];
   const items = valueAt(registration, list ?? "");

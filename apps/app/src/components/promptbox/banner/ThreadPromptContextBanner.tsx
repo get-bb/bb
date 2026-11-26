@@ -1,20 +1,15 @@
-import {
-  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
-  type ExperimentalThreadContextSegmentInput,
-  type ExperimentalThreadContextSegmentProps,
-} from "@get-bb/plugin-sdk";
+import type { ExperimentalThreadContextSegmentInput } from "@get-bb/plugin-sdk";
 import {
   ThreadContextSegmentMount,
   threadContextSegmentKey,
   threadContextSegmentMountKey,
   useThreadContextSegmentDisclosure,
   useThreadContextSegments,
-  type CoreThreadContextSegment,
-  type ThreadContextSegmentEntry,
+  useVisibleThreadContextSegments,
+  type ThreadContextBannerSlot,
   type ThreadContextSegmentPart,
 } from "@/components/plugin/PluginThreadContextSegments";
-import { definePluginApp } from "@/lib/plugin-app-definition";
-import { collectCoreContributionSlots } from "@/lib/core-contributions";
+import { CORE_THREAD_CONTEXT_ITEMS } from "@/lib/core-thread-context";
 import {
   machineRemovalDescriptions,
   machineRemovalLabels,
@@ -28,7 +23,6 @@ import {
   useState,
   type KeyboardEvent,
   type ReactNode,
-  type Ref,
   type RefObject,
 } from "react";
 import { NavLink } from "react-router-dom";
@@ -54,12 +48,7 @@ import {
 import { formatPendingInteractionSummary } from "@bb/core-ui";
 import { InlinePendingInteractionContext } from "@/components/thread/pending-interactions/PendingInteractionShell";
 import { ThreadPendingInteractionBanners } from "@/components/thread/pending-interactions/ThreadPendingInteractionBanner";
-import { CONTEXT_CARD_SEGMENT_CLASS } from "@bb/shared-ui/chrome-style-tokens";
 import { cn } from "@bb/shared-ui/lib/utils";
-import {
-  experimental_useThreadContextKind,
-  experimental_useThreadTitleDisplayText,
-} from "@get-bb/plugin-sdk/app";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import {
   AnimatedBody,
@@ -79,15 +68,8 @@ import {
   useThreadTitleDisplayText,
 } from "@/components/thread/ThreadTitleMentions";
 import { childThreadNoun } from "@/lib/child-thread-copy";
-import { useParentThreadSection } from "@/views/thread-detail/useParentThreadSection";
 import { SIDEBAR_WORKING_STATUS_COLOR_CLASS } from "@bb/shared-ui/sidebar-row-classes";
 import { isNonImeKey } from "@bb/shared-ui/lib/ime-keyboard";
-
-export interface ThreadPromptParentThreadSection {
-  parentThreadTitle: string;
-  href: string;
-  relationship: "parent" | "fork";
-}
 
 interface ThreadPromptChildThreadItem {
   id: string;
@@ -162,10 +144,6 @@ const ENVIRONMENT_GONE_STATUS_COPY: Record<
 };
 
 const SECTION_IDS = {
-  parentThread: {
-    toggle: "thread-prompt-banner-parent-thread-toggle",
-    body: "thread-prompt-banner-parent-thread-body",
-  },
   childThreads: {
     toggle: "thread-prompt-banner-child-threads-toggle",
     body: "thread-prompt-banner-child-threads-body",
@@ -175,144 +153,6 @@ const SECTION_IDS = {
     body: "thread-prompt-banner-status-body",
   },
 } as const;
-
-const PARENT_SECTION_COPY: Record<
-  ThreadPromptParentThreadSection["relationship"],
-  { verb: string; bodyLead: string; ariaPrefix: string }
-> = {
-  parent: {
-    verb: "Parent",
-    bodyLead: "This thread is a child of ",
-    ariaPrefix: "Parent",
-  },
-  fork: {
-    verb: "Forked from",
-    bodyLead: "This thread was forked from ",
-    ariaPrefix: "Forked from",
-  },
-};
-
-const PARENT_SECTION_ICON: Record<
-  ThreadPromptParentThreadSection["relationship"],
-  IconName
-> = {
-  parent: "UserRound",
-  fork: "Fork",
-};
-
-function useParentSectionAriaLabel(
-  section: ThreadPromptParentThreadSection,
-): string {
-  const parentThreadTitle = experimental_useThreadTitleDisplayText(
-    section.parentThreadTitle,
-  );
-  return `${PARENT_SECTION_COPY[section.relationship].ariaPrefix} ${parentThreadTitle}`;
-}
-
-const PARENT_THREAD_TITLE_CLASS =
-  "text-foreground/90 underline underline-offset-2";
-
-function ParentThreadInlineSegment({
-  section,
-}: {
-  section: ThreadPromptParentThreadSection;
-}) {
-  const ariaLabel = useParentSectionAriaLabel(section);
-  return (
-    <div
-      className={cn(
-        "flex min-w-0 items-center gap-1.5 text-xs",
-        CONTEXT_CARD_SEGMENT_CLASS,
-      )}
-      title={ariaLabel}
-    >
-      <Icon
-        name={PARENT_SECTION_ICON[section.relationship]}
-        className="size-3.5 shrink-0"
-        aria-hidden="true"
-      />
-      <span className="min-w-0 truncate">
-        {PARENT_SECTION_COPY[section.relationship].verb}{" "}
-        <NavLink to={section.href}>
-          <ThreadTitle
-            title={section.parentThreadTitle}
-            className={PARENT_THREAD_TITLE_CLASS}
-            inline
-          />
-        </NavLink>
-      </span>
-    </div>
-  );
-}
-
-function ParentThreadSectionToggle({
-  section,
-  buttonRef,
-  isExpanded,
-  onToggle,
-}: {
-  section: ThreadPromptParentThreadSection;
-  buttonRef: Ref<HTMLButtonElement>;
-  isExpanded: boolean;
-  onToggle: () => void;
-}) {
-  const ariaLabel = useParentSectionAriaLabel(section);
-  return (
-    <SectionToggleButton
-      buttonRef={buttonRef}
-      fillRow={false}
-      id={SECTION_IDS.parentThread.toggle}
-      controlsId={SECTION_IDS.parentThread.body}
-      ariaLabel={ariaLabel}
-      icon={
-        <Icon
-          name={PARENT_SECTION_ICON[section.relationship]}
-          className="size-3.5 shrink-0"
-          aria-hidden="true"
-        />
-      }
-      label={null}
-      isExpanded={isExpanded}
-      onToggle={onToggle}
-    />
-  );
-}
-
-function ParentThreadSectionBody({
-  section,
-  isExpanded,
-  collapseRef,
-  onCollapse,
-}: {
-  section: ThreadPromptParentThreadSection;
-  isExpanded: boolean;
-  collapseRef: Ref<HTMLButtonElement>;
-  onCollapse: () => void;
-}) {
-  return (
-    <AnimatedDisclosureBody
-      collapsedBorder="reserve"
-      id={SECTION_IDS.parentThread.body}
-      labelledBy={SECTION_IDS.parentThread.toggle}
-      isExpanded={isExpanded}
-      collapseLabel="Collapse parent thread"
-      collapseRef={collapseRef}
-      onCollapse={onCollapse}
-    >
-      <div className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
-        {PARENT_SECTION_COPY[section.relationship].bodyLead}
-        <NavLink to={section.href}>
-          <ThreadTitle
-            title={section.parentThreadTitle}
-            className={PARENT_THREAD_TITLE_CLASS}
-            inline
-          />
-        </NavLink>
-        .
-      </div>
-    </AnimatedDisclosureBody>
-  );
-}
 
 const CHILD_THREAD_ROW_CLASS =
   "flex w-full min-w-0 items-center gap-2 py-0.5 text-left text-foreground/90 underline-offset-2 hover:underline";
@@ -872,46 +712,6 @@ function ActiveChildThreadsCard({
   );
 }
 
-function ParentThreadSummary({
-  threadId,
-  segments,
-  isExpanded,
-  onToggle,
-  toggleRef,
-}: ExperimentalThreadContextSegmentProps) {
-  const parentThread = useParentThreadSection(threadId);
-  if (parentThread === null) return null;
-  return segments.length === 1 ? (
-    <ParentThreadInlineSegment section={parentThread} />
-  ) : (
-    <ParentThreadSectionToggle
-      section={parentThread}
-      buttonRef={toggleRef}
-      isExpanded={isExpanded}
-      onToggle={onToggle}
-    />
-  );
-}
-
-function ParentThreadDetails({
-  threadId,
-  segments,
-  isExpanded,
-  onToggle,
-  collapseRef,
-}: ExperimentalThreadContextSegmentProps) {
-  const parentThread = useParentThreadSection(threadId);
-  if (parentThread === null || segments.length === 1) return null;
-  return (
-    <ParentThreadSectionBody
-      section={parentThread}
-      isExpanded={isExpanded}
-      collapseRef={collapseRef}
-      onCollapse={onToggle}
-    />
-  );
-}
-
 export function ThreadChildThreadsBanner({
   childThreads,
   isExpanded,
@@ -933,41 +733,13 @@ export function ThreadChildThreadsBanner({
   );
 }
 
-const SEGMENT_GROUPS = experimental_THREAD_CONTEXT_SEGMENT_GROUPS;
-
-const coreThreadContextSegments: readonly CoreThreadContextSegment[] =
-  collectCoreContributionSlots(
-    definePluginApp((app) => {
-      app.slots.experimental_threadContextSegment({
-        id: "parent-thread",
-        title: "Parent thread",
-        group: SEGMENT_GROUPS.thread,
-        order: 10,
-        summary: ParentThreadSummary,
-        details: ParentThreadDetails,
-        useVisible: ({ threadId }) => {
-          const parentThread = useParentThreadSection(threadId);
-          const kind = experimental_useThreadContextKind();
-          return parentThread !== null && kind === "banner";
-        },
-      });
-    }),
-    "threadContextSegments",
-  );
-
-function coreSlot(id: string): CoreThreadContextSegment {
-  const slot = coreThreadContextSegments.find(
-    (candidate) => candidate.id === id,
-  );
-  if (slot === undefined) throw new Error(`Missing core segment ${id}`);
-  return slot;
+const PARENT_THREAD_SLOT = CORE_THREAD_CONTEXT_ITEMS.find(
+  (slot) => slot.id === "parent-thread",
+);
+if (PARENT_THREAD_SLOT === undefined) {
+  throw new Error("Missing core segment parent-thread");
 }
-
-const PARENT_THREAD_SLOT = coreSlot("parent-thread");
-const PARENT_THREAD_ENTRY: ThreadContextSegmentEntry = {
-  owner: "core",
-  slot: PARENT_THREAD_SLOT,
-};
+const READ_ONLY_CANDIDATES = [PARENT_THREAD_SLOT];
 const PARENT_THREAD_KEY = threadContextSegmentKey(PARENT_THREAD_SLOT);
 const STATUS_KEY = `${CORE_PLUGIN_ID}/status`;
 const READ_ONLY_SEGMENTS = [
@@ -994,7 +766,11 @@ function ReadOnlyContextBanner({
   expandedSegment,
   onToggleSegment,
 }: ReadOnlyContextBannerProps) {
-  const hasParentThread = useParentThreadSection(input.threadId) !== null;
+  const { slots: visibleSlots, observers } = useVisibleThreadContextSegments(
+    input,
+    READ_ONLY_CANDIDATES,
+  );
+  const parentSlot = visibleSlots[0] ?? null;
   const disclosure = useThreadContextSegmentDisclosure(
     expandedSegment,
     onToggleSegment,
@@ -1007,11 +783,11 @@ function ReadOnlyContextBanner({
   const statusIcon = (
     <Icon name={iconName} className="size-3.5 shrink-0" aria-hidden="true" />
   );
-  const showStatusAction = statusAction !== null && !hasParentThread;
+  const showStatusAction = statusAction !== null && parentSlot === null;
   const parentSegment = (part: ThreadContextSegmentPart) =>
-    hasParentThread ? (
+    parentSlot !== null ? (
       <ThreadContextSegmentMount
-        entry={PARENT_THREAD_ENTRY}
+        slot={parentSlot}
         {...input}
         part={part}
         segments={READ_ONLY_SEGMENTS}
@@ -1019,66 +795,69 @@ function ReadOnlyContextBanner({
       />
     ) : null;
   return (
-    <PromptStackCard
-      ariaLabel="Thread history"
-      className="overflow-hidden"
-      style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
-    >
-      <div
-        className={cn(
-          "flex items-center gap-0.5 text-xs text-muted-foreground",
-          PROMPT_STACK_INLAY_INSET_CLASS,
-        )}
+    <>
+      {observers}
+      <PromptStackCard
+        ariaLabel="Thread history"
+        className="overflow-hidden"
+        style={{ minHeight: PROMPT_STACK_CARD_ROW_HEIGHT }}
       >
-        {parentSegment("summary")}
-        {description === null ? (
-          <div
-            className={cn(
-              "flex min-w-0 items-center gap-1.5 text-xs",
-              PROMPT_STACK_INLAY_SEGMENT_CLASS,
-            )}
-            role="status"
-            aria-label={statusLabel}
-          >
-            {statusIcon}
-            <span className="min-w-0 truncate" aria-hidden="true">
-              {statusLabel}
-            </span>
-          </div>
-        ) : (
-          <SectionToggleButton
-            buttonRef={statusFocus.triggerRef}
-            fillRow
-            id={SECTION_IDS.status.toggle}
-            controlsId={SECTION_IDS.status.body}
-            icon={statusIcon}
-            label={statusLabel}
-            hideLabelInCompact={false}
-            isExpanded={isStatusExpanded}
-            onToggle={statusFocus.onTriggerClick}
-          />
-        )}
-        {showStatusAction ? (
-          <BannerActionSlot>{statusAction}</BannerActionSlot>
-        ) : null}
-      </div>
-      {description === null ? null : (
-        <AnimatedDisclosureBody
-          collapsedBorder="reserve"
-          id={SECTION_IDS.status.body}
-          labelledBy={SECTION_IDS.status.toggle}
-          isExpanded={isStatusExpanded}
-          collapseLabel={`Collapse ${statusLabel.toLowerCase()}`}
-          collapseRef={statusFocus.collapseRef}
-          onCollapse={statusFocus.onCollapseClick}
+        <div
+          className={cn(
+            "flex items-center gap-0.5 text-xs text-muted-foreground",
+            PROMPT_STACK_INLAY_INSET_CLASS,
+          )}
         >
-          <p className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
-            {description}
-          </p>
-        </AnimatedDisclosureBody>
-      )}
-      {parentSegment("details")}
-    </PromptStackCard>
+          {parentSegment("summary")}
+          {description === null ? (
+            <div
+              className={cn(
+                "flex min-w-0 items-center gap-1.5 text-xs",
+                PROMPT_STACK_INLAY_SEGMENT_CLASS,
+              )}
+              role="status"
+              aria-label={statusLabel}
+            >
+              {statusIcon}
+              <span className="min-w-0 truncate" aria-hidden="true">
+                {statusLabel}
+              </span>
+            </div>
+          ) : (
+            <SectionToggleButton
+              buttonRef={statusFocus.triggerRef}
+              fillRow
+              id={SECTION_IDS.status.toggle}
+              controlsId={SECTION_IDS.status.body}
+              icon={statusIcon}
+              label={statusLabel}
+              hideLabelInCompact={false}
+              isExpanded={isStatusExpanded}
+              onToggle={statusFocus.onTriggerClick}
+            />
+          )}
+          {showStatusAction ? (
+            <BannerActionSlot>{statusAction}</BannerActionSlot>
+          ) : null}
+        </div>
+        {description === null ? null : (
+          <AnimatedDisclosureBody
+            collapsedBorder="reserve"
+            id={SECTION_IDS.status.body}
+            labelledBy={SECTION_IDS.status.toggle}
+            isExpanded={isStatusExpanded}
+            collapseLabel={`Collapse ${statusLabel.toLowerCase()}`}
+            collapseRef={statusFocus.collapseRef}
+            onCollapse={statusFocus.onCollapseClick}
+          >
+            <p className="px-3 pb-2 pt-1.5 text-xs leading-relaxed text-muted-foreground">
+              {description}
+            </p>
+          </AnimatedDisclosureBody>
+        )}
+        {parentSegment("details")}
+      </PromptStackCard>
+    </>
   );
 }
 
@@ -1091,27 +870,27 @@ function WritableContextBanner({
   expandedSegment: string | null;
   onToggleSegment: (key: string) => void;
 }) {
-  const { entries, observers } = useThreadContextSegments(
+  const { slots, observers } = useThreadContextSegments(
     input,
-    coreThreadContextSegments,
+    CORE_THREAD_CONTEXT_ITEMS,
   );
   const disclosure = useThreadContextSegmentDisclosure(
     expandedSegment,
     onToggleSegment,
   );
-  const segments = entries.map(({ slot }) => ({
+  const segments = slots.map((slot) => ({
     key: threadContextSegmentKey(slot),
     pluginId: slot.pluginId,
   }));
   const mount = (
-    entry: ThreadContextSegmentEntry,
+    slot: ThreadContextBannerSlot,
     part: ThreadContextSegmentPart,
   ) => {
-    const key = threadContextSegmentKey(entry.slot);
+    const key = threadContextSegmentKey(slot);
     return (
       <ThreadContextSegmentMount
-        key={threadContextSegmentMountKey(entry, input.threadId, part)}
-        entry={entry}
+        key={threadContextSegmentMountKey(slot, input.threadId, part)}
+        slot={slot}
         part={part}
         {...input}
         segments={segments}
@@ -1122,7 +901,7 @@ function WritableContextBanner({
   return (
     <>
       {observers}
-      {entries.length > 0 ? (
+      {slots.length > 0 ? (
         <PromptStackCard
           ariaLabel="Thread context before sending"
           className="overflow-hidden"
@@ -1134,10 +913,10 @@ function WritableContextBanner({
               PROMPT_STACK_INLAY_INSET_CLASS,
             )}
           >
-            {entries.map((entry) => mount(entry, "summary"))}
-            {entries.map((entry) => mount(entry, "action"))}
+            {slots.map((slot) => mount(slot, "summary"))}
+            {slots.map((slot) => mount(slot, "action"))}
           </div>
-          {entries.map((entry) => mount(entry, "details"))}
+          {slots.map((slot) => mount(slot, "details"))}
         </PromptStackCard>
       ) : null}
     </>

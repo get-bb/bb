@@ -8,7 +8,7 @@ import { CORE_PLUGIN_ID } from "@bb/domain";
 type CoreContributionKind =
   | "tabs"
   | "messageMetadata"
-  | "threadContextSegments"
+  | "threadContextItems"
   | "threadActions"
   | "threadRailOutlines"
   | "threadInfoRows"

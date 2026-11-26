@@ -209,8 +209,9 @@ the surface's suppression. The host components are the voice button
 (`experimental_PromptMentionIcon`, `experimental_PluginIcon`) and thread-title
 text (`experimental_ThreadTitleText`, whose `tooltip` sets the display text as
 the native tooltip, with the
-`experimental_useThreadTitleDisplayText(title)` hook for plain strings; core's
-Info parent row and parent picker draw titles with it). The
+`experimental_useThreadTitleDisplayText(title)` hook for plain strings and
+`experimental_threadDisplayTitle(thread)` for a thread's title; core's Info
+parent row and parent picker draw titles with it). The
 image lightbox the composer uses for attachments has its own entry
 (`experimental_ImageLightbox`).
 
@@ -3935,7 +3936,7 @@ Requires SDK 0.6.190.
 
 - **Surface:** `PluginSdkApp.experimental_useThread(threadId): ExperimentalThreadState`, `ExperimentalThreadState` and `ExperimentalThread`.
 - **Behavior:** one thread by id. `ExperimentalThreadState` is `{ status: "loading" | "notFound" | "error", thread: null }` or `{ status: "ready", thread }`. A thread the sidebar's per-thread entry store holds (`useSidebarThreadEntry`, `apps/app/src/lib/sidebar-thread-entries.ts`) is ready at once with no request, and the component re-renders only when that thread's entry changes. Any other thread (archived, unloaded, or before the sidebar's first load) is read with the thread query behind `useSdk().threads.get` (`useThread`), then kept current by its realtime subscription. A 404 from that read, which covers unknown ids, deleted threads and threads in deleted projects, is `notFound`, also when the query still holds the thread's earlier data, as it does after a watched thread is deleted. Thread data with a non-null `deletedAt` from either source is `notFound` too. Any other failure with no data is `error`. A held thread that leaves the store (archived, for example) keeps its last held value as `ready` until the fetch answers, so the state goes ready to ready rather than through `loading`; that memory lives in the component's own store subscription (`useTrackedSidebarEntry`). An empty id is `notFound` with no request. `ExperimentalThread` is the domain `ThreadWithRuntime`: the fields `threads.get` returns without `activeBackgroundAgentCount`, `canRestoreEnvironment`, `canEditMessages`, `canSpawnChild` and `queuedMessageCount`, which only that request computes. Both sources are projected onto exactly those fields, so a held and a fetched thread have the same shape. The shape follows `threads.get` rather than `PluginSidebarThread`: it carries `deletedAt` and none of the row-only fields (`indicator`, `indicatorLabel`, `activity`, `queuedWork`, `hasPendingInteraction`, `pinSortKey`, the flattened `environment*` fields). `runtime.failure` (SDK 0.6.205) is `"provisioning"` while the thread is in `error` because its environment setup failed, null otherwise: the server stores it in `threads.failure_kind`, written only by the lifecycle write path (`writeThreadLifecycleStateInTransaction`, `packages/db/src/data/thread-run-state.ts`) when `provisioning.failed` applies and cleared on every other status move, and fills it in the runtime builders (`apps/server/src/services/threads/thread-runtime-display.ts`) for `threads.get`, sidebar entries and status-change realtime. A lost start, a refused start command, `provider.failed` before start and a deleted environment row leave it null (`apps/server/test/services/threads/lifecycle-failure-kind.test.ts`).
-- **Core callers:** `useThreadState` (`apps/app/src/lib/thread-state.ts`) is the one implementation behind the SDK member. `useParentThreadSection` (`apps/app/src/views/thread-detail/useParentThreadSection.ts`) calls it for the current thread and for its parent or fork source, and has no fetch or fallback of its own. Core's Info rows (`apps/app/src/core-contributions/thread-info.tsx` and `thread-info/parent-row.tsx`) read the thread, its parent and `runtime.failure` through it. `useParentThreadSection` feeds core's parent-thread segment (`ThreadPromptContextBanner.tsx`: summary, details and `useVisible`, in the writable and read-only banners) and the context card's parent row (`ThreadContextCardCore.tsx`). Tests: `thread-state.test.tsx` (a held thread: no request, re-renders only for itself against a whole-list subscriber; a fetched thread has a held one's shape; 404 against other failures; a fetched thread deleted while watched; data carrying `deletedAt`; a held thread leaving the store stays `ready` until its fetch answers; empty id), and `ThreadPromptContextBanner.test.tsx` (a parent the sidebar lacks shows nothing while it loads and stays hidden once it reads as archived; an archived thread's parent is read through the fetch).
+- **Core callers:** `useThreadState` (`apps/app/src/lib/thread-state.ts`) is the one implementation behind the SDK member, and the core binding (`apps/app/src/lib/core-plugin-sdk-app.ts`) serves it to core contributions. Core's parent thread contribution (`apps/app/src/core-contributions/parent-thread.tsx`) imports `experimental_useThread` from `@get-bb/plugin-sdk/app` for the current thread and for its parent or fork source, and has no fetch or fallback of its own. It feeds the parent-thread item's banner part (summary, details and `useVisible`, in the writable and read-only banners) and card row. Core's Info rows (`apps/app/src/core-contributions/thread-info.tsx` and `thread-info/parent-row.tsx`) read the thread, its parent and `runtime.failure` through it. Tests: `thread-state.test.tsx` (a held thread: no request, re-renders only for itself against a whole-list subscriber; a fetched thread has a held one's shape; 404 against other failures; a fetched thread deleted while watched; data carrying `deletedAt`; a held thread leaving the store stays `ready` until its fetch answers; empty id), and `ThreadPromptContextBanner.test.tsx` (a parent the sidebar lacks shows nothing while it loads and stays hidden once it reads as archived; an archived thread's parent is read through the fetch).
 - **Plugin callers:** none in-repo. Community plugins that run `threads.find((t) => t.id === id)` over `experimental_useSidebarThreads()` for one thread, such as work-map and attention-sidebar, can migrate.
 - **Stabilization:** decide whether `ready` should also carry the five request-only fields, which would mean a request for held threads too; whether boards need a batched form (`ids[]`); and whether `error` should expose the failure. Then rename project-wide and remove this entry.
 
@@ -4137,9 +4138,12 @@ null to hide it, with rows inside.
 `ThreadDetailView` wraps each thread page and split pane in
 `ThreadContextCardProvider`
 (`apps/app/src/components/plugin/PluginThreadContextCard.tsx`), enabled only
-where the pane's kind is `card`. Rows and sections each merge bb's with plugin
-registrations and sort by `group`, `order` (unset last), then
-registration order with core first on a tie. Rows share one block with no
+where the pane's kind is `card`. Rows and sections are the card parts of
+thread context items (see `app.slots.experimental_threadContextItem`); the
+host adapts each legacy card row and section onto an item with only that card
+part (`threadContextItemsOf`, `apps/app/src/lib/plugin-slots.ts`). Rows and
+sections each merge bb's items with plugins' and sort by `group`, `order`
+(unset last), then registration order with core first on a tie. Rows share one block with no
 heading; sections follow, each with a divider above it. In a section,
 `experimental_InfoSection` (`SurfaceInfoSection`) draws the Info tab's
 collapsible heading, open by default. Folds are stored in the synced
@@ -4165,28 +4169,38 @@ button opens the same content in the shared Popover, which is the shared
 bottom drawer in a compact viewport. Unpinning or closing the popover does not
 change the pane's kind.
 
-Context segments render in both kinds, so a plugin that has not added a card
-row or section keeps its segment above the composer. A segment whose content is also a
-card row or section hides itself in `useVisible` while the kind is `card`.
+A thread context item with both parts shows its banner part only where the
+card cannot show its card part: the host leaves the banner part out of `card`
+panes without running its `useVisible`. Legacy context segments have no card
+part, so they render in both kinds and a plugin that has not moved keeps its
+segment above the composer.
 
 **Core callers.** bb's parent row (thread group) and its Child threads section
-(related group) are `CORE_THREAD_CONTEXT_CARD_ROWS` and
-`CORE_THREAD_CONTEXT_CARD_SECTIONS` in
-`apps/app/src/views/thread-detail/ThreadContextCardCore.tsx`, drawn with
-`ThreadContextCardRow` and `SurfaceInfoSection`, the components behind
-`experimental_ThreadContextCardRow` and `experimental_InfoSection`.
-bb's parent segment hides through `useThreadContextKind`, the function behind
-`experimental_useThreadContextKind`. The Git plugin registers its `changes`
-row (full `+N −M` counts; it opens the Diff tab, where the merge base is
-picked) and GitHub PR Status its `pull-request` row (the banner's own label,
+(related group) are the card parts of thread context items registered through
+`app.slots.experimental_threadContextItem` in
+`apps/app/src/core-contributions/parent-thread.tsx` and
+`apps/app/src/core-contributions/child-threads.tsx`, importing only the public
+SDK and registry components (`bb/core-contribution-imports`).
+`apps/app/src/lib/core-thread-context.ts` collects them with
+`collectCoreContributionSlots`, stamping `bb--core`, and they mount through the
+same `PluginSlotMount` crash boundary as plugin rows and sections. The parent
+row reads `experimental_useThread` and opens the thread with
+`navigate.toThread`; the Child threads section filters
+`experimental_useSidebarThreads()` to visible, non-fork children and draws
+each with `experimental_resolveThreadStatus`, `useSidebarThreadDraft`,
+`useSidebarThreadRowStatus`, `experimental_ThreadStatusGlyph`,
+`experimental_ThreadTitleText` and the `info-list-row` registry item's
+`InfoRowTime`. The Git plugin's `changed-files` item has a card row (full
+`+N −M` counts; it opens the Diff tab, where the merge base is picked) and
+GitHub PR Status's `pull-request` item a card row (the banner's own label,
 `PullRequestSummaryLabel`, after the GitHub icon that carries the checks,
 opening the pull request; its `…` menu opens GitHub, copies the link, merges,
-and marks it ready or draft, at the card's width, flush with its edges); both
-hide their segments with `experimental_useThreadContextKind`. A row's `action`
+and marks it ready or draft, at the card's width, flush with its edges). A row's `action`
 replaces its `trailing` while the row is hovered or focused or the action's
 menu is open, and always shows on touch screens. Contract tests:
-`PluginThreadContextCard.test.tsx`,
-`plugin-app-thread-context-card-section.test.ts` and
+`PluginThreadContextCard.test.tsx` (legacy rows and sections and core
+items), `plugin-app-thread-context-card-section.test.ts`,
+`plugin-app-thread-context-item.test.ts` and
 `ThreadPromptContextBanner.segments.test.tsx`.
 
 Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
@@ -4197,9 +4211,11 @@ Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
 
 1. **Kinds.** Confirm `banner | card` covers the presentations bb plans, and
    that a pane's kind should not follow the pin or the popover.
-2. **Context segments.** Decide whether `experimental_threadContextSegment`
-   becomes the banner's slot under a matching name once the card stabilizes,
-   and whether unmigrated segments should keep showing in card panes.
+2. **Legacy slots.** Thread context items replace
+   `experimental_threadContextSegment`, `experimental_threadContextCardRow`
+   and `experimental_threadContextCardSection` for bb's own callers. Decide
+   when to retire the three, and whether unmigrated segments should keep
+   showing in card panes until then.
 3. **Transcript slide.** Pinning or unpinning in a pane narrower than 1384px
    moves the transcript sideways. Confirm that is acceptable or reserve the
    space permanently.
@@ -4210,7 +4226,10 @@ Docs: `frontend-thread-context-card.md`, `frontend-registration.md`,
    shows an empty state ("Nothing to show yet") instead of hiding, so the
    header button and the transcript's position do not depend on the thread.
 6. **Groups.** Rows and sections reuse the Info tab's groups. Confirm the two surfaces
-   should share one group vocabulary.
+   should share one group vocabulary. `pullRequest` is `2_pullRequest` (SDK
+   0.6.206), sorting the pull request before Git in the banner, the card and
+   the Info tab alike; a plugin built against an older SDK keeps
+   `4_pullRequest` and sorts after Git.
 7. **Folding.** Sections start open and the person folds the ones they don't
    need. Decide whether a folded section needs a one-line summary beside its
    title, and whether a section that needs the person (a pending question) may
@@ -5466,6 +5485,31 @@ Docs: `frontend-thread-list.md`.
 1. **Archived rows.** No plugin passes `archived` yet; confirm the archived
    glyph belongs on this component rather than in the archived list.
 
+## `experimental_threadDisplayTitle` / `ExperimentalThreadDisplayTitleInput` (`@get-bb/plugin-sdk`, `@get-bb/plugin-sdk/app`)
+
+A pure function from `{ id, title, titleFallback }` to the title bb shows for
+a thread before mentions resolve: `title`, else `titleFallback` (each only
+when it has non-blank text), else `Thread ` and the id's first 8 characters.
+A `PluginSidebarThread` and an `ExperimentalThread` both fit the input. It
+lives in `packages/plugin-sdk/src/thread-display-title.ts` and is exported
+from the root entry and `./app`, like the thread info groups, so plugins
+bundle it rather than reading it from the host runtime.
+
+**Core callers.** It is the only implementation. Core's
+`getThreadDisplayTitle` (`apps/app/src/lib/thread-title.ts`) returns it, so
+every core list, header, and `PluginSidebarThread.displayTitle` use it. Core's
+parent thread segment and card row
+(`apps/app/src/core-contributions/parent-thread.tsx`) and Child threads
+section (`apps/app/src/core-contributions/child-threads.tsx`) call it
+directly.
+
+**Audit before stabilizing.**
+
+1. **Mention resolution.** Decide whether `PluginSidebarThread.displayTitle`
+   (mentions resolved) and this raw title should stay two names, or whether
+   `experimental_useThread` should report a `displayTitle` too.
+2. Then rename project-wide and remove this entry.
+
 ## `experimental_resolveThreadStatus` (`@get-bb/plugin-sdk/app`)
 
 A pure function from `PluginThreadStatusInput` (the row's thread or null for a
@@ -6147,11 +6191,18 @@ own value, so plugins built against the old constant keep working.
 - **Core callers:** `lazyComponent` in `apps/app/src/lib/lazy-component.tsx` is the one implementation: `pluginSdkAppImplementation` serves it to plugin bundles and `apps/app/src/lib/core-plugin-sdk-app.ts` binds it for core contributions. It is a `defineSplit` preload-tier split registered in `apps/app/src/lib/lazy-parts.ts`, whose `useOrderedReveal` every stacking host uses. Core contribution caller: `apps/app/src/core-contributions/thread-outline.tsx` (the rail outline), whose lazy part the thread route starts alongside the thread view through `apps/app/src/lib/core-contribution-parts.ts`. Bundled plugin callers: Git (Diff tab, commit dialog), Automations (panel, thread Info section), Account Pooler and bb connect (settings and setup-guide sections). Tests: `lazy-parts.test.tsx`, `plugin-app-component-fields.test.ts`, `plugin-frontend-load-order.test.ts`, `build-plugin-app.test.ts`, `plugin-app-bundle.test.ts`, `plugin-update.test.ts`.
 - **Stabilization:** whether the 3-second bound should differ per host and whether hosts should show a placeholder while they hold. Then rename project-wide and remove this entry.
 
+## Thread context items (`app.slots.experimental_threadContextItem`)
+
+- **Surface:** `PluginAppSlots.experimental_threadContextItem`, `ExperimentalThreadContextItemRegistration`, `ExperimentalThreadContextItemBanner`, `ExperimentalThreadContextItemCard` (SDK 0.6.206).
+- **Behavior:** a registration is `{ id, title, group, order?, banner?, card? }` and needs at least one part. `banner` is `{ summary, action?, details?, useVisible? }`, a context row segment with the props, focus handoff and visibility of `experimental_threadContextSegment`; `title` names its summary group, and its segment key is `<pluginId>/<id>`. `card` is `{ row }` or `{ section }`, a thread context card row or section with the props of `experimental_threadContextCardRow` / `experimental_threadContextCardSection`. The host places the parts: the banner part renders in panes whose thread context kind is `banner`, and also in `card` panes when the item has no card part; the card part renders wherever the card does. In a `card` pane the host leaves the banner part out before visibility, so its `useVisible` does not run there. Items sort by `group`, `order` (unset last), registration order, core first on a tie, separately on each surface; bb's groups are `experimental_THREAD_INFO_ROW_GROUPS` (rows and the banner) and `experimental_THREAD_INFO_SECTION_GROUPS` (card sections). The collector rejects an item without parts, a card with both or neither of `row` and `section`, and an id the plugin already uses for an item, segment, card row or card section, in either registration order; legacy segments and card rows may still share an id. The host turns every legacy segment, card row and card section into an item with that one part (`threadContextItemsOf`, `apps/app/src/lib/plugin-slots.ts`), so the banner and the card read one slot kind, `threadContextItems`, and plugins built against older SDKs keep working unchanged. `CapturedPluginApp.threadContextItems` (testing) reports the collected items, with absent parts as null and `card.kind`.
+- **Core callers:** core's parent thread (`apps/app/src/core-contributions/parent-thread.tsx`, banner and card row) and Child threads (`apps/app/src/core-contributions/child-threads.tsx`, card section) register items, importing only the public SDK and registry components (`bb/core-contribution-imports`). `apps/app/src/lib/core-thread-context.ts` collects them, stamping `bb--core`. The Git plugin's `changed-files` item (banner summary, merge-base action and details; card row) and GitHub PR Status's `pull-request` item (banner summary and Mark ready and merge actions; card row) are the plugin callers. `useThreadContextSegments` and `useVisibleThreadContextSegments` (`apps/app/src/components/plugin/PluginThreadContextSegments.tsx`) apply the banner rule; `ThreadContextCardProvider` (`apps/app/src/components/plugin/PluginThreadContextCard.tsx`) takes the card parts. Contract tests: `ThreadPromptContextBanner.segments.test.tsx` runs one placement table against core's parent thread, the Git item and a third-party item in `card` and `banner` panes, plus a banner-only item and a legacy segment, which show in both; `plugin-app-thread-context-item.test.ts` covers collection and rejection.
+- **Stabilization:** add an `info` part now that the Info tab body is public (#8095), so one item reaches the Info tab too and the PR and parent Info rows move onto it. Decide whether the banner part should hide only while the card is on screen rather than whenever the pane's kind is `card` (an unpinned card in a wide pane hides both today). Retire the three legacy slots once maintained plugins have moved, then rename project-wide and remove this entry.
+
 ## Thread context segments (`app.slots.experimental_threadContextSegment` / `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`)
 
 - **Surface:** `PluginAppSlots.experimental_threadContextSegment`, `PluginSdkApp.experimental_THREAD_CONTEXT_SEGMENT_GROUPS`, `ExperimentalThreadContextSegmentRegistration`, `ExperimentalThreadContextSegmentProps` (including `toggleRef` and `collapseRef`, SDK 0.6.190), `ExperimentalThreadContextSegmentInput`, `ExperimentalThreadContextSegmentReference` and `ExperimentalThreadEnvironment` (also used by `ExperimentalThreadInfoProps.environment`).
-- **Behavior:** a registration is `{ id, title, group, order?, summary, action?, details?, useVisible? }`. Segments share the context row above an existing thread's composer, and the host mounts each component in its own crash boundary: `summary` in the row (wrapped in a group named by `title`), `action` at the row's end after every summary, and `details` below the row. Segments sort like Info rows and thread actions: by `group` (string compare), then `order` within it (unset last), then registration order, core first on a tie. bb's groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`: `thread` (`1_thread`: core's parent thread) and `git` (`3_git`: the Git plugin's changed files). Any other plugin names its own group, placed where its string sorts. Each entry of `segments` is `{ key, pluginId }` with `key` `<pluginId>/<id>`, the key shape thread actions use; core's segments use `bb--core`. `useVisible(input)` runs in plugin scope per thread; false, or a crash, leaves the segment out of the row and of `segments`. Props carry `threadId`, `projectId`, `environment`, the visible `segments` in row order, and the shared disclosure state: one segment of the row is expanded at a time, keyed by `key`. The host owns focus for that disclosure: `toggleRef` and `collapseRef` are callback refs a segment attaches to its expand control and to the collapse control in `details`. When `onToggle` runs while focus is on one of them, the host focuses the other after the commit that changed `isExpanded` (the collapse control on expand, the toggle on collapse). Focus elsewhere, such as in the composer or in another segment, is left where it is, and a segment that attaches neither ref keeps the browser's behavior. `environment` is `{ id }`, or null when the thread has no environment, its host is not active, or the environment is not a usable checkout. The row is withheld while core's workspace status loads and while a question is pending, and read-only history (archived thread or gone environment) shows core's parent thread only. The banner renders under every composer plugin, because the host draws it above `ComposerBox`.
-- **Core callers:** `ThreadPromptContextBanner` (`apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx`) registers only the parent thread (summary and details, including read-only history) through `definePluginApp` and the same collector, and renders it with plugin registrations through `useThreadContextSegments` and `ThreadContextSegmentMount` (`apps/app/src/components/plugin/PluginThreadContextSegments.tsx`). The parent thread reads its data through `useParentThreadSection`, which calls `useThreadState`, the implementation of `experimental_useThread`, and renders without a plugin crash boundary, as core Info rows do. Both banners hand focus through `useThreadContextSegmentDisclosure` (`PluginThreadContextSegments.tsx`), which supplies `isExpanded`, `onToggle`, `toggleRef` and `collapseRef` to core and plugin segments alike; core's parent thread and the Git plugin's changed files attach both refs and have no focus code of their own. The Git plugin registers the changed files segment (summary, merge-base action, details) in the `git` group (`plugins/git/app.tsx`). The GitHub PR Status plugin registers the pull request segment in its own group `2_pullRequest`, between the parent thread and changed files, with its Mark ready and merge actions. Active child threads are a separate core row above the context row (`ThreadChildThreadsBanner`), not a segment. Contract tests: `ThreadPromptContextBanner.segments.test.tsx`, including one focus-handoff case table run against core's parent thread (writable and read-only), the Git segment and a plugin segment.
+- **Behavior:** a registration is `{ id, title, group, order?, summary, action?, details?, useVisible? }`. The host adapts each segment onto a thread context item with only a banner part, so segments share the context row with items' banner parts and show in every pane. The host mounts each component in its own crash boundary: `summary` in the row (wrapped in a group named by `title`), `action` at the row's end after every summary, and `details` below the row. Segments sort like Info rows and thread actions: by `group` (string compare), then `order` within it (unset last), then registration order, core first on a tie. bb's groups are `experimental_THREAD_CONTEXT_SEGMENT_GROUPS`: `thread` (`1_thread`: core's parent thread) and `git` (`3_git`: the Git plugin's changed files), the same values as `experimental_THREAD_INFO_ROW_GROUPS`, so segments and items interleave. Any other plugin names its own group, placed where its string sorts. Each entry of `segments` is `{ key, pluginId }` with `key` `<pluginId>/<id>`, the key shape thread actions use; core's segments use `bb--core`. `useVisible(input)` runs in plugin scope per thread; false, or a crash, leaves the segment out of the row and of `segments`. Props carry `threadId`, `projectId`, `environment`, the visible `segments` in row order, and the shared disclosure state: one segment of the row is expanded at a time, keyed by `key`. The host owns focus for that disclosure: `toggleRef` and `collapseRef` are callback refs a segment attaches to its expand control and to the collapse control in `details`. When `onToggle` runs while focus is on one of them, the host focuses the other after the commit that changed `isExpanded` (the collapse control on expand, the toggle on collapse). Focus elsewhere, such as in the composer or in another segment, is left where it is, and a segment that attaches neither ref keeps the browser's behavior. `environment` is `{ id }` from the thread, as card rows, Info rows and tabs receive it (SDK 0.6.206), and null only when the thread has no environment or the row belongs to an embedded `ThreadChat`; a segment checks host, checkout and git state itself. The row is withheld while core's workspace status loads and while a question is pending, and read-only history (archived thread or gone environment) shows core's parent thread only. The banner renders under every composer plugin, because the host draws it above `ComposerBox`.
+- **Core callers:** core's parent thread renders here as the banner part of its thread context item (see that entry), with `experimental_useThread` for its data, `navigate.experimental_threadHref` for the link, `experimental_threadDisplayTitle`, `experimental_ThreadTitleText` (`inline`) and `experimental_useThreadTitleDisplayText` for the title. `ThreadPromptContextBanner` (`apps/app/src/components/promptbox/banner/ThreadPromptContextBanner.tsx`) renders items' banner parts and adapted segments through `useThreadContextSegments` and `ThreadContextSegmentMount` (`apps/app/src/components/plugin/PluginThreadContextSegments.tsx`), and read-only history runs the same placement and visibility (`useVisibleThreadContextSegments`) over the parent thread alone. Every banner part, core's included, mounts through `PluginSlotMount`, so core gets the same crash boundary, summary group and in-place routing of plain `<a href>` clicks as plugins. Both banners hand focus through `useThreadContextSegmentDisclosure` (`PluginThreadContextSegments.tsx`), which supplies `isExpanded`, `onToggle`, `toggleRef` and `collapseRef` to core and plugin segments alike; core's parent thread and the Git plugin's changed files attach both refs and have no focus code of their own. The Git plugin's changed files segment shows only when its git status carries a workspace with changes (`useChangedFilesSegmentVisible`, `plugins/git/ui/segment/ChangedFilesSegment.tsx`; a non-git environment reports `not_applicable` and an unreachable one `unavailable`, neither with a workspace), and GitHub PR Status's only when the environment has a pull request, so neither needs the host to withhold non-git environments. Active child threads are a separate core row above the context row (`ThreadChildThreadsBanner`), not a segment. Contract tests: `ThreadPromptContextBanner.segments.test.tsx`, including one focus-handoff case table run against core's parent thread (writable and read-only), the Git segment and a plugin segment.
 - **Stabilization:** audit per-component mounts and crash recovery across reloads and plugin disable, `segments` stability while visibility settles, focus handoff when the collapse control renders after an asynchronous load, independent panes, and compact widths with several plugin segments. Then rename project-wide and remove this entry.
 
 ## Collapsible stack card (`experimental_CollapsibleStackCard`)

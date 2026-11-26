@@ -111,6 +111,7 @@ import {
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
+  experimental_threadDisplayTitle,
 } from "@get-bb/plugin-sdk";
 import { experimental_resolveThreadStatus } from "@get-bb/plugin-sdk/internal/thread-status";
 import {
@@ -276,6 +277,7 @@ export const pluginSdkAppImplementation = {
   ThreadTitle: PluginThreadTitle,
   experimental_ThreadStatusGlyph: ThreadStatusGlyph,
   experimental_resolveThreadStatus,
+  experimental_threadDisplayTitle,
   useEnvironmentProviders,
   useSdk,
   experimental_useProviders: useProviders,

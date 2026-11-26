@@ -51,17 +51,30 @@ describe("bb/core-plugin-sdk-app-binding", () => {
   it("flags value imports the core binding does not export", async () => {
     const { lines, output } = await lintLines(
       [
-        'import { definePluginApp, experimental_useRpc } from "@get-bb/plugin-sdk/app";',
+        'import { definePluginApp, experimental_saveFile } from "@get-bb/plugin-sdk/app";',
         'import * as sdkApp from "@get-bb/plugin-sdk/app";',
         'import sdkDefault from "@get-bb/plugin-sdk/app";',
         'export { experimental_useSdk } from "@get-bb/plugin-sdk/app";',
         'export * from "@get-bb/plugin-sdk/app";',
         'export const lazy = () => import("@get-bb/plugin-sdk/app");',
-        "export const used = [definePluginApp, experimental_useRpc, sdkApp, sdkDefault];",
+        "export const used = [definePluginApp, experimental_saveFile, sdkApp, sdkDefault];",
       ].join("\n"),
     );
 
     expect(lines, output).toEqual([1, 2, 3, 4, 5, 6]);
+  });
+
+  it("flags a bound experimental hook imported without a use alias", async () => {
+    const { lines, output } = await lintLines(
+      [
+        'import { experimental_useThread } from "@get-bb/plugin-sdk/app";',
+        'import { experimental_useThread as readThread } from "@get-bb/plugin-sdk/app";',
+        'import { experimental_useThread as useThread } from "@get-bb/plugin-sdk/app";',
+        "export const used = [experimental_useThread, readThread, useThread];",
+      ].join("\n"),
+    );
+
+    expect(lines, output).toEqual([1, 2]);
   });
 
   it("allows bound members and type-only imports", async () => {

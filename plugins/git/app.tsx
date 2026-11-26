@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   definePluginApp,
   experimental_lazy,
-  experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
   experimental_THREAD_INFO_SECTION_GROUPS,
 } from "@get-bb/plugin-sdk/app";
@@ -102,21 +101,18 @@ export default definePluginApp((app) => {
     order: 20,
     component: UncommittedChangesInfoSection,
   });
-  app.slots.experimental_threadContextSegment({
+  app.slots.experimental_threadContextItem({
     id: "changed-files",
     title: "Changed files",
-    group: experimental_THREAD_CONTEXT_SEGMENT_GROUPS.git,
-    order: 10,
-    summary: changedFilesSegmentPart("summary"),
-    action: changedFilesSegmentPart("action"),
-    details: changedFilesSegmentPart("details"),
-    useVisible: useChangedFilesSegmentVisible,
-  });
-  app.slots.experimental_threadContextCardRow({
-    id: "changes",
     group: experimental_THREAD_INFO_ROW_GROUPS.git,
     order: 10,
-    component: GitChangesContextCardRow,
+    banner: {
+      summary: changedFilesSegmentPart("summary"),
+      action: changedFilesSegmentPart("action"),
+      details: changedFilesSegmentPart("details"),
+      useVisible: useChangedFilesSegmentVisible,
+    },
+    card: { row: GitChangesContextCardRow },
   });
   app.slots.experimental_threadAction(commitThreadAction);
   app.slots.experimental_appOverlay({

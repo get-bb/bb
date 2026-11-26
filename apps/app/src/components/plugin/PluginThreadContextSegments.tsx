@@ -10,24 +10,21 @@ import { useOrderedReveal } from "@/lib/lazy-parts";
 import type {
   ExperimentalThreadContextSegmentInput,
   ExperimentalThreadContextSegmentProps,
-  ExperimentalThreadContextSegmentRegistration,
 } from "@get-bb/plugin-sdk";
+import type { CollectedThreadContextItemBanner } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 import { compareGroupedPlacement } from "@/lib/grouped-placement";
 import {
   usePluginSlotKind,
-  type PluginThreadContextSegmentSlot,
+  type PluginThreadContextItemSlot,
 } from "@/lib/plugin-slots";
 import { PluginSlotMount } from "./PluginSlotMount";
-import type { CoreContributionSlot } from "@/lib/core-contributions";
-
-export type CoreThreadContextSegment =
-  CoreContributionSlot<"threadContextSegments">;
-
-export type ThreadContextSegmentEntry =
-  | { owner: "core"; slot: CoreThreadContextSegment }
-  | { owner: "plugin"; slot: PluginThreadContextSegmentSlot };
+import { useThreadContextKind } from "./thread-context-card-pane";
 
 export type ThreadContextSegmentPart = "summary" | "action" | "details";
+
+export type ThreadContextBannerSlot = PluginThreadContextItemSlot & {
+  banner: CollectedThreadContextItemBanner;
+};
 
 export function threadContextSegmentKey(segment: {
   pluginId: string;
@@ -36,24 +33,25 @@ export function threadContextSegmentKey(segment: {
   return `${segment.pluginId}/${segment.id}`;
 }
 
-function sortThreadContextSegments(
-  entries: readonly ThreadContextSegmentEntry[],
-): ThreadContextSegmentEntry[] {
-  return entries
-    .map((entry, index) => ({ entry, index }))
+function hasBanner(
+  slot: PluginThreadContextItemSlot,
+): slot is ThreadContextBannerSlot {
+  return slot.banner !== null;
+}
+
+export function sortThreadContextItems<
+  Slot extends PluginThreadContextItemSlot,
+>(slots: readonly Slot[]): Slot[] {
+  return slots
+    .map((slot, index) => ({ slot, index }))
     .sort((left, right) =>
-      compareGroupedPlacement(
-        left.entry.slot,
-        left.index,
-        right.entry.slot,
-        right.index,
-      ),
+      compareGroupedPlacement(left.slot, left.index, right.slot, right.index),
     )
-    .map(({ entry }) => entry);
+    .map(({ slot }) => slot);
 }
 
 type VisibilityReport = (
-  slot: ExperimentalThreadContextSegmentRegistration,
+  banner: CollectedThreadContextItemBanner,
   threadId: string,
   visible: boolean | null,
 ) => void;
@@ -64,12 +62,12 @@ type VisibilityHostProps = {
 };
 
 const visibilityHosts = new WeakMap<
-  ExperimentalThreadContextSegmentRegistration,
+  CollectedThreadContextItemBanner,
   { Visibility: ComponentType<VisibilityHostProps> }
 >();
 
 function useReportVisibility(
-  slot: ExperimentalThreadContextSegmentRegistration,
+  banner: CollectedThreadContextItemBanner,
   threadId: string,
   visible: unknown,
   onVisible: VisibilityReport,
@@ -78,79 +76,74 @@ function useReportVisibility(
     throw new Error("useVisible must return a boolean");
   }
   useLayoutEffect(() => {
-    onVisible(slot, threadId, visible);
-    return () => onVisible(slot, threadId, null);
-  }, [slot, threadId, visible, onVisible]);
+    onVisible(banner, threadId, visible);
+    return () => onVisible(banner, threadId, null);
+  }, [banner, threadId, visible, onVisible]);
 }
 
 function visibilityHostFor(
-  slot: ExperimentalThreadContextSegmentRegistration & {
-    useVisible: NonNullable<
-      ExperimentalThreadContextSegmentRegistration["useVisible"]
-    >;
+  banner: CollectedThreadContextItemBanner & {
+    useVisible: NonNullable<CollectedThreadContextItemBanner["useVisible"]>;
   },
 ) {
-  const existing = visibilityHosts.get(slot);
+  const existing = visibilityHosts.get(banner);
   if (existing !== undefined) return existing;
   function SegmentVisibility({ input, onVisible }: VisibilityHostProps) {
-    const visible = slot.useVisible(input);
-    useReportVisibility(slot, input.threadId, visible, onVisible);
+    const visible = banner.useVisible(input);
+    useReportVisibility(banner, input.threadId, visible, onVisible);
     return null;
   }
   const host = { Visibility: SegmentVisibility };
-  visibilityHosts.set(slot, host);
+  visibilityHosts.set(banner, host);
   return host;
 }
 
 function hasUseVisible(
-  slot: ExperimentalThreadContextSegmentRegistration,
-): slot is Parameters<typeof visibilityHostFor>[0] {
-  return slot.useVisible !== undefined;
+  banner: CollectedThreadContextItemBanner,
+): banner is Parameters<typeof visibilityHostFor>[0] {
+  return banner.useVisible !== undefined;
 }
 
 function AlwaysVisible({
-  slot,
+  banner,
   input,
   onVisible,
 }: {
-  slot: ExperimentalThreadContextSegmentRegistration;
+  banner: CollectedThreadContextItemBanner;
 } & VisibilityHostProps) {
-  useReportVisibility(slot, input.threadId, true, onVisible);
+  useReportVisibility(banner, input.threadId, true, onVisible);
   return null;
 }
 
 function Visibility({
+  banner,
+  input,
+  onVisible,
+}: {
+  banner: CollectedThreadContextItemBanner;
+} & VisibilityHostProps) {
+  if (!hasUseVisible(banner)) {
+    return (
+      <AlwaysVisible banner={banner} input={input} onVisible={onVisible} />
+    );
+  }
+  const host = visibilityHostFor(banner);
+  return <host.Visibility input={input} onVisible={onVisible} />;
+}
+
+function slotKey(slot: ThreadContextBannerSlot, threadId: string): string {
+  return `${threadContextSegmentKey(slot)}/${slot.generation}/${threadId}`;
+}
+
+function VisibilityObserver({
   slot,
   input,
   onVisible,
 }: {
-  slot: ExperimentalThreadContextSegmentRegistration;
-} & VisibilityHostProps) {
-  if (!hasUseVisible(slot)) {
-    return <AlwaysVisible slot={slot} input={input} onVisible={onVisible} />;
-  }
-  const host = visibilityHostFor(slot);
-  return <host.Visibility input={input} onVisible={onVisible} />;
-}
-
-function entryKey(entry: ThreadContextSegmentEntry, threadId: string): string {
-  const generation = entry.owner === "plugin" ? entry.slot.generation : 0;
-  return `${threadContextSegmentKey(entry.slot)}/${generation}/${threadId}`;
-}
-
-function VisibilityObserver({
-  entry,
-  input,
-  onVisible,
-}: {
-  entry: ThreadContextSegmentEntry;
+  slot: ThreadContextBannerSlot;
   input: ExperimentalThreadContextSegmentInput;
   onVisible: VisibilityReport;
 }) {
-  if (entry.owner === "core") {
-    return <Visibility slot={entry.slot} input={input} onVisible={onVisible} />;
-  }
-  const { slot } = entry;
   return (
     <PluginSlotMount
       pluginId={slot.pluginId}
@@ -160,54 +153,64 @@ function VisibilityObserver({
       crashResetKey={String(slot.generation)}
       crashFallback={null}
       wrapRoot={false}
-      onCrash={() => onVisible(slot, input.threadId, false)}
+      onCrash={() => onVisible(slot.banner, input.threadId, false)}
     >
-      <Visibility slot={slot} input={input} onVisible={onVisible} />
+      <Visibility banner={slot.banner} input={input} onVisible={onVisible} />
     </PluginSlotMount>
   );
 }
 
 export function useThreadContextSegments(
   input: ExperimentalThreadContextSegmentInput,
-  core: readonly CoreThreadContextSegment[],
+  core: readonly PluginThreadContextItemSlot[],
 ): {
-  entries: readonly ThreadContextSegmentEntry[];
+  slots: readonly ThreadContextBannerSlot[];
   observers: ReactNode;
 } {
-  const threadContextSegments = usePluginSlotKind("threadContextSegments");
+  const pluginSlots = usePluginSlotKind("threadContextItems");
+  return useVisibleThreadContextSegments(
+    input,
+    sortThreadContextItems([...core, ...pluginSlots]),
+  );
+}
+
+export function useVisibleThreadContextSegments(
+  input: ExperimentalThreadContextSegmentInput,
+  candidates: readonly PluginThreadContextItemSlot[],
+): {
+  slots: readonly ThreadContextBannerSlot[];
+  observers: ReactNode;
+} {
+  const kind = useThreadContextKind();
   const { threadId } = input;
-  const entries = useOrderedReveal(
-    sortThreadContextSegments([
-      ...core.map((slot) => ({ owner: "core" as const, slot })),
-      ...threadContextSegments.map((slot) => ({
-        owner: "plugin" as const,
-        slot,
-      })),
-    ]),
+  const placed = useOrderedReveal(
+    candidates
+      .filter(hasBanner)
+      .filter((slot) => kind === "banner" || slot.card === null),
     {
-      key: (entry) => entryKey(entry, threadId),
-      parts: (entry) => [
-        entry.slot.summary,
-        entry.slot.action,
-        entry.slot.details,
+      key: (slot) => slotKey(slot, threadId),
+      parts: (slot) => [
+        slot.banner.summary,
+        slot.banner.action,
+        slot.banner.details,
       ],
     },
   );
   const [visibility, setVisibility] = useState<
     ReadonlyMap<
-      ExperimentalThreadContextSegmentRegistration,
+      CollectedThreadContextItemBanner,
       { threadId: string; visible: boolean }
     >
   >(() => new Map());
   const [onVisible] = useState<VisibilityReport>(
     () =>
       (
-        slot: ExperimentalThreadContextSegmentRegistration,
+        banner: CollectedThreadContextItemBanner,
         threadId: string,
         visible: boolean | null,
       ) => {
         setVisibility((current) => {
-          const previous = current.get(slot);
+          const previous = current.get(banner);
           const unchanged =
             visible === null
               ? previous === undefined || previous.threadId !== threadId
@@ -216,24 +219,24 @@ export function useThreadContextSegments(
                 previous.visible === visible;
           if (unchanged) return current;
           const next = new Map(current);
-          if (visible === null) next.delete(slot);
-          else next.set(slot, { threadId, visible });
+          if (visible === null) next.delete(banner);
+          else next.set(banner, { threadId, visible });
           return next;
         });
       },
   );
   return {
-    entries: entries.filter(({ slot }) => {
-      if (slot.useVisible === undefined) return true;
-      const reported = visibility.get(slot);
+    slots: placed.filter((slot) => {
+      if (slot.banner.useVisible === undefined) return true;
+      const reported = visibility.get(slot.banner);
       return reported?.threadId === threadId && reported.visible;
     }),
-    observers: entries
-      .filter(({ slot }) => slot.useVisible !== undefined)
-      .map((entry) => (
+    observers: placed
+      .filter((slot) => slot.banner.useVisible !== undefined)
+      .map((slot) => (
         <VisibilityObserver
-          key={entryKey(entry, threadId)}
-          entry={entry}
+          key={slotKey(slot, threadId)}
+          slot={slot}
           input={input}
           onVisible={onVisible}
         />
@@ -327,17 +330,15 @@ export function useThreadContextSegmentDisclosure(
 }
 
 export function ThreadContextSegmentMount({
-  entry,
+  slot,
   part,
   ...props
 }: ExperimentalThreadContextSegmentProps & {
-  entry: ThreadContextSegmentEntry;
+  slot: ThreadContextBannerSlot;
   part: ThreadContextSegmentPart;
 }) {
-  const Content = entry.slot[part];
+  const Content = slot.banner[part];
   if (Content === undefined) return null;
-  if (entry.owner === "core") return <Content {...props} />;
-  const { slot } = entry;
   return (
     <PluginSlotMount
       pluginId={slot.pluginId}
@@ -348,7 +349,7 @@ export function ThreadContextSegmentMount({
       crashFallback={null}
     >
       {part === "summary" ? (
-        <span role="group" aria-label={slot.title} className="contents">
+        <span role="group" aria-label={slot.banner.title} className="contents">
           <Content {...props} />
         </span>
       ) : (
@@ -359,9 +360,9 @@ export function ThreadContextSegmentMount({
 }
 
 export function threadContextSegmentMountKey(
-  entry: ThreadContextSegmentEntry,
+  slot: ThreadContextBannerSlot,
   threadId: string,
   part: ThreadContextSegmentPart,
 ): string {
-  return `${entryKey(entry, threadId)}/${part}`;
+  return `${slotKey(slot, threadId)}/${part}`;
 }

@@ -54,6 +54,7 @@ import {
   type CollectedSidebarNavigationRegistration,
   type CollectedThreadContextCardSectionRegistration,
   collectPluginAppRegistrations,
+  type CollectedThreadContextItemRegistration,
 } from "@get-bb/plugin-sdk/internal/plugin-app-collector";
 
 const coreMessageMetadata = collectCoreContributionSlots(
@@ -88,6 +89,7 @@ export interface PluginRegistrationSet {
   threadLists?: readonly PluginThreadListRegistration[];
   experimentalSidebarNavigations?: readonly CollectedSidebarNavigationRegistration[];
   threadHeaderActions?: readonly LegacyThreadHeaderActionRegistration[];
+  threadContextItems?: readonly CollectedThreadContextItemRegistration[];
   threadContextSegments?: readonly ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows?: readonly ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata?: readonly ExperimentalThreadRowMetadataRegistration<unknown>[];
@@ -166,8 +168,8 @@ export interface ExperimentalSidebarNavigationSlot
   extends CollectedSidebarNavigationRegistration, PluginSlotBase {}
 interface PluginThreadHeaderActionSlot
   extends LegacyThreadHeaderActionRegistration, PluginSlotBase {}
-export interface PluginThreadContextSegmentSlot
-  extends ExperimentalThreadContextSegmentRegistration, PluginSlotBase {}
+export type PluginThreadContextItemSlot =
+  CollectedThreadContextItemRegistration & PluginSlotBase;
 export interface PluginThreadInfoRowSlot
   extends ExperimentalThreadInfoRowRegistration, PluginSlotBase {}
 export interface PluginThreadRowMetadataSlot
@@ -183,10 +185,6 @@ export interface PluginThreadRailSlot
   extends ExperimentalThreadRailRegistration, PluginSlotBase {}
 export interface PluginThreadRailOutlineSlot
   extends ExperimentalThreadRailOutlineRegistration, PluginSlotBase {}
-export interface PluginThreadContextCardRowSlot
-  extends ExperimentalThreadContextCardRowRegistration, PluginSlotBase {}
-export interface PluginThreadContextCardSectionSlot
-  extends CollectedThreadContextCardSectionRegistration, PluginSlotBase {}
 export interface PluginThreadActionSlot
   extends PluginThreadActionRegistration<unknown>, PluginSlotBase {}
 export interface PluginBrowserToolbarActionSlot
@@ -234,7 +232,7 @@ export interface PluginSlotSnapshot {
   threadLists: readonly PluginThreadListSlot[];
   experimentalSidebarNavigations: readonly ExperimentalSidebarNavigationSlot[];
   threadHeaderActions: readonly PluginThreadHeaderActionSlot[];
-  threadContextSegments: readonly PluginThreadContextSegmentSlot[];
+  threadContextItems: readonly PluginThreadContextItemSlot[];
   threadInfoRows: readonly PluginThreadInfoRowSlot[];
   threadRowMetadata: readonly PluginThreadRowMetadataSlot[];
   threadInfoSections: readonly PluginThreadInfoSectionSlot[];
@@ -242,8 +240,6 @@ export interface PluginSlotSnapshot {
   threadHeaderTitles: readonly PluginThreadHeaderTitleSlot[];
   threadRails: readonly PluginThreadRailSlot[];
   threadRailOutlines: readonly PluginThreadRailOutlineSlot[];
-  threadContextCardRows: readonly PluginThreadContextCardRowSlot[];
-  threadContextCardSections: readonly PluginThreadContextCardSectionSlot[];
   threadActions: readonly PluginThreadActionSlot[];
   browserToolbarActions: readonly PluginBrowserToolbarActionSlot[];
   fileOpeners: readonly PluginFileOpenerSlot[];
@@ -277,7 +273,7 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadLists: [],
   experimentalSidebarNavigations: [],
   threadHeaderActions: [],
-  threadContextSegments: [],
+  threadContextItems: [],
   threadInfoRows: coreThreadInfoRows,
   threadRowMetadata: [],
   threadInfoSections: coreThreadInfoSections,
@@ -285,8 +281,6 @@ export const EMPTY_PLUGIN_SLOT_SNAPSHOT: PluginSlotSnapshot = {
   threadHeaderTitles: [],
   threadRails: [],
   threadRailOutlines: [],
-  threadContextCardRows: [],
-  threadContextCardSections: [],
   threadActions: [],
   browserToolbarActions: [],
   fileOpeners: [],
@@ -328,7 +322,7 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadLists",
   "experimentalSidebarNavigations",
   "threadHeaderActions",
-  "threadContextSegments",
+  "threadContextItems",
   "threadInfoRows",
   "threadRowMetadata",
   "threadInfoSections",
@@ -336,8 +330,6 @@ const SLOT_KINDS: readonly SlotKind[] = [
   "threadHeaderTitles",
   "threadRails",
   "threadRailOutlines",
-  "threadContextCardRows",
-  "threadContextCardSections",
   "threadActions",
   "browserToolbarActions",
   "fileOpeners",
@@ -366,6 +358,47 @@ function adaptExperimentalSidebarFooterItem(
   item: CollectedExperimentalSidebarFooterItem,
 ): CollectedManagedSidebarFooterItem {
   return { ...item, source: "experimental_sidebarFooter" };
+}
+
+function threadContextItemsOf(
+  set: PluginRegistrationSet,
+): CollectedThreadContextItemRegistration[] {
+  return [
+    ...(set.threadContextItems ?? []),
+    ...(set.threadContextSegments ?? []).map(
+      ({ id, title, group, order, summary, action, details, useVisible }) => ({
+        id,
+        group,
+        ...(order === undefined ? {} : { order }),
+        banner: {
+          title,
+          summary,
+          ...(action === undefined ? {} : { action }),
+          ...(details === undefined ? {} : { details }),
+          ...(useVisible === undefined ? {} : { useVisible }),
+        },
+        card: null,
+      }),
+    ),
+    ...(set.threadContextCardRows ?? []).map(
+      ({ id, group, order, component }) => ({
+        id,
+        group,
+        ...(order === undefined ? {} : { order }),
+        banner: null,
+        card: { kind: "row" as const, component },
+      }),
+    ),
+    ...(set.threadContextCardSections ?? []).map(
+      ({ id, group, order, component, legacyTitle }) => ({
+        id,
+        group,
+        ...(order === undefined ? {} : { order }),
+        banner: null,
+        card: { kind: "section" as const, component, legacyTitle },
+      }),
+    ),
+  ];
 }
 
 function flattenRegistrations(
@@ -426,7 +459,7 @@ function flattenRegistrations(
     threadLists: stamp(set.threadLists),
     experimentalSidebarNavigations: stamp(set.experimentalSidebarNavigations),
     threadHeaderActions: stamp(set.threadHeaderActions),
-    threadContextSegments: stamp(set.threadContextSegments),
+    threadContextItems: stamp(threadContextItemsOf(set)),
     threadInfoRows: stamp(set.threadInfoRows),
     threadRowMetadata: stamp(set.threadRowMetadata),
     threadInfoSections: stamp(set.threadInfoSections),
@@ -434,8 +467,6 @@ function flattenRegistrations(
     threadHeaderTitles: stamp(set.threadHeaderTitles),
     threadRails: stamp(set.threadRails),
     threadRailOutlines: stamp(set.threadRailOutlines),
-    threadContextCardRows: stamp(set.threadContextCardRows),
-    threadContextCardSections: stamp(set.threadContextCardSections),
     threadActions: stamp(set.threadActions),
     browserToolbarActions: stamp(set.browserToolbarActions),
     fileOpeners: stamp(set.fileOpeners),

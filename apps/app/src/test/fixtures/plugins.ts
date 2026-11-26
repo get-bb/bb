@@ -34,6 +34,7 @@ export function makePluginRegistrationSet(
     sidebarFooterActions: [],
     threadLists: [],
     threadHeaderActions: [],
+    threadContextItems: [],
     threadContextSegments: [],
     threadInfoRows: [],
     threadRowMetadata: [],

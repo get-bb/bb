@@ -199,6 +199,7 @@ import { normalizePluginThreadRowStatus } from "../internal/composer-customizati
 import { normalizeExperimentalFileOpenOptions } from "../internal/file-navigation-validation.js";
 import { experimental_THREAD_ACTION_GROUPS } from "../thread-action-groups.js";
 import { experimental_resolveThreadStatus } from "../internal/thread-status.js";
+import { experimental_threadDisplayTitle } from "../thread-display-title.js";
 import {
   experimental_THREAD_CONTEXT_SEGMENT_GROUPS,
   experimental_THREAD_INFO_ROW_GROUPS,
@@ -2269,6 +2270,7 @@ const testPluginSdkApp = {
   ThreadTitle: TestThreadTitle,
   experimental_ThreadStatusGlyph: TestThreadStatusGlyph,
   experimental_resolveThreadStatus,
+  experimental_threadDisplayTitle,
   experimental_ThreadRowMetadata: TestThreadRowMetadata,
   useEnvironmentProviders(): PluginEnvironmentProvidersState {
     return useSlotEnv("useEnvironmentProviders").environmentProviders;
@@ -2372,6 +2374,8 @@ export interface CapturedPluginApp {
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: ExperimentalSidebarNavigationRegistration[];
   threadHeaderActions: import("../internal/plugin-app-registration-collector.js").LegacyThreadHeaderActionRegistration[];
+  /** `app.slots.experimental_threadContextItem` registrations, after the host's validation: an absent part is null, and `card` carries its `kind`. */
+  threadContextItems: import("../internal/plugin-app-registration-collector.js").CollectedThreadContextItemRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];

@@ -259,9 +259,10 @@ experimental_Original }` — draws the sidebar navigation. Registration:
 - `experimental_threadList` is covered in frontend-thread-list.md.
 - `experimental_threadRowMetadata`,
   `experimental_threadInfoRow`, `experimental_threadInfoSection`,
-  `experimental_threadContextCardRow`, `experimental_threadContextCardSection`,
   `experimental_threadAction` (menu entries and header buttons), and
   `experimental_browserToolbarAction` are covered in frontend-registration.md;
+  `experimental_threadContextItem`, `experimental_threadContextCardRow` and
+  `experimental_threadContextCardSection` in frontend-thread-context-card.md;
   `experimental_threadHeaderRow` and `experimental_threadHeaderTitle` in
   frontend-thread-header-row.md.
 - `fileOpener` → `{ path: string, source, experimental_lineRange?, Original }` — register as a viewer/editor

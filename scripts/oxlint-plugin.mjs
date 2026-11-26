@@ -434,6 +434,15 @@ const corePluginSdkAppBinding = {
       });
     }
 
+    function checkHookAlias(specifier, name) {
+      if (!/^experimental_use[A-Z]/u.test(name)) return;
+      if (/^use[A-Z]/u.test(specifier.local.name)) return;
+      context.report({
+        node: specifier,
+        message: `Import ${name} as use${name.slice("experimental_use".length)}. React Compiler treats only use-prefixed names as hooks, so app source that calls ${name} by its own name gets the call memoized and skipped on re-renders.`,
+      });
+    }
+
     function reportWholeModule(node) {
       context.report({
         node,
@@ -450,12 +459,12 @@ const corePluginSdkAppBinding = {
           if (specifier.type !== "ImportSpecifier") {
             reportWholeModule(specifier);
           } else if (specifier.importKind !== "type") {
-            checkName(
-              specifier,
+            const name =
               specifier.imported.type === "Identifier"
                 ? specifier.imported.name
-                : specifier.imported.value,
-            );
+                : specifier.imported.value;
+            checkName(specifier, name);
+            checkHookAlias(specifier, name);
           }
         }
       },

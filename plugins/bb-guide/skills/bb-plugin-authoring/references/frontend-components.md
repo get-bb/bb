@@ -163,8 +163,8 @@ className? }` —
   `experimental_InfoListRow` — the thread Info tab's building blocks, the ones
   bb's own rows and sections use. `experimental_InfoSection` takes
   `{ label, count?, accessory?, trailing?, children }`; it collapses inside an
-  `experimental_threadInfoSection` and folds in the card's style inside an
-  `experimental_threadContextCardSection`. `experimental_DetailRow` takes
+  `experimental_threadInfoSection` and folds in the card's style inside a
+  thread context item's card section. `experimental_DetailRow` takes
   `{ label, icon?, align?, children }`, where `icon` is any name
   `experimental_Icon` accepts. `experimental_InfoList` takes
   `{ items, getKey, renderItem, limit? }`. `experimental_InfoListRow` takes

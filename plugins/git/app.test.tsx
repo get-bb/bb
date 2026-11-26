@@ -9,7 +9,7 @@ import { loadPluginApp } from "@get-bb/plugin-sdk/testing/app";
 
 const app = await loadPluginApp(() => import("./app.js"));
 
-it("registers the Diff tab, Info rows and sections, the composer segment, and the Commit header action", () => {
+it("registers the Diff tab, Info rows and sections, the changed files item, and the Commit header action", () => {
   expect(app.tabs).toMatchObject([
     {
       id: "diff",
@@ -32,8 +32,14 @@ it("registers the Diff tab, Info rows and sections, the composer segment, and th
     "commits",
     "uncommitted-changes",
   ]);
-  expect(app.threadContextSegments).toMatchObject([
-    { id: "changed-files", group: "3_git", order: 10 },
+  expect(app.threadContextItems).toMatchObject([
+    {
+      id: "changed-files",
+      group: "3_git",
+      order: 10,
+      banner: { title: "Changed files" },
+      card: { kind: "row" },
+    },
   ]);
   expect(app.threadActions).toMatchObject([
     { id: "commit", placement: "header", title: "Commit" },

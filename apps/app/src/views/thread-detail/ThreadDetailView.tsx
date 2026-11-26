@@ -91,10 +91,7 @@ import {
 import { THREAD_INFO_FIXED_TAB_REFERENCE } from "@/components/secondary-panel/thread-info-fixed-tab-navigation";
 import { ThreadDetailHeader } from "./ThreadDetailHeader";
 import { PluginThreadHeaderRows } from "@/components/plugin/PluginThreadHeaderRows";
-import {
-  CORE_THREAD_CONTEXT_CARD_ROWS,
-  CORE_THREAD_CONTEXT_CARD_SECTIONS,
-} from "./ThreadContextCardCore";
+import { CORE_THREAD_CONTEXT_ITEMS } from "@/lib/core-thread-context";
 import {
   ThreadContextCardHeaderButton,
   ThreadContextCardProvider,
@@ -1381,7 +1378,7 @@ function ThreadDetailViewInternal(
       composer={{
         environmentCheckout: threadCheckoutDisplay,
         environmentChrome: composerEnvironmentChrome,
-        contextEnvironmentId: threadEnvironmentId,
+        contextEnvironmentId: threadTabEnvironmentId,
         focusRequest: null,
         onCreateNewThreadInEnvironment,
         onOpenThreadInfo: openThreadInfo,
@@ -1643,8 +1640,7 @@ function ThreadDetailViewInternal(
             >
               <ThreadContextCardProvider
                 enabled={threadContextCardEnabled}
-                coreRows={CORE_THREAD_CONTEXT_CARD_ROWS}
-                coreSections={CORE_THREAD_CONTEXT_CARD_SECTIONS}
+                coreItems={CORE_THREAD_CONTEXT_ITEMS}
                 threadId={thread.id}
                 projectId={thread.projectId}
                 environment={

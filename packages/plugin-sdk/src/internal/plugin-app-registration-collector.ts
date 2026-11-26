@@ -34,6 +34,9 @@ import type {
   PluginSettingsSectionRegistration,
   PluginSidebarFooterActionRegistration,
   PluginSourceCodeRendererRegistration,
+  ExperimentalThreadContextCardProps,
+  ExperimentalThreadContextItemBanner,
+  ExperimentalThreadContextItemCard,
   ExperimentalThreadContextSegmentRegistration,
   ExperimentalThreadInfoRowRegistration,
   ExperimentalThreadRowMetadataRegistration,
@@ -374,6 +377,92 @@ function collectMessageActionSurfaces(
   return MESSAGE_ACTION_SURFACES.filter((surface) => value.includes(surface));
 }
 
+export interface CollectedThreadContextItemBanner extends ExperimentalThreadContextItemBanner {
+  title: string;
+}
+
+export type CollectedThreadContextItemCard =
+  | {
+      kind: "row";
+      component: ComponentType<ExperimentalThreadContextCardProps>;
+    }
+  | {
+      kind: "section";
+      component: ComponentType<ExperimentalThreadContextCardProps>;
+      legacyTitle: string | null;
+    };
+
+export interface CollectedThreadContextItemRegistration {
+  id: string;
+  group: string;
+  order?: number;
+  banner: CollectedThreadContextItemBanner | null;
+  card: CollectedThreadContextItemCard | null;
+}
+
+function collectThreadContextItemBanner(
+  kind: string,
+  title: string,
+  banner: ExperimentalThreadContextItemBanner | undefined,
+): CollectedThreadContextItemBanner | null {
+  if (banner === undefined) return null;
+  if (typeof banner !== "object" || banner === null) {
+    throw new Error(`${kind}: "banner" must be an object`);
+  }
+  const optionalComponent = (field: "action" | "details") => {
+    const value = banner[field];
+    if (value === undefined) return {};
+    if (typeof value !== "function") {
+      throw new Error(
+        `${kind}: "banner.${field}" must be a React component function`,
+      );
+    }
+    return { [field]: value };
+  };
+  if (typeof banner.summary !== "function") {
+    throw new Error(
+      `${kind}: "banner.summary" must be a React component function`,
+    );
+  }
+  if (
+    banner.useVisible !== undefined &&
+    typeof banner.useVisible !== "function"
+  ) {
+    throw new Error(`${kind}: "banner.useVisible" must be a function`);
+  }
+  return {
+    title,
+    summary: banner.summary,
+    ...optionalComponent("action"),
+    ...optionalComponent("details"),
+    ...(banner.useVisible !== undefined
+      ? { useVisible: banner.useVisible }
+      : {}),
+  };
+}
+
+function collectThreadContextItemCard(
+  kind: string,
+  card: ExperimentalThreadContextItemCard | undefined,
+): CollectedThreadContextItemCard | null {
+  if (card === undefined) return null;
+  if (typeof card !== "object" || card === null) {
+    throw new Error(`${kind}: "card" must be an object`);
+  }
+  if ("row" in card === "section" in card) {
+    throw new Error(
+      `${kind}: "card" must have exactly one of "row" or "section"`,
+    );
+  }
+  return "row" in card
+    ? { kind: "row", component: requireComponent(kind, card.row) }
+    : {
+        kind: "section",
+        component: requireComponent(kind, card.section),
+        legacyTitle: null,
+      };
+}
+
 export interface CollectedPluginAppRegistrations {
   homepageSections: PluginHomepageSectionRegistration[];
   settingsSections: PluginSettingsSectionRegistration[];
@@ -390,6 +479,7 @@ export interface CollectedPluginAppRegistrations {
   threadLists: PluginThreadListRegistration[];
   experimentalSidebarNavigations: CollectedSidebarNavigationRegistration[];
   threadHeaderActions: LegacyThreadHeaderActionRegistration[];
+  threadContextItems: CollectedThreadContextItemRegistration[];
   threadContextSegments: ExperimentalThreadContextSegmentRegistration[];
   threadInfoRows: ExperimentalThreadInfoRowRegistration[];
   threadRowMetadata: ExperimentalThreadRowMetadataRegistration<unknown>[];
@@ -538,6 +628,7 @@ export function collectPluginAppRegistrations(
     threadLists: [],
     experimentalSidebarNavigations: [],
     threadHeaderActions: [],
+    threadContextItems: [],
     threadContextSegments: [],
     threadInfoRows: [],
     threadRowMetadata: [],
@@ -583,6 +674,7 @@ export function collectPluginAppRegistrations(
     sidebarNavigation: new Set<string>(),
     sidebarHeader: new Set<string>(),
     threadHeaderAction: new Set<string>(),
+    threadContextItem: new Set<string>(),
     threadContextSegment: new Set<string>(),
     threadInfoRow: new Set<string>(),
     threadRowMetadata: new Set<string>(),
@@ -610,6 +702,11 @@ export function collectPluginAppRegistrations(
     environmentProviderInputs: new Set<string>(),
     machineProviderInputs: new Set<string>(),
     contentScript: new Set<string>(),
+  };
+  const requireNoThreadContextItem = (kind: string, id: string) => {
+    if (seenIds.threadContextItem.has(id)) {
+      throw new Error(`${kind}: id "${id}" is already a thread context item`);
+    }
   };
 
   function collectTab(value: unknown, legacy = false): void {
@@ -1089,6 +1186,7 @@ export function collectPluginAppRegistrations(
         const kind = "slots.experimental_threadContextSegment";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadContextSegment, id);
+        requireNoThreadContextItem(kind, id);
         const optionalComponent = (field: "action" | "details") => {
           const value = registration[field];
           if (value === undefined) return {};
@@ -1201,10 +1299,44 @@ export function collectPluginAppRegistrations(
           component: requireComponent(kind, registration.component),
         });
       },
+      experimental_threadContextItem(registration) {
+        const kind = "slots.experimental_threadContextItem";
+        const id = requireSlotId(kind, registration?.id);
+        if (
+          seenIds.threadContextSegment.has(id) ||
+          seenIds.threadContextCardRow.has(id) ||
+          seenIds.threadContextCardSection.has(id)
+        ) {
+          throw new Error(
+            `${kind}: id "${id}" is already a thread context segment, card row or card section`,
+          );
+        }
+        requireUniqueId(kind, seenIds.threadContextItem, id);
+        const title = requireNonEmptyString(kind, "title", registration.title);
+        const banner = collectThreadContextItemBanner(
+          kind,
+          title,
+          registration.banner,
+        );
+        const card = collectThreadContextItemCard(kind, registration.card);
+        if (banner === null && card === null) {
+          throw new Error(
+            `${kind}: give a "banner" part, a "card" part, or both`,
+          );
+        }
+        collected.threadContextItems.push({
+          id,
+          group: requireNonEmptyString(kind, "group", registration.group),
+          ...requireOptionalOrder(kind, registration.order),
+          banner,
+          card,
+        });
+      },
       experimental_threadContextCardRow(registration) {
         const kind = "slots.experimental_threadContextCardRow";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadContextCardRow, id);
+        requireNoThreadContextItem(kind, id);
         collected.threadContextCardRows.push({
           id,
           group: requireNonEmptyString(kind, "group", registration.group),
@@ -1216,6 +1348,7 @@ export function collectPluginAppRegistrations(
         const kind = "slots.experimental_threadContextCardSection";
         const id = requireSlotId(kind, registration?.id);
         requireUniqueId(kind, seenIds.threadContextCardSection, id);
+        requireNoThreadContextItem(kind, id);
         collected.threadContextCardSections.push({
           id,
           group: requireNonEmptyString(kind, "group", registration.group),
