@@ -78,7 +78,9 @@ custom permission profile the default (`default_permissions`), bb runs Codex
 under that profile: workspace permissions select it, and bb adds the git paths
 a linked worktree needs to the profile's `filesystem` table. Full access selects
 `:danger-full-access` only when Codex's requirements allow it. Otherwise the
-turn fails and asks for workspace permissions. Without a custom profile,
+turn fails and asks for workspace permissions. Codex before 0.142 does not
+report which profiles its requirements allow, so bb selects
+`:danger-full-access` and Codex enforces its requirements itself. Without a custom profile,
 workspace-scoped turns get network access by default, so commands can reach the
 bb server and the bb CLI works. Codex's own configuration overrides that
 default. If any Codex config layer (user, project, managed, or `-c`) sets

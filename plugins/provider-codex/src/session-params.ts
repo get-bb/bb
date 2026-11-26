@@ -103,7 +103,9 @@ export const codexSandboxRequirementsSchema = z.object({
 });
 
 export const codexPermissionProfileListSchema = z.object({
-  data: z.array(z.object({ id: z.string(), allowed: z.boolean() })),
+  data: z.array(
+    z.object({ id: z.string(), allowed: z.boolean().default(true) }),
+  ),
 });
 
 interface CodexSandboxSettings {

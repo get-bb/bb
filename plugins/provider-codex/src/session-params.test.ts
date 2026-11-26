@@ -841,6 +841,33 @@ describe("resolveCodexSandboxControl", () => {
       fullAccessAllowed: false,
     });
   });
+
+  it("leaves full access to Codex when its profile list predates allowed (Codex 0.136-0.141)", () => {
+    expect(
+      resolveCodexSandboxControl({
+        config: codexSandboxConfigSchema.parse({
+          config: { default_permissions: "sandboxed" },
+          origins: {},
+        }),
+        requirements: codexSandboxRequirementsSchema.parse({
+          requirements: null,
+        }),
+        profiles: codexPermissionProfileListSchema.parse({
+          data: [
+            { id: ":read-only", description: null },
+            { id: ":workspace", description: null },
+            { id: ":danger-full-access", description: null },
+            { id: "sandboxed", description: null },
+          ],
+          nextCursor: null,
+        }),
+      }),
+    ).toEqual({
+      kind: "profile",
+      workspaceProfile: "sandboxed",
+      fullAccessAllowed: true,
+    });
+  });
 });
 
 describe("resolveCodexInstructionOverrides", () => {
