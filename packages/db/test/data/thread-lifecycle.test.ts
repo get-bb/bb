@@ -56,6 +56,7 @@ describe("writeThreadLifecycleStateInTransaction", () => {
     db.transaction((tx: DbTransaction) =>
       writeThreadLifecycleStateInTransaction(tx, {
         expectedStatus: "idle",
+        failureKind: null,
         next: { ...sent, status: "active" },
         previous: EMPTY,
         threadId: thread.id,
@@ -68,6 +69,7 @@ describe("writeThreadLifecycleStateInTransaction", () => {
     db.transaction((tx: DbTransaction) =>
       writeThreadLifecycleStateInTransaction(tx, {
         expectedStatus: "active",
+        failureKind: null,
         next: { ...EMPTY, status: "idle" },
         previous: sent,
         threadId: thread.id,
@@ -101,6 +103,7 @@ describe("writeThreadLifecycleStateInTransaction", () => {
       });
       return writeThreadLifecycleStateInTransaction(interleaved, {
         expectedStatus: "starting",
+        failureKind: null,
         next: { ...EMPTY, status: "active" },
         previous: EMPTY,
         threadId: thread.id,
@@ -141,6 +144,7 @@ describe("writeThreadLifecycleStateInTransaction", () => {
         const result = db.transaction((tx: DbTransaction) =>
           writeThreadLifecycleStateInTransaction(tx, {
             expectedStatus: testCase.from,
+            failureKind: null,
             next: { ...EMPTY, status: testCase.to },
             previous: EMPTY,
             threadId: thread.id,

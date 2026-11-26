@@ -34,6 +34,11 @@ export {
 export { threadStatusSchema, threadStatusValues } from "./thread-status.js";
 export type { ThreadStatus } from "./thread-status.js";
 export { threadOriginKindSchema } from "./thread-origin-kind.js";
+export {
+  threadFailureKindSchema,
+  threadFailureKindValues,
+} from "./thread-failure-kind.js";
+export type { ThreadFailureKind } from "./thread-failure-kind.js";
 export type { ThreadOriginKind } from "./thread-origin-kind.js";
 
 /**

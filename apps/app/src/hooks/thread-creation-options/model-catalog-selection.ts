@@ -10,7 +10,7 @@ import {
   type ThreadSessionOption,
 } from "@bb/domain";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
-import type { PickerOption } from "@/components/pickers/OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import {
   reasoningLadderLabels,
   type ReasoningLabelSource,

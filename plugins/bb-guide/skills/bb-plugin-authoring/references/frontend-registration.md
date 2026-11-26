@@ -229,14 +229,22 @@ function Automations({ threadId }: ExperimentalThreadInfoProps) {
 
 Components receive `{ threadId, projectId, environment }` and mount once per
 visible thread; `environment` is `{ id }` taken from the thread, null only when
-the thread has no environment; read its state yourself. Return
-null to show nothing. A row renders `experimental_DetailRow`.
+the thread has no environment. Read state the way bb's rows do:
+`experimental_useThread(threadId)`, `experimental_useEnvironment(environment.id)`
+(the environment plus bb's `label` and its machine `host`) and
+`experimental_useThreadStorageFiles(threadId, { enabled })` (`enabled: false`
+pauses it while hidden); all three share bb's caches and
+return `{ status, ... }` with `loading`/`ready`/`notFound` or `error`. Return
+null to show nothing; the tab says "No thread details available." only when
+no row or section rendered. A row renders `experimental_DetailRow`.
 Entries sort by `group`, then `order` within it (unset last), then registration
 order, bb's first on a tie, as thread actions do. Join one of bb's groups from
 `experimental_THREAD_INFO_ROW_GROUPS` or `experimental_THREAD_INFO_SECTION_GROUPS`
 (bb's entries use orders 10, 20, 30 within a group), or name your own group to
 sort it where its string falls. Inside a section slot `experimental_InfoSection` collapses and bb
 remembers it per registration. A crash removes only that row or section.
+`experimental_ThreadInfo` is the whole Info body (bb's tab registers it as its
+component); register it in a thread tab of your own to show the same rows.
 
 ### Context beside a thread's composer
 

@@ -207,8 +207,10 @@ the surface's suppression. The host components are the voice button
 (`experimental_FailedVoiceRecordings`), shortcut hints
 (`experimental_ShortcutHint`), mention and plugin icons
 (`experimental_PromptMentionIcon`, `experimental_PluginIcon`) and thread-title
-text (`experimental_ThreadTitleText`, with the
-`experimental_useThreadTitleDisplayText(title)` hook for plain strings). The
+text (`experimental_ThreadTitleText`, whose `tooltip` sets the display text as
+the native tooltip, with the
+`experimental_useThreadTitleDisplayText(title)` hook for plain strings; core's
+Info parent row and parent picker draw titles with it). The
 image lightbox the composer uses for attachments has its own entry
 (`experimental_ImageLightbox`).
 
@@ -3932,8 +3934,8 @@ Docs: `frontend-thread-list.md`.
 Requires SDK 0.6.190.
 
 - **Surface:** `PluginSdkApp.experimental_useThread(threadId): ExperimentalThreadState`, `ExperimentalThreadState` and `ExperimentalThread`.
-- **Behavior:** one thread by id. `ExperimentalThreadState` is `{ status: "loading" | "notFound" | "error", thread: null }` or `{ status: "ready", thread }`. A thread the sidebar's per-thread entry store holds (`useSidebarThreadEntry`, `apps/app/src/lib/sidebar-thread-entries.ts`) is ready at once with no request, and the component re-renders only when that thread's entry changes. Any other thread (archived, unloaded, or before the sidebar's first load) is read with the thread query behind `useSdk().threads.get` (`useThread`), then kept current by its realtime subscription. A 404 from that read, which covers unknown ids, deleted threads and threads in deleted projects, is `notFound`, also when the query still holds the thread's earlier data, as it does after a watched thread is deleted. Thread data with a non-null `deletedAt` from either source is `notFound` too. Any other failure with no data is `error`. A held thread that leaves the store (archived, for example) keeps its last held value as `ready` until the fetch answers, so the state goes ready to ready rather than through `loading`; that memory lives in the component's own store subscription (`useTrackedSidebarEntry`). An empty id is `notFound` with no request. `ExperimentalThread` is the domain `ThreadWithRuntime`: the fields `threads.get` returns without `activeBackgroundAgentCount`, `canRestoreEnvironment`, `canEditMessages`, `canSpawnChild` and `queuedMessageCount`, which only that request computes. Both sources are projected onto exactly those fields, so a held and a fetched thread have the same shape. The shape follows `threads.get` rather than `PluginSidebarThread`: it carries `deletedAt` and none of the row-only fields (`indicator`, `indicatorLabel`, `activity`, `queuedWork`, `hasPendingInteraction`, `pinSortKey`, the flattened `environment*` fields).
-- **Core callers:** `useThreadState` (`apps/app/src/lib/thread-state.ts`) is the one implementation behind the SDK member. `useParentThreadSection` (`apps/app/src/views/thread-detail/useParentThreadSection.ts`) calls it for the current thread and for its parent or fork source, and has no fetch or fallback of its own. It feeds core's parent-thread segment (`ThreadPromptContextBanner.tsx`: summary, details and `useVisible`, in the writable and read-only banners) and the context card's parent row (`ThreadContextCardCore.tsx`). Tests: `thread-state.test.tsx` (a held thread: no request, re-renders only for itself against a whole-list subscriber; a fetched thread has a held one's shape; 404 against other failures; a fetched thread deleted while watched; data carrying `deletedAt`; a held thread leaving the store stays `ready` until its fetch answers; empty id), and `ThreadPromptContextBanner.test.tsx` (a parent the sidebar lacks shows nothing while it loads and stays hidden once it reads as archived; an archived thread's parent is read through the fetch).
+- **Behavior:** one thread by id. `ExperimentalThreadState` is `{ status: "loading" | "notFound" | "error", thread: null }` or `{ status: "ready", thread }`. A thread the sidebar's per-thread entry store holds (`useSidebarThreadEntry`, `apps/app/src/lib/sidebar-thread-entries.ts`) is ready at once with no request, and the component re-renders only when that thread's entry changes. Any other thread (archived, unloaded, or before the sidebar's first load) is read with the thread query behind `useSdk().threads.get` (`useThread`), then kept current by its realtime subscription. A 404 from that read, which covers unknown ids, deleted threads and threads in deleted projects, is `notFound`, also when the query still holds the thread's earlier data, as it does after a watched thread is deleted. Thread data with a non-null `deletedAt` from either source is `notFound` too. Any other failure with no data is `error`. A held thread that leaves the store (archived, for example) keeps its last held value as `ready` until the fetch answers, so the state goes ready to ready rather than through `loading`; that memory lives in the component's own store subscription (`useTrackedSidebarEntry`). An empty id is `notFound` with no request. `ExperimentalThread` is the domain `ThreadWithRuntime`: the fields `threads.get` returns without `activeBackgroundAgentCount`, `canRestoreEnvironment`, `canEditMessages`, `canSpawnChild` and `queuedMessageCount`, which only that request computes. Both sources are projected onto exactly those fields, so a held and a fetched thread have the same shape. The shape follows `threads.get` rather than `PluginSidebarThread`: it carries `deletedAt` and none of the row-only fields (`indicator`, `indicatorLabel`, `activity`, `queuedWork`, `hasPendingInteraction`, `pinSortKey`, the flattened `environment*` fields). `runtime.failure` (SDK 0.6.205) is `"provisioning"` while the thread is in `error` because its environment setup failed, null otherwise: the server stores it in `threads.failure_kind`, written only by the lifecycle write path (`writeThreadLifecycleStateInTransaction`, `packages/db/src/data/thread-run-state.ts`) when `provisioning.failed` applies and cleared on every other status move, and fills it in the runtime builders (`apps/server/src/services/threads/thread-runtime-display.ts`) for `threads.get`, sidebar entries and status-change realtime. A lost start, a refused start command, `provider.failed` before start and a deleted environment row leave it null (`apps/server/test/services/threads/lifecycle-failure-kind.test.ts`).
+- **Core callers:** `useThreadState` (`apps/app/src/lib/thread-state.ts`) is the one implementation behind the SDK member. `useParentThreadSection` (`apps/app/src/views/thread-detail/useParentThreadSection.ts`) calls it for the current thread and for its parent or fork source, and has no fetch or fallback of its own. Core's Info rows (`apps/app/src/core-contributions/thread-info.tsx` and `thread-info/parent-row.tsx`) read the thread, its parent and `runtime.failure` through it. `useParentThreadSection` feeds core's parent-thread segment (`ThreadPromptContextBanner.tsx`: summary, details and `useVisible`, in the writable and read-only banners) and the context card's parent row (`ThreadContextCardCore.tsx`). Tests: `thread-state.test.tsx` (a held thread: no request, re-renders only for itself against a whole-list subscriber; a fetched thread has a held one's shape; 404 against other failures; a fetched thread deleted while watched; data carrying `deletedAt`; a held thread leaving the store stays `ready` until its fetch answers; empty id), and `ThreadPromptContextBanner.test.tsx` (a parent the sidebar lacks shows nothing while it loads and stays hidden once it reads as archived; an archived thread's parent is read through the fetch).
 - **Plugin callers:** none in-repo. Community plugins that run `threads.find((t) => t.id === id)` over `experimental_useSidebarThreads()` for one thread, such as work-map and attention-sidebar, can migrate.
 - **Stabilization:** decide whether `ready` should also carry the five request-only fields, which would mean a request for held threads too; whether boards need a batched form (`ids[]`); and whether `error` should expose the failure. Then rename project-wide and remove this entry.
 
@@ -3999,7 +4001,7 @@ shortcut hook.
    `useSidebarThreadDraftIds` and `useSidebarThreadRowStatuses` keep their
    identity while nothing changes, at ten thousand threads.
 
-## `app.slots.experimental_threadInfoRow` / `app.slots.experimental_threadInfoSection` / `experimental_THREAD_INFO_ROW_GROUPS` / `experimental_THREAD_INFO_SECTION_GROUPS` / `experimental_InfoSection` / `experimental_DetailRow` / `experimental_InfoList` / `experimental_InfoListRow` (`@get-bb/plugin-sdk/app`)
+## `app.slots.experimental_threadInfoRow` / `app.slots.experimental_threadInfoSection` / `experimental_THREAD_INFO_ROW_GROUPS` / `experimental_THREAD_INFO_SECTION_GROUPS` / `experimental_ThreadInfo` / `experimental_InfoSection` / `experimental_DetailRow` / `experimental_InfoList` / `experimental_InfoListRow` (`@get-bb/plugin-sdk/app`)
 
 A registration is `{ id, group, order?, component }`. The component receives
 `{ threadId, projectId, environment }` and mounts once per visible thread's Info
@@ -4010,52 +4012,101 @@ render in the details block, sections below it, each sorted the way thread
 actions are: by `group` (string compare), then `order` within the group (unset
 last), then registration order with core first on a tie. bb's groups are the
 two exported tables; core uses orders 10, 20, 30 within each. Groups draw no
-separator. Each plugin
-entry mounts in its own crash boundary keyed by thread, so a crash drops only
-that row or section. The four components are the Info tab's own building
-blocks: `experimental_InfoSection` (heading, count pill, collapse),
+separator. Every entry, bb's own included, mounts in its own crash boundary
+keyed by thread, so a crash drops only that row or section.
+`experimental_ThreadInfo` (props `ExperimentalThreadTabProps`) is the Info
+tab's body: every registered row in the details block and every section below
+it. It shows a skeleton while the thread loads, "No thread details available."
+for a thread that is not found or failed to load, and otherwise the same text
+only when no row and no section rendered anything (a CSS `:has` check on `dt`
+and `[data-info-section]`, so emptiness follows what rendered, never core
+fields). The four other components are the Info tab's own building blocks:
+`experimental_InfoSection` (heading, count pill, collapse),
 `experimental_DetailRow` (label/value row with an optional icon),
-`experimental_InfoList` (the "N more" list), and `experimental_InfoListRow`.
-Inside a section slot, `experimental_InfoSection` collapses, and the state is
-stored in the `infoPanel.collapsedSections` preference under the core id or
-`<pluginId>/<id>`. In a thread context card section it folds instead (see the
-card's entry below).
+`experimental_InfoList` (the "N more" list), and `experimental_InfoListRow`. Inside a section slot,
+`experimental_InfoSection` collapses, and the state is stored in the
+`infoPanel.collapsedSections` preference under `<pluginId>/<id>`, which is
+`bb--core/<id>` for bb's own sections; the preference maps the legacy bare ids
+`childThreads`, `forks` and `threadStorage` to those keys. In a thread context
+card section it folds instead (see the card's entry below).
 
-**Core callers.** `ThreadMetadataContent` renders the Info tab only through
-`ThreadInfoRows` and `ThreadInfoSections`
-(`apps/app/src/components/secondary-panel/info/ThreadInfoSlots.tsx`), which
-merge `CORE_THREAD_INFO_ROWS` and `CORE_THREAD_INFO_SECTIONS` with plugin
-registrations. `experimental_DetailRow` is bb's only label/value row
-(`DetailRow` in `apps/app/src/components/ui/detail-card.tsx`): all seven core
-rows and the Git plugin's commit dialog draw with it, and core's three
-sections draw with `InfoSection` and `InfoList`. The git and pull request
+**Core callers.** bb's Info tab is the core contribution
+`apps/app/src/core-contributions/thread-info.tsx`: it registers the `info`
+fixed tab with `component: experimental_ThreadInfo` and its seven rows
+(Parent, Notify parent, Project, Environment with Machine, provisioning
+failure, Directory, Archived) and three sections (Child threads, Forks, Thread
+storage) through `app.slots.experimental_threadInfoRow`/`Section`, behind the
+`bb/core-contribution-imports` lint, so they read only public SDK members and
+registry components. The registration module stays light for the boot payload: the row and section components live in `core-contributions/components/ThreadInfoEntries.tsx` and each entry is an `experimental_lazy` part, so the host's ordered reveal holds them like plugin entries (the host shows its skeleton, not the empty text, while one is held). When Info is the restored panel tab, the plugin loader starts them with the plugins' restored parts: `bootPluginFrontends` passes the same `restoredLazyParts` list to `startRestoredCoreContributionParts` (`apps/app/src/lib/core-contribution-parts.ts`). `vite-core-plugin-sdk-app.ts` resolves the one core binding with `moduleSideEffects: false`, so the eager registration pulls in only `definePluginApp` and `experimental_ThreadInfo`, and the hooks the components use load with them. `apps/app/src/lib/plugin-slots.ts` places them first in
+the same slot lists plugin entries join, and `ThreadInfoRows` and
+`ThreadInfoSections`
+(`apps/app/src/components/secondary-panel/info/ThreadInfoSlots.tsx`) mount
+every entry the same way. `ThreadInfo`
+(`apps/app/src/components/secondary-panel/info/ThreadInfo.tsx`) is the one
+implementation of `experimental_ThreadInfo`; the lazy panel's loading
+placeholder renders it too. `experimental_DetailRow` is bb's only label/value
+row (`DetailRow` in `apps/app/src/components/ui/detail-card.tsx`): every core
+row and the Git plugin's commit dialog draw with it, and core's sections draw
+with `experimental_InfoSection` and `experimental_InfoList`. The git and pull request
 groups hold no core entries. The Git plugin registers the branch, merge-base
 and git-status rows in the `git` group and the commits and uncommitted
 changes sections (`plugins/git/app.tsx`). The Automations plugin registers
 the Automations section, and the GitHub PR Status plugin registers the Pull
 request row in the `pullRequest` group, reading its pull request through
-`environment`. Contract tests: `ThreadInfoSlots.test.tsx`.
+`environment`. Contract tests: `ThreadInfoSlots.test.tsx` (placement, crash
+isolation, per-registration collapse) and `ThreadInfo.test.tsx` (a plugin
+section and core rows on a thread with no environment or parent; each core
+row's rules).
 
 Docs: `frontend-registration.md`, `frontend-components.md`.
 
 **Audit before stabilizing.**
 
 1. **Props.** Components get `threadId`, `projectId` and `environment` (`{ id }`
-   only), so a plugin row that needs the environment's state or the thread
-   itself reads it through the SDK; core rows read the Info tab's host state
-   instead. Decide whether the props should carry a thread snapshot.
+   only), so a row that needs the environment's state or the thread itself
+   reads it through `experimental_useEnvironment` and `experimental_useThread`,
+   as core's rows do. Decide whether the props should carry a thread snapshot.
 2. **Group boundaries.** Rows are grouped thread, environment, git, pull
    request, lifecycle; sections related, changes, storage. Confirm these are
    the groups to freeze, since moving a core entry between groups moves the
    plugin entries that anchor to it.
-3. **Empty state.** The Info tab still decides between its details, a loading
-   skeleton, and "No thread details available." from core state
-   (`hasAnyThreadMetadata`), so plugin entries never count toward it and are
-   hidden with core's details. Decide whether registrations should report
-   visibility.
+3. **Empty state.** The body is empty when no `dt` and no
+   `[data-info-section]` rendered, so a row that draws without
+   `experimental_DetailRow` does not count. Confirm that, or let registrations
+   report visibility.
 4. **Separators.** The Info tab draws section separators on every
    `[data-info-section]`, so a section that renders without
    `experimental_InfoSection` gets no separator. Confirm that is acceptable.
+
+## `experimental_useEnvironment` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.205.
+
+- **Surface:** `PluginSdkApp.experimental_useEnvironment(environmentId): ExperimentalEnvironmentState`, `ExperimentalEnvironmentState`, `ExperimentalEnvironment`, `ExperimentalEnvironmentHost`; and `useSdk().hosts.get({ hostId, includeRemoved: true })` (`GET /api/v1/hosts/:id?includeRemoved=true`).
+- **Behavior:** one environment by id, with `experimental_useThread`'s states: `loading`, `ready` with `environment`, `notFound` (404 or empty id, no request), `error`. `ExperimentalEnvironment` is what `useSdk().environments.get` returns plus `label` and `host`. It reads the environment query the thread view uses (`useEnvironment`, kept current by its realtime subscription), the machine list (`useHosts`), the environment and machine provider catalogs and the local daemon's host id, so an environment bb already shows costs no request. `label` is bb's own environment label, computed with `formatEnvironmentDisplay` and `getEnvironmentWorkspaceInfoDisplay`, the functions the composer's environment chrome uses. `host` is `{ id, name, connected, local, named, machineProvider }`: `named` carries core's rule for when the Machine row shows (more than one persistent machine, a non-persistent machine, or a host lifecycle other than `active`), and `machineProvider` is the icon record `experimental_ProviderIcon` takes, null for a machine the user enrolled. For a removed machine the list no longer holds, the hook reads its name once with `hosts.get({ includeRemoved: true })`, which returns a removed machine disconnected instead of 404; `host` is null while bb has no record.
+- **Core callers:** `useEnvironmentState` (`apps/app/src/lib/environment-state.ts`) is the one implementation. Core's Environment, Machine and Directory Info rows (`apps/app/src/core-contributions/thread-info/environment-row.tsx`, `directory-row.tsx`) and the Thread storage section's connected-machine gate read it. Tests: `ThreadInfo.test.tsx` (label and Machine row with two machines and an offline one; a removed machine named through the removed-host read), `apps/server/test` hosts route test for `includeRemoved`.
+- **Plugin callers:** none in-repo. 14 community folders call `useSdk().environments.*` in the app and about 10 call `hosts.*`, as one-shot fetches with no refresh (SergeyGavrilov/bb-diff-tree `use-changes.ts`, wy3z/bb-cursor-suite agent-pills `store.ts`).
+- **Stabilization:** decide whether `label` should stay a host-computed string or become structured (lifecycle, provider, locality); whether `named` belongs on the host or with the caller; and whether other surfaces (composer chrome, sidebar groups) should read this hook. Then rename project-wide and remove this entry.
+
+## `experimental_useThreadStorageFiles` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.205.
+
+- **Surface:** `PluginSdkApp.experimental_useThreadStorageFiles(threadId, options?): ExperimentalThreadStorageFilesState`, `ExperimentalThreadStorageFilesOptions` (`{ enabled? }`), `ExperimentalThreadStorageFile` (`{ path, name }`).
+- **Behavior:** `{ status: "loading", files: null }`, `{ status: "ready", files }` or `{ status: "error", files: null, errorMessage }`, where `errorMessage` is the text core shows for the failure (lifecycle errors described, then the mutation error message). It reads the thread storage file list query the thread view uses (`useThreadStorageFiles` with the default 1000-file options), kept current by the thread's realtime subscription; a failed refresh keeps the last list. `{ enabled: false }` pauses the read: no request or realtime subscription, and the hook reports the last list it read for the thread, or `loading` before the first, the same option shape as the RPC query hooks.
+- **Core callers:** `useThreadStorageFilesState` (`apps/app/src/lib/thread-storage-files-state.ts`) is the one implementation. Core's Thread storage Info section (`apps/app/src/core-contributions/thread-info/thread-storage-section.tsx`) passes `enabled` only while its tab is visible and its machine is connected, and opens files with `experimental_openFilePreview` and a `thread-storage` target.
+- **Plugin callers:** none in-repo; 9 community folders call `threads.storageFiles` directly.
+- **Stabilization:** decide whether to expose `truncated` and a server-side `query`/`limit`. Then rename project-wide and remove this entry.
+
+## `experimental_searchPickerOptions` (`@get-bb/plugin-sdk/app`)
+
+Requires SDK 0.6.205.
+
+- **Surface:** `PluginSdkApp.experimental_searchPickerOptions({ options, query, getLabel, getAliases? })`, `ExperimentalSearchPickerOptionsArgs`.
+- **Behavior:** bb's picker search: fzf-style fuzzy matching over each option's label and aliases, best match first, non-matches dropped; a blank query returns `options` unchanged. The name is the function's own: `searchPickerOptions` in `@bb/fuzzy-match`, which moved there from `@bb/shared-ui/picker-search` so core, the SDK runtime and the test harness share one implementation.
+- **Core callers:** core's parent thread picker (`apps/app/src/core-contributions/thread-info/parent-thread-picker.tsx`) through the SDK; `BranchPicker`, `ProjectSelector`, `ModelReasoningPicker` and the machine picker search call `searchPickerOptions` directly.
+- **Plugin callers:** none in-repo; 33 community folders ship their own fuzzy search.
+- **Stabilization:** decide whether a `limit` and match positions (for highlighting) belong in the result. Then rename project-wide and remove this entry.
 
 ## `app.slots.experimental_threadContextCardRow` / `app.slots.experimental_threadContextCardSection` / `experimental_ThreadContextCardRow` / `experimental_useThreadContextKind` (`@get-bb/plugin-sdk/app`)
 
@@ -6078,7 +6129,7 @@ own value, so plugins built against the old constant keep working.
 - **Behavior:** one registry and destination dispatcher serve thread fixed, thread action, navigation-page fixed and navigation-page action tabs. `useVisible` runs inside plugin scope/crash isolation for the current context. It hides a destination or launcher without removing saved fixed identity/order or already-open action instances. Action params deduplicate instances; fixed tabs have one identity and cannot close. Every opener goes through the surface's panel controller (see Panel controller), including the retired `openFixedTab`, `experimental_openTab`, action `openPanel` and `openThreadPanel`. New-thread-screen actions retain their project-context API and use the same action-opening implementation.
 - **Compatibility:** `threadPanelAction`, `PluginThreadPanelActionRegistration`, `PluginThreadPanelProps`, `PluginThreadPanelActionContext`, `navPanel.fixedTabs`, `PluginFixedTabRegistration` and `PluginFixedTabDeclaration` are removed from public source typings by explicit product decision. Runtime adapters in the registration collector remain for published bundles and Git-source install/update builds: 92 marketplace repositories use `threadPanelAction`, 15 use `fixedTabs`. Legacy optional icons, unknown fields and older fixed-tab owner shapes are accepted; malformed entries warn/skip rather than crashing the plugin. `bb-plugin-build` emits migration warnings with replacement examples and the authoring migration link. Server install/rebuild paths copy warnings into the plugin log; warnings never block install or update. The runtime export manifest continues to expose existing SDK functions. Remove adapters only after known callers have migrated.
 - **Persistence and automation:** thread fixed entries use `{id, kind: 'plugin-fixed', pluginId, tabId}` through SDK `threads.tabs.get/update` and CLI `bb thread tabs show/set`, with revision checks. Existing `plugin-page-fixed` and `plugin-panel` action entries/params keep their IDs and storage keys. Selection is client-local. Legacy core Info/Diff kinds, active selections and split IDs convert without reordering; server entries rewrite through the revision-checked queue. Split restoration waits for registration/visibility readiness.
-- **Core callers:** Info registers as thread + fixed (`apps/app/src/components/secondary-panel/thread-info-registration.tsx`) and uses the shared content host, visibility, descriptor and open paths; its metadata remains a pane-owned context, not public plugin API. Diff is the Git plugin's thread + fixed registration (`plugins/git/app.tsx`), which keeps its shortcut, file/commit navigation and review state. Docs, GitHub, Side Chat, Tasks, Workflows and the `examples/plugins/thread-chat-demo` example use the unified registration.
+- **Core callers:** Info registers as thread + fixed from the core contribution `apps/app/src/core-contributions/thread-info.tsx`, with `component: experimental_ThreadInfo`, and uses the shared content host, visibility, descriptor and open paths; its body reads only the tab props and public members (see the Info rows entry). Diff is the Git plugin's thread + fixed registration (`plugins/git/app.tsx`), which keeps its shortcut, file/commit navigation and review state. Docs, GitHub, Side Chat, Tasks, Workflows and the `examples/plugins/thread-chat-demo` example use the unified registration.
 - **Stabilization:** audit context typing, targets versus persisted inputs, visibility and crash/reload lifecycles, independent panes/threads, startup split restoration, revision conflicts and compact drawers. Keep the shared contract table across contexts and legacy adapters, verify actual published plugin installs, then rename project-wide and remove this entry.
 
 ## Tab visibility (`experimental_useTabVisible`)

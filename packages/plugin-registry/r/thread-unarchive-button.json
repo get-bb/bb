@@ -1,0 +1,19 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "thread-unarchive-button",
+  "type": "registry:ui",
+  "title": "thread-unarchive-button",
+  "description": "BB ui \"thread-unarchive-button\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/button",
+    "@bb/icon"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/thread-unarchive-button.tsx",
+      "content": "import { Button } from \"./button\";\nimport { Icon } from \"./icon\";\n\nexport function ThreadUnarchiveButton({\n  isPending,\n  onUnarchive,\n  variant = \"icon\",\n}: {\n  isPending?: boolean;\n  onUnarchive: () => void;\n  variant?: \"icon\" | \"secondary\";\n}) {\n  const isSecondary = variant === \"secondary\";\n  return (\n    <Button\n      type=\"button\"\n      variant={isSecondary ? \"secondary\" : \"ghost\"}\n      size={isSecondary ? undefined : \"icon\"}\n      aria-label=\"Unarchive thread\"\n      onClick={onUnarchive}\n      disabled={Boolean(isPending)}\n      className={\n        isSecondary ? \"h-7 shrink-0 px-2.5 text-xs font-normal\" : \"size-6\"\n      }\n    >\n      {isSecondary ? (\n        isPending ? (\n          \"Restoring…\"\n        ) : (\n          \"Unarchive\"\n        )\n      ) : isPending ? (\n        <Icon name=\"Spinner\" className=\"size-3 animate-spin\" />\n      ) : (\n        <Icon name=\"ArchiveRestore\" className=\"size-3\" />\n      )}\n    </Button>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/thread-unarchive-button.tsx"
+    }
+  ]
+}

@@ -19,7 +19,7 @@ import {
 } from "@bb/shared-ui/option-display";
 import { Popover, PopoverContent, PopoverTrigger } from "@bb/shared-ui/popover";
 import { useScrollOverflowState } from "@bb/shared-ui/use-scroll-overflow-state";
-import { searchPickerOptions } from "@bb/shared-ui/picker-search";
+import { searchPickerOptions } from "@bb/fuzzy-match";
 import { useResetPickerScroll } from "@bb/shared-ui/hooks/use-reset-picker-scroll";
 
 const PROJECT_SEARCH_MIN_OPTIONS = 5;

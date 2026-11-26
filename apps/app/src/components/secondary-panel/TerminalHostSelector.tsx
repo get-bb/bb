@@ -1,10 +1,7 @@
 import { useMemo } from "react";
 import type { Host } from "@bb/domain";
 import { OptionDisplay } from "@bb/shared-ui/option-display";
-import {
-  OptionPicker,
-  type PickerOption,
-} from "@/components/pickers/OptionPicker";
+import { OptionPicker, type PickerOption } from "@bb/shared-ui/option-picker";
 
 interface ResolveTerminalHostArgs {
   hosts: readonly Host[];

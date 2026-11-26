@@ -14,7 +14,7 @@ import type {
   PromptBoxAction,
 } from "@/components/promptbox/ComposerBox";
 import { ProviderCliBanner } from "@/components/promptbox/banner/ProviderCliBanner";
-import type { PickerOption } from "@/components/pickers/OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import { StoryCard, StoryRow } from "../../../.ladle/story-card";
 import { ModelPickerStoryQueryProvider } from "../../../.ladle/model-picker-query-provider";
 import {

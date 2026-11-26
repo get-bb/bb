@@ -133,6 +133,7 @@ import {
   type HostEnrollmentCommandResponse,
   type HostReconnectResponse,
   type HostListQuery,
+  type HostGetQuery,
   type HostDeleteQuery,
   type HostProviderCliStatusQuery,
   type EnvironmentCleanupQuery,
@@ -333,6 +334,7 @@ import {
   environmentPathsQuerySchema,
   hostDirectoryQuerySchema,
   hostListQuerySchema,
+  hostGetQuerySchema,
   hostDeleteQuerySchema,
   hostProviderCliStatusQuerySchema,
   environmentCleanupQuerySchema,
@@ -940,7 +942,7 @@ export const publicApiRoutes = {
     get: defineRoute({
       path: "/hosts/:id",
       method: "get",
-      request: noRequest<PathId>(),
+      request: optionalQueryRequest<PathId, HostGetQuery>(hostGetQuerySchema),
       response: jsonResponse<
         Host & {
           connectMachineId: string | null;

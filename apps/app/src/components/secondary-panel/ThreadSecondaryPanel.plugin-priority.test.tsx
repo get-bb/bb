@@ -63,7 +63,6 @@ function renderPanel() {
           ]}
           isConversationCollapsed={false}
           isOpen={isOpen}
-          metadataContent={null}
           onClose={noop}
           onCollapse={noop}
           onTabReorder={noop}

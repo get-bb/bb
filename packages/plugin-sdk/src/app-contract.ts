@@ -21,6 +21,7 @@ import type {
 import type {
   EnvironmentHostLifecycle,
   EnvironmentStatus,
+  Environment,
   PermissionMode,
   PromptInput,
   ProviderInfo,
@@ -2043,7 +2044,9 @@ export interface ExperimentalThreadInfoProps {
  * fields `useSdk().threads.get` returns, without `activeBackgroundAgentCount`,
  * `canRestoreEnvironment`, `canEditMessages`, `canSpawnChild` and
  * `queuedMessageCount`, which only that request computes. Read those from
- * `threads.get` when you need them.
+ * `threads.get` when you need them. `runtime.failure` is `"provisioning"`
+ * while the thread is in `error` because setting up its environment failed,
+ * and null otherwise; the thread's next status change clears it.
  */
 export type ExperimentalThread = ThreadWithRuntime;
 
@@ -2057,6 +2060,88 @@ export type ExperimentalThreadState =
   | { status: "ready"; thread: ExperimentalThread }
   | { status: "notFound"; thread: null }
   | { status: "error"; thread: null };
+
+/**
+ * An environment as {@link PluginSdkApp.experimental_useEnvironment} reports
+ * it: what `useSdk().environments.get` returns, plus bb's own label for it and
+ * the machine it runs on.
+ */
+export type ExperimentalEnvironment = Environment & {
+  /**
+   * bb's label for the environment, the one its Info tab and composer show:
+   * a lifecycle state ("Provisioning", "Unavailable — machine removed"), the
+   * environment provider's name ("<id> (not installed)" for one bb doesn't
+   * have), or "Working locally"/"Working remotely".
+   */
+  label: string;
+  /** The machine the environment runs on; null when bb has no record of it. */
+  host: ExperimentalEnvironmentHost | null;
+};
+
+/** The machine an {@link ExperimentalEnvironment} runs on. */
+export interface ExperimentalEnvironmentHost {
+  id: string;
+  /** The machine's name, kept after the machine is removed. */
+  name: string;
+  /** False while the machine's daemon is offline, and once it is removed. */
+  connected: boolean;
+  /** True for the machine this bb client runs on. */
+  local: boolean;
+  /**
+   * Whether bb names the machine beside the environment: when there is more
+   * than one machine, when this one is not a persistent machine (a cloud or
+   * ephemeral one), and while it is being removed or once it is.
+   */
+  named: boolean;
+  /**
+   * The machine provider that created it, ready for
+   * `experimental_ProviderIcon` with `providerKind: "machine"`; null for a
+   * machine the user enrolled.
+   */
+  machineProvider: {
+    id: string;
+    displayName: string;
+    icon: string;
+    logoUrl: string | null;
+  } | null;
+}
+
+/**
+ * What {@link PluginSdkApp.experimental_useEnvironment} knows about one
+ * environment, with the states of {@link ExperimentalThreadState}: `notFound`
+ * means bb has no such environment, `error` is any other failed read.
+ */
+export type ExperimentalEnvironmentState =
+  | { status: "loading"; environment: null }
+  | { status: "ready"; environment: ExperimentalEnvironment }
+  | { status: "notFound"; environment: null }
+  | { status: "error"; environment: null };
+
+/** One file in a thread's storage, as `experimental_useThreadStorageFiles` lists it. */
+export interface ExperimentalThreadStorageFile {
+  /** Relative to the thread's storage root, `/`-separated. */
+  path: string;
+  /** The file's basename. */
+  name: string;
+}
+
+/**
+ * What {@link PluginSdkApp.experimental_useThreadStorageFiles} knows about a
+ * thread's storage. `errorMessage` is the text bb shows for the failure.
+ */
+export type ExperimentalThreadStorageFilesState =
+  | { status: "loading"; files: null }
+  | { status: "ready"; files: readonly ExperimentalThreadStorageFile[] }
+  | { status: "error"; files: null; errorMessage: string };
+
+/** Options for {@link PluginSdkApp.experimental_useThreadStorageFiles}. */
+export interface ExperimentalThreadStorageFilesOptions {
+  /**
+   * False pauses the hook: it makes no request and reports the last list it
+   * read for the thread, or `loading` before the first. Defaults to true.
+   */
+  enabled?: boolean;
+}
 
 /** An environment a thread surface hands to plugin components. */
 export interface ExperimentalThreadEnvironment {
@@ -2483,6 +2568,16 @@ export interface ExperimentalThreadContextCardRowProps {
   action?: ReactNode;
   /** Makes the label a button. */
   onClick?(): void;
+}
+
+/** What {@link PluginSdkApp.experimental_searchPickerOptions} searches. */
+export interface ExperimentalSearchPickerOptionsArgs<Option> {
+  options: readonly Option[];
+  query: string;
+  /** The text an option shows; matches rank above alias matches. */
+  getLabel(option: Option): string;
+  /** Other text the option should be found by, such as an id. */
+  getAliases?(option: Option): readonly string[];
 }
 
 /**
@@ -3739,6 +3834,8 @@ export interface ExperimentalPluginIconProps {
 export interface ExperimentalThreadTitleTextProps {
   title: string;
   className?: string;
+  /** Shows the title's display text as the native tooltip, for a title that may truncate. */
+  tooltip?: boolean;
 }
 
 /**
@@ -6504,7 +6601,8 @@ export interface PluginSdkApp {
   /**
    * One thread by id (see {@link ExperimentalThreadState}). A thread bb's
    * sidebar already holds is read from it with no request and re-renders the
-   * component only when that thread changes. Any other thread, such as an
+   * component only when that thread changes; sidebar-held and fetched threads
+   * both carry `runtime.failure`. Any other thread, such as an
    * archived one, is fetched once and then kept current. A thread that leaves
    * the sidebar while you watch it (archived, say) stays `ready` with its last
    * sidebar value until that fetch answers. A thread deleted while you watch
@@ -6538,6 +6636,30 @@ export interface PluginSdkApp {
    * docs/api_to_audit.md.
    */
   experimental_useTimelineViewport(): ExperimentalTimelineViewport | null;
+  /**
+   * One environment by id (see {@link ExperimentalEnvironmentState}), kept
+   * current as it changes: read from the same cache bb's thread view uses, so
+   * an environment bb already shows costs no extra request. Its machine and
+   * label update with the machine list and the environment provider catalog.
+   * An empty id is `notFound` with no request. Experimental: see
+   * docs/api_to_audit.md.
+   */
+  experimental_useEnvironment(
+    environmentId: string,
+  ): ExperimentalEnvironmentState;
+  /**
+   * The files in a thread's storage (see
+   * {@link ExperimentalThreadStorageFilesState}), the list bb's Info tab
+   * shows, kept current as the thread writes them. The list is read once
+   * however many components ask, and a failed refresh keeps the last list.
+   * Open a file with the file intents and a `thread-storage` target. Pass
+   * `{ enabled: false }` to stop reading while the list is not shown.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_useThreadStorageFiles(
+    threadId: string,
+    options?: ExperimentalThreadStorageFilesOptions,
+  ): ExperimentalThreadStorageFilesState;
   /**
    * Per-row drag-to-split support (see {@link PluginSidebarThreadSplit}).
    * Call it once per rendered row, like the built-in sidebar does.
@@ -6834,6 +6956,16 @@ export interface PluginSdkApp {
    */
   experimental_InfoSection: ComponentType<ExperimentalInfoSectionProps>;
   /**
+   * The thread Info tab's body: every `experimental_threadInfoRow` in its
+   * details block and every `experimental_threadInfoSection` below it, bb's
+   * own included, in the slots' group and order. It shows "No thread details
+   * available." only when none of them renders anything for the thread, and
+   * a skeleton while the thread loads. bb's Info tab registers it as its
+   * component; a thread tab can register it to show the same body.
+   * Experimental: see docs/api_to_audit.md.
+   */
+  experimental_ThreadInfo: ComponentType<ExperimentalThreadTabProps>;
+  /**
    * bb's collapsible card for the stack above a thread's composer (see
    * {@link ExperimentalCollapsibleStackCardProps}). Render it from a
    * thread-scoped composer banner with `chrome: "bare"`. Experimental: see
@@ -6949,6 +7081,16 @@ export interface PluginSdkApp {
    * half of it. Experimental: see docs/api_to_audit.md.
    */
   experimental_sliceUtf16Head(value: string, maxChars: number): string;
+  /**
+   * Filters and ranks `options` against a typed `query` with bb's own picker
+   * search (see {@link ExperimentalSearchPickerOptionsArgs}): fzf-style fuzzy
+   * matching over each option's label and aliases, best match first. Options
+   * that match nothing are dropped; an empty or blank query returns `options`
+   * unchanged. Experimental: see docs/api_to_audit.md.
+   */
+  experimental_searchPickerOptions<Option>(
+    args: ExperimentalSearchPickerOptionsArgs<Option>,
+  ): readonly Option[];
   experimental_ImageLightbox: ComponentType<ExperimentalImageLightboxProps>;
   experimental_PromptMentionIcon: ComponentType<ExperimentalPromptMentionIconProps>;
   /**

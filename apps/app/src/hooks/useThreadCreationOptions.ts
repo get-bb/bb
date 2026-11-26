@@ -23,7 +23,7 @@ import {
   PROJECT_CHECKOUT_ENVIRONMENT_PROVIDER_ID,
   GIT_WORKTREE_ENVIRONMENT_PROVIDER_ID,
 } from "@bb/client-core";
-import type { PickerOption } from "@/components/pickers/OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 import {

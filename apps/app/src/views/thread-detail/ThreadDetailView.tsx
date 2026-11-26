@@ -35,7 +35,7 @@ import {
   type ThreadTimelineLocalFileLink,
 } from "@/components/thread/timeline";
 import { ThreadProviderContext } from "@/components/thread/thread-provider-context";
-import { isAbsoluteHostPath, type ThreadListEntry } from "@bb/domain";
+import { isAbsoluteHostPath } from "@bb/domain";
 import type { TerminalSession } from "@bb/server-contract";
 import type { WorkspaceOpenTarget } from "@bb/host-daemon-contract";
 import { copyToClipboardWithToast } from "@/lib/clipboard";
@@ -44,13 +44,7 @@ import {
   usePluginDetailTabOpener,
 } from "@/components/plugin/plugin-detail-navigation";
 import { useForkThreadFromMessage } from "@/hooks/useForkThreadFromMessage";
-import { useUpdateThread } from "../../hooks/mutations/thread-state-mutations";
 import { useEnvironment } from "../../hooks/queries/environment-queries";
-import {
-  useProjectThreadSubset,
-  useThread,
-  type ProjectThreadSubsetFilters,
-} from "../../hooks/queries/thread-queries";
 import { isTransientReadError } from "@/hooks/queries/query-helpers";
 import { PageShell } from "@/components/ui/page-shell.js";
 import { RouteLoadingSkeleton } from "@/components/ui/route-loading-skeleton";
@@ -77,10 +71,7 @@ import type { LiveFileRoot } from "@/hooks/useResolvedLiveFileTarget";
 import { selectHosts, useHosts } from "@/hooks/queries/host-queries";
 import { useConnectionAwareQueryState } from "@/hooks/queries/connection-aware-query-state";
 import { useThreadTerminals } from "@/hooks/queries/thread-terminal-queries";
-import {
-  useThreadTimelineProvisioningFailure,
-  useThreadTimelineSubscription,
-} from "@/hooks/queries/thread-panel-queries";
+import { useThreadTimelineSubscription } from "@/hooks/queries/thread-panel-queries";
 import { usePanelBrowser } from "@/components/secondary-panel/usePanelBrowser";
 import { usePanelFiles } from "@/components/secondary-panel/usePanelFiles";
 import { usePanelTerminals } from "@/components/secondary-panel/usePanelTerminals";
@@ -154,10 +145,6 @@ import {
 } from "@/lib/app-navigation-host";
 import { getFileBasename } from "@/lib/live-file-navigation";
 import {
-  useThreadStorageBrowser,
-  type ThreadStoragePathSelectHandler,
-} from "@/components/secondary-panel/useThreadStorageBrowser";
-import {
   useThreadFileTabs,
   type FileSearchSelection,
 } from "@/components/secondary-panel/useThreadFileTabs";
@@ -195,7 +182,6 @@ import {
   useUpdateFixedPanelTabsState,
 } from "@/lib/fixed-panel-tabs";
 import type { SecondaryFileFixedPanelTab } from "@/lib/fixed-panel-tabs-state";
-import { isRootThread } from "./threadParentSelectorOptions";
 import { useIsCompactViewport } from "@bb/shared-ui/hooks/use-compact-viewport";
 import { usePointerCoarse } from "@bb/shared-ui/hooks/use-pointer-coarse";
 import {
@@ -207,9 +193,6 @@ import { useRouteState } from "@/hooks/useRouteState";
 import { usePaneContext } from "./PaneContext";
 import { PaneThreadActionCommandHandler } from "./PaneThreadActionCommandHandler";
 
-const EMPTY_PARENT_THREADS: readonly ThreadListEntry[] = [];
-const EMPTY_PROJECT_THREAD_SUBSET_FILTERS =
-  {} satisfies ProjectThreadSubsetFilters;
 const EMPTY_TERMINAL_SESSIONS: readonly TerminalSession[] = [];
 const THREAD_HEADER_ACTIONS_GROUP = "0_header";
 const THREAD_DETAIL_SCREEN_PRESENTATION = { kind: "page" } as const;
@@ -367,7 +350,6 @@ function ThreadDetailViewInternal(
     isLoadingError,
     isRecoverableLoadingError: isTransientReadError(error),
   });
-  const { data: parentThread } = useThread(thread?.parentThreadId ?? "");
   const [shouldAutoFocusNewTab, setShouldAutoFocusNewTab] = useState(false);
   const handleNewTabAutoFocusHandled = useCallback(
     () => setShouldAutoFocusNewTab(false),
@@ -378,11 +360,10 @@ function ThreadDetailViewInternal(
     isSecondaryPanelOpen,
     secondaryTabs: fixedPanelTabsState.secondary.tabs,
   });
-  const { threadStorageFiles, threadStorageFilesError } =
-    useThreadStorageViewer({
-      fileListEnabled: shouldLoadThreadStorageFiles,
-      threadId,
-    });
+  const { threadStorageFiles } = useThreadStorageViewer({
+    fileListEnabled: shouldLoadThreadStorageFiles,
+    threadId,
+  });
   const terminalsListQuery = useThreadTerminals(threadId, {
     enabled: isSecondaryPanelOpen,
   });
@@ -489,45 +470,7 @@ function ThreadDetailViewInternal(
   const openNewTab = useCallback(() => {
     openTab({ kind: "new-tab" });
   }, [openTab]);
-  const isThreadRoot = isRootThread(thread);
-  const [
-    parentThreadsRequestedForThreadId,
-    setParentThreadsRequestedForThreadId,
-  ] = useState<string | null>(null);
-  const shouldLoadParentThreads =
-    threadQueryState.status === "ready" &&
-    isThreadRoot &&
-    parentThreadsRequestedForThreadId === thread?.id;
-  const parentThreadSubsetQuery = useProjectThreadSubset({
-    enabled: shouldLoadParentThreads,
-    filters: EMPTY_PROJECT_THREAD_SUBSET_FILTERS,
-    projectId,
-  });
-  const parentThreads = useMemo(
-    () =>
-      shouldLoadParentThreads
-        ? (parentThreadSubsetQuery.data ?? EMPTY_PARENT_THREADS)
-        : EMPTY_PARENT_THREADS,
-    [parentThreadSubsetQuery.data, shouldLoadParentThreads],
-  );
-  const loadedThreadId = thread?.id;
-  const handleParentSelectorOpenChange = useCallback(
-    (open: boolean) => {
-      if (open && loadedThreadId) {
-        setParentThreadsRequestedForThreadId(loadedThreadId);
-      }
-    },
-    [loadedThreadId],
-  );
-  const handleRetryParentThreads = parentThreadSubsetQuery.retry;
   useThreadTimelineSubscription(threadId, { enabled: timelineEnabled });
-  const environmentProvisioningFailure = useThreadTimelineProvisioningFailure(
-    threadId,
-    thread?.status === "error" && thread.environmentId === null,
-  );
-  const updateThread = useUpdateThread({
-    errorMessage: "Failed to assign parent thread.",
-  });
   const loadedTerminalSessions = terminalsListQuery.data?.sessions;
   const terminalSessions = loadedTerminalSessions ?? EMPTY_TERMINAL_SESSIONS;
   const terminalsById = useMemo(
@@ -777,22 +720,6 @@ function ThreadDetailViewInternal(
     isFocused,
     browserTabs,
     activateTab: handleActivateFileTab,
-  });
-  const handleSelectStorageBrowserPath =
-    useCallback<ThreadStoragePathSelectHandler>(
-      (path) => {
-        openStorageFile({
-          lineRange: null,
-          path,
-        });
-      },
-      [openStorageFile],
-    );
-  const storageBrowserController = useThreadStorageBrowser({
-    files: threadStorageFiles?.files,
-    onSelectPath: handleSelectStorageBrowserPath,
-    selectedPath: activeStorageFilePath,
-    threadId,
   });
   const [storedConversationCollapsed, setStoredConversationCollapsed] = useAtom(
     getThreadConversationCollapsedAtom(threadId),
@@ -1071,24 +998,6 @@ function ThreadDetailViewInternal(
     openFilePreview: openLiveFilePreview,
     threadId,
   });
-  const parentThreadId = thread?.parentThreadId;
-  const parentThreadDisplayName =
-    parentThread?.title && parentThread.title.trim().length > 0
-      ? parentThread.title
-      : parentThreadId;
-  const handleAssignParent = useCallback(
-    (nextParentThreadId: string | null) => {
-      if (!thread || updateThread.isPending) {
-        return;
-      }
-
-      updateThread.mutate({
-        id: thread.id,
-        parentThreadId: nextParentThreadId,
-      });
-    },
-    [thread, updateThread],
-  );
   const handleOpenTimelineLink = useCallback<ThreadTimelineLinkHandler>(
     ({ href }) => openBrowserUrl(href),
     [openBrowserUrl],
@@ -1102,20 +1011,6 @@ function ThreadDetailViewInternal(
     openFilePreview: openLiveFilePreview,
     openLocalFileLink: handleOpenTimelineLocalFileLink,
   });
-  const metadataStorage = useMemo(
-    () =>
-      resolvedThreadEnvironmentHost?.status === "connected"
-        ? {
-            controller: storageBrowserController,
-            filesError: threadStorageFilesError,
-          }
-        : undefined,
-    [
-      resolvedThreadEnvironmentHost?.status,
-      storageBrowserController,
-      threadStorageFilesError,
-    ],
-  );
   const workspaceFileEnvironmentId = thread?.environmentId ?? null;
   const environmentHostId = environment?.hostId ?? null;
   const workspaceFileRoot = useMemo<LiveFileRoot | null>(
@@ -1331,8 +1226,6 @@ function ThreadDetailViewInternal(
       </PageShell>
     );
   }
-  const canAssignToParent = isThreadRoot;
-  const canTakeOverThread = Boolean(thread.parentThreadId);
   const threadEnvironmentProviderLookup = findEnvironmentDisplayProvider(
     registeredEnvironmentProviders,
     environment?.environmentProviderId ?? null,
@@ -1692,9 +1585,8 @@ function ThreadDetailViewInternal(
             <ThreadDetailSecondaryContent
               header={timelineHeader}
               main={threadScreen}
-              isMetadataLoading={
-                !hasThreadDetailBootstrapSettled || environmentQuery.isLoading
-              }
+              threadId={thread.id}
+              environment={threadTabEnvironment}
               isSecondaryPanelOpen={isSecondaryPanelOpen}
               isConversationCollapsed={isConversationCollapsed}
               isBoundedPane={isBoundedPane}
@@ -1713,26 +1605,6 @@ function ThreadDetailViewInternal(
                   </MarkdownLocalFileOpenTargetsContext.Provider>
                 </MarkdownLocalFileContextMenuContext.Provider>
               )}
-              metadata={{
-                thread,
-                projectId,
-                parentThreadProjectId: parentThread?.projectId ?? null,
-                parentThreadDisplayName: parentThreadDisplayName ?? null,
-                parentThreads,
-                canAssignToParent,
-                canTakeOverThread,
-                isLoadingParentThreads: parentThreadSubsetQuery.isLoading,
-                isParentThreadsError: parentThreadSubsetQuery.isError,
-                environment: environment ?? null,
-                environmentProvisioningFailure,
-                environmentDisplayHost: environmentDisplayHostContext,
-                threadEnvironmentId: threadTabEnvironmentId,
-                updateThreadPending: updateThread.isPending,
-                storage: metadataStorage,
-                onAssignParent: handleAssignParent,
-                onParentSelectorOpenChange: handleParentSelectorOpenChange,
-                onRetryParentThreads: handleRetryParentThreads,
-              }}
               secondaryPanel={{
                 canNavigateTabs: isFocused,
                 activeTab: activeFixedSecondaryTab,

@@ -1023,7 +1023,7 @@ list|get|set|reset` or `sdk.system.uiPreferences` (see
 | `sidebar.updates.skipped`             | Updates hidden by Skip on the sidebar update card; the button stays hidden until an update outside this list arrives, and `[]` (default) shows it again (Settings → Updates and `bb updates` still list them) |
 | `threadContextCard.pinned`            | `true` (default) keeps a thread pane's thread context card open beside the transcript when the pane is wide enough; `false` opens it only from the header                                                     |
 | `threadContextCard.collapsedSections` | Folded thread context card sections (`<pluginId>/<sectionId>`, or `bb--core/<sectionId>` for bb's own); sections start open and the list is shared by every thread                                            |
-| `infoPanel.collapsedSections`         | Collapsed thread Info panel sections (`commits`, `uncommittedChanges`, `childThreads`, `forks`, `threadStorage`, or `<pluginId>/<sectionId>`)                                                                 |
+| `infoPanel.collapsedSections`         | Collapsed thread Info panel sections as `<pluginId>/<sectionId>`, such as `bb--core/forks` or `bb--git/commits`; legacy bare ids still resolve                                                                |
 
 A legacy `__builtin__` thread list selection resolves to the bundled plugin.
 

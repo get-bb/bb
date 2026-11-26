@@ -60,6 +60,7 @@ import {
 } from "./plugin-runtime-groups";
 import { queueSplitPreload } from "./split-prefetch";
 import { loadLazyComponents, ORDERED_REVEAL_BOUND_MS } from "./lazy-parts";
+import { startRestoredCoreContributionParts } from "./core-contribution-parts";
 import {
   holdsPage,
   namesPlugin,
@@ -1224,6 +1225,9 @@ export function bootPluginFrontends(): Promise<void> {
   bootPromise ??= (async () => {
     installPluginRuntime();
     installPluginFrontendPageLifecycle();
+    startRestoredCoreContributionParts(
+      browserReconcileDeps.restoredLazyParts(),
+    );
     await reconcilePluginFrontends(state, {
       ...browserReconcileDeps,
       fetchCandidates: () =>

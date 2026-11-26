@@ -54,6 +54,7 @@ function moveThreadStatus(
   const result = db.transaction((tx) =>
     writeThreadLifecycleStateInTransaction(tx, {
       expectedStatus: from,
+      failureKind: null,
       next: { ...empty, status: to },
       previous: empty,
       threadId,

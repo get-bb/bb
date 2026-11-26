@@ -39,6 +39,7 @@ import {
 } from "../request-context.js";
 import {
   listPublicHostsWithStatus,
+  getRemovedHost,
   requireNonDestroyedHostWithStatus,
   requirePublicStandardProject,
 } from "../services/lib/entity-lookup.js";
@@ -186,8 +187,17 @@ export function registerHostRoutes(
     ),
   );
 
-  get(routes.get, (context) => {
+  get(routes.get, (context, query) => {
     const hostId = context.req.param("id");
+    const removedHost =
+      query.includeRemoved === "true" ? getRemovedHost(deps, hostId) : null;
+    if (removedHost !== null) {
+      return context.json({
+        ...removedHost,
+        connectMachineId: null,
+        threadStorageRootPath: null,
+      });
+    }
     const host = requireNonDestroyedHostWithStatus(deps, hostId);
     const session = getLatestSessionForHost(deps.db, { hostId });
     return context.json({

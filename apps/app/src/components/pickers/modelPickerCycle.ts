@@ -3,7 +3,7 @@ import {
   standardReasoningLevelRank,
   type ReasoningLevel,
 } from "@bb/domain";
-import type { PickerOption } from "./OptionPicker";
+import type { PickerOption } from "@bb/shared-ui/option-picker";
 
 export function nextCycleValue<T extends string>(
   options: readonly PickerOption<T>[],

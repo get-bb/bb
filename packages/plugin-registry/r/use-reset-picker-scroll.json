@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "use-reset-picker-scroll",
+  "type": "registry:ui",
+  "title": "use-reset-picker-scroll",
+  "description": "BB ui \"use-reset-picker-scroll\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "files": [
+    {
+      "path": "registry/components/ui/use-reset-picker-scroll.ts",
+      "content": "import { useLayoutEffect, useRef } from \"react\";\n\nexport function useResetPickerScroll<T extends HTMLElement>(query: string) {\n  const scrollRef = useRef<T>(null);\n\n  useLayoutEffect(() => {\n    if (scrollRef.current !== null) {\n      scrollRef.current.scrollTop = 0;\n    }\n  }, [query]);\n\n  return scrollRef;\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/use-reset-picker-scroll.ts"
+    }
+  ]
+}

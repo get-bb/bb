@@ -40,6 +40,14 @@ export interface HostGetArgs {
   signal?: AbortSignal;
 }
 
+export interface HostReadArgs extends HostGetArgs {
+  /**
+   * Also return a removed machine, disconnected, instead of failing with 404,
+   * so an environment it ran can still name it.
+   */
+  includeRemoved?: boolean;
+}
+
 export interface HostProviderCliStatusArgs extends HostGetArgs {
   refresh?: boolean;
 }
@@ -167,7 +175,7 @@ export interface HostsArea {
   experimental_discoverRepos(
     args: HostDiscoverReposArgs,
   ): Promise<HostDiscoverReposResult>;
-  get(args: HostGetArgs): Promise<HostGetResult>;
+  get(args: HostReadArgs): Promise<HostGetResult>;
   cloneDefaultPath(
     args: HostCloneDefaultPathArgs,
   ): Promise<HostCloneDefaultPathResult>;
@@ -358,9 +366,12 @@ export function createHostsArea(args: CreateSdkAreaArgs): HostsArea {
     async get(input) {
       return transport.readJson(
         transport.api.v1.hosts[":id"].$get(
-          {
-            param: { id: input.hostId },
-          },
+          input.includeRemoved === true
+            ? {
+                param: { id: input.hostId },
+                query: { includeRemoved: "true" },
+              }
+            : { param: { id: input.hostId } },
           ...signalRequestArgs(input.signal),
         ),
       );

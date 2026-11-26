@@ -1,5 +1,5 @@
 import { useMemo, type ComponentProps, type ReactNode } from "react";
-import { Skeleton } from "@bb/shared-ui/skeleton";
+import type { ExperimentalThreadEnvironment } from "@get-bb/plugin-sdk";
 import { cn } from "@bb/shared-ui/lib/utils";
 import {
   PluginComposerHostScopeProvider,
@@ -11,19 +11,11 @@ import {
   LazyThreadSecondaryPanel,
   ThreadSecondaryPanelDrawerPlaceholder,
 } from "@/components/secondary-panel/lazySecondaryPanelComponents";
-import {
-  ThreadMetadataCard,
-  ThreadMetadataContent,
-  hasAnyThreadMetadata,
-  type ThreadMetadataContentProps,
-} from "@/components/secondary-panel/ThreadMetadataContent";
-import { DETAIL_GRID_CLASS } from "@/components/ui/detail-card.js";
-import { useThreads } from "@/hooks/queries/thread-queries";
 import { useOptionalPaneContext } from "./PaneContext";
 
 type ThreadSecondaryPanelProps = Omit<
   ComponentProps<typeof LazyThreadSecondaryPanel>,
-  | "metadataContent"
+  | "threadInfo"
   | "renderAsDrawer"
   | "isConversationCollapsed"
   | "onToggleConversationCollapse"
@@ -40,7 +32,8 @@ type ThreadSecondaryPanelProps = Omit<
 
 interface ThreadDetailSecondaryContentProps {
   header: ReactNode;
-  isMetadataLoading: boolean;
+  threadId: string;
+  environment: ExperimentalThreadEnvironment | null;
   isSecondaryPanelOpen: boolean;
   isConversationCollapsed: boolean;
   isBoundedPane: boolean;
@@ -48,7 +41,6 @@ interface ThreadDetailSecondaryContentProps {
   onToggleSecondaryPanel: () => void;
   onToggleConversationCollapse: () => void;
   renderHostedPanel: (panel: ReactNode) => ReactNode;
-  metadata: ThreadMetadataContentProps;
   secondaryPanel: ThreadSecondaryPanelProps;
 }
 
@@ -64,7 +56,8 @@ export function ThreadDetailSecondaryContent(
 
 function ThreadDetailSecondaryContentBody({
   header,
-  isMetadataLoading,
+  threadId,
+  environment,
   isSecondaryPanelOpen,
   isConversationCollapsed,
   isBoundedPane,
@@ -72,43 +65,20 @@ function ThreadDetailSecondaryContentBody({
   onToggleSecondaryPanel,
   onToggleConversationCollapse,
   renderHostedPanel,
-  metadata,
   secondaryPanel,
 }: ThreadDetailSecondaryContentProps) {
   const paneContext = useOptionalPaneContext();
   const composerHost = usePluginComposerHost();
   const { renderBrowserDeck, ...threadSecondaryPanelProps } = secondaryPanel;
+  const threadInfo = useMemo(
+    () => ({ threadId, environment }),
+    [threadId, environment],
+  );
   const drawerFallback = (
     <ThreadSecondaryPanelDrawerPlaceholder
       activeTab={threadSecondaryPanelProps.activeTab}
-      metadataContent={<ThreadMetadataLoadingSkeleton />}
+      threadInfo={threadInfo}
     />
-  );
-
-  const forksQuery = useThreads(
-    {
-      projectId: metadata.thread.projectId,
-      sourceThreadId: metadata.thread.id,
-      originKind: "fork",
-      archived: false,
-    },
-    { enabled: isSecondaryPanelOpen },
-  );
-  const hasForks = (forksQuery.data?.length ?? 0) > 0;
-  const metadataContent = useMemo(
-    () =>
-      hasAnyThreadMetadata(metadata, hasForks) ? (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <ThreadMetadataContent {...metadata} />
-        </div>
-      ) : isMetadataLoading ? (
-        <ThreadMetadataLoadingSkeleton />
-      ) : (
-        <div className="px-4 pt-1 text-sm text-muted-foreground">
-          No thread details available.
-        </div>
-      ),
-    [hasForks, isMetadataLoading, metadata],
   );
 
   return (
@@ -124,8 +94,8 @@ function ThreadDetailSecondaryContentBody({
         onSwipeOpen={onToggleSecondaryPanel}
         onClose={threadSecondaryPanelProps.onClose}
         panelGroupKey="thread-detail"
-        resetKey={metadata.thread.id}
-        contentKey={metadata.thread.id}
+        resetKey={threadId}
+        contentKey={threadId}
         drawerLabel="Thread details"
         drawerFallback={drawerFallback}
         mainPanelId="thread-detail-timeline-panel"
@@ -136,9 +106,7 @@ function ThreadDetailSecondaryContentBody({
           onToggle: onToggleConversationCollapse,
         }}
         composerHost={composerHost}
-        widthPercentAtom={getThreadSecondaryPanelWidthPercentAtom(
-          metadata.thread.id,
-        )}
+        widthPercentAtom={getThreadSecondaryPanelWidthPercentAtom(threadId)}
         renderHostedPanel={renderHostedPanel}
         renderPanel={({
           presentation,
@@ -166,30 +134,10 @@ function ThreadDetailSecondaryContentBody({
             onToggleConversationCollapse={onToggleMainCollapse}
             resizablePanelId={resizablePanelId}
             isAtWindowTop={paneContext?.isTopRow !== false}
-            metadataContent={metadataContent}
+            threadInfo={threadInfo}
           />
         )}
       />
-    </div>
-  );
-}
-
-const METADATA_SKELETON_ROW_VALUE_WIDTHS = ["w-40", "w-28", "w-36", "w-24"];
-
-function ThreadMetadataLoadingSkeleton() {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-      <ThreadMetadataCard>
-        {METADATA_SKELETON_ROW_VALUE_WIDTHS.map((valueWidth, index) => (
-          <div
-            key={index}
-            className={cn(DETAIL_GRID_CLASS, "items-center py-0.5")}
-          >
-            <Skeleton className="h-3 w-14 rounded-sm" />
-            <Skeleton className={`h-3 ${valueWidth} max-w-full rounded-sm`} />
-          </div>
-        ))}
-      </ThreadMetadataCard>
     </div>
   );
 }

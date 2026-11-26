@@ -14,7 +14,7 @@ import {
   ModelReasoningPicker,
   type ModelReasoningPickerHandoff,
 } from "@/components/pickers/ModelReasoningPicker";
-import { type PickerOption } from "@/components/pickers/OptionPicker";
+import { type PickerOption } from "@bb/shared-ui/option-picker";
 import type { ModelPickerOption } from "@/components/pickers/model-picker-option";
 import type { ProviderPickerOption } from "@/components/pickers/model-brand-prefix";
 import type {

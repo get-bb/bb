@@ -10,7 +10,9 @@ type CoreContributionKind =
   | "messageMetadata"
   | "threadContextSegments"
   | "threadActions"
-  | "threadRailOutlines";
+  | "threadRailOutlines"
+  | "threadInfoRows"
+  | "threadInfoSections";
 
 export type CoreContributionSlot<Kind extends CoreContributionKind> =
   CollectedPluginAppRegistrations[Kind][number] & {

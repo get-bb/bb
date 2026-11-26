@@ -237,7 +237,9 @@ the same way; the other listed parts do not hold anything. Lazy parts the
 screen does not show wait for idle warming. Core contributions register at startup (`src/lib/core-contribution-parts.ts`
 lists them), and the thread route starts their lazy parts alongside the thread
 view chunk, so a part the page shows, such as the rail outline, arrives with
-the page instead of after it.
+the page instead of after it. bb's Info rows and sections are not in that
+list: when `restoredLazyParts` lists the Info tab, the plugin loader starts them
+with the plugins' restored parts (`startRestoredCoreContributionParts`).
 
 The bound comes from Slow 4G (562.5 ms RTT, 1.44 Mbps) cold loads: a lazy
 chunk a host waited on at render took 2.1 to 2.8 seconds while the app's

@@ -4,6 +4,7 @@ import { useTimelineViewport } from "@/lib/timeline-viewport";
 import { applicationLinkApprovals } from "./application-url";
 import { matchesAppShortcutKey } from "@bb/domain";
 import { sliceUtf16Head } from "@bb/text-utils";
+import { searchPickerOptions } from "@bb/fuzzy-match";
 import {
   LazyPluginMarkdown,
   LazyPluginDiff,
@@ -101,6 +102,8 @@ import {
 import { useSidebarSplitLayout } from "./plugin-split-layout";
 import { useSidebarThreadSplit } from "./plugin-sidebar-split";
 import { useThreadState } from "./thread-state";
+import { useEnvironmentState } from "./environment-state";
+import { useThreadStorageFilesState } from "./thread-storage-files-state";
 import { useExperiment } from "./plugin-experiments";
 import {
   experimental_PluginRpcCallError,
@@ -133,6 +136,7 @@ import { InfoListRow } from "@bb/shared-ui/info-list-row";
 import { DetailRow } from "@/components/ui/detail-card";
 import { ThreadContextCardRow } from "@/components/plugin/ThreadContextCardRow";
 import { SurfaceInfoSection } from "@/components/plugin/ThreadContextCardSection";
+import { ThreadInfo } from "@/components/secondary-panel/info/ThreadInfo";
 import { useThreadContextKind } from "@/components/plugin/thread-context-card-pane";
 import { useTabVisible } from "@/components/secondary-panel/tab-visibility";
 import { useServerChoices } from "@/hooks/useServerChoices";
@@ -198,6 +202,7 @@ export const pluginSdkAppImplementation = {
   experimental_useCommandShortcut: useExperimentalCommandShortcut,
   experimental_matchesShortcutKey: matchesAppShortcutKey,
   experimental_sliceUtf16Head: sliceUtf16Head,
+  experimental_searchPickerOptions: searchPickerOptions,
   experimental_ImageLightbox: ImageLightbox,
   experimental_PromptMentionIcon: ComposerMentionIcon,
   experimental_describePromptMention: describePromptMention,
@@ -230,6 +235,7 @@ export const pluginSdkAppImplementation = {
   experimental_FilePreview: ExperimentalFilePreview,
   experimental_Diff: LazyPluginDiff,
   experimental_InfoSection: SurfaceInfoSection,
+  experimental_ThreadInfo: ThreadInfo,
   experimental_CollapsibleStackCard: CollapsibleStackCard,
   experimental_ThreadRowMetadata: ThreadRowMetadata,
   experimental_DetailRow: DetailRow,
@@ -241,6 +247,8 @@ export const pluginSdkAppImplementation = {
   experimental_useThread: useThreadState,
   experimental_useConversationOutline: useConversationOutline,
   experimental_useTimelineViewport: useTimelineViewport,
+  experimental_useEnvironment: useEnvironmentState,
+  experimental_useThreadStorageFiles: useThreadStorageFilesState,
   experimental_useSidebarThreadActions: useSidebarThreadActions,
   experimental_useThreadActions: useThreadActionEntries,
   experimental_useArchiveEnvironmentThreads: useArchiveEnvironmentThreads,

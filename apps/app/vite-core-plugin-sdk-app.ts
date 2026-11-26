@@ -24,7 +24,9 @@ export function corePluginSdkApp(): Plugin {
       const normalizedImporter = normalizePath(importer);
       if (PLUGIN_RUNTIME_IMPORTERS.test(normalizedImporter)) return null;
       if (source === "@get-bb/plugin-sdk/app") {
-        if (normalizedImporter.startsWith(appSourcePrefix)) return binding;
+        if (normalizedImporter.startsWith(appSourcePrefix)) {
+          return { id: binding, moduleSideEffects: false };
+        }
         return normalizedImporter.startsWith(sharedUiSourcePrefix)
           ? sharedUiBinding
           : null;

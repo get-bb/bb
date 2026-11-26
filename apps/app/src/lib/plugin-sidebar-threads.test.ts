@@ -155,6 +155,7 @@ describe("toPluginSidebarThread", () => {
         status: "active",
         runtime: {
           displayStatus: "waiting-for-host",
+          failure: null,
         },
         lifecycleOwnerThreadId: "thr_owner",
         sourceThreadId: "thr_source",

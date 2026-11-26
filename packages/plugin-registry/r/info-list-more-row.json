@@ -1,0 +1,20 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "info-list-more-row",
+  "type": "registry:ui",
+  "title": "info-list-more-row",
+  "description": "BB ui \"info-list-more-row\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/icon",
+    "@bb/info-list-row",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/info-list-more-row.tsx",
+      "content": "import { Icon } from \"./icon\";\nimport {\n  INFO_LIST_LEADING_CLASS,\n  InfoListIndentGuides,\n  infoListIndentStyle,\n} from \"./info-list-row\";\nimport { cn } from \"../../lib/utils\";\n\nexport const INFO_LIST_CARET_CLASS = \"size-3 shrink-0 transition-transform\";\n\nexport const INFO_LIST_DEFAULT_LIMIT = 5;\n\nexport function infoListCollapses(\n  count: number,\n  limit: number = INFO_LIST_DEFAULT_LIMIT,\n): boolean {\n  return count > limit + 1;\n}\n\nconst INFO_LIST_QUIET_CONTROL_CLASS =\n  \"rounded text-2xs text-subtle-foreground transition-colors hover:text-foreground focus-visible:bg-state-hover focus-visible:text-foreground focus-visible:outline-none\";\n\nexport function InfoListMoreRow({\n  label,\n  expanded,\n  onToggle,\n  depth = 0,\n}: {\n  label: string;\n  expanded: boolean;\n  onToggle: () => void;\n  depth?: number;\n}) {\n  return (\n    <li className=\"relative\">\n      <InfoListIndentGuides depth={depth} />\n      <button\n        type=\"button\"\n        aria-expanded={expanded}\n        onClick={onToggle}\n        style={infoListIndentStyle(depth)}\n        className={cn(\n          INFO_LIST_QUIET_CONTROL_CLASS,\n          \"-mx-1 flex h-6 w-[calc(100%+0.5rem)] min-w-0 cursor-pointer items-center gap-1.5 px-1 text-left\",\n        )}\n      >\n        <span className={INFO_LIST_LEADING_CLASS}>\n          <Icon\n            name=\"ChevronDown\"\n            className={cn(INFO_LIST_CARET_CLASS, expanded && \"rotate-180\")}\n            aria-hidden\n          />\n        </span>\n        {label}\n      </button>\n    </li>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/info-list-more-row.tsx"
+    }
+  ]
+}

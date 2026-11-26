@@ -235,6 +235,7 @@ function createThreadListEntry(
     modelOverride: null,
     reasoningLevelOverride: null,
     storageDeletedAt: null,
+    failureKind: null,
     statusChangedAt: args.thread.updatedAt,
     environmentBranchName: null,
     environmentPath: null,
@@ -319,10 +320,11 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, failure: null, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "active",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -338,10 +340,11 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, failure: null, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -358,10 +361,11 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, failure: null, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "active",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -379,10 +383,11 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, failure: null, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "active",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -400,10 +405,11 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, failure: null, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -420,10 +426,11 @@ describe("thread runtime display", () => {
     expect(
       resolveThreadRuntimeState(
         { db, hub },
-        { environmentHostId: hostId, now, status: "active" },
+        { environmentHostId: hostId, failure: null, now, status: "active" },
       ),
     ).toEqual({
       displayStatus: "waiting-for-host",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -435,12 +442,14 @@ describe("thread runtime display", () => {
         { db, hub },
         {
           environmentHostId: hostId,
+          failure: null,
           now: 1_000,
           status: "idle",
         },
       ),
     ).toEqual({
       displayStatus: "idle",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -452,12 +461,14 @@ describe("thread runtime display", () => {
         { db, hub },
         {
           environmentHostId: null,
+          failure: null,
           now: 1_000,
           status: "active",
         },
       ),
     ).toEqual({
       displayStatus: "active",
+      failure: null,
     } satisfies ThreadRuntimeState);
   });
 
@@ -601,12 +612,15 @@ describe("thread runtime display", () => {
     expect(entries.map((entry) => entry.runtime)).toEqual([
       {
         displayStatus: "active",
+        failure: null,
       },
       {
         displayStatus: "active",
+        failure: null,
       },
       {
         displayStatus: "active",
+        failure: null,
       },
     ] satisfies ThreadRuntimeState[]);
   });

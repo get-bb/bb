@@ -11,7 +11,9 @@ import { cn } from "@bb/shared-ui/lib/utils";
 import { preloadTerminalModules } from "@/components/thread/terminal/terminal-modules";
 import { CHROME_ROW_HEIGHT_CLASS } from "@/lib/bb-desktop";
 import { CORE_PLUGIN_ID } from "@bb/domain";
+import type { ExperimentalThreadTabProps } from "@get-bb/plugin-sdk";
 import { FilePreviewLoading } from "./FilePreviewChrome";
+import { ThreadInfo, ThreadInfoSkeleton } from "./info/ThreadInfo";
 import { SecondaryPanelContentSkeleton } from "./SecondaryPanelContentSkeleton";
 import { PANEL_COLLAPSE_TRANSITION_CLASS } from "./panelTransitionTokens";
 import {
@@ -73,8 +75,8 @@ function ThreadSecondaryPanelInlinePlaceholder({
 
 function ThreadSecondaryPanelPlaceholderContent({
   activeTab,
-  metadataContent,
-}: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "metadataContent">) {
+  threadInfo,
+}: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "threadInfo">) {
   const showsThreadInfo =
     activeTab?.kind === "thread-info" ||
     (activeTab?.kind === "plugin-fixed" &&
@@ -82,7 +84,13 @@ function ThreadSecondaryPanelPlaceholderContent({
       activeTab.tabId === "info");
   if (showsThreadInfo) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col">{metadataContent}</div>
+      <div className="flex min-h-0 flex-1 flex-col">
+        {threadInfo === null ? (
+          <ThreadInfoSkeleton />
+        ) : (
+          <ThreadInfo {...threadInfo} />
+        )}
+      </div>
     );
   }
   switch (activeTab?.kind) {
@@ -97,8 +105,8 @@ function ThreadSecondaryPanelPlaceholderContent({
 
 export function ThreadSecondaryPanelDrawerPlaceholder({
   activeTab,
-  metadataContent,
-}: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "metadataContent">) {
+  threadInfo,
+}: Pick<LazyThreadSecondaryPanelProps, "activeTab" | "threadInfo">) {
   return (
     <div
       className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-sidebar"
@@ -108,7 +116,7 @@ export function ThreadSecondaryPanelDrawerPlaceholder({
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <ThreadSecondaryPanelPlaceholderContent
           activeTab={activeTab}
-          metadataContent={metadataContent}
+          threadInfo={threadInfo}
         />
       </div>
     </div>
@@ -119,6 +127,7 @@ type LazyThreadSecondaryPanelProps = ComponentProps<
   ThreadSecondaryPanelModule["ThreadSecondaryPanel"]
 > & {
   drawerFallback: ReactNode;
+  threadInfo: ExperimentalThreadTabProps | null;
 };
 
 const ThreadSecondaryPanelSplit = defineSplit<LazyThreadSecondaryPanelProps>({
@@ -138,7 +147,7 @@ const ThreadSecondaryPanelSplit = defineSplit<LazyThreadSecondaryPanelProps>({
       >
         <ThreadSecondaryPanelPlaceholderContent
           activeTab={props.activeTab}
-          metadataContent={props.metadataContent}
+          threadInfo={props.threadInfo}
         />
       </ThreadSecondaryPanelInlinePlaceholder>
     ),

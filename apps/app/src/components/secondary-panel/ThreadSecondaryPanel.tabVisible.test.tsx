@@ -61,7 +61,6 @@ function panel(activeTab: FixedPanelViewTab, isOpen: boolean) {
             tabs={[]}
             isConversationCollapsed={false}
             isOpen={isOpen}
-            metadataContent={null}
             onClose={noop}
             onCollapse={noop}
             onTabReorder={noop}

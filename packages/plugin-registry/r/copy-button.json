@@ -1,0 +1,21 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "copy-button",
+  "type": "registry:ui",
+  "title": "copy-button",
+  "description": "BB ui \"copy-button\" — vendored from the BB app's own source (version-matched to this BB release).",
+  "registryDependencies": [
+    "@bb/hover-reveal",
+    "@bb/icon",
+    "@bb/motion",
+    "@bb/utils"
+  ],
+  "files": [
+    {
+      "path": "registry/components/ui/copy-button.tsx",
+      "content": "import {\n  forwardRef,\n  useCallback,\n  useEffect,\n  useState,\n  type ComponentPropsWithoutRef,\n  type ReactNode,\n} from \"react\";\nimport { cn } from \"../../lib/utils\";\nimport { HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS } from \"./hover-reveal\";\nimport { Icon } from \"./icon\";\nimport { CONTROL_HOVER_TRANSITION } from \"./motion\";\n\nconst COPIED_FEEDBACK_MS = 2000;\n\nexport function useCopiedFeedback() {\n  const [copied, setCopied] = useState(false);\n\n  useEffect(() => {\n    if (!copied) return;\n    const timeoutId = window.setTimeout(\n      () => setCopied(false),\n      COPIED_FEEDBACK_MS,\n    );\n    return () => window.clearTimeout(timeoutId);\n  }, [copied]);\n\n  const markCopied = useCallback(() => setCopied(true), []);\n\n  return { copied, markCopied };\n}\n\ninterface CopyIconButtonProps extends Omit<\n  ComponentPropsWithoutRef<\"button\">,\n  \"type\" | \"onClick\" | \"title\"\n> {\n  copied: boolean;\n  onCopy: () => void;\n  iconClassName?: string;\n  label?: string;\n}\n\nexport const CopyIconButton = forwardRef<\n  HTMLButtonElement,\n  CopyIconButtonProps\n>(function CopyIconButton(\n  {\n    copied,\n    onCopy,\n    className,\n    iconClassName,\n    label = \"Copy to clipboard\",\n    ...rest\n  },\n  ref,\n) {\n  return (\n    <button\n      ref={ref}\n      type=\"button\"\n      aria-label={label}\n      {...rest}\n      className={cn(\n        `inline-flex size-5 cursor-pointer items-center justify-center text-muted-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground focus-visible:opacity-100`,\n        className,\n      )}\n      onClick={onCopy}\n    >\n      {copied ? (\n        <Icon name=\"Check\" className={cn(\"size-3\", iconClassName)} />\n      ) : (\n        <Icon name=\"Copy\" className={cn(\"size-3\", iconClassName)} />\n      )}\n    </button>\n  );\n});\n\nexport interface CopyableInlineLabelViewProps {\n  text: string;\n  label: string;\n  title?: string;\n  copied: boolean;\n  onCopy(): void;\n  children?: ReactNode;\n}\n\nexport function CopyableInlineLabelView({\n  text,\n  label,\n  title,\n  copied,\n  onCopy,\n  children,\n}: CopyableInlineLabelViewProps) {\n  return (\n    <button\n      type=\"button\"\n      className={`group/copy inline-flex min-w-0 max-w-full cursor-pointer items-center gap-1.5 rounded-md text-left text-foreground ${CONTROL_HOVER_TRANSITION} hover:text-foreground/80`}\n      onClick={onCopy}\n      aria-label={label}\n    >\n      <span className=\"min-w-0 truncate\" title={title ?? text}>\n        {children ?? text}\n      </span>\n      <Icon\n        name={copied ? \"Check\" : \"Copy\"}\n        className={cn(\n          \"size-3 shrink-0 text-subtle-foreground transition-opacity group-hover/copy:opacity-100 group-focus-visible/copy:opacity-100\",\n          HOVER_REVEAL_NO_HOVER_VISIBLE_CLASS,\n          copied ? \"opacity-100\" : \"opacity-0\",\n        )}\n      />\n    </button>\n  );\n}\n",
+      "type": "registry:ui",
+      "target": "components/ui/copy-button.tsx"
+    }
+  ]
+}

@@ -28,6 +28,7 @@ export function moveThreadStatus(
       const stored = readThreadRunState(tx, thread.id);
       const result = writeThreadLifecycleStateInTransaction(tx, {
         expectedStatus: thread.status,
+        failureKind: null,
         next: { ...stored, status: to },
         previous: stored,
         threadId: thread.id,

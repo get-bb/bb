@@ -1,7 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Icon } from "@bb/shared-ui/icon";
-import { PanelStage } from "../ThreadMetadataContent.fixtures";
-import { ThreadMetadataCard } from "../ThreadMetadataContent";
+import { ThreadInfoCard } from "./ThreadInfo";
 import { StoryCard, StoryRow } from "../../../../.ladle/story-card";
 import { InfoListRow, InfoRowTime } from "@bb/shared-ui/info-list-row";
 import { InfoList, InfoSection } from "./info-list";
@@ -25,9 +24,9 @@ const ROWS = Array.from({ length: 9 }, (_, index) => ({
 
 function Stage({ children }: { children: ReactNode }) {
   return (
-    <PanelStage>
-      <ThreadMetadataCard>{children}</ThreadMetadataCard>
-    </PanelStage>
+    <div className="w-full max-w-[480px] min-w-0 rounded-md border border-border bg-background px-4 py-3">
+      <ThreadInfoCard>{children}</ThreadInfoCard>
+    </div>
   );
 }
 
