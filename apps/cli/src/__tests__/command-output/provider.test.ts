@@ -110,6 +110,129 @@ describe("bb provider command output", () => {
     ]);
   });
 
+  it("bb provider models includes deduplicated selected-only models without --selected-model", async () => {
+    const get = vi.fn(async () => ({
+      providers: [],
+      models: [
+        {
+          model: "default",
+          displayName: "Auto",
+          isDefault: true,
+        },
+        {
+          model: "grok-4.6",
+          displayName: "Grok 4.6",
+          isDefault: false,
+        },
+      ],
+      selectedOnlyModels: [
+        {
+          model: "grok-4.6",
+          displayName: "Grok 4.6 duplicate",
+          isDefault: false,
+        },
+        {
+          model: "gemini-4-neon",
+          displayName: "Gemini 4 Neon",
+          isDefault: false,
+        },
+        {
+          model: "gemini-4-neon",
+          displayName: "Gemini 4 Neon duplicate",
+          isDefault: false,
+        },
+        {
+          model: "grok-4.7",
+          displayName: "Grok 4.7",
+          isDefault: false,
+        },
+      ],
+      modelLoadError: null,
+    }));
+    stubServerApi({ "v1.system.execution-options.$get": get });
+
+    await runCommand(["provider", "models", "acp-cursor", "--json"], register);
+
+    expect(get).toHaveBeenCalledWith({
+      query: {
+        providerId: "acp-cursor",
+      },
+    });
+    expect(collectLogPayloads(vi.mocked(console.log))).toEqual([
+      JSON.stringify(
+        [
+          {
+            model: "default",
+            displayName: "Auto",
+            isDefault: true,
+          },
+          {
+            model: "grok-4.6",
+            displayName: "Grok 4.6",
+            isDefault: false,
+          },
+          {
+            model: "gemini-4-neon",
+            displayName: "Gemini 4 Neon",
+            isDefault: false,
+          },
+          {
+            model: "grok-4.7",
+            displayName: "Grok 4.7",
+            isDefault: false,
+          },
+        ],
+        null,
+        2,
+      ),
+    ]);
+  });
+
+  it("bb provider models promotes --selected-model while still listing other selected-only models", async () => {
+    const get = vi.fn(async () => ({
+      providers: [],
+      models: [
+        {
+          model: "default",
+          displayName: "Auto",
+          isDefault: true,
+        },
+      ],
+      selectedOnlyModels: [
+        {
+          model: "gemini-4-neon",
+          displayName: "Gemini 4 Neon",
+          isDefault: false,
+        },
+        {
+          model: "grok-4.7",
+          displayName: "Grok 4.7",
+          isDefault: false,
+        },
+      ],
+      modelLoadError: null,
+    }));
+    stubServerApi({ "v1.system.execution-options.$get": get });
+
+    await runCommand(
+      [
+        "provider",
+        "models",
+        "acp-cursor",
+        "--selected-model",
+        "grok-4.7",
+        "--json",
+      ],
+      register,
+    );
+
+    expect(
+      JSON.parse(collectLogPayloads(vi.mocked(console.log))[0]!).map(
+        (entry: { model: string }) => entry.model,
+      ),
+    ).toEqual(["grok-4.7", "default", "gemini-4-neon"]);
+  });
+
   it("bb provider models routes through an environment", async () => {
     const get = vi.fn(async () => ({
       providers: [],

@@ -146,8 +146,9 @@ user and project paths use the same relative-path rules. bb indexes these roots
 as read-only sources. It then injects the selected skills into all providers.
 The bb user and project roots keep higher precedence than matching shared roots.
 
-Use --selected-model to discover an unprobed model's reasoning choices and
-include a selected-only model; ACP probes only that model and caches the result.
+`bb provider models` lists both primary and selected-only models reported by
+the provider. Use --selected-model to discover an unprobed model's reasoning
+choices; ACP probes only that model and caches the result.
 Each model reports reasoningDiscovery: unknown means its choices have not been
 discovered yet, and known with an empty supportedReasoningEfforts list means it
 has no selectable reasoning levels. Sending never waits for discovery. When the
