@@ -81,11 +81,19 @@ export interface AcpSessionParams {
   dynamicTools?: readonly DynamicTool[];
 }
 
-function sanitizeAcpSkillDescription(description: string): string {
+function sanitizeAcpSkillDescription(
+  description: string,
+  skillNames: ReadonlySet<string>,
+): string {
   const sanitized = description
     .replace(/[\r\n]+/gu, " ")
     .replace(/\s+/gu, " ")
     .replace(/[<>]/gu, "")
+    .replace(
+      /(?<![\p{L}\p{N}_/.~$)}])\/([\w-]+(?::[\w-]+)*)(?![\p{L}\p{N}_/-]|[.:][\p{L}\p{N}_])/gu,
+      (command, name: string) =>
+        skillNames.has(name) ? `the bb skill "${name}"` : command,
+    )
     .trim();
   return sanitized.length > 0 ? sanitized : "(description unavailable)";
 }
@@ -97,6 +105,11 @@ function buildAcpSkillsInstructions(
     return undefined;
   }
 
+  const skillNames = new Set(
+    skillRoots.flatMap((skillRoot) =>
+      skillRoot.skills.map((skill) => skill.name),
+    ),
+  );
   const skillLines = skillRoots.flatMap((skillRoot) => {
     return skillRoot.skills.map((skill) => {
       const skillFilePath = path.join(
@@ -104,7 +117,7 @@ function buildAcpSkillsInstructions(
         skill.name,
         "SKILL.md",
       );
-      return `- ${skill.name}: ${sanitizeAcpSkillDescription(skill.description)} (SKILL.md: ${skillFilePath})`;
+      return `- ${skill.name}: ${sanitizeAcpSkillDescription(skill.description, skillNames)} (SKILL.md: ${skillFilePath})`;
     });
   });
   if (skillLines.length === 0) {

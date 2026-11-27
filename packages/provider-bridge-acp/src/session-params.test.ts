@@ -467,6 +467,40 @@ describe("buildAcpSessionParams skill instructions", () => {
     });
   });
 
+  it("spells out slash commands that name a bb skill in skill descriptions, so the agent does not run them", () => {
+    expect(
+      paramsWithOptions({
+        skillRoots: [
+          {
+            id: "global-skills:ghi789:acp",
+            skillDirectoryRootPath:
+              "/tmp/bb/runtime/global-skills/ghi789/skills",
+            skills: [
+              {
+                name: "learn",
+                description:
+                  '/learn a session. Use when the user invokes /learn or $learn, **/learn**, "/learn", `/learn` or Commands:/learn.',
+              },
+              {
+                name: "notes",
+                description:
+                  "Not /notes-x, /plugin:notes, /notes:x/y, /notes\u00e9, /review or /tmp. Reads /notes.md, /tmp/notes/a.md, ~/notes, ./notes, ${HOME}/notes, $(pwd)/notes, and/or https://example.com/notes.",
+              },
+            ],
+          },
+        ],
+      }),
+    ).toMatchObject({
+      instructions: [
+        SKILLS_PREAMBLE,
+        "",
+        "Available bb skills:",
+        `- learn: the bb skill "learn" a session. Use when the user invokes the bb skill "learn" or $learn, **the bb skill "learn"**, "the bb skill "learn"", \`the bb skill "learn"\` or Commands:the bb skill "learn". (SKILL.md: ${path.normalize("/tmp/bb/runtime/global-skills/ghi789/skills/learn/SKILL.md")})`,
+        `- notes: Not /notes-x, /plugin:notes, /notes:x/y, /notes\u00e9, /review or /tmp. Reads /notes.md, /tmp/notes/a.md, ~/notes, ./notes, \${HOME}/notes, $(pwd)/notes, and/or https://example.com/notes. (SKILL.md: ${path.normalize("/tmp/bb/runtime/global-skills/ghi789/skills/notes/SKILL.md")})`,
+      ].join("\n"),
+    });
+  });
+
   it("omits the instructions key entirely when there is nothing to say", () => {
     expect(paramsWithOptions({})).not.toHaveProperty("instructions");
   });
