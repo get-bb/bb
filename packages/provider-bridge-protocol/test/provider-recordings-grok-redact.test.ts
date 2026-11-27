@@ -1375,4 +1375,88 @@ describe("Grok recording redaction", () => {
       redacted,
     );
   });
+
+  it("redacts every Grok plan-content alias except the synthetic plan", () => {
+    const root = tempRoot();
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const second = join(root, "second");
+    const synthetic =
+      "# Hello function\n\n1. Add hello.\n2. Add a focused test.";
+    const request = (params: Record<string, unknown>) => ({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "_x.ai/exit_plan_mode",
+      params: { sessionId: "fake-sess", toolCallId: "plan-call", ...params },
+    });
+    writeRecording(input, [
+      request({ planContent: "private plan content body" }),
+      request({ plan: "private plan alias body" }),
+      request({ input: { plan: "private nested plan body" } }),
+      request({ plan: synthetic }),
+      request({ input: { plan: synthetic } }),
+    ]);
+
+    expect(redact(input, output)).toContain("0 survivors");
+    const redacted = readFileSync(
+      join(output, "provider→bridge.ndjson"),
+      "utf8",
+    );
+    expect(redacted).not.toContain("private");
+    expect(readMessages(output)).toEqual([
+      request({ planContent: "REDACTED_TEXT" }),
+      request({ plan: "REDACTED_TEXT" }),
+      request({ input: { plan: "REDACTED_TEXT" } }),
+      request({ plan: synthetic }),
+      request({ input: { plan: synthetic } }),
+    ]);
+    redact(output, second);
+    expect(readFileSync(join(second, "provider→bridge.ndjson"), "utf8")).toBe(
+      redacted,
+    );
+  });
+
+  it("redacts normalized user answers except synthetic fixture values", () => {
+    const root = tempRoot();
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const second = join(root, "second");
+    const answer = (answers: Record<string, unknown>) => ({
+      jsonrpc: "2.0",
+      id: 1,
+      result: { kind: "user_answer", answers },
+    });
+    writeRecording(input, [
+      answer({ "question-1": { selected: ["Alpha"] } }),
+      answer({
+        "question-1": {
+          selected: ["Private option label"],
+          freeText: "private feedback about the repository",
+        },
+        "question-2": { selected: [], freeText: "First synthetic choice" },
+      }),
+    ]);
+
+    expect(redact(input, output)).toContain("0 survivors");
+    const redacted = readFileSync(
+      join(output, "provider→bridge.ndjson"),
+      "utf8",
+    );
+    expect(redacted).not.toContain("private");
+    expect(redacted).not.toContain("Private");
+    expect(readMessages(output)).toEqual([
+      answer({ "question-1": { selected: ["Alpha"] } }),
+      answer({
+        "question-1": {
+          selected: ["REDACTED_TEXT"],
+          freeText: "REDACTED_TEXT",
+        },
+        "question-2": { selected: [], freeText: "First synthetic choice" },
+      }),
+    ]);
+    redact(output, second);
+    expect(readFileSync(join(second, "provider→bridge.ndjson"), "utf8")).toBe(
+      redacted,
+    );
+  });
 });

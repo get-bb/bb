@@ -847,6 +847,20 @@ async function handleGrokSubagentTell(text) {
     },
   });
   if (process.env.FAKE_ACP_GROK_SUBAGENT_DISCONNECT === "1") process.exit(7);
+  if (process.env.FAKE_ACP_GROK_SUBAGENT_INPUT_AFTER_RESULT === "1") {
+    notifyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: `tell-${addressed}`,
+      status: "completed",
+      rawOutput: tellResult,
+    });
+    notifyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: `tell-${addressed}`,
+      rawInput: tellInput,
+    });
+    return;
+  }
   if (resultOnToolCall) {
     if (process.env.FAKE_ACP_GROK_SUBAGENT_KEEP_RUNNING !== "1") {
       notifySubagent("subagent_finished", {
@@ -1606,13 +1620,13 @@ async function handlePrompt(message) {
     if (usageDelay > 0) await sleep(usageDelay);
     if (process.env.FAKE_ACP_GROK_REWIND === "1" && text !== "/compact") {
       const promptIndex =
-        Math.max(-1, ...grokRewindPoints.map((point) => point.prompt_index)) + 1;
+        Math.max(-1, ...grokRewindPoints.map((point) => point.prompt_index)) +
+        1;
       grokRewindPoints.push({
         prompt_index: promptIndex,
         created_at: new Date().toISOString(),
         num_file_snapshots: 1,
-        prompt_preview:
-          text.length > 60 ? `${text.slice(0, 57)}...` : text,
+        prompt_preview: text.length > 60 ? `${text.slice(0, 57)}...` : text,
         has_file_changes: true,
       });
     }
@@ -2072,9 +2086,10 @@ async function handleMessage(message) {
         });
         return;
       }
-      const responseTarget = process.env.FAKE_ACP_GROK_REWIND_STALE === "1"
-        ? targetPromptIndex + 1
-        : targetPromptIndex;
+      const responseTarget =
+        process.env.FAKE_ACP_GROK_REWIND_STALE === "1"
+          ? targetPromptIndex + 1
+          : targetPromptIndex;
       if (process.env.FAKE_ACP_GROK_REWIND_STALE !== "1" && target) {
         grokRewindPoints = grokRewindPoints.filter(
           (point) => point.prompt_index < targetPromptIndex,

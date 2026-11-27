@@ -4737,6 +4737,64 @@ describe("acp bridge", () => {
     await stopThread(providerThreadId);
   });
 
+  it("grok_interject_stopped_during_model_reconcile_is_not_sent", async () => {
+    const requestLog = join(
+      workspaceDir,
+      "grok-interject-stop-reconcile.jsonl",
+    );
+    const launch: AgentLaunchArgs = {
+      dialectId: "grok",
+      envVars: {
+        FAKE_ACP_REQUEST_LOG: requestLog,
+        FAKE_ACP_MODEL_CONFIG: "1",
+        FAKE_ACP_MODEL_DELAY_MS: "300",
+        FAKE_ACP_IGNORE_CANCEL: "1",
+      },
+    };
+    const { providerThreadId } = await startThread({
+      ...launch,
+      model: "fake/default",
+    });
+    await waitForResponse(
+      sendTurnRequest("turn/start", providerThreadId, {
+        input: [{ type: "text", text: "hang", mentions: [] }],
+        options: executionOptions({
+          model: "fake/default",
+          providerOptions: launchProviderOptions(launch),
+        }),
+      }),
+    );
+    const steer = sendTurnRequest("turn/steer", providerThreadId, {
+      expectedTurnId: "turn-1",
+      clientRequestId: "creq_abcdefghjr",
+      input: [{ type: "text", text: "INTERJECT_AFTER_STOP", mentions: [] }],
+      options: executionOptions({
+        model: "fake/strong",
+        providerOptions: launchProviderOptions(launch),
+      }),
+    });
+    await waitFor(
+      () =>
+        loggedAcpRequests(requestLog).some(
+          (request) =>
+            request.method === "session/set_config_option" &&
+            request.params?.value === "fake/strong",
+        )
+          ? true
+          : undefined,
+      "model reconcile",
+    );
+    await stopThread(providerThreadId);
+
+    expect((await waitForResponse(steer)).error).toBeDefined();
+    expect(
+      loggedAcpRequests(requestLog).filter(
+        (request) => request.method === "_x.ai/interject",
+      ),
+    ).toHaveLength(0);
+    expect(threadEventsOfType("turn/input/accepted")).toHaveLength(1);
+  });
+
   it("grok_interject_rejects_blank_and_non_text_input_before_calling_agent", async () => {
     const requestLog = join(workspaceDir, "grok-interject-invalid-input.jsonl");
     const { providerThreadId } = await startThread({
@@ -8504,6 +8562,24 @@ describe("acp bridge: questions the agent asks", () => {
   it("grok_subagent_tell_binds_when_input_arrives_on_update", async () => {
     const { providerThreadId } = await startGrokSubagentThread({
       FAKE_ACP_GROK_SUBAGENT_INPUT_ON_UPDATE: "1",
+    });
+    const response = await waitForResponse(
+      subagentRequest("subagent/tell", providerThreadId, {
+        childRef: "child-alpha",
+        text: "delivered later",
+      }),
+    );
+    expect(response.error).toBeUndefined();
+    expect(response.result).toEqual({
+      childRef: "child-alpha",
+      messageId: "message-child-alpha",
+    });
+  });
+
+  it("grok_subagent_tell_binds_when_input_arrives_after_the_result", async () => {
+    const { providerThreadId } = await startGrokSubagentThread({
+      FAKE_ACP_GROK_SUBAGENT_INPUT_ON_UPDATE: "1",
+      FAKE_ACP_GROK_SUBAGENT_INPUT_AFTER_RESULT: "1",
     });
     const response = await waitForResponse(
       subagentRequest("subagent/tell", providerThreadId, {

@@ -3484,6 +3484,7 @@ function finishAgentTurn(
   for (const controller of session.pendingToolCalls) controller.abort();
   setActivePromptKind(session, null);
   clearGrokPendingCheckpoint(session);
+  retireSettledGrokToolCalls(session);
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     stopReason,
@@ -3752,6 +3753,21 @@ function interjectStillOwnsTurn(
   );
 }
 
+function interjectSessionReplaced(session: AcpThreadSession): boolean {
+  return (
+    session.stopping || sessionsByBbThreadId.get(session.bbThreadId) !== session
+  );
+}
+
+function sendReplacedNativeInterject(
+  runtimeRequestId: AcpBridgeRequestId,
+): void {
+  const message = "Grok session was replaced before interject acknowledgement";
+  sendError(runtimeRequestId, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
+    recovery: { kind: "staleTurn", message, retryable: false },
+  });
+}
+
 function sendStaleNativeInterject(runtimeRequestId: AcpBridgeRequestId): void {
   const message = "No active turn to interject";
   sendError(runtimeRequestId, BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN, message, {
@@ -3766,18 +3782,8 @@ async function steerWithNativeInterject(
   method: string,
   owningTurn: Promise<void> | undefined,
 ): Promise<void> {
-  if (
-    session.stopping ||
-    sessionsByBbThreadId.get(session.bbThreadId) !== session
-  ) {
-    const message =
-      "Grok session was replaced before interject acknowledgement";
-    sendError(
-      runtimeRequestId,
-      BRIDGE_JSON_RPC_ERRORS.NO_ACTIVE_TURN,
-      message,
-      { recovery: { kind: "staleTurn", message, retryable: false } },
-    );
+  if (interjectSessionReplaced(session)) {
+    sendReplacedNativeInterject(runtimeRequestId);
     return;
   }
   if (!interjectStillOwnsTurn(session, owningTurn)) {
@@ -3799,6 +3805,10 @@ async function steerWithNativeInterject(
     });
     const reconciled = reconcileExecutionSettings(session, pending.options);
     session = reconciled instanceof Promise ? await reconciled : reconciled;
+    if (interjectSessionReplaced(session)) {
+      sendReplacedNativeInterject(runtimeRequestId);
+      return;
+    }
     if (!interjectStillOwnsTurn(session, owningTurn)) {
       sendStaleNativeInterject(runtimeRequestId);
       return;
@@ -3971,6 +3981,7 @@ function finishTurn(
       "Parent turn ended before the subagent action was acknowledged",
     );
   }
+  retireSettledGrokToolCalls(session);
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     stopReason,
@@ -4881,12 +4892,27 @@ function grokToolCallCorrelationFinished(
   if (spawnedSubagentId !== undefined) {
     return true;
   }
+  const name = grokSubagentActionToolName(session, merged);
   for (const action of session.pendingSubagentActions.values()) {
     if (action.toolCallId === merged.toolCallId) {
       return false;
     }
+    if (
+      action.toolCallId === undefined &&
+      (name === undefined || name === action.toolName)
+    ) {
+      return false;
+    }
   }
   return merged.status === "completed" || merged.status === "failed";
+}
+
+function retireSettledGrokToolCalls(session: AcpThreadSession): void {
+  for (const [toolCallId, call] of session.grokToolCallsById) {
+    if (call.status === "completed" || call.status === "failed") {
+      session.grokToolCallsById.delete(toolCallId);
+    }
+  }
 }
 
 function rememberGrokToolCall(

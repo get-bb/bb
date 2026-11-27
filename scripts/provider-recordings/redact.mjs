@@ -402,6 +402,34 @@ function redactGrokAcceptedAnswers(result, redactedResult) {
   );
 }
 
+function redactGrokUserAnswers(result, redactedResult) {
+  if (!isRecord(result) || !isRecord(redactedResult)) return;
+  if (result.kind !== "user_answer") return;
+  if (!isRecord(result.answers) || !isRecord(redactedResult.answers)) return;
+  for (const [questionId, answer] of Object.entries(result.answers)) {
+    const redactedAnswer = redactedResult.answers[questionId];
+    if (!isRecord(answer) || !isRecord(redactedAnswer)) continue;
+    for (const [key, value] of Object.entries(answer)) {
+      if (typeof value === "string" || Array.isArray(value)) {
+        redactedAnswer[key] = redactAnswerValue(value);
+      }
+    }
+  }
+}
+
+function redactGrokPlanRequest(params, redactedParams) {
+  if (typeof params.plan === "string") {
+    redactedParams.plan = redactPlanText(params.plan);
+  }
+  if (
+    isRecord(params.input) &&
+    isRecord(redactedParams.input) &&
+    typeof params.input.plan === "string"
+  ) {
+    redactedParams.input.plan = redactPlanText(params.input.plan);
+  }
+}
+
 function redactPlanApproval(payload, redactedPayload) {
   const subject = payload.subject;
   const redactedSubject = redactedPayload.subject;
@@ -530,6 +558,7 @@ function redactGrokSubagentPayloads(parsed, redacted) {
 function redactGrokQuestionPayloads(parsed, redacted) {
   if (!isRecord(parsed) || !isRecord(redacted)) return;
   redactGrokAcceptedAnswers(parsed.result, redacted.result);
+  redactGrokUserAnswers(parsed.result, redacted.result);
   const params = parsed.params;
   const redactedParams = redacted.params;
   if (
@@ -540,6 +569,10 @@ function redactGrokQuestionPayloads(parsed, redacted) {
     typeof redactedParams !== "object" ||
     Array.isArray(redactedParams)
   ) {
+    return;
+  }
+  if (parsed.method === "_x.ai/exit_plan_mode") {
+    redactGrokPlanRequest(params, redactedParams);
     return;
   }
   if (parsed.method === "_x.ai/ask_user_question") {
