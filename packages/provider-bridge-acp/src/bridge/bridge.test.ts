@@ -6635,4 +6635,70 @@ describe("acp bridge: live session state", () => {
     await completeTurnWith(providerThreadId, "hello", executionOptions({}));
     expect(threadEventsOfType("thread/extensionState/updated")).toEqual([]);
   });
+
+  it("advertises Cursor subagent capabilities and streams child subagent updates under the delegation", async () => {
+    const requestLog = join(workspaceDir, "cursor-subagent-requests.jsonl");
+    const { providerThreadId } = await startThread({
+      dialectId: "cursor",
+      envVars: {
+        FAKE_ACP_REQUEST_LOG: requestLog,
+      },
+    });
+
+    const initialize = loggedAcpRequests(requestLog).find(
+      (request) => request.method === "initialize",
+    );
+    expect(initialize?.params).toMatchObject({
+      clientCapabilities: {
+        subagents: true,
+        _meta: { subagents: true },
+      },
+    });
+
+    await completeTurnWith(
+      providerThreadId,
+      "subagent-stream",
+      executionOptions({}),
+    );
+
+    const completedItems = threadEventsOfType("item/completed").map(
+      (event) => (event as { item: Record<string, unknown> }).item,
+    );
+    const delegation = completedItems.find(
+      (item) => item["type"] === "delegation",
+    );
+    expect(delegation).toMatchObject({
+      type: "delegation",
+      childRef: "subagent-child-1",
+      label: "Inspect workspace",
+    });
+    const delegationId = delegation?.["id"];
+    expect(typeof delegationId).toBe("string");
+
+    expect(completedItems).toContainEqual(
+      expect.objectContaining({
+        type: "reasoning",
+        parentToolCallId: delegationId,
+      }),
+    );
+    expect(completedItems).toContainEqual(
+      expect.objectContaining({
+        type: "fileRead",
+        parentToolCallId: delegationId,
+      }),
+    );
+    expect(completedItems).toContainEqual(
+      expect.objectContaining({
+        type: "agentMessage",
+        text: "Found package.json",
+        parentToolCallId: delegationId,
+      }),
+    );
+    expect(completedItems).toContainEqual(
+      expect.objectContaining({
+        type: "agentMessage",
+        text: "Subagent done.",
+      }),
+    );
+  });
 });

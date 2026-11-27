@@ -79,11 +79,18 @@ function turnCompletedEvent(stopReason: string): ProviderRuntimeEvent {
   };
 }
 
-function updateEvent(update: Record<string, unknown>): ProviderRuntimeEvent {
+function updateEvent(
+  update: Record<string, unknown>,
+  sessionId?: string,
+): ProviderRuntimeEvent {
   return {
     jsonrpc: "2.0",
     method: ACP_UPDATE_METHOD,
-    params: { threadId: THREAD_ID, update },
+    params: {
+      threadId: THREAD_ID,
+      ...(sessionId === undefined ? {} : { sessionId }),
+      update,
+    },
   };
 }
 
@@ -3181,6 +3188,351 @@ describe("acp delta translation (dialects)", () => {
         label: "Read README first line",
       }),
     ).toEqual([]);
+  });
+
+  it("nests Cursor subagent session updates under the parent delegation", () => {
+    const harness = dialectHarness("cursor");
+    const opened = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-task",
+        title: "Task: Inspect workspace",
+        kind: "other",
+        status: "in_progress",
+        rawInput: { _toolName: "task" },
+      }),
+    );
+    const delegationId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+
+    const spawned = harness.translate(
+      updateEvent({
+        sessionUpdate: "subagent_spawned",
+        subagentSessionId: "sub-1",
+        name: "explore",
+        task: "Inspect workspace",
+        _meta: {
+          cursor: {
+            toolCallId: "call-task",
+            agentId: "agent-1",
+            model: "default",
+          },
+        },
+      }),
+    );
+    expect(spawned).toEqual([
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          id: delegationId,
+          type: "delegation",
+          childRef: "agent-1",
+          label: "Inspect workspace",
+        }),
+      }),
+    ]);
+
+    const thought = harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "agent_thought_chunk",
+          content: { type: "text", text: "Checking README" },
+        },
+        "sub-1",
+      ),
+    );
+    expect(thought).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "reasoning",
+          parentToolCallId: delegationId,
+        }),
+      }),
+    );
+
+    const childReadStart = harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "child-read",
+          title: "Read README.md",
+          kind: "read",
+          status: "in_progress",
+          locations: [{ path: "/workspace/README.md" }],
+        },
+        "sub-1",
+      ),
+    );
+    expect(childReadStart).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "fileRead",
+          parentToolCallId: delegationId,
+        }),
+      }),
+    );
+
+    const childReadDone = harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "tool_call_update",
+          toolCallId: "child-read",
+          status: "completed",
+        },
+        "sub-1",
+      ),
+    );
+    expect(childReadDone).toContainEqual(
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "fileRead",
+          parentToolCallId: delegationId,
+        }),
+      }),
+    );
+
+    const childReply = harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "README checked." },
+        },
+        "sub-1",
+      ),
+    );
+    expect(childReply).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          parentToolCallId: delegationId,
+        }),
+      }),
+    );
+
+    const stateDone = harness.translate(
+      updateEvent({
+        sessionUpdate: "subagent_state_update",
+        subagentSessionId: "sub-1",
+        state: "completed",
+      }),
+    );
+    expect(stateDone).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "README checked.",
+          parentToolCallId: delegationId,
+        }),
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: delegationId,
+          type: "delegation",
+          childRef: "agent-1",
+          label: "Inspect workspace",
+        }),
+      }),
+    ]);
+
+    const taskDone = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-task",
+        status: "completed",
+        rawOutput: { durationMs: 420, isBackground: false },
+      }),
+    );
+    expect(taskDone).toEqual([]);
+  });
+
+  it("defers closing a background Cursor subagent delegation until subagent_state_update settles", () => {
+    const harness = dialectHarness("cursor");
+    const opened = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-bg-task",
+        title: "Task: Background scan",
+        kind: "other",
+        status: "in_progress",
+        rawInput: { _toolName: "task" },
+      }),
+    );
+    const delegationId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "subagent_spawned",
+        subagentSessionId: "sub-bg",
+        name: "explore",
+        task: "Background scan",
+        _meta: {
+          cursor: {
+            toolCallId: "call-bg-task",
+          },
+        },
+      }),
+    );
+
+    const launchSettled = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call_update",
+        toolCallId: "call-bg-task",
+        status: "completed",
+        rawOutput: { isBackground: true },
+      }),
+    );
+    expect(
+      launchSettled.some(
+        (event) =>
+          event.type === "item/completed" && event.item.id === delegationId,
+      ),
+    ).toBe(false);
+
+    const childMsg = harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Background result ready." },
+        },
+        "sub-bg",
+      ),
+    );
+    expect(childMsg).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          parentToolCallId: delegationId,
+        }),
+      }),
+    );
+
+    const terminal = harness.translate(
+      updateEvent({
+        sessionUpdate: "subagent_state_update",
+        subagentSessionId: "sub-bg",
+        state: "completed",
+      }),
+    );
+    expect(terminal).toEqual([
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          text: "Background result ready.",
+          parentToolCallId: delegationId,
+        }),
+      }),
+      expect.objectContaining({
+        type: "item/completed",
+        item: expect.objectContaining({
+          id: delegationId,
+          type: "delegation",
+          childRef: "sub-bg",
+          label: "Background scan",
+        }),
+      }),
+    ]);
+  });
+
+  it("nests grandchild Cursor subagents under their parent subagent delegation", () => {
+    const harness = dialectHarness("cursor");
+    const outerStart = harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-outer",
+        title: "Task: Outer",
+        kind: "other",
+        status: "in_progress",
+        rawInput: { _toolName: "task" },
+      }),
+    );
+    const outerId =
+      outerStart[0]?.type === "item/started" ? outerStart[0].item.id : "";
+
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "subagent_spawned",
+        subagentSessionId: "sub-outer",
+        name: "generalPurpose",
+        task: "Outer",
+        _meta: {
+          cursor: {
+            toolCallId: "call-outer",
+          },
+        },
+      }),
+    );
+
+    const innerStart = harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "call-inner",
+          title: "Task: Inner",
+          kind: "other",
+          status: "in_progress",
+          rawInput: { _toolName: "task" },
+        },
+        "sub-outer",
+      ),
+    );
+    const innerDelegation = innerStart.find(
+      (event) =>
+        event.type === "item/started" && event.item.type === "delegation",
+    );
+    expect(innerDelegation).toMatchObject({
+      type: "item/started",
+      item: {
+        type: "delegation",
+        parentToolCallId: outerId,
+      },
+    });
+    const innerId =
+      innerDelegation?.type === "item/started" ? innerDelegation.item.id : "";
+
+    harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "subagent_spawned",
+          subagentSessionId: "sub-inner",
+          name: "explore",
+          task: "Inner",
+          _meta: {
+            cursor: {
+              toolCallId: "call-inner",
+            },
+          },
+        },
+        "sub-outer",
+      ),
+    );
+
+    const innerMsg = harness.translate(
+      updateEvent(
+        {
+          sessionUpdate: "agent_message_chunk",
+          content: { type: "text", text: "Grandchild output" },
+        },
+        "sub-inner",
+      ),
+    );
+    expect(innerMsg).toContainEqual(
+      expect.objectContaining({
+        type: "item/started",
+        item: expect.objectContaining({
+          type: "agentMessage",
+          parentToolCallId: innerId,
+        }),
+      }),
+    );
   });
 
   it("opens a grok spawn_subagent call as a delegation", () => {

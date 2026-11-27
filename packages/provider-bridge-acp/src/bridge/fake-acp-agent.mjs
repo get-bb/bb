@@ -659,6 +659,75 @@ async function handlePrompt(message) {
     return;
   }
 
+  if (text === "subagent-stream") {
+    const subagentSessionId = "subagent-child-1";
+    notifyUpdate({
+      sessionUpdate: "tool_call",
+      toolCallId: "call-task-1",
+      title: "Task: Inspect workspace",
+      kind: "other",
+      status: "in_progress",
+      rawInput: { _toolName: "task" },
+    });
+    notifyUpdate({
+      sessionUpdate: "subagent_spawned",
+      subagentSessionId,
+      name: "explore",
+      task: "Inspect workspace",
+      _meta: {
+        cursor: {
+          toolCallId: "call-task-1",
+        },
+      },
+    });
+    notifyUpdate(
+      {
+        sessionUpdate: "agent_thought_chunk",
+        content: { type: "text", text: "Checking package files" },
+      },
+      subagentSessionId,
+    );
+    notifyUpdate(
+      {
+        sessionUpdate: "tool_call",
+        toolCallId: "child-read-1",
+        title: "Read package.json",
+        kind: "read",
+        status: "in_progress",
+        locations: [{ path: "/workspace/package.json" }],
+      },
+      subagentSessionId,
+    );
+    notifyUpdate(
+      {
+        sessionUpdate: "tool_call_update",
+        toolCallId: "child-read-1",
+        status: "completed",
+      },
+      subagentSessionId,
+    );
+    notifyUpdate(messageChunk("Found package.json"), subagentSessionId);
+    notifyUpdate({
+      sessionUpdate: "subagent_state_update",
+      subagentSessionId,
+      state: "completed",
+    });
+    notifyUpdate({
+      sessionUpdate: "tool_call_update",
+      toolCallId: "call-task-1",
+      status: "completed",
+      rawOutput: { durationMs: 250, isBackground: false },
+    });
+    notifyUpdate(messageChunk("Subagent done."));
+    activePromptId = null;
+    send({
+      jsonrpc: "2.0",
+      id: message.id,
+      result: { stopReason: "end_turn" },
+    });
+    return;
+  }
+
   if (text === "/compact") {
     // OpenCode treats this exact prompt as a provider-local control.
     const compactMessage = process.env.FAKE_ACP_COMPACT_AGENT_MESSAGE;

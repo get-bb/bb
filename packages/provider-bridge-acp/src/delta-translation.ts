@@ -64,6 +64,8 @@ import {
   acpAgentThoughtChunkUpdateSchema,
   acpCompactionUpdateSchema,
   acpPlanUpdateSchema,
+  acpSubagentSpawnedUpdateSchema,
+  acpSubagentStateUpdateSchema,
   acpToolCallUpdateEventSchema,
   acpUsageUpdateSchema,
   extractAcpContentText,
@@ -163,12 +165,152 @@ function mergeAcpToolCallEvents(
   };
 }
 
+function withParentRef(
+  key: DeltaItemKey,
+  parentRef: string | undefined,
+): DeltaItemKey {
+  return parentRef === undefined ? key : { ...key, parentRef };
+}
+
+interface AcpSubagentCursorMeta {
+  toolCallId?: string;
+  agentId?: string;
+  model?: string;
+}
+
+function readSubagentCursorMeta(meta: unknown): AcpSubagentCursorMeta {
+  if (!isJsonObject(meta)) {
+    return {};
+  }
+  const cursor = meta["cursor"];
+  if (!isJsonObject(cursor)) {
+    return {};
+  }
+  const toolCallId =
+    typeof cursor["toolCallId"] === "string" && cursor["toolCallId"].length > 0
+      ? cursor["toolCallId"]
+      : undefined;
+  const agentId =
+    typeof cursor["agentId"] === "string" && cursor["agentId"].length > 0
+      ? cursor["agentId"]
+      : undefined;
+  const model =
+    typeof cursor["model"] === "string" && cursor["model"].length > 0
+      ? cursor["model"]
+      : undefined;
+  return {
+    ...(toolCallId === undefined ? {} : { toolCallId }),
+    ...(agentId === undefined ? {} : { agentId }),
+    ...(model === undefined ? {} : { model }),
+  };
+}
+
+function firstNonEmptyLine(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  for (const line of value.split(/\r?\n/u)) {
+    const trimmed = line.trim();
+    if (trimmed.length > 0) {
+      return trimmed;
+    }
+  }
+  return undefined;
+}
+
+function cleanTaskToolTitle(title: string | undefined): string | undefined {
+  if (title === undefined) {
+    return undefined;
+  }
+  const stripped = title
+    .trim()
+    .replace(/^Task:\s*/iu, "")
+    .trim();
+  if (
+    stripped.length === 0 ||
+    stripped.toLowerCase() === "task" ||
+    stripped.toLowerCase() === "subagent task"
+  ) {
+    return undefined;
+  }
+  return stripped;
+}
+
+function buildSubagentDetail(
+  name: string | undefined,
+  model: string | undefined,
+): string | undefined {
+  const parts: string[] = [];
+  if (name !== undefined && name.trim().length > 0) {
+    parts.push(name.trim());
+  }
+  if (model !== undefined && model.trim().length > 0) {
+    parts.push(`model ${model.trim()}`);
+  }
+  return parts.length === 0 ? undefined : parts.join(" · ");
+}
+
+function mapSubagentTerminalState(
+  state: string,
+): ThreadEventItemStatus | undefined {
+  switch (state) {
+    case "completed":
+      return "completed";
+    case "cancelled":
+      return "interrupted";
+    case "failed":
+    case "disconnected":
+      return "failed";
+    default:
+      return undefined;
+  }
+}
+
+function isBackgroundTaskToolResult(event: AcpToolCallUpdateEvent): boolean {
+  if (isJsonObject(event.rawOutput)) {
+    if (event.rawOutput["isBackground"] === true) {
+      return true;
+    }
+    if (event.rawOutput["isBackground"] === false) {
+      return false;
+    }
+  }
+  if (isJsonObject(event.rawInput)) {
+    return (
+      event.rawInput["run_in_background"] === true ||
+      event.rawInput["runInBackground"] === true
+    );
+  }
+  return false;
+}
+
 interface AcpOpenToolCall {
   event: AcpToolCallUpdateEvent;
   clientFileWrites?: Extract<AcpToolCallContent, { type: "diff" }>[];
   openedType: DeltaItemShape["type"];
   permissionTitle?: string;
   delegation?: AcpDelegationReport;
+  parentRef?: string;
+}
+
+interface AcpTrackedSubagent {
+  threadId: string;
+  subagentSessionId: string;
+  callId: string;
+  parentRef?: string;
+  childRef: string;
+  label: string;
+  name?: string;
+  model?: string;
+  detail?: string;
+  terminal: boolean;
+  closed: boolean;
+  deferredToolClose?: {
+    event: AcpToolCallUpdateEvent;
+    status: ThreadEventItemStatus;
+    permissionTitle?: string;
+    delegation?: AcpDelegationReport;
+  };
 }
 
 export function createAcpDeltaTranslator(
@@ -177,6 +319,8 @@ export function createAcpDeltaTranslator(
   const dialect = options.dialect ?? GENERIC_ACP_DIALECT;
   const pathOptions = { cwd: options.cwd };
   const mergedToolCalls = new Map<string, AcpOpenToolCall>();
+  const subagentsBySession = new Map<string, AcpTrackedSubagent>();
+  const subagentsByCall = new Map<string, AcpTrackedSubagent>();
   const fileExistence = new Map<string, Map<string, boolean | undefined>>();
   const filesAddedThisTurn = new Set<string>();
 
@@ -255,12 +399,32 @@ export function createAcpDeltaTranslator(
     };
   }
 
+  function sessionKey(
+    context: AcpDeltaTranslationContext | undefined,
+    sessionId: string,
+  ): string {
+    return `${context?.threadId ?? ""} ${sessionId}`;
+  }
+
+  function threadSubagentEntries(
+    context: AcpDeltaTranslationContext | undefined,
+  ): [string, AcpTrackedSubagent][] {
+    const prefix = `${context?.threadId ?? ""} `;
+    return [...subagentsBySession.entries()].filter(([key]) =>
+      key.startsWith(prefix),
+    );
+  }
+
   function clearThreadCalls(
     context: AcpDeltaTranslationContext | undefined,
   ): void {
     for (const [key] of threadCallEntries(context)) {
       mergedToolCalls.delete(key);
       injectedToolBindings.delete(key);
+    }
+    for (const [key, tracked] of threadSubagentEntries(context)) {
+      subagentsBySession.delete(key);
+      subagentsByCall.delete(callKey(context, tracked.callId));
     }
     pendingInjectedCalls.delete(context?.threadId ?? "");
   }
@@ -493,18 +657,18 @@ export function createAcpDeltaTranslator(
     ];
   }
 
-  function closeThoughtStream(): ThreadDelta {
+  function closeThoughtStream(parentRef?: string): ThreadDelta {
     return {
       kind: "item.textClose",
-      key: { channel: THOUGHT_STREAM_KEY },
+      key: withParentRef({ channel: THOUGHT_STREAM_KEY }, parentRef),
       channel: "reasoningText",
     };
   }
 
-  function closeAssistantStream(): ThreadDelta {
+  function closeAssistantStream(parentRef?: string): ThreadDelta {
     return {
       kind: "item.textClose",
-      key: { channel: ASSISTANT_STREAM_KEY },
+      key: withParentRef({ channel: ASSISTANT_STREAM_KEY }, parentRef),
       channel: "agentMessage",
     };
   }
@@ -515,6 +679,7 @@ export function createAcpDeltaTranslator(
     status: ThreadEventItemStatus;
     permissionTitle?: string | undefined;
     delegation?: AcpDelegationReport | undefined;
+    parentRef?: string | undefined;
     noTurnFallback?: DeltaNoTurnFallback;
   }
 
@@ -570,9 +735,12 @@ export function createAcpDeltaTranslator(
         : genericCloseFields(args.event);
     return {
       kind: "item.close",
-      key: {
-        providerItemId: args.event.toolCallId,
-      },
+      key: withParentRef(
+        {
+          providerItemId: args.event.toolCallId,
+        },
+        args.parentRef,
+      ),
       status: args.status,
       ...closeFields,
       item: classified.item,
@@ -611,13 +779,104 @@ export function createAcpDeltaTranslator(
     return outputText === undefined ? {} : { resultText: outputText };
   }
 
-  function drainOpenToolCalls(
+  function delegationReportForSubagent(
+    tracked: AcpTrackedSubagent,
+  ): AcpDelegationReport {
+    return {
+      toolCallId: tracked.callId,
+      childRef: tracked.childRef,
+      label: tracked.label,
+      ...(tracked.detail === undefined ? {} : { detail: tracked.detail }),
+    };
+  }
+
+  function closeTrackedSubagentDelegation(
     context: AcpDeltaTranslationContext | undefined,
+    tracked: AcpTrackedSubagent,
     status: ThreadEventItemStatus,
+    noTurnFallback?: DeltaNoTurnFallback,
   ): ThreadDelta[] {
-    const deltas: ThreadDelta[] = [];
-    for (const [key, open] of threadCallEntries(context)) {
+    if (tracked.closed) {
+      return [];
+    }
+    tracked.closed = true;
+    const key = callKey(context, tracked.callId);
+    const open = mergedToolCalls.get(key);
+    if (open !== undefined) {
       mergedToolCalls.delete(key);
+    }
+    const deferred = tracked.deferredToolClose;
+    tracked.deferredToolClose = undefined;
+    const report = delegationReportForSubagent(tracked);
+    const event = deferred?.event ?? open?.event;
+    if (event !== undefined) {
+      return [
+        toolCallClose({
+          context,
+          event,
+          status,
+          permissionTitle: deferred?.permissionTitle ?? open?.permissionTitle,
+          delegation: report,
+          parentRef: open?.parentRef ?? tracked.parentRef,
+          ...(noTurnFallback === undefined ? {} : { noTurnFallback }),
+        }),
+      ];
+    }
+    return [
+      {
+        kind: "item.close",
+        key: withParentRef(
+          { providerItemId: tracked.callId },
+          tracked.parentRef,
+        ),
+        status,
+        item: {
+          type: "delegation",
+          childRef: tracked.childRef,
+          label: tracked.label,
+          background: false,
+        },
+        presentation: delegationPresentation({
+          label: tracked.label,
+          ...(tracked.detail === undefined ? {} : { detail: tracked.detail }),
+        }),
+        ...(noTurnFallback === undefined ? {} : { noTurnFallback }),
+      },
+    ];
+  }
+
+  function flushSubagentChildWork(
+    context: AcpDeltaTranslationContext | undefined,
+    parentCallId: string,
+    status: ThreadEventItemStatus,
+    visited = new Set<string>(),
+  ): ThreadDelta[] {
+    if (visited.has(parentCallId)) {
+      return [];
+    }
+    visited.add(parentCallId);
+    const deltas: ThreadDelta[] = [];
+    for (const [, nested] of threadSubagentEntries(context)) {
+      if (nested.parentRef === parentCallId && !nested.closed) {
+        deltas.push(
+          ...flushSubagentChildWork(context, nested.callId, status, visited),
+          ...closeTrackedSubagentDelegation(context, nested, status),
+        );
+      }
+    }
+    deltas.push(
+      closeThoughtStream(parentCallId),
+      closeAssistantStream(parentCallId),
+    );
+    for (const [key, open] of threadCallEntries(context)) {
+      if (open.parentRef !== parentCallId) {
+        continue;
+      }
+      mergedToolCalls.delete(key);
+      const tracked = subagentsByCall.get(key);
+      if (tracked !== undefined) {
+        tracked.closed = true;
+      }
       deltas.push(
         toolCallClose({
           context,
@@ -625,8 +884,54 @@ export function createAcpDeltaTranslator(
           status,
           permissionTitle: open.permissionTitle,
           delegation: open.delegation,
+          parentRef: open.parentRef,
         }),
       );
+    }
+    return deltas;
+  }
+
+  function drainOpenToolCalls(
+    context: AcpDeltaTranslationContext | undefined,
+    status: ThreadEventItemStatus,
+  ): ThreadDelta[] {
+    const deltas: ThreadDelta[] = [];
+    const entries = threadCallEntries(context);
+    const ordered = [
+      ...entries.filter(([, open]) => open.parentRef !== undefined),
+      ...entries.filter(([, open]) => open.parentRef === undefined),
+    ];
+    for (const [key, open] of ordered) {
+      if (!mergedToolCalls.has(key)) {
+        continue;
+      }
+      mergedToolCalls.delete(key);
+      const tracked = subagentsByCall.get(key);
+      if (tracked !== undefined && !tracked.closed) {
+        deltas.push(...flushSubagentChildWork(context, tracked.callId, status));
+        tracked.closed = true;
+      }
+      deltas.push(
+        toolCallClose({
+          context,
+          event: open.event,
+          status,
+          permissionTitle: open.permissionTitle,
+          delegation:
+            tracked !== undefined
+              ? delegationReportForSubagent(tracked)
+              : open.delegation,
+          parentRef: open.parentRef,
+        }),
+      );
+    }
+    for (const [, tracked] of threadSubagentEntries(context)) {
+      if (!tracked.closed) {
+        deltas.push(
+          ...flushSubagentChildWork(context, tracked.callId, status),
+          ...closeTrackedSubagentDelegation(context, tracked, status),
+        );
+      }
     }
     return deltas;
   }
@@ -635,7 +940,20 @@ export function createAcpDeltaTranslator(
     context: AcpDeltaTranslationContext | undefined,
     status: ThreadEventItemStatus,
   ): ThreadDelta[] {
+    const subagentStreamCloses: ThreadDelta[] = [];
+    const closedParents = new Set<string>();
+    for (const [, tracked] of threadSubagentEntries(context)) {
+      if (closedParents.has(tracked.callId)) {
+        continue;
+      }
+      closedParents.add(tracked.callId);
+      subagentStreamCloses.push(
+        closeThoughtStream(tracked.callId),
+        closeAssistantStream(tracked.callId),
+      );
+    }
     return [
+      ...subagentStreamCloses,
       closeThoughtStream(),
       closeAssistantStream(),
       ...drainOpenToolCalls(context, status),
@@ -724,10 +1042,117 @@ export function createAcpDeltaTranslator(
   function translateUpdate(
     update: AcpSessionUpdate,
     context: AcpDeltaTranslationContext | undefined,
+    sessionId?: string,
   ): ThreadDelta[] {
     const rawEvent = updateEnvelope(context, update);
+    const parentRef =
+      sessionId === undefined
+        ? undefined
+        : subagentsBySession.get(sessionKey(context, sessionId))?.callId;
 
     switch (update.sessionUpdate) {
+      case "subagent_spawned": {
+        const parsed = acpSubagentSpawnedUpdateSchema.safeParse(update);
+        if (!parsed.success) {
+          return suppressedUnhandled(rawEvent);
+        }
+        const { subagentSessionId, name, task, _meta } = parsed.data;
+        const meta = readSubagentCursorMeta(_meta);
+        const callId = meta.toolCallId ?? `subagent:${subagentSessionId}`;
+        const key = callKey(context, callId);
+        const open = mergedToolCalls.get(key);
+        const childRef =
+          meta.agentId ?? open?.delegation?.childRef ?? subagentSessionId;
+        const label =
+          open?.delegation?.label ??
+          cleanTaskToolTitle(open?.event.title) ??
+          firstNonEmptyLine(task) ??
+          name ??
+          "Subagent task";
+        const detail =
+          buildSubagentDetail(name, meta.model) ?? open?.delegation?.detail;
+        const effectiveParentRef = open?.parentRef ?? parentRef;
+        const tracked: AcpTrackedSubagent = {
+          threadId: context?.threadId ?? "",
+          subagentSessionId,
+          callId,
+          ...(effectiveParentRef === undefined
+            ? {}
+            : { parentRef: effectiveParentRef }),
+          childRef,
+          label,
+          ...(name === undefined ? {} : { name }),
+          ...(meta.model === undefined ? {} : { model: meta.model }),
+          ...(detail === undefined ? {} : { detail }),
+          terminal: false,
+          closed: false,
+        };
+        subagentsBySession.set(sessionKey(context, subagentSessionId), tracked);
+        subagentsByCall.set(key, tracked);
+        const report = delegationReportForSubagent(tracked);
+        if (open !== undefined) {
+          mergedToolCalls.set(key, {
+            ...open,
+            delegation: report,
+            ...(effectiveParentRef === undefined
+              ? {}
+              : { parentRef: effectiveParentRef }),
+          });
+        }
+        const flush =
+          open === undefined
+            ? [
+                closeThoughtStream(effectiveParentRef),
+                closeAssistantStream(effectiveParentRef),
+              ]
+            : [];
+        return [
+          ...flush,
+          {
+            kind: "item.open",
+            key: withParentRef({ providerItemId: callId }, effectiveParentRef),
+            item: {
+              type: "delegation",
+              childRef,
+              label,
+              background: false,
+            },
+            presentation: delegationPresentation({
+              label,
+              ...(detail === undefined ? {} : { detail }),
+            }),
+            noTurnFallback: noTurnFallbackFor(rawEvent),
+          },
+        ];
+      }
+
+      case "subagent_state_update": {
+        const parsed = acpSubagentStateUpdateSchema.safeParse(update);
+        if (!parsed.success) {
+          return suppressedUnhandled(rawEvent);
+        }
+        const tracked = subagentsBySession.get(
+          sessionKey(context, parsed.data.subagentSessionId),
+        );
+        if (tracked === undefined) {
+          return [];
+        }
+        const status = mapSubagentTerminalState(parsed.data.state);
+        if (status === undefined) {
+          return [];
+        }
+        tracked.terminal = true;
+        return [
+          ...flushSubagentChildWork(context, tracked.callId, status),
+          ...closeTrackedSubagentDelegation(
+            context,
+            tracked,
+            status,
+            noTurnFallbackFor(rawEvent),
+          ),
+        ];
+      }
+
       case "agent_message_chunk": {
         const parsed = acpAgentMessageChunkUpdateSchema.safeParse(update);
         const text = parsed.success
@@ -737,10 +1162,10 @@ export function createAcpDeltaTranslator(
           return suppressedUnhandled(rawEvent);
         }
         return [
-          closeThoughtStream(),
+          closeThoughtStream(parentRef),
           {
             kind: "item.textDelta",
-            key: { channel: ASSISTANT_STREAM_KEY },
+            key: withParentRef({ channel: ASSISTANT_STREAM_KEY }, parentRef),
             channel: "agentMessage",
             text,
             noTurnFallback: noTurnFallbackFor(rawEvent),
@@ -759,7 +1184,7 @@ export function createAcpDeltaTranslator(
         return [
           {
             kind: "item.textDelta",
-            key: { channel: THOUGHT_STREAM_KEY },
+            key: withParentRef({ channel: THOUGHT_STREAM_KEY }, parentRef),
             channel: "reasoningText",
             text,
             noTurnFallback: noTurnFallbackFor(rawEvent),
@@ -773,7 +1198,10 @@ export function createAcpDeltaTranslator(
           return suppressedUnhandled(rawEvent);
         }
         const event = withDialectIdentity(parsed.data);
-        const flush = [closeThoughtStream(), closeAssistantStream()];
+        const flush = [
+          closeThoughtStream(parentRef),
+          closeAssistantStream(parentRef),
+        ];
         const announcedKey = callKey(context, event.toolCallId);
         const bound = bindAnnouncedCall(context, event);
         if (bound !== undefined) {
@@ -787,24 +1215,31 @@ export function createAcpDeltaTranslator(
               context,
               event,
               status: mapAcpToolCallStatus(event.status),
+              parentRef,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
         }
         const classified = classifyCall(context, event);
+        const existingTracked = subagentsByCall.get(announcedKey);
+        const delegation =
+          existingTracked !== undefined
+            ? delegationReportForSubagent(existingTracked)
+            : undefined;
+        const finalClassified = withDelegationReport(classified, delegation);
         mergedToolCalls.set(announcedKey, {
           event,
-          openedType: classified.item.type,
+          openedType: finalClassified.item.type,
+          ...(delegation === undefined ? {} : { delegation }),
+          ...(parentRef === undefined ? {} : { parentRef }),
         });
         return [
           ...flush,
           {
             kind: "item.open",
-            key: {
-              providerItemId: event.toolCallId,
-            },
-            item: classified.item,
-            presentation: classified.presentation,
+            key: withParentRef({ providerItemId: event.toolCallId }, parentRef),
+            item: finalClassified.item,
+            presentation: finalClassified.presentation,
             noTurnFallback: noTurnFallbackFor(rawEvent),
           },
         ];
@@ -818,12 +1253,67 @@ export function createAcpDeltaTranslator(
         const event = withDialectIdentity(parsed.data);
         const key = callKey(context, event.toolCallId);
         const open = mergedToolCalls.get(key);
+        const effectiveParentRef = open?.parentRef ?? parentRef;
         const merged = withClientFileWrites(
           mergeAcpToolCallEvents(open?.event, event),
           open?.clientFileWrites ?? [],
         );
         noteEditedPaths(key, merged);
         if (isTerminalAcpStatus(merged.status)) {
+          const tracked = subagentsByCall.get(key);
+          if (tracked !== undefined) {
+            if (tracked.closed) {
+              mergedToolCalls.delete(key);
+              return [];
+            }
+            if (!tracked.terminal && isBackgroundTaskToolResult(merged)) {
+              tracked.deferredToolClose = {
+                event: merged,
+                status: mapAcpToolCallStatus(merged.status),
+                ...(open?.permissionTitle === undefined
+                  ? {}
+                  : { permissionTitle: open.permissionTitle }),
+                ...(open?.delegation === undefined
+                  ? {}
+                  : { delegation: open.delegation }),
+              };
+              mergedToolCalls.set(key, {
+                event: merged,
+                openedType: open?.openedType ?? "delegation",
+                ...(open?.permissionTitle === undefined
+                  ? {}
+                  : { permissionTitle: open.permissionTitle }),
+                delegation: delegationReportForSubagent(tracked),
+                ...(open?.clientFileWrites === undefined
+                  ? {}
+                  : { clientFileWrites: open.clientFileWrites }),
+                ...(effectiveParentRef === undefined
+                  ? {}
+                  : { parentRef: effectiveParentRef }),
+              });
+              return [];
+            }
+            const status = mapAcpToolCallStatus(merged.status);
+            const flushed = flushSubagentChildWork(
+              context,
+              tracked.callId,
+              status,
+            );
+            tracked.closed = true;
+            mergedToolCalls.delete(key);
+            return [
+              ...flushed,
+              toolCallClose({
+                context,
+                event: merged,
+                status,
+                permissionTitle: open?.permissionTitle,
+                delegation: delegationReportForSubagent(tracked),
+                parentRef: effectiveParentRef,
+                noTurnFallback: noTurnFallbackFor(rawEvent),
+              }),
+            ];
+          }
           mergedToolCalls.delete(key);
           return [
             toolCallClose({
@@ -832,6 +1322,7 @@ export function createAcpDeltaTranslator(
               status: mapAcpToolCallStatus(merged.status),
               permissionTitle: open?.permissionTitle,
               delegation: open?.delegation,
+              parentRef: effectiveParentRef,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             }),
           ];
@@ -849,7 +1340,10 @@ export function createAcpDeltaTranslator(
         ) {
           refreshed.push({
             kind: "item.open",
-            key: { providerItemId: event.toolCallId },
+            key: withParentRef(
+              { providerItemId: event.toolCallId },
+              effectiveParentRef,
+            ),
             item: classified.item,
             presentation: classified.presentation,
             noTurnFallback: noTurnFallbackFor(rawEvent),
@@ -867,6 +1361,9 @@ export function createAcpDeltaTranslator(
           ...(open?.clientFileWrites === undefined
             ? {}
             : { clientFileWrites: open.clientFileWrites }),
+          ...(effectiveParentRef === undefined
+            ? {}
+            : { parentRef: effectiveParentRef }),
         });
         if (
           event.status === "in_progress" &&
@@ -885,7 +1382,10 @@ export function createAcpDeltaTranslator(
             ...refreshed,
             {
               kind: "command.outputSnapshot",
-              key: { providerItemId: event.toolCallId },
+              key: withParentRef(
+                { providerItemId: event.toolCallId },
+                effectiveParentRef,
+              ),
               text: streamed,
             },
           ];
@@ -902,9 +1402,12 @@ export function createAcpDeltaTranslator(
           return [
             {
               kind: "item.progress",
-              key: {
-                providerItemId: event.toolCallId,
-              },
+              key: withParentRef(
+                {
+                  providerItemId: event.toolCallId,
+                },
+                effectiveParentRef,
+              ),
               message: progressText,
               noTurnFallback: noTurnFallbackFor(rawEvent),
             },
@@ -931,7 +1434,7 @@ export function createAcpDeltaTranslator(
         return [
           {
             kind: "item.close",
-            key: { channel: PLAN_STEPS_CHANNEL },
+            key: withParentRef({ channel: PLAN_STEPS_CHANNEL }, parentRef),
             status: "completed",
             item: { type: "planSteps", steps },
             presentation: planStepsPresentation(steps),
@@ -941,6 +1444,9 @@ export function createAcpDeltaTranslator(
       }
 
       case "usage_update": {
+        if (parentRef !== undefined) {
+          return [];
+        }
         const parsed = acpUsageUpdateSchema.safeParse(update);
         if (!parsed.success) {
           return [];
@@ -962,9 +1468,15 @@ export function createAcpDeltaTranslator(
       }
 
       case "compaction_update":
+        if (parentRef !== undefined) {
+          return [];
+        }
         return translateCompactionUpdate(update, context, rawEvent);
 
       case "session_info_update": {
+        if (parentRef !== undefined) {
+          return [];
+        }
         const title = isJsonObject(update) ? update["title"] : undefined;
         if (
           typeof title !== "string" ||
@@ -1174,7 +1686,11 @@ export function createAcpDeltaTranslator(
         if (!params.success) {
           return [];
         }
-        return translateUpdate(params.data.update, context);
+        return translateUpdate(
+          params.data.update,
+          context,
+          params.data.sessionId,
+        );
       }
 
       case ACP_FS_WRITE_METHOD: {
@@ -1312,27 +1828,77 @@ export function createAcpDeltaTranslator(
     const context = { threadId };
     const key = callKey(context, report.toolCallId);
     const open = mergedToolCalls.get(key);
-    if (open === undefined) {
+    const tracked = subagentsByCall.get(key);
+    if (open === undefined && (tracked === undefined || tracked.closed)) {
       return [];
     }
-    const classified = classifyCall(context, open.event);
-    if (classified.item.type !== "delegation") {
-      return [];
-    }
-    const item: DeltaItemShape = {
-      ...classified.item,
+    const mergedDetail =
+      tracked?.name !== undefined
+        ? buildSubagentDetail(
+            tracked.name,
+            report.detail?.replace(/^model\s+/u, "") ?? tracked.model,
+          )
+        : (report.detail ?? tracked?.detail);
+    const mergedReport: AcpDelegationReport = {
+      toolCallId: report.toolCallId,
       childRef: report.childRef,
       label: report.label,
+      ...(mergedDetail === undefined ? {} : { detail: mergedDetail }),
     };
-    mergedToolCalls.set(key, { ...open, delegation: report });
+    if (tracked !== undefined) {
+      tracked.childRef = mergedReport.childRef;
+      tracked.label = mergedReport.label;
+      if (mergedDetail !== undefined) {
+        tracked.detail = mergedDetail;
+      }
+    }
+    if (open !== undefined) {
+      const classified = classifyCall(context, open.event);
+      if (classified.item.type !== "delegation") {
+        return [];
+      }
+      const item: DeltaItemShape = {
+        ...classified.item,
+        childRef: mergedReport.childRef,
+        label: mergedReport.label,
+      };
+      mergedToolCalls.set(key, { ...open, delegation: mergedReport });
+      return [
+        {
+          kind: "item.open",
+          key: withParentRef(
+            { providerItemId: report.toolCallId },
+            open.parentRef,
+          ),
+          item,
+          presentation: delegationPresentation({
+            label: mergedReport.label,
+            ...(mergedReport.detail === undefined
+              ? {}
+              : { detail: mergedReport.detail }),
+          }),
+        },
+      ];
+    }
+    if (tracked === undefined) {
+      return [];
+    }
     return [
       {
         kind: "item.open",
-        key: { providerItemId: report.toolCallId },
-        item,
+        key: withParentRef(
+          { providerItemId: tracked.callId },
+          tracked.parentRef,
+        ),
+        item: {
+          type: "delegation",
+          childRef: tracked.childRef,
+          label: tracked.label,
+          background: false,
+        },
         presentation: delegationPresentation({
-          label: report.label,
-          ...(report.detail === undefined ? {} : { detail: report.detail }),
+          label: tracked.label,
+          ...(tracked.detail === undefined ? {} : { detail: tracked.detail }),
         }),
       },
     ];

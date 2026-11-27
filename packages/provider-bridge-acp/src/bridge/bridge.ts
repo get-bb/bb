@@ -125,6 +125,7 @@ import {
   acpSessionNotificationParamsSchema,
   acpAgentMessageChunkUpdateSchema,
   acpCompactionUpdateSchema,
+  acpSubagentSpawnedUpdateSchema,
   extractAcpContentText,
   readOpenCodeCompactionUpdate,
   acpUsageUpdateSchema,
@@ -253,6 +254,7 @@ interface AcpThreadSession {
   deferStartEmit: AcpDeferredStartEmitter | undefined;
   awaitingFirstPrompt: boolean;
   turnOutputCount: number;
+  subagentSessions: Set<string>;
 }
 
 type AcpDeferredStartEmitter = (
@@ -2535,6 +2537,7 @@ async function startAgentSession(
     cursorMcpApproval: undefined,
     deferStartEmit: emitStartNotification,
     awaitingFirstPrompt: true,
+    subagentSessions: new Set(),
   };
   sessionsByBbThreadId.set(bbThreadId, session);
 
@@ -2543,6 +2546,7 @@ async function startAgentSession(
       parameterizedModelPicker: params.parameterizedModelPicker,
       fsAccess: true,
       elicitation: true,
+      subagents: dialect.id === "cursor",
     });
     session.capabilities = capabilities;
     await authenticateAcpAgent({
@@ -3100,6 +3104,7 @@ function emitSessionUpdate(
   session: AcpThreadSession,
   update: unknown,
   rawUpdate: unknown,
+  subagentSessionId?: string,
 ): void {
   const turnOutput = isTurnOutputUpdate(update);
   if (
@@ -3109,19 +3114,25 @@ function emitSessionUpdate(
   ) {
     return;
   }
-  const events = session.model.applySessionUpdate(rawUpdate);
-  publishSessionStateEvents(session, events);
+  if (subagentSessionId === undefined) {
+    const events = session.model.applySessionUpdate(rawUpdate);
+    publishSessionStateEvents(session, events);
+    if (session.activePromptKind === null && startsAgentWork(events)) {
+      openAgentTurn(session);
+    }
+  }
   session.agentUpdateCount += 1;
   if (turnOutput) {
     session.turnOutputCount += 1;
   }
-  if (session.activePromptKind === null && startsAgentWork(events)) {
-    openAgentTurn(session);
-  } else if (session.activePromptKind === "agent") {
+  if (session.activePromptKind === "agent") {
     armAgentTurnQuietTimer(session);
   }
   emitForSession(session, ACP_UPDATE_METHOD, {
     threadId: session.bbThreadId,
+    ...(subagentSessionId === undefined
+      ? {}
+      : { sessionId: subagentSessionId }),
     update,
   });
 }
@@ -3131,6 +3142,7 @@ async function releaseSession(session: AcpThreadSession): Promise<void> {
     return;
   }
   session.stopping = true;
+  session.subagentSessions.clear();
   clearAgentTurnQuietTimer(session);
   dropQueuedTurnInputs(
     session,
@@ -3267,6 +3279,8 @@ const TURN_OUTPUT_UPDATE_KINDS = new Set([
   "tool_call_update",
   "plan",
   "compaction_update",
+  "subagent_spawned",
+  "subagent_state_update",
 ]);
 
 function isTurnOutputUpdate(update: unknown): boolean {
@@ -3789,7 +3803,27 @@ function handleAgentNotification(
     );
     return;
   }
-  if (parsed.data.sessionId !== session.providerThreadId) {
+  const isRootSession = parsed.data.sessionId === session.providerThreadId;
+  const isSubagentSession =
+    !isRootSession && session.subagentSessions.has(parsed.data.sessionId);
+  if (!isRootSession && !isSubagentSession) {
+    return;
+  }
+  if (parsed.data.update.sessionUpdate === "subagent_spawned") {
+    const spawned = acpSubagentSpawnedUpdateSchema.safeParse(
+      parsed.data.update,
+    );
+    if (spawned.success) {
+      session.subagentSessions.add(spawned.data.subagentSessionId);
+    }
+  }
+  if (isSubagentSession) {
+    emitSessionUpdate(
+      session,
+      parsed.data.update,
+      rawUpdate,
+      parsed.data.sessionId,
+    );
     return;
   }
   if (parsed.data.update.sessionUpdate === "config_option_update") {

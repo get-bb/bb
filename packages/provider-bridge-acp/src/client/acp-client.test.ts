@@ -381,6 +381,7 @@ describe("agent capabilities", () => {
         delete: false,
         fork: false,
         additionalDirectories: false,
+        subagents: false,
       },
       logout: false,
       authMethods: [
@@ -401,6 +402,15 @@ describe("agent capabilities", () => {
       ],
       meta: { "x.ai/fs_notify": true },
     });
+
+    expect(
+      readAcpAgentCapabilities({
+        protocolVersion: 1,
+        agentCapabilities: {
+          sessionCapabilities: { subagents: {} },
+        },
+      }).session.subagents,
+    ).toBe(true);
   });
 
   it("refuses an agent that answers in another protocol generation", () => {
