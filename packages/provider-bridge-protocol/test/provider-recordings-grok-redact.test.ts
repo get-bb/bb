@@ -1307,4 +1307,72 @@ describe("Grok recording redaction", () => {
       redacted,
     );
   });
+
+  it("redacts delegation result text except synthetic fixtures", () => {
+    const root = tempRoot();
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const second = join(root, "second");
+    const close = (childRef: string, resultText: string) => ({
+      kind: "item.close",
+      key: { providerItemId: `spawn-${childRef}` },
+      status: "completed",
+      resultText,
+      item: {
+        type: "delegation",
+        childRef,
+        label: "CHILD",
+        background: true,
+      },
+    });
+    const betaResult = JSON.stringify({ type: "Text", text: "BETA_DONE" });
+    const spawnResult = JSON.stringify({
+      type: "Text",
+      text: "Subagent started in background.\nsubagent_id: child-alpha\ndescription: CHILD_ALPHA",
+    });
+    writeRecording(input, [
+      {
+        jsonrpc: "2.0",
+        method: "thread/delta",
+        params: {
+          threadId: "grok-subagents",
+          deltas: [
+            close("child-beta", betaResult),
+            close("child-alpha", spawnResult),
+            close(
+              "child-gamma",
+              JSON.stringify({
+                type: "Text",
+                text: "private child analysis of the repository",
+              }),
+            ),
+            close("child-delta", "private plain child result"),
+          ],
+        },
+      },
+    ]);
+    const stdout = redact(input, output);
+    expect(stdout).toContain("0 survivors");
+    expect(readMessages(output)).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          deltas: [
+            expect.objectContaining({ resultText: betaResult }),
+            expect.objectContaining({ resultText: spawnResult }),
+            expect.objectContaining({ resultText: "REDACTED_TEXT" }),
+            expect.objectContaining({ resultText: "REDACTED_TEXT" }),
+          ],
+        }),
+      }),
+    ]);
+    const redacted = readFileSync(
+      join(output, "provider→bridge.ndjson"),
+      "utf8",
+    );
+    expect(redacted).not.toContain("private");
+    redact(output, second);
+    expect(readFileSync(join(second, "provider→bridge.ndjson"), "utf8")).toBe(
+      redacted,
+    );
+  });
 });

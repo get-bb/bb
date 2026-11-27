@@ -1261,7 +1261,11 @@ function seedHistoryUserRequest(
 
 function seedConversationForkSource(
   harness: TestAppHarness,
-  args: { providerId?: string; runningThirdTurn?: boolean } = {},
+  args: {
+    backfillTurnOneCheckpoint?: boolean;
+    providerId?: string;
+    runningThirdTurn?: boolean;
+  } = {},
 ) {
   const { host } = seedHostSession(harness.deps);
   const { project } = seedProjectWithSource(harness.deps, {
@@ -1329,7 +1333,9 @@ function seedConversationForkSource(
     data: {
       providerThreadId: HISTORY_PROVIDER_THREAD_ID,
       status: "completed",
-      providerCheckpointId: "checkpoint-after-turn-1",
+      ...(args.backfillTurnOneCheckpoint === true
+        ? {}
+        : { providerCheckpointId: "checkpoint-after-turn-1" }),
     },
   });
   seedTurnStarted(harness.deps, { ...base, sequence: 8, turnId: "turn-2" });
@@ -1364,6 +1370,20 @@ function seedConversationForkSource(
       providerCheckpointId: "checkpoint-after-turn-2",
     },
   });
+  if (args.backfillTurnOneCheckpoint === true) {
+    seedEvent(harness.deps, {
+      ...base,
+      sequence: 12,
+      type: "turn/completed",
+      scope: turnScope("turn-1"),
+      data: {
+        providerThreadId: HISTORY_PROVIDER_THREAD_ID,
+        status: "completed",
+        providerCheckpointId: "checkpoint-after-turn-1",
+      },
+    });
+    return { environment, sourceThread };
+  }
   if (args.runningThirdTurn === false) {
     return { environment, sourceThread };
   }
@@ -1540,6 +1560,46 @@ describe("fork branch point and inherited history", () => {
         forkEvents.filter((event) => event.type === "thread/identity"),
       ).toHaveLength(0);
       expect(forkEvents.at(5)?.type).toBe("client/turn/requested");
+    });
+  });
+
+  it("forks at a backfilled checkpoint without moving the turn's completion boundary", async () => {
+    await withTestHarness(async (harness) => {
+      const { sourceThread } = seedConversationForkSource(harness, {
+        backfillTurnOneCheckpoint: true,
+      });
+
+      const response = await postFork(harness, {
+        sourceThreadId: sourceThread.id,
+        sourceSeqEnd: 5,
+      });
+
+      expect(response.status).toBe(201);
+      const fork = threadResponseSchema.parse(await readJson(response));
+      const start = await waitForForkStart(harness, fork.id);
+      expect(start.fork?.sourceProviderCheckpointId).toBe(
+        "checkpoint-after-turn-1",
+      );
+      expect(await readConversationTexts(harness, fork.id)).toEqual([
+        "Reply only with ok.",
+        "ok",
+      ]);
+      const forkEvents = listEvents(harness.db, { threadId: fork.id });
+      expect(
+        forkEvents
+          .filter((event) => event.sequence <= 5)
+          .map((event) => event.type),
+      ).toEqual([
+        "client/turn/requested",
+        "turn/started",
+        "turn/input/accepted",
+        "item/completed",
+        "turn/completed",
+      ]);
+      expect(forkEvents.at(5)?.type).toBe("client/turn/requested");
+      expect(
+        forkEvents.filter((event) => event.type === "turn/completed"),
+      ).toHaveLength(1);
     });
   });
 

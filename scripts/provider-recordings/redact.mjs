@@ -390,7 +390,11 @@ function redactGrokAcceptedAnswers(result, redactedResult) {
   if (!isRecord(result) || !isRecord(redactedResult)) return;
   if (result.outcome !== "accepted") return;
   if (!isRecord(result.answers) && !isRecord(result.annotations)) return;
-  rewriteRedactedKeys(result.answers, redactedResult.answers, redactAnswerValue);
+  rewriteRedactedKeys(
+    result.answers,
+    redactedResult.answers,
+    redactAnswerValue,
+  );
   rewriteRedactedKeys(
     result.annotations,
     redactedResult.annotations,
@@ -401,7 +405,11 @@ function redactGrokAcceptedAnswers(result, redactedResult) {
 function redactPlanApproval(payload, redactedPayload) {
   const subject = payload.subject;
   const redactedSubject = redactedPayload.subject;
-  if (!isRecord(subject) || subject.kind !== "plan" || !isRecord(redactedSubject)) {
+  if (
+    !isRecord(subject) ||
+    subject.kind !== "plan" ||
+    !isRecord(redactedSubject)
+  ) {
     return;
   }
   if (typeof subject.plan === "string") {
@@ -416,10 +424,58 @@ function redactSyntheticSubagentText(value, allowed) {
   return allowed.has(value) ? value : "REDACTED_TEXT";
 }
 
+function isSyntheticDelegationResultText(value) {
+  let decoded;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    return false;
+  }
+  return (
+    isRecord(decoded) &&
+    Object.keys(decoded).length === 2 &&
+    decoded.type === "Text" &&
+    typeof decoded.text === "string" &&
+    (GROK_SYNTHETIC_SUBAGENT_OUTPUTS.has(decoded.text) ||
+      GROK_SYNTHETIC_SUBAGENT_ERRORS.has(decoded.text) ||
+      GROK_SYNTHETIC_SPAWN_RESULTS.has(decoded.text))
+  );
+}
+
+function redactDelegationResultTexts(params, redactedParams) {
+  if (!Array.isArray(params.deltas) || !Array.isArray(redactedParams.deltas)) {
+    return;
+  }
+  for (let index = 0; index < params.deltas.length; index += 1) {
+    const delta = params.deltas[index];
+    const redactedDelta = redactedParams.deltas[index];
+    if (
+      !isRecord(delta) ||
+      !isRecord(redactedDelta) ||
+      delta.kind !== "item.close" ||
+      !isRecord(delta.item) ||
+      delta.item.type !== "delegation" ||
+      typeof delta.resultText !== "string"
+    ) {
+      continue;
+    }
+    redactedDelta.resultText = isSyntheticDelegationResultText(delta.resultText)
+      ? delta.resultText
+      : "REDACTED_TEXT";
+  }
+}
+
 function redactGrokSubagentPayloads(parsed, redacted) {
   if (!isRecord(parsed) || !isRecord(redacted)) return;
   const params = parsed.params;
   const redactedParams = redacted.params;
+  if (
+    parsed.method === "thread/delta" &&
+    isRecord(params) &&
+    isRecord(redactedParams)
+  ) {
+    redactDelegationResultTexts(params, redactedParams);
+  }
   if (isRecord(params) && isRecord(redactedParams)) {
     const update = params.update;
     const redactedUpdate = redactedParams.update;

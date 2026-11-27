@@ -40,22 +40,49 @@ interface StoredTurnCompletion {
   sequence: number;
 }
 
+function isTurnCheckpointBackfill(
+  boundary: StoredTurnCompletion,
+  event: Extract<ThreadEvent, { type: "turn/completed" }>,
+): boolean {
+  return (
+    boundary.event.status === "completed" &&
+    event.status === "completed" &&
+    event.providerCheckpointId !== undefined
+  );
+}
+
 function readTurnCompletion(
   deps: Pick<AppDeps, "db">,
   args: { threadId: string; turnId: string },
 ): StoredTurnCompletion | null {
-  const row = listStoredTurnCompletedRowsByTurnIds(deps.db, {
+  const rows = listStoredTurnCompletedRowsByTurnIds(deps.db, {
     threadId: args.threadId,
     turnIds: [args.turnId],
-  }).at(-1);
-  if (row === undefined) {
-    return null;
+  });
+  let completion: StoredTurnCompletion | null = null;
+  let backfilledCheckpointId: string | undefined;
+  for (const row of rows) {
+    const event = parseStoredEvent(row);
+    if (event.type !== "turn/completed") {
+      throw new Error(`Expected turn/completed event #${row.sequence}`);
+    }
+    if (completion !== null && isTurnCheckpointBackfill(completion, event)) {
+      backfilledCheckpointId = event.providerCheckpointId;
+      continue;
+    }
+    completion = { event, sequence: row.sequence };
+    backfilledCheckpointId = undefined;
   }
-  const event = parseStoredEvent(row);
-  if (event.type !== "turn/completed") {
-    throw new Error(`Expected turn/completed event #${row.sequence}`);
+  if (completion === null || backfilledCheckpointId === undefined) {
+    return completion;
   }
-  return { event, sequence: row.sequence };
+  return {
+    event: {
+      ...completion.event,
+      providerCheckpointId: backfilledCheckpointId,
+    },
+    sequence: completion.sequence,
+  };
 }
 
 function classifyCompletionSession(

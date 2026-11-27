@@ -147,6 +147,7 @@
       "status": "required",
       "error": "optional",
       "providerCheckpointId": "optional",
+      "priorProviderCheckpointId": "optional",
       "claimIfIdle": "optional",
       "providerTurnId": "optional"
     },
