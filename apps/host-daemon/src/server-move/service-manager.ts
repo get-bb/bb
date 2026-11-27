@@ -86,6 +86,16 @@ function systemdScopeFlag(definition: ServiceDefinition): string {
   return definition.manager === "systemd-system" ? "--system" : "--user";
 }
 
+export async function reloadSystemdService(
+  definition: ServiceDefinition,
+  runCommand: ServerMoveCommandRunner,
+): Promise<void> {
+  await runCommand("systemctl", [
+    systemdScopeFlag(definition),
+    "daemon-reload",
+  ]);
+}
+
 export async function restartService(args: RestartServiceArgs): Promise<void> {
   if (args.definition.manager === "launchd") {
     await args.spawnDetached({
@@ -102,10 +112,9 @@ export async function restartService(args: RestartServiceArgs): Promise<void> {
     });
     return;
   }
-  const scope = systemdScopeFlag(args.definition);
-  await args.runCommand("systemctl", [scope, "daemon-reload"]);
+  await reloadSystemdService(args.definition, args.runCommand);
   await args.runCommand("systemctl", [
-    scope,
+    systemdScopeFlag(args.definition),
     "restart",
     "--no-block",
     args.definition.unitName,

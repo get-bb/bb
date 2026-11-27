@@ -10,6 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  addMissingSystemdServiceDirectives,
   buildServerStartArguments,
   findServiceDefinition,
   formatSystemdUnit,
@@ -449,5 +450,67 @@ describe("service definition rewrites", () => {
         "http://new.example.test\nExecStartPre=/bin/sh",
       ]),
     ).toThrow("line break");
+  });
+});
+
+describe("addMissingSystemdServiceDirectives", () => {
+  it("adds the OOM settings at the end of [Service] in a unit written before them", () => {
+    const unit = systemdUnit({
+      dataDir: "/home/me/.bb-machines/old-server",
+      serverUrl: "http://old-server.local:38886",
+    });
+
+    const updated = addMissingSystemdServiceDirectives(unit);
+
+    expect(updated).toBe(
+      unit.replace(
+        "RestartSec=2\n",
+        "RestartSec=2\nOOMPolicy=continue\nManagedOOMPreference=avoid\n",
+      ),
+    );
+    expect(addMissingSystemdServiceDirectives(updated)).toBe(updated);
+  });
+
+  it("adds only the missing setting", () => {
+    const unit = "[Service]\nExecStart=/bin/true\nOOMPolicy=continue\n";
+
+    expect(addMissingSystemdServiceDirectives(unit)).toBe(
+      "[Service]\nExecStart=/bin/true\nOOMPolicy=continue\nManagedOOMPreference=avoid\n",
+    );
+  });
+
+  it("does not take a setting in another section for one in [Service]", () => {
+    const unit =
+      "[Unit]\nOOMPolicy=stop\n\n[Service]\nExecStart=/bin/true\n\n[Install]\nWantedBy=default.target\n";
+
+    expect(addMissingSystemdServiceDirectives(unit)).toBe(
+      "[Unit]\nOOMPolicy=stop\n\n[Service]\nExecStart=/bin/true\nOOMPolicy=continue\nManagedOOMPreference=avoid\n\n[Install]\nWantedBy=default.target\n",
+    );
+  });
+
+  it("keeps a setting written with spaces around the equals sign", () => {
+    const unit = "[Service]\nExecStart=/bin/true\nOOMPolicy = stop\n";
+
+    expect(addMissingSystemdServiceDirectives(unit)).toBe(
+      "[Service]\nExecStart=/bin/true\nOOMPolicy = stop\nManagedOOMPreference=avoid\n",
+    );
+  });
+
+  it("adds the settings inside [Service] of a unit with CRLF line ends", () => {
+    const unit =
+      "[Service]\r\nExecStart=/bin/true\r\n\r\n[Install]\r\nWantedBy=default.target\r\n";
+
+    const updated = addMissingSystemdServiceDirectives(unit);
+
+    expect(updated).toBe(
+      "[Service]\r\nExecStart=/bin/true\r\nOOMPolicy=continue\nManagedOOMPreference=avoid\n\r\n[Install]\r\nWantedBy=default.target\r\n",
+    );
+    expect(addMissingSystemdServiceDirectives(updated)).toBe(updated);
+  });
+
+  it("leaves a file without a [Service] section unchanged", () => {
+    expect(addMissingSystemdServiceDirectives("[Unit]\nDescription=x\n")).toBe(
+      "[Unit]\nDescription=x\n",
+    );
   });
 });

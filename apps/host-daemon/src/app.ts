@@ -1130,12 +1130,21 @@ export async function createHostDaemonApp(
   };
   requestServerMoveShutdown = (reason, exitCode) =>
     daemon.shutdown(reason, exitCode);
-  void serverMove.resumeActivation().catch((error: unknown) => {
-    options.logger.error(
-      { ...runtimeErrorLogFields(error) },
-      "Failed to resume the server move activation",
-    );
-  });
+  void serverMove
+    .updateServiceDefinition()
+    .catch((error: unknown) => {
+      options.logger.warn(
+        { ...runtimeErrorLogFields(error) },
+        "Failed to add the current OOM settings to the bb service definition",
+      );
+    })
+    .then(() => serverMove.resumeActivation())
+    .catch((error: unknown) => {
+      options.logger.error(
+        { ...runtimeErrorLogFields(error) },
+        "Failed to resume the server move activation",
+      );
+    });
   connection.setSessionCloseHandler((reason) =>
     daemon.shutdown(`session-close:${reason}`, 0),
   );
