@@ -321,6 +321,8 @@ const CODEX_INITIALIZE_PARAMS = {
 const CHILD_REQUEST_TIMEOUT_MS = 60_000;
 const RATE_LIMIT_RECOVERY_TIMEOUT_MS = 5_000;
 const INTERRUPT_SETTLEMENT_TIMEOUT_MS = 5_000;
+const RECONNECT_STALL_TIMEOUT_MS = 10 * 60_000;
+let reconnectStallTimeoutMs = RECONNECT_STALL_TIMEOUT_MS;
 const CODEX_ARCHIVED_SESSION_ERROR_PATTERN =
   /\b(?:session|thread)\s+\S+\s+is archived\b/i;
 const CODEX_ACTIVE_WRITER_ERROR_PATTERN =
@@ -493,6 +495,7 @@ interface CodexBridgeSession {
   goalStatus: CodexGoalStatus | null;
   stopsRequested: number;
   pendingChildRequests: Map<string | number, AbortController>;
+  reconnectStallTimer: ReturnType<typeof setTimeout> | null;
 }
 
 const sessionsByBbThreadId = new Map<string, CodexBridgeSession>();
@@ -523,6 +526,7 @@ function releaseSession(session: CodexBridgeSession): Promise<void> {
     return session.releasePromise;
   }
   session.closing = true;
+  clearReconnectStall(session);
   if (sessionsByBbThreadId.get(session.bbThreadId) === session) {
     sessionsByBbThreadId.delete(session.bbThreadId);
   }
@@ -794,6 +798,100 @@ async function handleChildNotification(
       emitTerminalAccountErrorHint(session, delta);
     }
   }
+  trackReconnectStall(session, deltas);
+}
+
+type ProviderErrorDelta = Extract<ThreadDelta, { kind: "provider.error" }>;
+
+const RECONNECT_IDLE_DELTA_KINDS: ReadonlySet<ThreadDelta["kind"]> = new Set([
+  "provider.rateLimits",
+  "provider.warning",
+  "unhandled",
+]);
+
+function clearReconnectStall(session: CodexBridgeSession): void {
+  if (session.reconnectStallTimer !== null) {
+    clearTimeout(session.reconnectStallTimer);
+    session.reconnectStallTimer = null;
+  }
+}
+
+function trackReconnectStall(
+  session: CodexBridgeSession,
+  deltas: readonly ThreadDelta[],
+): void {
+  let retry: ProviderErrorDelta | null = null;
+  let progressed = false;
+  for (const delta of deltas) {
+    if (delta.kind === "provider.error" && delta.willRetry === true) {
+      retry = delta;
+    } else if (!RECONNECT_IDLE_DELTA_KINDS.has(delta.kind)) {
+      progressed = true;
+    }
+  }
+  if (retry === null) {
+    if (progressed) clearReconnectStall(session);
+    return;
+  }
+  clearReconnectStall(session);
+  if (session.openCodexTurnIds.size === 0) return;
+  const lastRetry = retry;
+  const timer = setTimeout(
+    () => failStalledReconnect(session, lastRetry),
+    reconnectStallTimeoutMs,
+  );
+  timer.unref?.();
+  session.reconnectStallTimer = timer;
+}
+
+function failStalledReconnect(
+  session: CodexBridgeSession,
+  retry: ProviderErrorDelta,
+): void {
+  session.reconnectStallTimer = null;
+  if (currentSession(session.bbThreadId, session.serial) !== session) return;
+  const openTurnIds = [...session.openCodexTurnIds];
+  if (openTurnIds.length === 0) return;
+  const lastError = retry.detail ?? retry.message;
+  const message = /Account Pooler/u.test(lastError)
+    ? "Account pool unavailable"
+    : "Codex stopped reconnecting";
+  const waited =
+    reconnectStallTimeoutMs >= 60_000
+      ? `${Math.round(reconnectStallTimeoutMs / 60_000)} minutes`
+      : `${Math.round(reconnectStallTimeoutMs / 1_000)} seconds`;
+  const detail = `Codex made no progress for ${waited} while reconnecting, so bb stopped the turn and restarted the Codex session. Retry to continue. Last error: ${lastError}`;
+  sendThreadDeltas(
+    session,
+    openTurnIds.flatMap((providerTurnId): ThreadDelta[] => [
+      {
+        kind: "provider.error",
+        message,
+        detail,
+        willRetry: false,
+        ...(retry.errorInfo !== undefined
+          ? { errorInfo: retry.errorInfo }
+          : {}),
+        providerTurnId,
+      },
+      {
+        kind: "turn.boundary",
+        providerTurnId,
+        status: "failed",
+        error: { message: `${message}: ${detail}` },
+      },
+    ]),
+  );
+  if (session.codexThreadId !== null) {
+    sendThreadDeltas(
+      session,
+      session.translator.clearExitedChildThreadState({
+        providerThreadId: session.codexThreadId,
+      }),
+    );
+  }
+  void releaseSession(session);
+  registerResumableSession(session);
 }
 
 function emitTerminalAccountErrorHint(
@@ -1056,6 +1154,7 @@ function handleChildExit(
     return;
   }
   session.connection = null;
+  clearReconnectStall(session);
   withdrawChildRequests(session, session.pendingChildRequests.keys());
 
   const openTurnIds = [...session.openCodexTurnIds];
@@ -1409,6 +1508,7 @@ async function constructThreadSession(
     releasePromise: null,
     goalStatus: existing?.goalStatus ?? null,
     stopsRequested: 0,
+    reconnectStallTimer: null,
   };
   sessionsByBbThreadId.set(args.threadId, session);
   if (existing) {
@@ -1680,6 +1780,7 @@ function registerResumableSession(session: CodexBridgeSession): void {
     releasePromise: null,
     goalStatus: session.goalStatus,
     stopsRequested: 0,
+    reconnectStallTimer: null,
   });
 }
 
@@ -3067,6 +3168,13 @@ function killAllChildren(): void {
 
 /** @internal Test cleanup for bridge tests that create a persistent child. */
 export const experimental_killAllChildrenForTests = killAllChildren;
+
+/** @internal Shortens the reconnect stall watchdog for bridge tests; null restores the default. */
+export function experimental_setReconnectStallTimeoutMsForTests(
+  timeoutMs: number | null,
+): void {
+  reconnectStallTimeoutMs = timeoutMs ?? RECONNECT_STALL_TIMEOUT_MS;
+}
 
 export const experimental_providerBridge = experimental_defineProviderBridge({
   handleLine,
