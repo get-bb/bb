@@ -113,6 +113,7 @@ import {
   type PendingServerLauncher,
 } from "./pending-server.js";
 import {
+  addMissingSystemdServiceDirectives,
   buildServerStartArguments,
   findServiceDefinition,
   forcesNoServiceManager,
@@ -122,11 +123,13 @@ import {
   replaceServerUrlArgument,
   SERVER_MOVE_SERVICE_MANAGER_ENV,
   writeServiceDefinition,
+  writeServiceDefinitionContent,
   type ServiceDefinition,
 } from "./service-definition.js";
 import {
   defaultDetachedProcessSpawner,
   defaultServerMoveCommandRunner,
+  reloadSystemdService,
   restartService,
   type DetachedProcessSpawner,
   type ServerMoveCommandRunner,
@@ -616,6 +619,39 @@ export class ServerMoveService {
       "Resuming an interrupted server move activation",
     );
     return this.startActivation(state, false);
+  }
+
+  updateServiceDefinition(): Promise<void> {
+    const task = this.serverMovedLane.then(() =>
+      this.addMissingServiceDirectives(),
+    );
+    this.serverMovedLane = task.catch(() => undefined);
+    return task;
+  }
+
+  private async addMissingServiceDirectives(): Promise<void> {
+    const definition = await this.findServiceDefinition();
+    if (definition === null || definition.manager === "launchd") {
+      return;
+    }
+    const content = addMissingSystemdServiceDirectives(definition.content);
+    if (content === definition.content) {
+      return;
+    }
+    await writeServiceDefinitionContent(definition, content);
+    try {
+      await reloadSystemdService(definition, this.options.runCommand);
+    } catch (error) {
+      this.options.logger.warn(
+        { err: error, manager: definition.manager, path: definition.path },
+        "Added the current OOM settings to the bb service definition, but systemctl daemon-reload failed; systemd applies them at its next reload",
+      );
+      return;
+    }
+    this.options.logger.info(
+      { manager: definition.manager, path: definition.path },
+      "Added the current OOM settings to the bb service definition",
+    );
   }
 
   private startActivation(

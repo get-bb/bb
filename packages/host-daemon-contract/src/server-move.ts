@@ -205,3 +205,8 @@ export const serverMovedErrorDetailsSchema = z
 export type ServerMovedErrorDetails = z.infer<
   typeof serverMovedErrorDetailsSchema
 >;
+
+export const HOST_DAEMON_SYSTEMD_SERVICE_DIRECTIVES = [
+  "OOMPolicy=continue",
+  "ManagedOOMPreference=avoid",
+] as const;

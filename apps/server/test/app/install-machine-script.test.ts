@@ -16,6 +16,7 @@ import { tmpdir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { delimiter, dirname, join } from "node:path";
 import { CLI_LAUNCHER_MARKER } from "@bb/config/cli-command";
+import { HOST_DAEMON_SYSTEMD_SERVICE_DIRECTIVES } from "@bb/host-daemon-contract";
 import {
   createProcessLifeline,
   killProcessesReferencingPath,
@@ -334,6 +335,21 @@ function writeUnreachableUserBus(fixture: Fixture, init: string): void {
   );
   writeExecutable(join(fixture.binDir, "systemctl"), "#!/bin/sh\nexit 1\n");
   writeExecutable(join(fixture.binDir, "loginctl"), "#!/bin/sh\nexit 1\n");
+}
+
+function serviceSettingsAddedSinceFirstUnit(unit: string): string[] {
+  const lines = unit.split("\n").map((line) => line.trim());
+  const start = lines.indexOf("[Service]");
+  const end = lines.findIndex(
+    (line, index) => index > start && line.startsWith("["),
+  );
+  return lines
+    .slice(start + 1, end === -1 ? undefined : end)
+    .filter(
+      (line) =>
+        line !== "" &&
+        !/^(ExecStart|Environment|Restart|RestartSec)=/u.test(line),
+    );
 }
 
 afterEach(async () => {
@@ -1708,8 +1724,9 @@ printf '%s\n' "$*" >>"${join(fixture.dataDir, "launchctl.log")}"
     expect(unit).toContain("Wants=network-online.target");
     expect(unit).toContain("Restart=always");
     expect(unit).toContain("RestartSec=2");
-    expect(unit).toContain("OOMPolicy=continue");
-    expect(unit).toContain("ManagedOOMPreference=avoid");
+    expect(serviceSettingsAddedSinceFirstUnit(unit)).toEqual(
+      HOST_DAEMON_SYSTEMD_SERVICE_DIRECTIVES,
+    );
     expect(unit).toContain("WantedBy=default.target");
     expect(readFileSync(join(fixture.dataDir, "systemctl.log"), "utf8")).toBe(
       "--user show-environment\n--user daemon-reload\n--user enable bb-host-daemon-machine-getbb-app-host-test.service\n--user restart bb-host-daemon-machine-getbb-app-host-test.service\n",
@@ -1916,7 +1933,9 @@ fi
       expect(unit).toContain(
         `Environment="BB_APP_NPM_PREFIX=${realpathSync(fixture.dataDir)}/npm"`,
       );
-      expect(unit).toContain("ManagedOOMPreference=avoid");
+      expect(serviceSettingsAddedSinceFirstUnit(unit)).toEqual(
+        HOST_DAEMON_SYSTEMD_SERVICE_DIRECTIVES,
+      );
       expect(unit).toContain(
         container ? "WantedBy=default.target" : "WantedBy=multi-user.target",
       );

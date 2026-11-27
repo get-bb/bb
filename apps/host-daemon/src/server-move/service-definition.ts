@@ -1,6 +1,9 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
-import type { HostPlatform } from "@bb/host-daemon-contract";
+import {
+  HOST_DAEMON_SYSTEMD_SERVICE_DIRECTIVES,
+  type HostPlatform,
+} from "@bb/host-daemon-contract";
 import {
   canonicalPath,
   isFileNotFoundError,
@@ -297,7 +300,10 @@ function formatSystemdWord(word: string): string {
 
 function systemdDirective(line: string, name: string): string | null {
   const trimmed = line.trim();
-  return trimmed.startsWith(`${name}=`) ? trimmed.slice(name.length + 1) : null;
+  const separator = trimmed.indexOf("=");
+  return separator > 0 && trimmed.slice(0, separator).trimEnd() === name
+    ? trimmed.slice(separator + 1).trimStart()
+    : null;
 }
 
 export function parseSystemdUnit(
@@ -344,6 +350,32 @@ export function formatSystemdUnit(
         : `ExecStart=${programArguments.map(formatSystemdWord).join(" ")}`,
     )
     .join("\n");
+}
+
+export function addMissingSystemdServiceDirectives(content: string): string {
+  const lines = content.split("\n");
+  const serviceStart = lines.findIndex((line) => line.trim() === "[Service]");
+  if (serviceStart === -1) {
+    return content;
+  }
+  const nextSection = lines.findIndex(
+    (line, index) => index > serviceStart && line.trim().startsWith("["),
+  );
+  const serviceEnd = nextSection === -1 ? lines.length : nextSection;
+  const serviceLines = lines.slice(serviceStart + 1, serviceEnd);
+  const missing = HOST_DAEMON_SYSTEMD_SERVICE_DIRECTIVES.filter((directive) => {
+    const name = directive.slice(0, directive.indexOf("="));
+    return !serviceLines.some((line) => systemdDirective(line, name) !== null);
+  });
+  if (missing.length === 0) {
+    return content;
+  }
+  let insertAt = serviceEnd;
+  while (insertAt > serviceStart + 1 && lines[insertAt - 1]?.trim() === "") {
+    insertAt -= 1;
+  }
+  lines.splice(insertAt, 0, ...missing);
+  return lines.join("\n");
 }
 
 function launcherSubcommandIndex(
@@ -449,13 +481,20 @@ export function formatServiceDefinitionContent(
     : formatSystemdUnit(definition.content, programArguments);
 }
 
+export async function writeServiceDefinitionContent(
+  definition: ServiceDefinition,
+  content: string,
+): Promise<void> {
+  const mode = (await stat(definition.path)).mode & 0o777;
+  await writeFileAtomically({ path: definition.path, content, mode });
+}
+
 export async function writeServiceDefinition(
   definition: ServiceDefinition,
   programArguments: readonly string[],
 ): Promise<ServiceDefinition> {
   const content = formatServiceDefinitionContent(definition, programArguments);
-  const mode = (await stat(definition.path)).mode & 0o777;
-  await writeFileAtomically({ path: definition.path, content, mode });
+  await writeServiceDefinitionContent(definition, content);
   return {
     ...definition,
     programArguments: [...programArguments],
