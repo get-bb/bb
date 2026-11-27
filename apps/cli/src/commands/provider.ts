@@ -27,7 +27,7 @@ interface ProviderModelsCommandOptions {
   selectedModel?: string;
 }
 
-interface IncludeSelectedOnlyModelArgs {
+interface MergeAvailableModelsArgs {
   models: AvailableModel[];
   selectedOnlyModels: AvailableModel[];
   selectedModel?: string;
@@ -129,10 +129,7 @@ export function registerProviderCommands(
       "Project whose checkout on the machine the provider reads its models and options from",
     )
     .option("--json", "Print machine-readable JSON output")
-    .option(
-      "--selected-model <model>",
-      "Discover reasoning for this model and include it if selected-only",
-    )
+    .option("--selected-model <model>", "Discover reasoning for this model")
     .action(
       action(
         async (
@@ -160,7 +157,7 @@ export function registerProviderCommands(
               ? { selectedModel: opts.selectedModel }
               : {}),
           });
-          const models = includeSelectedOnlyModel({
+          const models = mergeAvailableModels({
             models: executionOptions.models,
             selectedOnlyModels: executionOptions.selectedOnlyModels,
             selectedModel: opts.selectedModel,
@@ -177,19 +174,26 @@ export function registerProviderCommands(
     );
 }
 
-function includeSelectedOnlyModel(
-  args: IncludeSelectedOnlyModelArgs,
+function mergeAvailableModels(
+  args: MergeAvailableModelsArgs,
 ): AvailableModel[] {
-  if (!args.selectedModel) {
-    return args.models;
+  const seen = new Set(args.models.map((model) => model.model));
+  const extraModels: AvailableModel[] = [];
+  let promotedSelectedModel: AvailableModel | undefined;
+  for (const model of args.selectedOnlyModels) {
+    if (seen.has(model.model)) {
+      continue;
+    }
+    seen.add(model.model);
+    if (args.selectedModel && model.model === args.selectedModel) {
+      promotedSelectedModel = model;
+    } else {
+      extraModels.push(model);
+    }
   }
-  if (args.models.some((model) => model.model === args.selectedModel)) {
-    return args.models;
-  }
-  const selectedOnlyModel = args.selectedOnlyModels.find(
-    (model) => model.model === args.selectedModel,
-  );
-  return selectedOnlyModel ? [selectedOnlyModel, ...args.models] : args.models;
+  return promotedSelectedModel
+    ? [promotedSelectedModel, ...args.models, ...extraModels]
+    : [...args.models, ...extraModels];
 }
 
 function printProviderTable(providers: SystemProviderInfo[]): void {
