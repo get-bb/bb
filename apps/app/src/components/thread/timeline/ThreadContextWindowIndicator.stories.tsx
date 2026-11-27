@@ -237,6 +237,23 @@ export function Overview() {
           />
         </div>
       </StoryRow>
+      <StoryRow
+        label="Breakdown from an earlier measurement"
+        hint="A running turn adds tokens after the last breakdown; the details label the total it was measured at."
+        className="max-md:grid-cols-1 max-md:gap-y-3"
+      >
+        <div className="flex h-[42rem] w-full items-end justify-end overflow-hidden rounded-lg border border-border-hairline bg-surface-recessed p-3">
+          <ThreadContextWindowCard
+            usage={{
+              usedTokens: 96_000,
+              modelContextWindow: claudeSnapshot.contextWindowTokens,
+              estimated: true,
+              snapshot: claudeSnapshot,
+            }}
+            className="max-w-full max-md:w-80"
+          />
+        </div>
+      </StoryRow>
       <UsageCardRow
         label="Usage menu — approaching (83%)"
         hint="Warning tone"

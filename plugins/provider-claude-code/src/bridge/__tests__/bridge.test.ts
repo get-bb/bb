@@ -978,6 +978,134 @@ describe("bridge", () => {
     },
   );
 
+  it("keeps context usage when a stale context read finishes after the next prompt is sent", async () => {
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    const report = (rawMaxTokens: number) => ({
+      categories: [{ name: "Provider category", tokens: 450 }],
+      totalTokens: 450,
+      rawMaxTokens,
+      model: "claude-test",
+      isAutoCompactEnabled: false,
+    });
+    const contextReads = vi.fn().mockResolvedValue(report(200_000));
+    contextQueryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      query.getContextUsage = contextReads;
+      return query;
+    });
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    let resolveReport!: (report: unknown) => void;
+    contextReads.mockReturnValueOnce(report(200_000)).mockReturnValueOnce(
+      new Promise<unknown>((resolve) => {
+        resolveReport = resolve;
+      }),
+    );
+    const threadId = "thread-stale-context-read";
+    const usageEvents = () =>
+      assembleCapturedThreadEvents(bridge.messages, "claude-code").flatMap(
+        (event) =>
+          event.type === "thread/contextWindowUsage/updated"
+            ? [event.contextWindowUsage]
+            : [],
+      );
+    const startTurn = async (id: number, text: string) => {
+      bridge.sendRequest(
+        id,
+        "turn/start",
+        canonicalTurnParams({
+          threadId,
+          providerThreadId: threadId,
+          input: [{ type: "text", text }],
+        }),
+      );
+      await readNextPrompt(getLatestQueryCall());
+      await bridge.waitForResponse(id);
+    };
+    try {
+      bridge.sendRequest(1, "thread/start", {
+        threadId,
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        options: canonicalOptions({}),
+      });
+      await bridge.waitForResponse(1);
+      await startTurn(2, "first");
+      queries[0].emit({
+        type: "system",
+        subtype: "init",
+        apiKeySource: "none",
+        claude_code_version: "2.1.285",
+        cwd: "/tmp/worktree",
+        tools: [],
+        mcp_servers: [],
+        model: "claude-opus-5-5",
+        permissionMode: "default",
+        slash_commands: [],
+        output_style: "default",
+        skills: [],
+        plugins: [],
+        uuid: "00000000-0000-4000-8000-000000000001",
+        session_id: threadId,
+      });
+      await vi.waitFor(() =>
+        expect(usageEvents().at(-1)?.snapshot?.usedTokens).toBe(450),
+      );
+      queries[0].emit(
+        createAssistantToolUseMessage({
+          parentToolUseId: null,
+          toolInput: { command: "pwd" },
+          toolName: "Bash",
+          toolUseId: "first-turn",
+        }),
+      );
+      queries[0].emit(createSuccessfulResultMessage(threadId));
+      await vi.waitFor(() => expect(contextReads).toHaveBeenCalledTimes(2));
+
+      await startTurn(3, "second");
+      queries[0].emit({
+        type: "stream_event",
+        event: {
+          type: "content_block_delta",
+          index: 0,
+          delta: { type: "text_delta", text: "Working" },
+        },
+        parent_tool_use_id: null,
+        uuid: "00000000-0000-4000-8000-000000000005",
+        session_id: threadId,
+      });
+      resolveReport(report(1_000_000));
+      await new Promise((resolve) => setImmediate(resolve));
+      queries[0].emit(
+        createAssistantToolUseMessage({
+          parentToolUseId: null,
+          toolInput: { command: "pwd" },
+          toolName: "Bash",
+          toolUseId: "after-stale-read",
+        }),
+      );
+
+      await vi.waitFor(() =>
+        expect(usageEvents().at(-1)).toMatchObject({
+          usedTokens: 0,
+          modelContextWindow: 1_000_000,
+        }),
+      );
+      expect(
+        usageEvents()
+          .slice(1)
+          .map((usage) => usage.usedTokens),
+      ).not.toContain(null);
+    } finally {
+      await stopBridgeThread({ bridge, queries, threadId });
+      bridge.restore();
+    }
+  });
+
   it("keeps prompts on the live session while automatic context reporting is blocked", async () => {
     const bridge = createBridgeJsonRpcTestHarness(handleLine);
     const live = createControlledClaudeQuery();

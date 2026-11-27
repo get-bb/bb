@@ -136,6 +136,7 @@ export function ThreadContextWindowCard({
               <ThreadContextWindowDetails
                 details={details}
                 capacity={usage.modelContextWindow}
+                usedTokens={usage.usedTokens}
               />
             </ContextWindowReveal>
           </div>

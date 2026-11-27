@@ -85,13 +85,36 @@ describe("context snapshot projection", () => {
       snapshot,
     });
   });
-  it("drops older details even when a newer aggregate has the same totals", () => {
+  it("keeps the last measured snapshot through later estimates of the same session", () => {
     expect(
       extractThreadContextWindowUsage([
-        event(2, { usedTokens: 100, modelContextWindow: null }),
+        event(3, { usedTokens: 180, modelContextWindow: 1_000 }),
+        event(2, { usedTokens: 150, modelContextWindow: null }),
         first,
       ]),
-    ).toEqual({ usedTokens: 100, modelContextWindow: 1_000, estimated: true });
+    ).toEqual({
+      usedTokens: 180,
+      modelContextWindow: 1_000,
+      estimated: true,
+      snapshot,
+    });
+  });
+  it("drops the snapshot after a measured aggregate or a window change", () => {
+    const measured = event(2, { usedTokens: 150, modelContextWindow: 1_000 });
+    if (measured.event.type === "thread/contextWindowUsage/updated") {
+      measured.event.contextWindowUsage.estimated = false;
+    }
+    expect(extractThreadContextWindowUsage([first, measured])).toEqual({
+      usedTokens: 150,
+      modelContextWindow: 1_000,
+      estimated: false,
+    });
+    expect(
+      extractThreadContextWindowUsage([
+        first,
+        event(2, { usedTokens: 150, modelContextWindow: 2_000 }),
+      ]),
+    ).toEqual({ usedTokens: 150, modelContextWindow: 2_000, estimated: true });
   });
   it("invalidates prior usage on reset and restores only the new measurement", () => {
     const reset = event(2, { usedTokens: null, modelContextWindow: null });
@@ -104,10 +127,10 @@ describe("context snapshot projection", () => {
       ]),
     ).toEqual({ usedTokens: 200, modelContextWindow: 1_000, estimated: true });
   });
-  it("does not attach a snapshot to mismatched aggregate metrics", () => {
+  it("does not attach a snapshot measured for another window", () => {
     expect(
       extractThreadContextWindowUsage([
-        event(2, { usedTokens: 200, modelContextWindow: 1_000, snapshot }),
+        event(2, { usedTokens: 100, modelContextWindow: 2_000, snapshot }),
       ]),
     ).not.toHaveProperty("snapshot");
   });
@@ -141,6 +164,7 @@ describe("auto-compact display window", () => {
         usedTokens,
         modelContextWindow: 256_000,
         estimated: true,
+        snapshot: compactSnapshot,
       });
     }
     const nextSnapshot = {
@@ -199,6 +223,10 @@ describe("auto-compact display window", () => {
         usedTokens: 160_000,
         modelContextWindow: 1_000_000,
         estimated: true,
+        ...(boundary === "disabled" &&
+        middle.event.type === "thread/contextWindowUsage/updated"
+          ? { snapshot: middle.event.contextWindowUsage.snapshot }
+          : {}),
       });
     },
   );

@@ -1723,18 +1723,21 @@ function createOnSdkMessage(
                 args.threadIdRef.current,
                 snapshot.contextWindowTokens,
               );
-            sendThreadDeltas(args.threadIdRef.current, [
+            sendThreadDeltas(
+              args.threadIdRef.current,
               snapshotCurrent
-                ? {
-                    kind: "contextWindow",
-                    used: snapshot.usedTokens,
-                    size: snapshot.contextWindowTokens,
-                    estimated: snapshot.estimated,
-                    snapshot,
-                    attach: "currentOrLast",
-                  }
+                ? [
+                    {
+                      kind: "contextWindow",
+                      used: snapshot.usedTokens,
+                      size: snapshot.contextWindowTokens,
+                      estimated: snapshot.estimated,
+                      snapshot,
+                      attach: "currentOrLast",
+                    },
+                  ]
                 : capacity,
-            ]);
+            );
           },
         });
       }

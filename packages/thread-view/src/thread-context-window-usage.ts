@@ -88,20 +88,23 @@ export function extractThreadContextWindowUsage(
     if (!windowResolved) {
       if (
         signal.providerThreadId !== providerThreadId ||
-        signal.usedTokens === null ||
-        !signal.estimated
+        signal.usedTokens === null
       ) {
         windowResolved = true;
-      } else if (signal.snapshot) {
-        if (signal.snapshot.autoCompactAtTokens !== null) {
-          retainedWindow = signal.snapshot.contextWindowTokens;
+      } else if (signal.snapshot || !signal.estimated) {
+        snapshot = signal.snapshot;
+        if (
+          snapshot &&
+          signal.estimated &&
+          snapshot.autoCompactAtTokens !== null
+        ) {
+          retainedWindow = snapshot.contextWindowTokens;
         }
         windowResolved = true;
       }
     }
 
     if (usedTokens === undefined && !usageIsUnknown) {
-      snapshot = signal.snapshot;
       if (signal.usedTokens === null) {
         usageIsUnknown = true;
         estimated = signal.estimated;
@@ -134,9 +137,7 @@ export function extractThreadContextWindowUsage(
   modelContextWindow = retainedWindow ?? modelContextWindow;
 
   return {
-    ...(snapshot &&
-    snapshot.usedTokens === usedTokens &&
-    snapshot.contextWindowTokens === modelContextWindow
+    ...(snapshot?.contextWindowTokens === modelContextWindow
       ? { snapshot }
       : {}),
     estimated: estimated ?? false,

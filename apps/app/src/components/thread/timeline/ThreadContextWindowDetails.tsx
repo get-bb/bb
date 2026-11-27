@@ -2,8 +2,9 @@ import { useId, useState, type ReactNode } from "react";
 import { cn } from "@bb/shared-ui/lib/utils";
 
 import type { ContextCategory, ContextSnapshot } from "@bb/domain";
+import { formatCompactTokenCount } from "./thread-context-window-usage.js";
 
-type ContextWindowDetails = Pick<ContextSnapshot, "categories">;
+type ContextWindowDetails = Pick<ContextSnapshot, "categories" | "usedTokens">;
 
 const CATEGORY_COLORS = [
   "var(--ansi-4)",
@@ -179,9 +180,11 @@ function CategoryRow({
 export function ThreadContextWindowDetails({
   details,
   capacity,
+  usedTokens,
 }: {
   details: ContextWindowDetails;
   capacity: number;
+  usedTokens: number;
 }) {
   const used = details.categories.filter(
     (category) => category.kind === "used",
@@ -201,6 +204,11 @@ export function ThreadContextWindowDetails({
           <h3 className="pb-1 text-xs font-medium text-muted-foreground">
             In context
           </h3>
+          {details.usedTokens === usedTokens ? null : (
+            <p className="pb-1 text-xs text-muted-foreground">
+              Measured at {formatCompactTokenCount(details.usedTokens)} tokens
+            </p>
+          )}
           {used.map((category, index) => (
             <CategoryRow
               key={category.id}
