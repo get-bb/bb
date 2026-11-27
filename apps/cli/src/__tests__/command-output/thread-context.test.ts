@@ -13,7 +13,7 @@ describe("bb thread context", () => {
   const register: CommandRegistrar = (program) =>
     registerThreadCommands(program, () => "http://server");
 
-  it("prints provider-defined categories and marks deferred counts separately", async () => {
+  it("prints provider-defined categories with their measured total and marks deferred counts separately", async () => {
     const get = vi.fn(async () => ({
       usage: {
         usedTokens: 100,
@@ -21,13 +21,14 @@ describe("bb thread context", () => {
         estimated: true,
         snapshot: {
           capturedAt: "2026-09-11T12:00:00.000Z",
+          usedTokens: 80,
           categories: [
             {
               id: "custom",
               label: "Custom category",
               kind: "used",
-              tokens: 100,
-              entries: [{ id: "file", label: "project.md", tokens: 100 }],
+              tokens: 80,
+              entries: [{ id: "file", label: "project.md", tokens: 80 }],
             },
             {
               id: "deferred",
@@ -47,10 +48,13 @@ describe("bb thread context", () => {
       "Estimated context: 100 / 1,000 tokens",
     );
     expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "Custom category: 100",
+      "Captured: 2026-09-11T12:00:00.000Z at 80 tokens",
     );
     expect(collectLogLines(vi.mocked(console.log))).toContain(
-      "  project.md: 100",
+      "Custom category: 80",
+    );
+    expect(collectLogLines(vi.mocked(console.log))).toContain(
+      "  project.md: 80",
     );
     expect(collectLogLines(vi.mocked(console.log))).toContain(
       "Future tools (deferred): 500",

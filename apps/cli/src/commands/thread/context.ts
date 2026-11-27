@@ -41,7 +41,9 @@ export function registerContextCommand(
             );
           }
           if (!usage.snapshot) return;
-          console.log(`Captured: ${usage.snapshot.capturedAt}`);
+          console.log(
+            `Captured: ${usage.snapshot.capturedAt} at ${count(usage.snapshot.usedTokens)} tokens`,
+          );
           for (const category of usage.snapshot.categories) {
             const kind = category.kind === "used" ? "" : ` (${category.kind})`;
             console.log(`${category.label}${kind}: ${count(category.tokens)}`);
