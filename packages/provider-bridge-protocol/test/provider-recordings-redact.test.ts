@@ -273,3 +273,40 @@ it("refuses an output directory that contains a symlinked input", () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+it("refuses a nested input symlink into the output tree", () => {
+  const root = mkdtempSync(join(tmpdir(), "bb-recording-redact-nested-"));
+  const inputDir = join(root, "in");
+  const outputDir = join(root, "out");
+  const shared = join(outputDir, "shared");
+  const capture = join(shared, "capture.ndjson");
+  const session = join(inputDir, "session.ndjson");
+  try {
+    mkdirSync(inputDir, { recursive: true });
+    mkdirSync(shared, { recursive: true });
+    writeFileSync(capture, "keep-capture\n");
+    writeFileSync(
+      session,
+      `${JSON.stringify({ line: JSON.stringify({ ok: true }) })}\n`,
+    );
+    symlinkSync(shared, join(inputDir, "linked"));
+
+    expect(() =>
+      execFileSync(
+        process.execPath,
+        [
+          fileURLToPath(REDACT_SCRIPT),
+          inputDir,
+          outputDir,
+          "--home",
+          "/home/tester",
+        ],
+        { encoding: "utf8" },
+      ),
+    ).toThrow(/aliases the output recordings/);
+    expect(readFileSync(capture, "utf8")).toBe("keep-capture\n");
+    expect(readFileSync(session, "utf8")).toContain("ok");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

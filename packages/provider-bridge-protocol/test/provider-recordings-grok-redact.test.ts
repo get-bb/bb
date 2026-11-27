@@ -1172,4 +1172,139 @@ describe("Grok recording redaction", () => {
       redacted,
     );
   });
+
+  it("redacts subagent lifecycle and list text except synthetic fixtures", () => {
+    const root = tempRoot();
+    const input = join(root, "input");
+    const output = join(root, "output");
+    const second = join(root, "second");
+    writeRecording(input, [
+      {
+        jsonrpc: "2.0",
+        method: "_x.ai/session_notification",
+        params: {
+          sessionId: "fake-sess",
+          update: {
+            sessionUpdate: "subagent_finished",
+            subagent_id: "child-beta",
+            status: "completed",
+            output: "BETA_DONE",
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "_x.ai/session_notification",
+        params: {
+          sessionId: "fake-sess",
+          update: {
+            sessionUpdate: "subagent_finished",
+            subagent_id: "child-stale",
+            status: "completed",
+            output: "STALE",
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "_x.ai/session_notification",
+        params: {
+          sessionId: "fake-sess",
+          update: {
+            sessionUpdate: "subagent_finished",
+            subagent_id: "child-alpha",
+            status: "cancelled",
+            error: "Subagent was cancelled",
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "_x.ai/session_notification",
+        params: {
+          sessionId: "fake-sess",
+          update: {
+            sessionUpdate: "subagent_finished",
+            subagent_id: "child-private",
+            status: "completed",
+            output: "private child analysis of the repository",
+            error: "private child failure",
+          },
+        },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 4,
+        result: {
+          subagents: [
+            {
+              childRef: "child-beta",
+              status: "completed",
+              result: "BETA_DONE",
+            },
+            {
+              childRef: "child-alpha",
+              status: "cancelled",
+              error: "Subagent was cancelled",
+            },
+            {
+              childRef: "child-private",
+              status: "completed",
+              result: "private child analysis of the repository",
+              error: "private child failure",
+            },
+          ],
+        },
+      },
+    ]);
+    const stdout = redact(input, output);
+    const messages = readMessages(output);
+    expect(stdout).toContain("0 survivors");
+    expect(messages).toEqual([
+      expect.objectContaining({
+        params: expect.objectContaining({
+          update: expect.objectContaining({ output: "BETA_DONE" }),
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          update: expect.objectContaining({ output: "STALE" }),
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          update: expect.objectContaining({ error: "Subagent was cancelled" }),
+        }),
+      }),
+      expect.objectContaining({
+        params: expect.objectContaining({
+          update: expect.objectContaining({
+            output: "REDACTED_TEXT",
+            error: "REDACTED_TEXT",
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        result: {
+          subagents: [
+            expect.objectContaining({ result: "BETA_DONE" }),
+            expect.objectContaining({ error: "Subagent was cancelled" }),
+            expect.objectContaining({
+              result: "REDACTED_TEXT",
+              error: "REDACTED_TEXT",
+            }),
+          ],
+        },
+      }),
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("private child");
+    const redacted = readFileSync(
+      join(output, "provider→bridge.ndjson"),
+      "utf8",
+    );
+    redact(output, second);
+    expect(readFileSync(join(second, "provider→bridge.ndjson"), "utf8")).toBe(
+      redacted,
+    );
+  });
 });

@@ -350,11 +350,15 @@ describe("streaming thread event grammar", () => {
     ...identity,
     scope: { kind: "turn", turnId },
   });
-  const turnCompleted = (turnId: string): ThreadEvent => ({
+  const turnCompleted = (
+    turnId: string,
+    providerCheckpointId?: string,
+  ): ThreadEvent => ({
     type: "turn/completed",
     ...identity,
     scope: { kind: "turn", turnId },
     status: "completed",
+    ...(providerCheckpointId === undefined ? {} : { providerCheckpointId }),
   });
 
   function observeAll(events: ThreadEvent[]) {
@@ -403,6 +407,22 @@ describe("streaming thread event grammar", () => {
     ]);
     expect(results[2]).toMatchObject({ rule: "turn/settles-once" });
     expect(results[3]).toMatchObject({ rule: "turn/starts-once" });
+  });
+
+  it("accepts a later checkpoint for a turn that already settled", () => {
+    const results = observeAll([
+      turnStarted("turn_1"),
+      turnCompleted("turn_1"),
+      turnCompleted("turn_1", "1"),
+      turnCompleted("turn_1"),
+    ]);
+    expect(results.map((result) => result.kind)).toEqual([
+      "ok",
+      "ok",
+      "ok",
+      "violation",
+    ]);
+    expect(results[3]).toMatchObject({ rule: "turn/settles-once" });
   });
 
   it("keeps each thread's items and turns separate", () => {

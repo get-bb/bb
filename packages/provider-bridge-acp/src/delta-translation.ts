@@ -1049,6 +1049,7 @@ export function createAcpDeltaTranslator(
     stopReason: AcpStopReason,
     context: AcpDeltaTranslationContext | undefined,
     providerCheckpointId: string | undefined,
+    priorProviderCheckpointId: string | undefined,
   ): ThreadDelta[] {
     const status = turnStatusForStopReason(stopReason);
     const notice = stopReasonNotice(stopReason);
@@ -1071,6 +1072,9 @@ export function createAcpDeltaTranslator(
         status,
         claimIfIdle: true,
         ...(providerCheckpointId === undefined ? {} : { providerCheckpointId }),
+        ...(priorProviderCheckpointId === undefined
+          ? {}
+          : { priorProviderCheckpointId }),
       },
     ];
   }
@@ -1134,6 +1138,7 @@ export function createAcpDeltaTranslator(
           params.data.stopReason,
           context,
           params.data.providerCheckpointId,
+          params.data.priorProviderCheckpointId,
         );
       }
 

@@ -137,6 +137,7 @@ export const acpTurnCompletedNotificationParamsSchema = z
     threadId: z.string().min(1),
     stopReason: acpStopReasonSchema,
     providerCheckpointId: z.string().min(1).optional(),
+    priorProviderCheckpointId: z.string().min(1).optional(),
   })
   .passthrough();
 

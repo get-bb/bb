@@ -26,6 +26,7 @@
 import {
   mkdirSync,
   readdirSync,
+  lstatSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -95,6 +96,8 @@ const GROK_SYNTHETIC_SPAWN_RESULTS = new Set([
   "Subagent started in background.\nsubagent_id: child-beta\ndescription: CHILD_BETA",
 ]);
 const GROK_SYNTHETIC_CANCEL_MESSAGE = "Subagent cancellation initiated";
+const GROK_SYNTHETIC_SUBAGENT_OUTPUTS = new Set(["BETA_DONE", "STALE"]);
+const GROK_SYNTHETIC_SUBAGENT_ERRORS = new Set(["Subagent was cancelled"]);
 const GROK_SYNTHETIC_QUESTION_TEXTS = new Set([
   "Choose synthetic option",
   "First synthetic choice",
@@ -409,6 +412,65 @@ function redactPlanApproval(payload, redactedPayload) {
   }
 }
 
+function redactSyntheticSubagentText(value, allowed) {
+  return allowed.has(value) ? value : "REDACTED_TEXT";
+}
+
+function redactGrokSubagentPayloads(parsed, redacted) {
+  if (!isRecord(parsed) || !isRecord(redacted)) return;
+  const params = parsed.params;
+  const redactedParams = redacted.params;
+  if (isRecord(params) && isRecord(redactedParams)) {
+    const update = params.update;
+    const redactedUpdate = redactedParams.update;
+    if (
+      isRecord(update) &&
+      isRecord(redactedUpdate) &&
+      update.sessionUpdate === "subagent_finished"
+    ) {
+      if (typeof update.output === "string") {
+        redactedUpdate.output = redactSyntheticSubagentText(
+          update.output,
+          GROK_SYNTHETIC_SUBAGENT_OUTPUTS,
+        );
+      }
+      if (typeof update.error === "string") {
+        redactedUpdate.error = redactSyntheticSubagentText(
+          update.error,
+          GROK_SYNTHETIC_SUBAGENT_ERRORS,
+        );
+      }
+    }
+  }
+  const result = parsed.result;
+  const redactedResult = redacted.result;
+  if (
+    !isRecord(result) ||
+    !isRecord(redactedResult) ||
+    !Array.isArray(result.subagents) ||
+    !Array.isArray(redactedResult.subagents)
+  ) {
+    return;
+  }
+  for (let index = 0; index < result.subagents.length; index += 1) {
+    const subagent = result.subagents[index];
+    const redactedSubagent = redactedResult.subagents[index];
+    if (!isRecord(subagent) || !isRecord(redactedSubagent)) continue;
+    if (typeof subagent.result === "string") {
+      redactedSubagent.result = redactSyntheticSubagentText(
+        subagent.result,
+        GROK_SYNTHETIC_SUBAGENT_OUTPUTS,
+      );
+    }
+    if (typeof subagent.error === "string") {
+      redactedSubagent.error = redactSyntheticSubagentText(
+        subagent.error,
+        GROK_SYNTHETIC_SUBAGENT_ERRORS,
+      );
+    }
+  }
+}
+
 function redactGrokQuestionPayloads(parsed, redacted) {
   if (!isRecord(parsed) || !isRecord(redacted)) return;
   redactGrokAcceptedAnswers(parsed.result, redacted.result);
@@ -568,6 +630,7 @@ function redactLine(line) {
   preserveGrokToolResults(parsed, redacted);
   preserveLiteralCompactCommand(parsed, redacted);
   redactGrokQuestionPayloads(parsed, redacted);
+  redactGrokSubagentPayloads(parsed, redacted);
   if (
     !Array.isArray(parsed) &&
     ((parsed.method === "_x.ai/interject" &&
@@ -699,11 +762,32 @@ function createSurvivorSweep(home) {
 // Files
 // ---------------------------------------------------------------------------
 
-function walk(dir, out = []) {
+function assertInputEntryContained(full, inputRoot, outputRoot) {
+  if (!lstatSync(full).isSymbolicLink()) return;
+  let real;
+  try {
+    real = realpathSync(full);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    throw new Error(
+      `refusing to replace ${outputRoot}: an input path aliases the output recordings`,
+    );
+  }
+  const insideInput = real === inputRoot || outputContains(inputRoot, real);
+  const insideOutput = real === outputRoot || outputContains(outputRoot, real);
+  if (!insideInput || insideOutput) {
+    throw new Error(
+      `refusing to replace ${outputRoot}: an input path aliases the output recordings`,
+    );
+  }
+}
+
+function walk(dir, inputRoot, outputRoot, out = []) {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
+    assertInputEntryContained(full, inputRoot, outputRoot);
     if (statSync(full).isDirectory()) {
-      walk(full, out);
+      walk(full, inputRoot, outputRoot, out);
     } else {
       out.push(full);
     }
@@ -790,7 +874,7 @@ function main() {
   const sweep = createSurvivorSweep(home);
   let rewritten = 0;
   try {
-    const files = walk(inputRoot);
+    const files = walk(inputRoot, inputRoot, outputRoot);
     if (files.length === 0) {
       throw new Error(
         `refusing to replace ${outDir}: the input recordings are empty`,

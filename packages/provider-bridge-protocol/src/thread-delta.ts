@@ -246,6 +246,7 @@ export const threadDeltaSchema = z.discriminatedUnion("kind", [
     status: threadEventTurnStatusSchema,
     error: deltaErrorSchema.optional(),
     providerCheckpointId: z.string().min(1).optional(),
+    priorProviderCheckpointId: z.string().min(1).optional(),
     claimIfIdle: z.boolean().optional(),
     providerTurnId: providerTurnIdSchema.optional(),
   }),

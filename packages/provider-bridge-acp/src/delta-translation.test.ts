@@ -379,6 +379,45 @@ describe("acp delta translation (bridge-shared invariants)", () => {
     );
   });
 
+  it("backfills the previous turn when the next boundary arrives", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const first = harness.translate(turnCompletedEvent("end_turn"));
+    const firstCompletion = first.find(
+      (event) => event.type === "turn/completed",
+    );
+    expect(firstCompletion).not.toHaveProperty("providerCheckpointId");
+    const firstTurnId =
+      firstCompletion?.scope.kind === "turn"
+        ? firstCompletion.scope.turnId
+        : undefined;
+    expect(firstTurnId).toEqual(expect.any(String));
+    harness.translate(turnStartedEvent());
+    const second = harness.translate({
+      jsonrpc: "2.0",
+      method: ACP_TURN_COMPLETED_METHOD,
+      params: {
+        threadId: THREAD_ID,
+        stopReason: "end_turn",
+        priorProviderCheckpointId: "1",
+      },
+    });
+    expect(second).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "completed",
+        scope: { kind: "turn", turnId: firstTurnId },
+        providerCheckpointId: "1",
+      }),
+    );
+    expect(
+      second.filter((event) => event.type === "turn/completed").at(-1),
+    ).toMatchObject({ status: "completed" });
+    expect(
+      second.filter((event) => event.type === "turn/completed").at(-1),
+    ).not.toHaveProperty("providerCheckpointId");
+  });
+
   it("settles both items at turn end when a non-terminal update changed the item type", () => {
     const harness = createHarness();
     harness.translate(turnStartedEvent());

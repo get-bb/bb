@@ -78,6 +78,15 @@ describe("Grok rewind protocol", () => {
 
   it("stamps the next rewind point and leaves a tip unstamped", () => {
     expect(selectGrokTurnCheckpointId([point(0), point(1)], 0)).toBe("1");
+    expect(selectGrokTurnCheckpointId([point(0), point(1), point(2)], 0)).toBe(
+      "1",
+    );
+    expect(selectGrokTurnCheckpointId([point(0), point(1), point(2)], 1)).toBe(
+      "2",
+    );
+    expect(
+      selectGrokTurnCheckpointId([point(0), point(1), point(2)], 2),
+    ).toBeUndefined();
     expect(selectGrokTurnCheckpointId([point(0)], 0)).toBeUndefined();
     expect(selectGrokTurnCheckpointId([point(0), point(1)], 1)).toBeUndefined();
     expect(selectGrokTurnCheckpointId([], 0)).toBeUndefined();

@@ -345,6 +345,8 @@ interface AcpThreadSession {
       }
     | undefined;
   grokPromptCost: ThreadUsageCost | undefined;
+  grokPendingPromptIndex: number | undefined;
+  grokSeenMaxPromptIndex: number | undefined;
   nativeInterjectTail: Promise<void> | undefined;
   stopping: boolean;
   turnSettled: Promise<void> | undefined;
@@ -2963,6 +2965,8 @@ async function startAgentSession(
     grokCompactionTokensAfter: undefined,
     grokTokenUsage: undefined,
     grokPromptCost: undefined,
+    grokPendingPromptIndex: undefined,
+    grokSeenMaxPromptIndex: undefined,
     nativeInterjectTail: undefined,
     stopping: false,
     turnSettled: undefined,
@@ -3479,6 +3483,7 @@ function finishAgentTurn(
   }
   for (const controller of session.pendingToolCalls) controller.abort();
   setActivePromptKind(session, null);
+  clearGrokPendingCheckpoint(session);
   emitForSession(session, ACP_TURN_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     stopReason,
@@ -3880,11 +3885,16 @@ function dropQueuedTurnInputs(session: AcpThreadSession, reason: string): void {
   }
 }
 
-async function grokTurnCheckpoint(
-  session: AcpThreadSession,
-): Promise<string | undefined> {
+function clearGrokPendingCheckpoint(session: AcpThreadSession): void {
+  session.grokPendingPromptIndex = undefined;
+}
+
+async function grokTurnCheckpoint(session: AcpThreadSession): Promise<{
+  checkpoint: string | undefined;
+  prior: string | undefined;
+}> {
   if (session.grokCapabilities?.cancelRewind !== true) {
-    return undefined;
+    return { checkpoint: undefined, prior: undefined };
   }
   const providerThreadId = session.providerThreadId;
   const points = decodeGrokRewindPoints(
@@ -3906,16 +3916,47 @@ async function grokTurnCheckpoint(
     (max, point) => Math.max(max, point.prompt_index),
     -1,
   );
-  return selectGrokTurnCheckpointId(points, completedPromptIndex);
+  if (completedPromptIndex < 0) {
+    return { checkpoint: undefined, prior: undefined };
+  }
+  const prior =
+    session.grokPendingPromptIndex === undefined
+      ? undefined
+      : selectGrokTurnCheckpointId(points, session.grokPendingPromptIndex);
+  if (prior !== undefined) {
+    session.grokPendingPromptIndex = undefined;
+  }
+  const grew =
+    session.grokSeenMaxPromptIndex === undefined ||
+    completedPromptIndex > session.grokSeenMaxPromptIndex;
+  session.grokSeenMaxPromptIndex = Math.max(
+    session.grokSeenMaxPromptIndex ?? -1,
+    completedPromptIndex,
+  );
+  if (!grew) {
+    return { checkpoint: undefined, prior };
+  }
+  const checkpoint = selectGrokTurnCheckpointId(points, completedPromptIndex);
+  if (
+    checkpoint === undefined &&
+    session.grokPendingPromptIndex === undefined
+  ) {
+    session.grokPendingPromptIndex = completedPromptIndex;
+  }
+  return { checkpoint, prior };
 }
 
 function finishTurn(
   session: AcpThreadSession,
   stopReason: z.infer<typeof acpStopReasonSchema>,
   providerCheckpointId?: string,
+  priorProviderCheckpointId?: string,
 ): void {
   if (session.activePromptKind !== "turn") {
     return;
+  }
+  if (stopReason !== "end_turn") {
+    clearGrokPendingCheckpoint(session);
   }
   session.turnStartedAtMs = undefined;
   for (const controller of session.pendingToolCalls) controller.abort();
@@ -3934,6 +3975,9 @@ function finishTurn(
     threadId: session.bbThreadId,
     stopReason,
     ...(providerCheckpointId === undefined ? {} : { providerCheckpointId }),
+    ...(priorProviderCheckpointId === undefined
+      ? {}
+      : { priorProviderCheckpointId }),
   });
 }
 
@@ -4026,6 +4070,7 @@ function runTurn(
 
       let stopReason: z.infer<typeof acpStopReasonSchema>;
       let providerCheckpointId: string | undefined;
+      let priorProviderCheckpointId: string | undefined;
       session.cancelRequested = false;
       try {
         const previousSession = session;
@@ -4076,7 +4121,11 @@ function runTurn(
             stopReason = result.stopReason;
             emitGrokPromptUsage(session, result);
             if (stopReason === "end_turn") {
-              providerCheckpointId = await grokTurnCheckpoint(session);
+              const discovered = await grokTurnCheckpoint(session);
+              providerCheckpointId = discovered.checkpoint;
+              if (priorProviderCheckpointId === undefined) {
+                priorProviderCheckpointId = discovered.prior;
+              }
             }
             break;
           } catch (error) {
@@ -4153,7 +4202,12 @@ function runTurn(
             "The agent reported no error and sent nothing back. If this keeps happening, check that the agent runs and is signed in on the machine that hosts the thread.",
         });
       }
-      finishTurn(session, stopReason, providerCheckpointId);
+      finishTurn(
+        session,
+        stopReason,
+        providerCheckpointId,
+        priorProviderCheckpointId,
+      );
       return;
     }
   })();
@@ -4349,6 +4403,8 @@ async function rebuildAgentSession(
   if (replacement.providerThreadId === previousProviderThreadId) {
     replacement.grokTokenUsage = session.grokTokenUsage;
     replacement.grokPromptCost = session.grokPromptCost;
+    replacement.grokPendingPromptIndex = session.grokPendingPromptIndex;
+    replacement.grokSeenMaxPromptIndex = session.grokSeenMaxPromptIndex;
   }
   sendNotification(BRIDGE_NOTIFICATION_METHODS.sessionReplaced, {
     threadId: session.bbThreadId,
@@ -4443,6 +4499,7 @@ function finishCompaction(
   if (session.activePromptKind !== "compaction") {
     return;
   }
+  clearGrokPendingCheckpoint(session);
   emitForSession(session, ACP_COMPACTION_COMPLETED_METHOD, {
     threadId: session.bbThreadId,
     ...outcome,

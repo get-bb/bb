@@ -6244,6 +6244,29 @@ describe("acp bridge", () => {
     expect(threadEventsOfType("turn/completed").at(-1)).not.toHaveProperty(
       "providerCheckpointId",
     );
+    const completions = threadEventsOfType("turn/completed");
+    const firstTurn = completions[0]?.scope;
+    const firstTurnId =
+      firstTurn !== null &&
+      typeof firstTurn === "object" &&
+      "turnId" in firstTurn &&
+      typeof firstTurn.turnId === "string"
+        ? firstTurn.turnId
+        : undefined;
+    expect(firstTurnId).toEqual(expect.any(String));
+    expect(
+      completions
+        .filter((event) => {
+          const scope = event.scope;
+          return (
+            scope !== null &&
+            typeof scope === "object" &&
+            "turnId" in scope &&
+            scope.turnId === firstTurnId
+          );
+        })
+        .at(-1),
+    ).toMatchObject({ providerCheckpointId: "1" });
 
     const forkId = sendRequest("thread/fork", {
       threadId: "thread-grok-checkpoint-fork",
