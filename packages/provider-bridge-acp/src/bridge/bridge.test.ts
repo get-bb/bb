@@ -3270,7 +3270,12 @@ describe("acp bridge", () => {
         {
           id: "root_a",
           path: "/staged/acp-skills",
-          skills: [{ name: "deploy", description: "Ship the app." }],
+          skills: [
+            {
+              name: "deploy",
+              description: "Ship the app when the user invokes /deploy.",
+            },
+          ],
         },
       ],
     });
@@ -3329,7 +3334,7 @@ describe("acp bridge", () => {
     );
     expect(prompt).toContain("Available bb skills:");
     expect(prompt).toContain(
-      `- deploy: Ship the app. (SKILL.md: ${join("/staged/acp-skills", "deploy", "SKILL.md")})`,
+      `- deploy: Ship the app when the user invokes the bb skill "deploy". (SKILL.md: ${join("/staged/acp-skills", "deploy", "SKILL.md")})`,
     );
     await waitForResponse(sendRequest("skills/configure", { roots: [] }));
   });
