@@ -714,6 +714,280 @@ describe("provider model catalog store", () => {
     },
   );
 
+  const OPENCODE_FULL_IDS = [
+    "zai-coding-plan/glm-5.4",
+    ...Array.from({ length: 55 }, (_, index) => `full-${index}`),
+  ];
+  const OPENCODE_SHORT_IDS = Array.from(
+    { length: 30 },
+    (_, index) => `full-${index}`,
+  );
+  const OPENCODE_SHORT_PLUS_NEW_IDS = [
+    ...OPENCODE_SHORT_IDS,
+    "opencode/seaglass-alpha-free",
+  ];
+
+  function stubProviderEnv(providerId: string, token: string | null) {
+    setPluginAgentContributions({
+      listSkillRootContributions: () => [],
+      listAgentTools: () => [],
+      listInstructionContributions: () => [],
+      findAgentTool: () => undefined,
+      resolveMention: async () => ({ ok: false, error: "unused" }),
+      invokeAgentTool: async () => ({ success: false, contentItems: [] }),
+      resolveProviderEnv: async ({ providerId: requested }) => ({
+        entries:
+          requested !== providerId || token === null
+            ? []
+            : [
+                {
+                  name: "OPENCODE_POOL_TOKEN",
+                  value: token,
+                  source: { plugin: "account-pool" },
+                  reason: "pooled",
+                },
+              ],
+      }),
+    });
+  }
+
+  it("keeps the last acp-opencode catalog when a refresh returns a strict subset", async () => {
+    await withTestHarness(async (harness) => {
+      const logLines = captureLogLines(harness);
+      const host = setupCatalogHost(harness, {
+        id: "host-opencode-incomplete-subset",
+      });
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_FULL_IDS)));
+      await host.read("acp-opencode");
+      await settleTimers();
+      const pushes = capturePushes(harness);
+      const rowKey = {
+        hostId: host.hostId,
+        providerId: "acp-opencode",
+        scopeKey: "",
+      };
+      const row = getStoredProviderModelCatalog(harness.db, rowKey);
+
+      host.clock.now += MINUTE;
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_SHORT_IDS)));
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(2);
+      });
+      await settleTimers();
+
+      const response = await host.read("acp-opencode");
+      expect(response.modelLoadError).toBeNull();
+      expect(modelIds(response)).toEqual(OPENCODE_FULL_IDS);
+      expect(getStoredProviderModelCatalog(harness.db, rowKey)).toEqual(row);
+      await settleTimers();
+      expect(pushes).toEqual([]);
+      expect(logLines(SETTLED)[1]).toMatchObject({
+        level: "info",
+        outcome: "incomplete",
+        previousCount: OPENCODE_FULL_IDS.length,
+        nextCount: OPENCODE_SHORT_IDS.length,
+        streak: 1,
+        changed: false,
+      });
+    });
+  });
+
+  it("holds the next acp-opencode subset refresh for a minute, then accepts the third identical subset", async () => {
+    await withTestHarness(async (harness) => {
+      const logLines = captureLogLines(harness);
+      const host = setupCatalogHost(harness, {
+        id: "host-opencode-incomplete-streak",
+      });
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_FULL_IDS)));
+      await host.read("acp-opencode");
+      await settleTimers();
+      const rowKey = {
+        hostId: host.hostId,
+        providerId: "acp-opencode",
+        scopeKey: "",
+      };
+
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_SHORT_IDS)));
+      host.clock.now += MINUTE;
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(2);
+      });
+      await settleTimers();
+      expect(host.listRequests("acp-opencode")).toHaveLength(2);
+
+      host.clock.now += MINUTE - 1;
+      await host.read("acp-opencode");
+      await settleTimers();
+      expect(host.listRequests("acp-opencode")).toHaveLength(2);
+
+      host.clock.now += 1;
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(3);
+      });
+      await settleTimers();
+      expect(logLines(SETTLED)[2]).toMatchObject({
+        outcome: "incomplete",
+        streak: 2,
+        changed: false,
+      });
+      expect(modelIds(await host.read("acp-opencode"))).toEqual(
+        OPENCODE_FULL_IDS,
+      );
+
+      host.clock.now += MINUTE;
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(4);
+      });
+      await settleTimers();
+      expect(logLines(SETTLED)[3]).toMatchObject({
+        outcome: "success",
+        changed: true,
+      });
+      expect(modelIds(await host.read("acp-opencode"))).toEqual(
+        OPENCODE_SHORT_IDS,
+      );
+      expect(
+        JSON.parse(
+          getStoredProviderModelCatalog(harness.db, rowKey)?.modelsJson ?? "[]",
+        ).map((model: { model: string }) => model.model),
+      ).toEqual(OPENCODE_SHORT_IDS);
+    });
+  });
+
+  it("resets the acp-opencode incomplete streak after a full catalog, and still replaces a subset that also adds a model", async () => {
+    await withTestHarness(async (harness) => {
+      const logLines = captureLogLines(harness);
+      const host = setupCatalogHost(harness, {
+        id: "host-opencode-incomplete-reset",
+      });
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_FULL_IDS)));
+      await host.read("acp-opencode");
+      await settleTimers();
+
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_SHORT_IDS)));
+      host.clock.now += MINUTE;
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(2);
+      });
+      await settleTimers();
+
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_FULL_IDS)));
+      host.clock.now += MINUTE;
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(3);
+      });
+      await settleTimers();
+      expect(logLines(SETTLED)[2]).toMatchObject({
+        outcome: "success",
+        changed: false,
+      });
+
+      host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_SHORT_IDS)));
+      host.clock.now += MINUTE;
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(4);
+      });
+      await settleTimers();
+      expect(logLines(SETTLED)[3]).toMatchObject({
+        outcome: "incomplete",
+        streak: 1,
+        changed: false,
+      });
+      expect(modelIds(await host.read("acp-opencode"))).toEqual(
+        OPENCODE_FULL_IDS,
+      );
+
+      host.setAnswer(() =>
+        catalogAnswer(modelList(...OPENCODE_SHORT_PLUS_NEW_IDS)),
+      );
+      host.clock.now += MINUTE;
+      await host.read("acp-opencode");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(5);
+      });
+      await settleTimers();
+      expect(logLines(SETTLED)[4]).toMatchObject({
+        outcome: "success",
+        changed: true,
+      });
+      expect(modelIds(await host.read("acp-opencode"))).toEqual(
+        OPENCODE_SHORT_PLUS_NEW_IDS,
+      );
+    });
+  });
+
+  it("accepts an acp-opencode subset immediately when the launch fingerprint changes", async () => {
+    await withTestHarness(async (harness) => {
+      const logLines = captureLogLines(harness);
+      const host = setupCatalogHost(harness, {
+        id: "host-opencode-incomplete-fingerprint",
+      });
+      stubProviderEnv("acp-opencode", "token-a");
+      try {
+        host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_FULL_IDS)));
+        await host.read("acp-opencode");
+        await settleTimers();
+
+        host.setAnswer(() => catalogAnswer(modelList(...OPENCODE_SHORT_IDS)));
+        host.clock.now += MINUTE;
+        await host.read("acp-opencode");
+        await vi.waitFor(() => {
+          expect(logLines(SETTLED)).toHaveLength(2);
+        });
+        await settleTimers();
+        expect(logLines(SETTLED)[1]).toMatchObject({ outcome: "incomplete" });
+
+        stubProviderEnv("acp-opencode", "token-b");
+        await host.read("acp-opencode");
+        await vi.waitFor(() => {
+          expect(logLines(SETTLED)).toHaveLength(3);
+        });
+        await settleTimers();
+        expect(logLines(SETTLED)[2]).toMatchObject({
+          outcome: "success",
+          changed: true,
+        });
+        expect(modelIds(await host.read("acp-opencode"))).toEqual(
+          OPENCODE_SHORT_IDS,
+        );
+      } finally {
+        setPluginAgentContributions(undefined);
+      }
+    });
+  });
+
+  it("still replaces a claude-code catalog that shrinks to a subset", async () => {
+    await withTestHarness(async (harness) => {
+      const logLines = captureLogLines(harness);
+      const host = setupCatalogHost(harness, {
+        id: "host-claude-subset-replace",
+      });
+      host.setAnswer(() => catalogAnswer(modelList("a", "b", "c")));
+      await host.read("claude-code");
+      await settleTimers();
+
+      host.setAnswer(() => catalogAnswer(modelList("a", "b")));
+      host.clock.now += MINUTE;
+      await host.read("claude-code");
+      await vi.waitFor(() => {
+        expect(logLines(SETTLED)).toHaveLength(2);
+      });
+      await settleTimers();
+      expect(logLines(SETTLED)[1]).toMatchObject({
+        outcome: "success",
+        changed: true,
+      });
+      expect(modelIds(await host.read("claude-code"))).toEqual(["a", "b"]);
+    });
+  });
+
   it("answers recorded failures without waiting for 30 seconds, then waits once for auth_required and refreshes a timeout in the background", async () => {
     await withTestHarness(async (harness) => {
       const host = setupCatalogHost(harness, {

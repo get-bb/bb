@@ -44,6 +44,8 @@ const FAILURE_TTL_MS = 30_000;
 const FAILURE_DETAIL_MAX_LENGTH = 300;
 const PREWARM_MIN_AGE_MS = 4 * 60 * 60_000;
 const WORKSPACE_ROW_RETENTION_MS = 7 * 24 * 60 * 60_000;
+const INCOMPLETE_CATALOG_RETRY_MS = 60_000;
+const INCOMPLETE_CATALOG_ACCEPT_STREAK = 3;
 
 type ProviderModelCatalogFailureCode = Exclude<
   SystemExecutionOptionsModelLoadErrorCode,
@@ -133,10 +135,18 @@ interface CatalogRefresh {
   promise: Promise<void>;
 }
 
+interface CatalogIncomplete {
+  fingerprint: string;
+  modelIdsKey: string;
+  streak: number;
+  retryAfter: number;
+}
+
 interface CatalogEntry {
   key: ProviderModelCatalogRowKey;
   good: CatalogGood | null;
   failure: CatalogFailure | null;
+  incomplete: CatalogIncomplete | null;
   unavailableDetail: string | null;
   refresh: CatalogRefresh | null;
   selectedModels: Map<string, CatalogRefresh & { expiresAt: number }>;
@@ -316,6 +326,43 @@ function lacksRequiredModel(
   );
 }
 
+function keepsLastGoodOnIncompleteSubset(providerId: string): boolean {
+  return providerId === "acp-opencode";
+}
+
+function catalogModelIdSet(
+  models: readonly AvailableModel[],
+  selectedOnlyModels: readonly AvailableModel[],
+): Set<string> {
+  const ids = new Set<string>();
+  for (const model of models) {
+    ids.add(model.model);
+  }
+  for (const model of selectedOnlyModels) {
+    ids.add(model.model);
+  }
+  return ids;
+}
+
+function catalogModelIdKey(ids: ReadonlySet<string>): string {
+  return [...ids].sort().join("\0");
+}
+
+function isStrictSubsetOf(
+  next: ReadonlySet<string>,
+  previous: ReadonlySet<string>,
+): boolean {
+  if (next.size >= previous.size) {
+    return false;
+  }
+  for (const id of next) {
+    if (!previous.has(id)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function evaluate(
   entry: CatalogEntry,
   fingerprint: string,
@@ -326,7 +373,15 @@ function evaluate(
   const { failure, servable } = currentState(entry, fingerprint);
   const active = failure !== null && now - failure.failedAt < FAILURE_TTL_MS;
   if (servable !== null) {
-    const stale = !refreshed && !active && now - servable.fetchedAt >= FRESH_MS;
+    const incompleteHold =
+      entry.incomplete !== null &&
+      entry.incomplete.fingerprint === fingerprint &&
+      now < entry.incomplete.retryAfter;
+    const stale =
+      !refreshed &&
+      !active &&
+      !incompleteHold &&
+      now - servable.fetchedAt >= FRESH_MS;
     if (
       stale &&
       access.kind === "validation" &&
@@ -369,6 +424,7 @@ function evaluate(
 
 function markEntryStale(entry: CatalogEntry): void {
   entry.failure = null;
+  entry.incomplete = null;
   entry.unavailableDetail = null;
   entry.selectedModels.clear();
   if (entry.good !== null) {
@@ -425,6 +481,7 @@ export function createProviderModelCatalogStore(options: {
       key,
       good: loadStoredGood(deps, key),
       failure: null,
+      incomplete: null,
       unavailableDetail: null,
       refresh: null,
       selectedModels: new Map(),
@@ -528,6 +585,49 @@ export function createProviderModelCatalogStore(options: {
     let level: "info" | "warn" | "error" = "info";
     let fields: Record<string, unknown>;
     if (settlement.ok) {
+      const previousGood =
+        entry.good?.fingerprint === refresh.fingerprint ? entry.good : null;
+      const nextIds = catalogModelIdSet(
+        settlement.models,
+        settlement.selectedOnlyModels,
+      );
+      const previousIds =
+        previousGood === null
+          ? null
+          : catalogModelIdSet(
+              previousGood.models,
+              previousGood.selectedOnlyModels,
+            );
+      if (
+        previousGood !== null &&
+        previousIds !== null &&
+        keepsLastGoodOnIncompleteSubset(providerId) &&
+        isStrictSubsetOf(nextIds, previousIds)
+      ) {
+        const modelIdsKey = catalogModelIdKey(nextIds);
+        const streak =
+          entry.incomplete?.fingerprint === refresh.fingerprint &&
+          entry.incomplete.modelIdsKey === modelIdsKey
+            ? entry.incomplete.streak + 1
+            : 1;
+        if (streak < INCOMPLETE_CATALOG_ACCEPT_STREAK) {
+          entry.incomplete = {
+            fingerprint: refresh.fingerprint,
+            modelIdsKey,
+            streak,
+            retryAfter: now + INCOMPLETE_CATALOG_RETRY_MS,
+          };
+          log("info", {
+            outcome: "incomplete",
+            previousCount: previousIds.size,
+            nextCount: nextIds.size,
+            streak,
+            changed: false,
+          });
+          return;
+        }
+      }
+      entry.incomplete = null;
       entry.good = nextGood(entry, {
         fingerprint: refresh.fingerprint,
         models: settlement.models,
@@ -552,6 +652,7 @@ export function createProviderModelCatalogStore(options: {
         isHostUnavailableApiError(error) ||
         refresh.sessionId !== deps.hub.getDaemonSessionIdForHost(hostId)
       ) {
+        entry.incomplete = null;
         entry.unavailableDetail = toProviderModelCatalogFailureDetail(error);
         log("info", {
           outcome: "host_unavailable",
@@ -565,6 +666,7 @@ export function createProviderModelCatalogStore(options: {
         (error.status === 502 || error.status === 504)
           ? toProviderModelCatalogFailureCode(error)
           : null;
+      entry.incomplete = null;
       entry.failure = {
         fingerprint: refresh.fingerprint,
         code: code ?? "failed",
@@ -776,6 +878,7 @@ export function createProviderModelCatalogStore(options: {
       const before = pickerView(entry, launch.fingerprint);
       entry.refresh = null;
       entry.failure = null;
+      entry.incomplete = null;
       entry.unavailableDetail = null;
       entry.good = nextGood(entry, {
         fingerprint: launch.fingerprint,
