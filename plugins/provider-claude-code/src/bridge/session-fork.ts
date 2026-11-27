@@ -18,6 +18,7 @@ import {
 import { z } from "zod";
 
 const transcriptEntrySchema = z.looseObject({ type: z.string() });
+const forkBoundaryEntrySchema = z.looseObject({ timestamp: z.iso.datetime() });
 const TRANSCRIPT_READ_CHUNK_BYTES = 1024 * 1024;
 const FORK_WORKER_TASK = "bb-claude-session-fork";
 const forkWorkerTaskSchema = z.object({
@@ -128,21 +129,67 @@ function* serializeTranscript(entries: SessionStoreEntry[]): Generator<string> {
   }
 }
 
+export async function readClaudeForkBoundary(
+  configDirectory: string,
+  sessionId: string,
+): Promise<string | null> {
+  const projectDirectories = await listProjectDirectories(
+    join(configDirectory, "projects"),
+  );
+  for (const projectDirectory of projectDirectories) {
+    let transcript: FileHandle;
+    try {
+      transcript = await open(join(projectDirectory, `${sessionId}.jsonl`));
+    } catch {
+      continue;
+    }
+    try {
+      return await readForkBoundary(
+        transcript.readLines({ highWaterMark: TRANSCRIPT_READ_CHUNK_BYTES }),
+      );
+    } finally {
+      await transcript.close();
+    }
+  }
+  return null;
+}
+
+async function readForkBoundary(
+  lines: AsyncIterable<string>,
+): Promise<string | null> {
+  let lastForkedLine: string | null = null;
+  for await (const line of lines) {
+    if (line.includes('"forkedFrom":')) {
+      lastForkedLine = line;
+    } else if (line.includes('"uuid":')) {
+      break;
+    }
+  }
+  const lastForkedEntry = forkBoundaryEntrySchema.safeParse(
+    lastForkedLine === null ? undefined : parseTranscriptLine(lastForkedLine),
+  );
+  return lastForkedEntry.success ? lastForkedEntry.data.timestamp : null;
+}
+
+async function listProjectDirectories(
+  projectsDirectory: string,
+): Promise<string[]> {
+  try {
+    return (await readdir(projectsDirectory, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => join(projectsDirectory, entry.name));
+  } catch {
+    return [];
+  }
+}
+
 async function findTranscript(
   projectsDirectory: string,
   sessionId: string,
 ): Promise<{ projectDirectory: string; entries: SessionStoreEntry[] } | null> {
-  let projectDirectories: string[];
-  try {
-    projectDirectories = (
-      await readdir(projectsDirectory, { withFileTypes: true })
-    )
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => join(projectsDirectory, entry.name));
-  } catch {
-    return null;
-  }
-  for (const projectDirectory of projectDirectories) {
+  for (const projectDirectory of await listProjectDirectories(
+    projectsDirectory,
+  )) {
     let transcript: FileHandle;
     try {
       transcript = await open(join(projectDirectory, `${sessionId}.jsonl`));
@@ -168,21 +215,23 @@ async function parseTranscript(
 ): Promise<SessionStoreEntry[]> {
   const entries: SessionStoreEntry[] = [];
   for await (const line of lines) {
-    if (line.trim().length === 0) {
-      continue;
-    }
-    let value: unknown;
-    try {
-      value = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    const parsed = transcriptEntrySchema.safeParse(value);
+    const parsed = transcriptEntrySchema.safeParse(parseTranscriptLine(line));
     if (parsed.success) {
       entries.push(parsed.data);
     }
   }
   return entries;
+}
+
+function parseTranscriptLine(line: string): unknown {
+  if (line.trim().length === 0) {
+    return undefined;
+  }
+  try {
+    return JSON.parse(line);
+  } catch {
+    return undefined;
+  }
 }
 
 if (!isMainThread) {

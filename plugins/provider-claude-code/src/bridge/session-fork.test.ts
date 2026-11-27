@@ -7,13 +7,18 @@ import {
   openSync,
   rmSync,
   writeFileSync,
+  readFileSync,
   writeSync,
 } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { afterEach, describe, expect, it } from "vitest";
-import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
+import {
+  claudeConfigDirectory,
+  forkClaudeSession,
+  readClaudeForkBoundary,
+} from "./session-fork.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -105,6 +110,103 @@ console.log("caller still running with " + callerState.length + " entries");
       `Claude session ${sourceSessionId} is too large to fork: forking it ran out of memory\ncaller still running with 1000 entries\n`,
     );
   }, 30_000);
+});
+
+describe("readClaudeForkBoundary", () => {
+  const tempDirs: string[] = [];
+
+  afterEach(() => {
+    for (const dir of tempDirs.splice(0)) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  function writeTranscript(args: {
+    sessionId: string;
+    texts: string[];
+    timestamps: string[];
+  }): { configDirectory: string; transcriptDir: string } {
+    const configDirectory = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
+    tempDirs.push(configDirectory);
+    const transcriptDir = join(configDirectory, "projects", "-tmp-worktree");
+    mkdirSync(transcriptDir, { recursive: true });
+    const uuids = args.texts.map(() => randomUUID());
+    writeFileSync(
+      join(transcriptDir, `${args.sessionId}.jsonl`),
+      args.texts
+        .map((text, index) =>
+          JSON.stringify({
+            type: index % 2 === 0 ? "user" : "assistant",
+            uuid: uuids[index],
+            parentUuid: index === 0 ? null : uuids[index - 1],
+            sessionId: args.sessionId,
+            cwd: "/tmp/worktree",
+            isSidechain: false,
+            timestamp: args.timestamps[index],
+            message: {
+              role: index % 2 === 0 ? "user" : "assistant",
+              content: text,
+            },
+          }),
+        )
+        .join("\n") + "\n",
+    );
+    return { configDirectory, transcriptDir };
+  }
+
+  it("returns null for a session that did not start as a fork", async () => {
+    const sessionId = randomUUID();
+    const { configDirectory } = writeTranscript({
+      sessionId,
+      texts: ["schedule a job", "scheduled"],
+      timestamps: ["2026-10-26T00:00:00.000Z", "2026-10-26T00:00:01.000Z"],
+    });
+
+    await expect(
+      readClaudeForkBoundary(configDirectory, sessionId),
+    ).resolves.toBeNull();
+    await expect(
+      readClaudeForkBoundary(configDirectory, randomUUID()),
+    ).resolves.toBeNull();
+  });
+
+  it("returns the fork time of a forked session, not the time of its own later messages", async () => {
+    const sourceSessionId = randomUUID();
+    const { configDirectory, transcriptDir } = writeTranscript({
+      sessionId: sourceSessionId,
+      texts: ["schedule a job", "scheduled"],
+      timestamps: ["2026-10-26T00:00:00.000Z", "2026-10-26T00:00:01.000Z"],
+    });
+    const before = new Date().toISOString();
+    const forkedSessionId = await forkClaudeSession({
+      configDirectory,
+      sourceSessionId,
+      upToMessageId: undefined,
+    });
+    const after = new Date().toISOString();
+    const forkedTranscript = join(transcriptDir, `${forkedSessionId}.jsonl`);
+    writeFileSync(
+      forkedTranscript,
+      `${readFileSync(forkedTranscript, "utf8")}${JSON.stringify({
+        type: "user",
+        uuid: randomUUID(),
+        sessionId: forkedSessionId,
+        timestamp: "2099-01-01T00:00:00.000Z",
+        message: { role: "user", content: "side chat question" },
+      })}\n`,
+    );
+
+    const boundary = await readClaudeForkBoundary(
+      configDirectory,
+      forkedSessionId,
+    );
+
+    expect(boundary).not.toBeNull();
+    expect(boundary! >= before && boundary! <= after).toBe(true);
+    await expect(
+      readClaudeForkBoundary(configDirectory, sourceSessionId),
+    ).resolves.toBeNull();
+  });
 });
 
 describe("claudeConfigDirectory", () => {
