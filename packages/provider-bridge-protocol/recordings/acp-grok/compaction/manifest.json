@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "compaction",
+  "threadId": "grok-compaction",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-11",
+  "description": "A thread compacted after a turn (/compact).",
+  "note": "Synthetic manual and automatic compaction with exact token reduction and continued parent turn.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 19,
+    "provider→bridge": 9,
+    "bridge→provider": 4
+  }
+}

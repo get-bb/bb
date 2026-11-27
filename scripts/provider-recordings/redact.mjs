@@ -23,9 +23,29 @@
  * it sweeps the output for every pattern again and exits 3 if anything
  * survived, so a new secret shape fails loudly instead of landing in git.
  */
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync, copyFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readdirSync,
+  lstatSync,
+  readFileSync,
+  realpathSync,
+  statSync,
+  writeFileSync,
+  copyFileSync,
+  renameSync,
+  rmSync,
+} from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join, relative } from "node:path";
+import {
+  basename,
+  dirname,
+  isAbsolute,
+  join,
+  relative,
+  resolve,
+  sep,
+} from "node:path";
+import { randomUUID } from "node:crypto";
 
 const MAX_STRING_CHARS = 2_000;
 const HEAD_CHARS = 1_400;
@@ -43,6 +63,7 @@ const TOKEN_PATTERNS = [
   /github_pat_[A-Za-z0-9_]{20,}/g,
   /sk-ant-[A-Za-z0-9_-]{20,}/g,
   /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/g,
+  /(?<![A-Za-z0-9])xai-[A-Za-z0-9_-]{16,}/g,
   /xox[abprs]-[A-Za-z0-9-]{20,}/g,
   /bbcm_[A-Za-z0-9_-]{16,}/g,
   /eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
@@ -51,9 +72,46 @@ const TOKEN_PATTERNS = [
 /** `"Authorization": "<value>"` in JSON, with or without JSON escaping. */
 const AUTHORIZATION_PATTERN =
   /("|\\")[Aa]uthorization\1\s*:\s*("|\\")(?:(?!\2)[^\\]|\\.)*\2/g;
-const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
-const SECRET_ENV_KEY = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|COOKIE|AUTH)/i;
+const EMAIL_PATTERN =
+  /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}/g;
+const SECRET_ENV_KEY =
+  /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|COOKIE|AUTH)/i;
 const RECORD_DIR_ENV = "BB_PROVIDER_BRIDGE_RECORD_DIR";
+const PRESERVED_ENV_VALUES = new Map([
+  ["GROK_ACTIVE_AGENT_MESSAGES", "1"],
+  ["FAKE_ACP_GROK_SUBAGENT_KEEP_RUNNING", "1"],
+]);
+const GROK_SYNTHETIC_SUBAGENT_MESSAGE = "CHILD_MESSAGE 😀 مراجعة";
+const GROK_SYNTHETIC_SUBAGENT_MESSAGES = new Set([
+  GROK_SYNTHETIC_SUBAGENT_MESSAGE,
+]);
+const GROK_SYNTHETIC_INTERJECT_TEXTS = new Set([
+  "INTERJECT_FIRST 😀",
+  "INTERJECT_SECOND مراجعة",
+  "INTERJECT_FIRST 😀 مراجعة",
+]);
+const PRESERVED_RAW_INPUT_KEYS = ["subagent_id", "task_id", "delivery"];
+const GROK_SYNTHETIC_SPAWN_RESULTS = new Set([
+  "Subagent started in background.\nsubagent_id: child-alpha\ndescription: CHILD_ALPHA",
+  "Subagent started in background.\nsubagent_id: child-beta\ndescription: CHILD_BETA",
+]);
+const GROK_SYNTHETIC_CANCEL_MESSAGE = "Subagent cancellation initiated";
+const GROK_SYNTHETIC_SUBAGENT_OUTPUTS = new Set(["BETA_DONE", "STALE"]);
+const GROK_SYNTHETIC_SUBAGENT_ERRORS = new Set(["Subagent was cancelled"]);
+const GROK_SYNTHETIC_QUESTION_TEXTS = new Set([
+  "Choose synthetic option",
+  "First synthetic choice",
+  "Second synthetic choice",
+  "PREVIEW_ALPHA",
+  "PREVIEW_BETA",
+]);
+const GROK_SYNTHETIC_ANSWER_VALUES = new Set(["Alpha"]);
+const GROK_SYNTHETIC_PLAN_TEXT =
+  "# Hello function\n\n1. Add hello.\n2. Add a focused test.";
+const GROK_SYNTHETIC_SUBAGENT_PROMPTS = new Set([
+  'Use send_subagent_message with subagent_id="child-alpha", delivery="interject", and text exactly "CHILD_MESSAGE 😀 مراجعة". Send it only to that child, then return the tool result.',
+  'Use kill_command_or_subagent with task_ids=["child-alpha"] to cancel only that child. Do not cancel the parent session or any sibling. Return the tool result.',
+]);
 
 function parseArgs(argv) {
   const positional = [];
@@ -87,14 +145,19 @@ function trimString(value) {
   if (value.length <= MAX_STRING_CHARS || value.includes(TRIM_MARKER)) {
     return value;
   }
-  const trimmed = value.length - HEAD_CHARS - TAIL_CHARS;
-  return `${value.slice(0, HEAD_CHARS)}\n${TRIM_MARKER} ${trimmed} chars trimmed⟧\n${value.slice(-TAIL_CHARS)}`;
+  const characters = Array.from(value);
+  const head = characters.slice(0, HEAD_CHARS).join("");
+  const tail = characters.slice(-TAIL_CHARS).join("");
+  const trimmed = characters.length - HEAD_CHARS - TAIL_CHARS;
+  return `${head}\n${TRIM_MARKER} ${trimmed} chars trimmed⟧\n${tail}`;
 }
 
 function namesOnly(list) {
   if (!Array.isArray(list)) return list;
   return list.map((entry) =>
-    entry !== null && typeof entry === "object" && typeof entry.name === "string"
+    entry !== null &&
+    typeof entry === "object" &&
+    typeof entry.name === "string"
       ? entry.name
       : entry,
   );
@@ -110,6 +173,10 @@ const CATALOG_KEYS = new Set([
   "commands",
 ]);
 
+function isSecretShapedKey(key) {
+  return key !== "authMethods" && SECRET_ENV_KEY.test(key);
+}
+
 function isEnvMap(key, value) {
   return (
     (key === "env" || key === "envVars" || key === "environment") &&
@@ -119,16 +186,72 @@ function isEnvMap(key, value) {
   );
 }
 
+function isProtocolDeltaKey(key, value) {
+  return (
+    key === "key" &&
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    (typeof value.providerItemId === "string" ||
+      typeof value.channel === "string") &&
+    Object.keys(value).every(
+      (childKey) => childKey === "providerItemId" || childKey === "channel",
+    )
+  );
+}
+
+function redactAllStrings(value) {
+  if (typeof value === "string") return "REDACTED";
+  if (Array.isArray(value)) return value.map(redactAllStrings);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        redactAllStrings(child),
+      ]),
+    );
+  }
+  return value;
+}
+
+function redactUserContent(value) {
+  if (typeof value === "string") {
+    return GROK_SYNTHETIC_SUBAGENT_MESSAGES.has(value) ||
+      value === GROK_SYNTHETIC_PLAN_TEXT
+      ? value
+      : "REDACTED_TEXT";
+  }
+  if (Array.isArray(value)) return value.map(redactUserContent);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, child]) => [
+        key,
+        key === "type" || key === "kind" ? child : redactUserContent(child),
+      ]),
+    );
+  }
+  return value;
+}
+
 function redactEnvMap(map) {
   const out = {};
   for (const [key, value] of Object.entries(map)) {
     if (key === RECORD_DIR_ENV) continue;
-    out[key] = SECRET_ENV_KEY.test(key) && typeof value === "string" && value !== ""
-      ? "REDACTED"
-      : value;
+    out[key] =
+      PRESERVED_ENV_VALUES.get(key) === value ? value : redactAllStrings(value);
   }
   return out;
 }
+
+const USER_CONTENT_KEYS = new Set([
+  "text",
+  "rawInput",
+  "rawOutput",
+  "content",
+  "summary_preview",
+  "planContent",
+  "comments",
+]);
 
 /**
  * Walk one decoded message. `catalogContext` is true inside a Claude
@@ -140,7 +263,8 @@ function redactValue(value, key, catalogContext) {
     return trimString(value);
   }
   if (Array.isArray(value)) {
-    const list = catalogContext && CATALOG_KEYS.has(key) ? namesOnly(value) : value;
+    const list =
+      catalogContext && CATALOG_KEYS.has(key) ? namesOnly(value) : value;
     return list.map((entry) => redactValue(entry, key, catalogContext));
   }
   if (value !== null && typeof value === "object") {
@@ -148,9 +272,15 @@ function redactValue(value, key, catalogContext) {
     for (const [childKey, childValue] of Object.entries(value)) {
       if (isEnvMap(childKey, childValue)) {
         out[childKey] = redactEnvMap(childValue);
-        continue;
+      } else if (isProtocolDeltaKey(childKey, childValue)) {
+        out[childKey] = redactValue(childValue, childKey, catalogContext);
+      } else if (isSecretShapedKey(childKey)) {
+        out[childKey] = redactAllStrings(childValue);
+      } else if (USER_CONTENT_KEYS.has(childKey)) {
+        out[childKey] = redactUserContent(childValue);
+      } else {
+        out[childKey] = redactValue(childValue, childKey, catalogContext);
       }
-      out[childKey] = redactValue(childValue, childKey, catalogContext);
     }
     return out;
   }
@@ -164,6 +294,415 @@ function isClaudeCatalogMessage(message) {
   );
 }
 
+function redactQuestionText(value) {
+  return GROK_SYNTHETIC_QUESTION_TEXTS.has(value)
+    ? trimString(value)
+    : "REDACTED_TEXT";
+}
+
+function redactQuestionOptions(options, redactedOptions) {
+  if (!Array.isArray(options) || !Array.isArray(redactedOptions)) return;
+  for (let index = 0; index < options.length; index += 1) {
+    const option = options[index];
+    const redactedOption = redactedOptions[index];
+    if (
+      option === null ||
+      typeof option !== "object" ||
+      redactedOption === null ||
+      typeof redactedOption !== "object"
+    ) {
+      continue;
+    }
+    for (const key of ["description", "preview"]) {
+      if (typeof option[key] === "string") {
+        redactedOption[key] = redactQuestionText(option[key]);
+      }
+    }
+  }
+}
+
+function redactQuestionList(questions, redactedQuestions) {
+  if (!Array.isArray(questions) || !Array.isArray(redactedQuestions)) return;
+  for (let index = 0; index < questions.length; index += 1) {
+    const question = questions[index];
+    const redactedQuestion = redactedQuestions[index];
+    if (
+      question === null ||
+      typeof question !== "object" ||
+      redactedQuestion === null ||
+      typeof redactedQuestion !== "object"
+    ) {
+      continue;
+    }
+    for (const key of ["question", "prompt"]) {
+      if (typeof question[key] === "string") {
+        redactedQuestion[key] = redactQuestionText(question[key]);
+      }
+    }
+    redactQuestionOptions(question.options, redactedQuestion.options);
+  }
+}
+
+function isRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function redactPlanText(value) {
+  return value === GROK_SYNTHETIC_PLAN_TEXT ? value : "REDACTED_TEXT";
+}
+
+function redactAnswerValue(value) {
+  if (typeof value === "string") {
+    return GROK_SYNTHETIC_ANSWER_VALUES.has(value) ||
+      GROK_SYNTHETIC_QUESTION_TEXTS.has(value)
+      ? value
+      : "REDACTED_TEXT";
+  }
+  if (Array.isArray(value)) return value.map(redactAnswerValue);
+  return value;
+}
+
+function rewriteRedactedKeys(source, target, redactEntry) {
+  if (!isRecord(source) || !isRecord(target)) return;
+  const next = {};
+  for (const [key, value] of Object.entries(source)) {
+    next[redactQuestionText(key)] = redactEntry(value);
+  }
+  for (const key of Object.keys(target)) delete target[key];
+  Object.assign(target, next);
+}
+
+function redactAnnotation(value) {
+  if (!isRecord(value)) return value;
+  const annotation = { ...value };
+  if (typeof annotation.notes === "string") {
+    annotation.notes = GROK_SYNTHETIC_QUESTION_TEXTS.has(annotation.notes)
+      ? annotation.notes
+      : "REDACTED_TEXT";
+  }
+  if (typeof annotation.preview === "string") {
+    annotation.preview = redactQuestionText(annotation.preview);
+  }
+  return annotation;
+}
+
+function redactGrokAcceptedAnswers(result, redactedResult) {
+  if (!isRecord(result) || !isRecord(redactedResult)) return;
+  if (result.outcome !== "accepted") return;
+  if (!isRecord(result.answers) && !isRecord(result.annotations)) return;
+  rewriteRedactedKeys(
+    result.answers,
+    redactedResult.answers,
+    redactAnswerValue,
+  );
+  rewriteRedactedKeys(
+    result.annotations,
+    redactedResult.annotations,
+    redactAnnotation,
+  );
+}
+
+function redactGrokUserAnswers(result, redactedResult) {
+  if (!isRecord(result) || !isRecord(redactedResult)) return;
+  if (result.kind !== "user_answer") return;
+  if (!isRecord(result.answers) || !isRecord(redactedResult.answers)) return;
+  for (const [questionId, answer] of Object.entries(result.answers)) {
+    const redactedAnswer = redactedResult.answers[questionId];
+    if (!isRecord(answer) || !isRecord(redactedAnswer)) continue;
+    for (const [key, value] of Object.entries(answer)) {
+      if (typeof value === "string" || Array.isArray(value)) {
+        redactedAnswer[key] = redactAnswerValue(value);
+      }
+    }
+  }
+}
+
+function redactGrokPlanRequest(params, redactedParams) {
+  if (typeof params.plan === "string") {
+    redactedParams.plan = redactPlanText(params.plan);
+  }
+  if (
+    isRecord(params.input) &&
+    isRecord(redactedParams.input) &&
+    typeof params.input.plan === "string"
+  ) {
+    redactedParams.input.plan = redactPlanText(params.input.plan);
+  }
+}
+
+function redactPlanApproval(payload, redactedPayload) {
+  const subject = payload.subject;
+  const redactedSubject = redactedPayload.subject;
+  if (
+    !isRecord(subject) ||
+    subject.kind !== "plan" ||
+    !isRecord(redactedSubject)
+  ) {
+    return;
+  }
+  if (typeof subject.plan === "string") {
+    redactedSubject.plan = redactPlanText(subject.plan);
+  }
+  if (typeof payload.reason === "string") {
+    redactedPayload.reason = redactPlanText(payload.reason);
+  }
+}
+
+function redactSyntheticSubagentText(value, allowed) {
+  return allowed.has(value) ? value : "REDACTED_TEXT";
+}
+
+function isSyntheticDelegationResultText(value) {
+  let decoded;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    return false;
+  }
+  return (
+    isRecord(decoded) &&
+    Object.keys(decoded).length === 2 &&
+    decoded.type === "Text" &&
+    typeof decoded.text === "string" &&
+    (GROK_SYNTHETIC_SUBAGENT_OUTPUTS.has(decoded.text) ||
+      GROK_SYNTHETIC_SUBAGENT_ERRORS.has(decoded.text) ||
+      GROK_SYNTHETIC_SPAWN_RESULTS.has(decoded.text))
+  );
+}
+
+function redactDelegationResultTexts(params, redactedParams) {
+  if (!Array.isArray(params.deltas) || !Array.isArray(redactedParams.deltas)) {
+    return;
+  }
+  for (let index = 0; index < params.deltas.length; index += 1) {
+    const delta = params.deltas[index];
+    const redactedDelta = redactedParams.deltas[index];
+    if (
+      !isRecord(delta) ||
+      !isRecord(redactedDelta) ||
+      delta.kind !== "item.close" ||
+      !isRecord(delta.item) ||
+      delta.item.type !== "delegation" ||
+      typeof delta.resultText !== "string"
+    ) {
+      continue;
+    }
+    redactedDelta.resultText = isSyntheticDelegationResultText(delta.resultText)
+      ? delta.resultText
+      : "REDACTED_TEXT";
+  }
+}
+
+function redactGrokSubagentPayloads(parsed, redacted) {
+  if (!isRecord(parsed) || !isRecord(redacted)) return;
+  const params = parsed.params;
+  const redactedParams = redacted.params;
+  if (
+    parsed.method === "thread/delta" &&
+    isRecord(params) &&
+    isRecord(redactedParams)
+  ) {
+    redactDelegationResultTexts(params, redactedParams);
+  }
+  if (isRecord(params) && isRecord(redactedParams)) {
+    const update = params.update;
+    const redactedUpdate = redactedParams.update;
+    if (
+      isRecord(update) &&
+      isRecord(redactedUpdate) &&
+      update.sessionUpdate === "subagent_finished"
+    ) {
+      if (typeof update.output === "string") {
+        redactedUpdate.output = redactSyntheticSubagentText(
+          update.output,
+          GROK_SYNTHETIC_SUBAGENT_OUTPUTS,
+        );
+      }
+      if (typeof update.error === "string") {
+        redactedUpdate.error = redactSyntheticSubagentText(
+          update.error,
+          GROK_SYNTHETIC_SUBAGENT_ERRORS,
+        );
+      }
+    }
+  }
+  const result = parsed.result;
+  const redactedResult = redacted.result;
+  if (
+    !isRecord(result) ||
+    !isRecord(redactedResult) ||
+    !Array.isArray(result.subagents) ||
+    !Array.isArray(redactedResult.subagents)
+  ) {
+    return;
+  }
+  for (let index = 0; index < result.subagents.length; index += 1) {
+    const subagent = result.subagents[index];
+    const redactedSubagent = redactedResult.subagents[index];
+    if (!isRecord(subagent) || !isRecord(redactedSubagent)) continue;
+    if (typeof subagent.result === "string") {
+      redactedSubagent.result = redactSyntheticSubagentText(
+        subagent.result,
+        GROK_SYNTHETIC_SUBAGENT_OUTPUTS,
+      );
+    }
+    if (typeof subagent.error === "string") {
+      redactedSubagent.error = redactSyntheticSubagentText(
+        subagent.error,
+        GROK_SYNTHETIC_SUBAGENT_ERRORS,
+      );
+    }
+  }
+}
+
+function redactGrokQuestionPayloads(parsed, redacted) {
+  if (!isRecord(parsed) || !isRecord(redacted)) return;
+  redactGrokAcceptedAnswers(parsed.result, redacted.result);
+  redactGrokUserAnswers(parsed.result, redacted.result);
+  const params = parsed.params;
+  const redactedParams = redacted.params;
+  if (
+    params === null ||
+    typeof params !== "object" ||
+    Array.isArray(params) ||
+    redactedParams === null ||
+    typeof redactedParams !== "object" ||
+    Array.isArray(redactedParams)
+  ) {
+    return;
+  }
+  if (parsed.method === "_x.ai/exit_plan_mode") {
+    redactGrokPlanRequest(params, redactedParams);
+    return;
+  }
+  if (parsed.method === "_x.ai/ask_user_question") {
+    redactQuestionList(params.questions, redactedParams.questions);
+    return;
+  }
+  if (parsed.method !== "interaction/request") return;
+  const payload = params.payload;
+  const redactedPayload = redactedParams.payload;
+  if (!isRecord(payload) || !isRecord(redactedPayload)) return;
+  if (payload.kind === "approval") {
+    redactPlanApproval(payload, redactedPayload);
+    return;
+  }
+  if (payload.kind !== "user_question") return;
+  redactQuestionList(payload.questions, redactedPayload.questions);
+}
+
+function preserveGrokToolResults(value, redacted) {
+  if (Array.isArray(value)) {
+    if (!Array.isArray(redacted)) return;
+    for (let index = 0; index < value.length; index += 1) {
+      preserveGrokToolResults(value[index], redacted[index]);
+    }
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  if (
+    redacted === null ||
+    typeof redacted !== "object" ||
+    Array.isArray(redacted)
+  ) {
+    return;
+  }
+  if (
+    value.rawInput !== null &&
+    typeof value.rawInput === "object" &&
+    value.rawInput.variant === "Task" &&
+    redacted.rawInput !== null &&
+    typeof redacted.rawInput === "object"
+  ) {
+    redacted.rawInput.variant = "Task";
+  }
+  if (
+    value.rawInput !== null &&
+    typeof value.rawInput === "object" &&
+    !Array.isArray(value.rawInput) &&
+    redacted.rawInput !== null &&
+    typeof redacted.rawInput === "object" &&
+    !Array.isArray(redacted.rawInput)
+  ) {
+    for (const key of PRESERVED_RAW_INPUT_KEYS) {
+      const original = value.rawInput[key];
+      if (typeof original === "string" && original.length > 0) {
+        redacted.rawInput[key] = original;
+      }
+    }
+    const taskIds = value.rawInput.task_ids;
+    if (
+      Array.isArray(taskIds) &&
+      taskIds.every((entry) => typeof entry === "string" && entry.length > 0)
+    ) {
+      redacted.rawInput.task_ids = [...taskIds];
+    }
+  }
+  const rawOutput = value.rawOutput;
+  const redactedOutput = redacted.rawOutput;
+  if (
+    rawOutput !== null &&
+    typeof rawOutput === "object" &&
+    redactedOutput !== null &&
+    typeof redactedOutput === "object"
+  ) {
+    if (
+      rawOutput.type === "Text" &&
+      typeof rawOutput.text === "string" &&
+      GROK_SYNTHETIC_SPAWN_RESULTS.has(rawOutput.text)
+    ) {
+      redactedOutput.text = trimString(rawOutput.text);
+    }
+    if (rawOutput.type === "SendSubagentMessage") {
+      for (const key of ["outcome", "message_id"]) {
+        if (typeof rawOutput[key] === "string") {
+          redactedOutput[key] = rawOutput[key];
+        }
+      }
+    }
+    if (
+      rawOutput.type === "KillTask" &&
+      rawOutput.Result !== null &&
+      typeof rawOutput.Result === "object" &&
+      redactedOutput.Result !== null &&
+      typeof redactedOutput.Result === "object"
+    ) {
+      for (const key of ["task_id", "outcome"]) {
+        if (typeof rawOutput.Result[key] === "string") {
+          redactedOutput.Result[key] = rawOutput.Result[key];
+        }
+      }
+      if (typeof rawOutput.Result.message === "string") {
+        redactedOutput.Result.message =
+          rawOutput.Result.message === GROK_SYNTHETIC_CANCEL_MESSAGE
+            ? GROK_SYNTHETIC_CANCEL_MESSAGE
+            : "REDACTED_TEXT";
+      }
+    }
+  }
+  for (const [key, child] of Object.entries(value)) {
+    if (key !== "rawOutput") preserveGrokToolResults(child, redacted[key]);
+  }
+}
+
+function preserveLiteralCompactCommand(value, redacted) {
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      preserveLiteralCompactCommand(value[index], redacted?.[index]);
+    }
+    return;
+  }
+  if (value === null || typeof value !== "object") return;
+  if (redacted === null || typeof redacted !== "object") return;
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "text" && child === "/compact") {
+      redacted[key] = "/compact";
+    } else {
+      preserveLiteralCompactCommand(child, redacted[key]);
+    }
+  }
+}
+
 function redactLine(line) {
   let parsed;
   try {
@@ -174,8 +713,62 @@ function redactLine(line) {
   if (parsed === null || typeof parsed !== "object") {
     return line;
   }
-  const catalogContext = !Array.isArray(parsed) && isClaudeCatalogMessage(parsed);
-  return JSON.stringify(redactValue(parsed, "", catalogContext));
+  const catalogContext =
+    !Array.isArray(parsed) && isClaudeCatalogMessage(parsed);
+  const redacted = redactValue(parsed, "", catalogContext);
+  preserveGrokToolResults(parsed, redacted);
+  preserveLiteralCompactCommand(parsed, redacted);
+  redactGrokQuestionPayloads(parsed, redacted);
+  redactGrokSubagentPayloads(parsed, redacted);
+  if (
+    !Array.isArray(parsed) &&
+    ((parsed.method === "_x.ai/interject" &&
+      GROK_SYNTHETIC_INTERJECT_TEXTS.has(parsed.params?.text)) ||
+      (parsed.method === "subagent/tell" &&
+        GROK_SYNTHETIC_SUBAGENT_MESSAGES.has(parsed.params?.text))) &&
+    typeof parsed.params?.text === "string" &&
+    redacted.params !== null &&
+    typeof redacted.params === "object"
+  ) {
+    redacted.params.text = trimString(parsed.params.text);
+  }
+  if (
+    !Array.isArray(parsed) &&
+    parsed.method === "session/prompt" &&
+    Array.isArray(parsed.params?.prompt) &&
+    Array.isArray(redacted.params?.prompt)
+  ) {
+    for (const [index, item] of parsed.params.prompt.entries()) {
+      if (
+        item?.type === "text" &&
+        typeof item.text === "string" &&
+        GROK_SYNTHETIC_SUBAGENT_PROMPTS.has(item.text) &&
+        redacted.params.prompt[index] !== null &&
+        typeof redacted.params.prompt[index] === "object"
+      ) {
+        redacted.params.prompt[index].text = trimString(item.text);
+      }
+    }
+  }
+  if (
+    !Array.isArray(parsed) &&
+    parsed.method === "turn/steer" &&
+    Array.isArray(parsed.params?.input) &&
+    Array.isArray(redacted.params?.input)
+  ) {
+    for (const [index, item] of parsed.params.input.entries()) {
+      if (
+        item?.type === "text" &&
+        typeof item.text === "string" &&
+        item.text.trim() === "" &&
+        redacted.params.input[index] !== null &&
+        typeof redacted.params.input[index] === "object"
+      ) {
+        redacted.params.input[index].text = item.text;
+      }
+    }
+  }
+  return JSON.stringify(redacted);
 }
 
 // ---------------------------------------------------------------------------
@@ -194,7 +787,10 @@ function createTextRedactor(home) {
   const ownerPattern =
     userName === ""
       ? null
-      : new RegExp(`(\\s)${escapeRegExp(userName)} ${escapeRegExp(userName)}(\\s)`, "g");
+      : new RegExp(
+          `(\\s)${escapeRegExp(userName)} ${escapeRegExp(userName)}(\\s)`,
+          "g",
+        );
   return (text) => {
     let out = text
       .replace(homePattern, REDACTED_HOME)
@@ -222,14 +818,28 @@ function createTextRedactor(home) {
 
 function createSurvivorSweep(home) {
   const homePattern = new RegExp(escapeRegExp(home), "g");
-  const dashedHomePattern = new RegExp(escapeRegExp(home.replace(/\//g, "-")), "g");
+  const dashedHomePattern = new RegExp(
+    escapeRegExp(home.replace(/\//g, "-")),
+    "g",
+  );
   return (text) => {
     const survivors = [];
-    for (const pattern of [homePattern, dashedHomePattern, EMAIL_PATTERN, AUTHORIZATION_PATTERN, ...TOKEN_PATTERNS]) {
+    for (const pattern of [
+      homePattern,
+      dashedHomePattern,
+      EMAIL_PATTERN,
+      AUTHORIZATION_PATTERN,
+      ...TOKEN_PATTERNS,
+    ]) {
       pattern.lastIndex = 0;
       for (const match of text.matchAll(pattern)) {
         const hit = match[0];
-        if (hit.includes("REDACTED") || hit === REDACTED_EMAIL || hit === REDACTED_HOME) continue;
+        if (
+          hit.includes("REDACTED") ||
+          hit === REDACTED_EMAIL ||
+          hit === REDACTED_HOME
+        )
+          continue;
         survivors.push(hit.slice(0, 24));
       }
     }
@@ -241,11 +851,32 @@ function createSurvivorSweep(home) {
 // Files
 // ---------------------------------------------------------------------------
 
-function walk(dir, out = []) {
+function assertInputEntryContained(full, inputRoot, outputRoot) {
+  if (!lstatSync(full).isSymbolicLink()) return;
+  let real;
+  try {
+    real = realpathSync(full);
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+    throw new Error(
+      `refusing to replace ${outputRoot}: an input path aliases the output recordings`,
+    );
+  }
+  const insideInput = real === inputRoot || outputContains(inputRoot, real);
+  const insideOutput = real === outputRoot || outputContains(outputRoot, real);
+  if (!insideInput || insideOutput) {
+    throw new Error(
+      `refusing to replace ${outputRoot}: an input path aliases the output recordings`,
+    );
+  }
+}
+
+function walk(dir, inputRoot, outputRoot, out = []) {
   for (const name of readdirSync(dir)) {
     const full = join(dir, name);
+    assertInputEntryContained(full, inputRoot, outputRoot);
     if (statSync(full).isDirectory()) {
-      walk(full, out);
+      walk(full, inputRoot, outputRoot, out);
     } else {
       out.push(full);
     }
@@ -263,7 +894,11 @@ function redactNdjson(text, redactText) {
   const out = [];
   for (const raw of lines) {
     const entry = JSON.parse(raw);
-    if (entry !== null && typeof entry === "object" && typeof entry.line === "string") {
+    if (
+      entry !== null &&
+      typeof entry === "object" &&
+      typeof entry.line === "string"
+    ) {
       const structural = redactLine(entry.line);
       out.push(JSON.stringify({ ...entry, line: redactText(structural) }));
     } else {
@@ -273,43 +908,103 @@ function redactNdjson(text, redactText) {
   return `${out.join("\n")}\n`;
 }
 
+function outputContains(parent, child) {
+  const fromParent = relative(parent, child);
+  return (
+    fromParent !== "" &&
+    fromParent !== ".." &&
+    !fromParent.startsWith(`..${sep}`) &&
+    !isAbsolute(fromParent)
+  );
+}
+
+function canonicalPath(target) {
+  const absolute = resolve(target);
+  const missing = [];
+  let current = absolute;
+  for (;;) {
+    try {
+      const real = realpathSync(current);
+      return missing.reduceRight((path, part) => join(path, part), real);
+    } catch (error) {
+      if (error?.code !== "ENOENT") {
+        throw error;
+      }
+      const parent = dirname(current);
+      if (parent === current) {
+        return absolute;
+      }
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
 function main() {
   const { inDir, outDir, home } = parseArgs(process.argv.slice(2));
   if (home === "/" || home === "") {
     throw new Error("refusing to redact with an empty home directory");
   }
+  const inputRoot = canonicalPath(inDir);
+  const outputRoot = canonicalPath(outDir);
+  if (inputRoot === outputRoot) {
+    throw new Error("input and output directories must differ");
+  }
+  if (outputContains(outputRoot, inputRoot)) {
+    throw new Error(
+      `refusing to replace ${outDir}: it contains the input recordings`,
+    );
+  }
+  const staging = join(
+    dirname(outputRoot),
+    `.${basename(outputRoot)}.tmp-${process.pid}-${randomUUID()}`,
+  );
   const redactText = createTextRedactor(home);
   const sweep = createSurvivorSweep(home);
-  const files = walk(inDir);
   let rewritten = 0;
-  const survivors = [];
-  for (const file of files) {
-    const rel = relative(inDir, file);
-    const target = join(outDir, rel);
-    mkdirSync(dirname(target), { recursive: true });
-    if (!file.endsWith(".ndjson")) {
-      if (file.endsWith(".json")) {
-        const text = redactText(readFileSync(file, "utf8"));
-        writeFileSync(target, text);
-        for (const hit of sweep(text)) survivors.push({ file: rel, hit });
-      } else {
-        copyFileSync(file, target);
+  try {
+    const files = walk(inputRoot, inputRoot, outputRoot);
+    if (files.length === 0) {
+      throw new Error(
+        `refusing to replace ${outDir}: the input recordings are empty`,
+      );
+    }
+    const survivors = [];
+    for (const file of files) {
+      const rel = relative(inputRoot, file);
+      const target = join(staging, rel);
+      mkdirSync(dirname(target), { recursive: true });
+      if (!file.endsWith(".ndjson")) {
+        if (file.endsWith(".json")) {
+          const text = redactText(readFileSync(file, "utf8"));
+          writeFileSync(target, text);
+          for (const hit of sweep(text)) survivors.push({ file: rel, hit });
+        } else {
+          const text = readFileSync(file, "utf8");
+          for (const hit of sweep(text)) survivors.push({ file: rel, hit });
+          copyFileSync(file, target);
+        }
+        continue;
       }
-      continue;
+      const redacted = redactNdjson(readFileSync(file, "utf8"), redactText);
+      writeFileSync(target, redacted);
+      rewritten += 1;
+      for (const hit of sweep(redacted)) survivors.push({ file: rel, hit });
     }
-    const redacted = redactNdjson(readFileSync(file, "utf8"), redactText);
-    writeFileSync(target, redacted);
-    rewritten += 1;
-    for (const hit of sweep(redacted)) survivors.push({ file: rel, hit });
-  }
-  if (survivors.length > 0) {
-    console.error("SECRETS STILL PRESENT after redaction — refusing to continue:");
-    for (const { file, hit } of survivors.slice(0, 20)) {
-      console.error(`  ${file}: ${hit}`);
+    if (survivors.length > 0) {
+      throw new Error(
+        `refusing to publish recordings: ${survivors.length} potential secret(s) survived redaction`,
+      );
     }
-    process.exit(3);
+    rmSync(outputRoot, { recursive: true, force: true });
+    renameSync(staging, outputRoot);
+  } catch (error) {
+    rmSync(staging, { recursive: true, force: true });
+    throw error;
   }
-  console.log(`redacted ${rewritten} recording files into ${outDir} (home=${home} → ${REDACTED_HOME}); 0 survivors`);
+  console.log(
+    `redacted ${rewritten} recording files into ${outDir} (home=${home} → ${REDACTED_HOME}); 0 survivors`,
+  );
 }
 
 main();

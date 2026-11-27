@@ -473,6 +473,35 @@ const commandHandlers: CommandHandlerMap = {
       const entry = await ensureThreadRuntime(command, options);
       return submitTurn(command, entry, options);
     }),
+  "subagent.list": async (command, options) => {
+    const entry = await ensureThreadRuntime(command, options);
+    const subagents = await entry.runtime.listSubagents(command.threadId);
+    await options.eventSink.flush();
+    return { subagents };
+  },
+  "subagent.tell": async (command, options) => {
+    const entry = await ensureThreadRuntime(command, options);
+    const result = await entry.runtime.tellSubagent({
+      threadId: command.threadId,
+      childRef: command.childRef,
+      text: command.text,
+      clientRequestId: command.requestId,
+      options: command.options,
+    });
+    await options.eventSink.flush();
+    return result;
+  },
+  "subagent.cancel": async (command, options) => {
+    const entry = await ensureThreadRuntime(command, options);
+    const result = await entry.runtime.cancelSubagent({
+      threadId: command.threadId,
+      childRef: command.childRef,
+      clientRequestId: command.requestId,
+      options: command.options,
+    });
+    await options.eventSink.flush();
+    return result;
+  },
   "thread.stop": stopThreadRuntime,
   "thread.storage.delete": async (command, options) => {
     const result = await stopThreadRuntime(command, options);

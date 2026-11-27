@@ -1466,6 +1466,24 @@ whether the server should detect the method on the host entry; and confirm
 that an uncached resolver call per listing stays cheap for third-party
 resolvers.
 
+## `PluginProviderCapabilities.experimental_supportsSubagentMessaging`
+
+Pre-session declaration that the provider can take a message to, or cancel,
+a running subagent from outside the spawning turn. Set it only when that is
+true. Absence and `false` both leave the controls hidden. `bb.providers.register`
+stores the flag through `validatePluginProviderDeclaration`, which keeps it
+only when it is `true`. The server projects that same flag onto
+`ProviderCapabilities.supportsSubagentMessaging`. Thread detail, the plugin
+thread chat, and the subagent action controls read the projected capability
+and are the only surfaces that show the message and cancel controls.
+
+Docs: [provider-plugin-api.md](provider-plugin-api.md) §1.
+
+**Audit before stabilizing.** Confirm the fact stays a declaration rather
+than a handshake-only capability, and that absence and `false` stay hidden.
+Rename it to `supportsSubagentMessaging` project-wide so the declaration
+matches the domain capability, and delete this entry in that change.
+
 ## `experimental_nativeRootsHostContract` (`@get-bb/plugin-sdk/host`)
 
 The one-method host RPC contract (`resolveNativeRoots`). Input is

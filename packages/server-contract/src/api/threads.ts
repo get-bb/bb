@@ -36,6 +36,9 @@ import {
   threadParentNotificationsSchema,
   threadVisibilitySchema,
   threadWithRuntimeSchema,
+  threadSubagentCancelResultSchema,
+  threadSubagentMessageResultSchema,
+  threadSubagentSchema,
 } from "@bb/domain";
 import type { CallerExecutionInputSource } from "@bb/domain";
 import { THREAD_EVENT_LIST_PAGE_SIZE } from "../common.js";
@@ -92,6 +95,33 @@ export {
   THREAD_COUNT_ROOT_PARENT,
   THREAD_MESSAGE_CONTEXT_LIMIT,
 } from "./thread-client-constants.js";
+export const subagentTellRequestSchema = z
+  .object({
+    childRef: z.string().min(1),
+    text: z
+      .string()
+      .min(1)
+      .refine((value) => value.trim().length > 0, {
+        message: "Subagent message text cannot be blank",
+      }),
+  })
+  .strict();
+export type SubagentTellRequest = z.infer<typeof subagentTellRequestSchema>;
+
+export const subagentCancelRequestSchema = z
+  .object({ childRef: z.string().min(1) })
+  .strict();
+export type SubagentCancelRequest = z.infer<typeof subagentCancelRequestSchema>;
+
+export const subagentListResponseSchema = z.array(threadSubagentSchema);
+export type SubagentListResponse = z.infer<typeof subagentListResponseSchema>;
+export const subagentTellResponseSchema = threadSubagentMessageResultSchema;
+export type SubagentTellResponse = z.infer<typeof subagentTellResponseSchema>;
+export const subagentCancelResponseSchema = threadSubagentCancelResultSchema;
+export type SubagentCancelResponse = z.infer<
+  typeof subagentCancelResponseSchema
+>;
+
 export const sendMessageModeSchema = z.enum([
   "queue-if-active",
   "steer-if-active",

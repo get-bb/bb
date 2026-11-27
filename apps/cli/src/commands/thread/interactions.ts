@@ -59,6 +59,10 @@ interface ThreadInteractionRespondOptions extends ThreadInteractionTargetOptions
   value: string;
 }
 
+interface ThreadInteractionApprovalOptions extends ThreadInteractionTargetOptions {
+  comments?: string;
+}
+
 function parseRespondValue(raw: string): JsonValue {
   try {
     return jsonValueSchema.parse(JSON.parse(raw));
@@ -188,6 +192,16 @@ function printUserQuestionInteraction(
           .map((option) => option.label)
           .join(", ")}`,
       );
+      for (const option of question.options) {
+        if (!option.preview) {
+          continue;
+        }
+        const [firstLine, ...remainingLines] = option.preview.split("\n");
+        console.log(`      Preview (${option.label}): ${firstLine}`);
+        for (const line of remainingLines) {
+          console.log(`        ${line}`);
+        }
+      }
     }
     if (question.allowFreeText) {
       console.log("      Free text: allowed");
@@ -618,8 +632,15 @@ function pickApprovalDecision(
 function buildBinaryResolution(
   interaction: PendingInteraction,
   action: "approve" | "deny",
+  comments?: string,
 ): PendingInteractionResolution {
   const approvalInteraction = requireApprovalInteraction(interaction);
+  if (
+    comments !== undefined &&
+    (action !== "deny" || approvalInteraction.payload.subject.kind !== "plan")
+  ) {
+    throw new Error("--comments is only supported when denying a plan.");
+  }
   if (
     action === "approve" &&
     approvalInteraction.payload.subject.kind === "permission_grant"
@@ -632,6 +653,7 @@ function buildBinaryResolution(
   return buildPendingInteractionApprovalResolution(
     approvalInteraction,
     decision,
+    comments,
   );
 }
 
@@ -689,32 +711,38 @@ function registerBinaryResolutionCommand(
   name: "approve" | "deny",
   description: string,
 ): void {
-  interactions
+  const command = interactions
     .command(`${name} <interactionId> [id]`)
     .description(description)
     .option("--self", "Target the current thread (from BB_THREAD_ID)")
-    .option("--json", "Print machine-readable JSON output")
-    .action(
-      action(
-        async (
-          interactionId: string,
-          id: string | undefined,
-          opts: ThreadInteractionTargetOptions,
-        ) => {
-          const threadId = requireThreadIdOrSelf(id, opts);
-          await resolveInteraction({
-            buildResolution: (interaction) =>
-              buildBinaryResolution(interaction, name),
-            failureAction: name,
-            getUrl,
-            interactionId,
-            json: opts.json,
-            threadId,
-            successMessage: formatResolutionSuccessMessage,
-          });
-        },
-      ),
+    .option("--json", "Print machine-readable JSON output");
+  if (name === "deny") {
+    command.option(
+      "--comments <comments>",
+      "Explain requested changes when denying a plan",
     );
+  }
+  command.action(
+    action(
+      async (
+        interactionId: string,
+        id: string | undefined,
+        opts: ThreadInteractionApprovalOptions,
+      ) => {
+        const threadId = requireThreadIdOrSelf(id, opts);
+        await resolveInteraction({
+          buildResolution: (interaction) =>
+            buildBinaryResolution(interaction, name, opts.comments),
+          failureAction: name,
+          getUrl,
+          interactionId,
+          json: opts.json,
+          threadId,
+          successMessage: formatResolutionSuccessMessage,
+        });
+      },
+    ),
+  );
 }
 
 export function registerInteractionCommands(

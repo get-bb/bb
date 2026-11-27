@@ -11,6 +11,7 @@ import {
   hasRootStoredTurnStarted,
   isTurnAimedAtByEarlierStop,
   listStoredTurnCompletedKeys,
+  listStoredTurnCompletedRowsByTurnIds,
   listThreadEnvironmentAssignmentsOnHost,
   MissingStoredTurnStartedError,
 } from "@bb/db";
@@ -417,6 +418,15 @@ async function applyEventEffects(
           turnId,
         });
         if (aimedAtByStop && event.status !== "interrupted") {
+          continue;
+        }
+        if (
+          event.providerCheckpointId !== undefined &&
+          listStoredTurnCompletedRowsByTurnIds(deps.db, {
+            threadId: entry.threadId,
+            turnIds: [turnId],
+          }).length >= 2
+        ) {
           continue;
         }
         const outcome = runThreadLifecycleTransaction(deps, entry.threadId, {

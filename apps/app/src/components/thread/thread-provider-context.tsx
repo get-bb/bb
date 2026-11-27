@@ -3,6 +3,7 @@ import { createContext, useContext } from "react";
 export interface ThreadProviderContextValue {
   providerId: string | null;
   pluginId: string | null;
+  supportsSubagentMessaging?: boolean;
 }
 
 const UNKNOWN_THREAD_PROVIDER: ThreadProviderContextValue = {

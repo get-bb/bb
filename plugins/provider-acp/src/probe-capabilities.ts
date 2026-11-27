@@ -17,6 +17,18 @@ export function applyAcpAgentProbe(
   if (declaredFork === "none" || probe.fork) {
     return null;
   }
+  if (declaredFork === "checkpoint" && probe.extensionFork === true) {
+    if (probe.extensionRewind === true) {
+      return null;
+    }
+    return {
+      agent: { ...agent, fork: "tip" },
+      reason: "the agent does not advertise Grok rewind",
+    };
+  }
+  if (probe.extensionFork === true) {
+    return null;
+  }
   return {
     agent: { ...agent, fork: "none" },
     reason: `the agent does not advertise session/fork, but bb declared fork "${declaredFork}"`,

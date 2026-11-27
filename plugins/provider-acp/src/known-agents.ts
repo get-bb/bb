@@ -154,8 +154,10 @@ export const KNOWN_ACP_AGENTS: readonly AcpAgentDefinition[] = [
     installUrl: "https://docs.x.ai/docs/grok-build",
     visibility: "installed",
     dialect: "grok",
+    supportsNativeUserQuestion: true,
     supportsManualCompaction: true,
-    fork: "none",
+    supportsSubagentMessaging: true,
+    fork: "checkpoint",
     launch: {
       displayName: "Grok Build",
       command: "grok",

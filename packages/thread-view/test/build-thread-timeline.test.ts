@@ -122,6 +122,7 @@ interface TurnStartedEventArgs {
 
 interface TurnCompletedEventArgs {
   errorMessage?: string;
+  providerCheckpointId?: string;
   seq: number;
   status?: "completed" | "failed" | "interrupted";
 }
@@ -464,6 +465,7 @@ function turnStartedEvent({ seq }: TurnStartedEventArgs): ThreadEventWithMeta {
 
 function turnCompletedEvent({
   errorMessage,
+  providerCheckpointId,
   seq,
   status = "completed",
 }: TurnCompletedEventArgs): ThreadEventWithMeta {
@@ -475,6 +477,7 @@ function turnCompletedEvent({
       scope: turnScope("turn-1"),
       status,
       ...(errorMessage ? { error: { message: errorMessage } } : {}),
+      ...(providerCheckpointId === undefined ? {} : { providerCheckpointId }),
     },
     meta: {
       id: `event-${seq}`,
@@ -860,6 +863,29 @@ describe("buildThreadTimelineFromEvents", () => {
 
     expect(rows.filter((row) => row.kind === "turn")).toHaveLength(1);
     expect(collectToolRows(rows)).toHaveLength(1);
+  });
+
+  it("keeps a completed turn's bounds when a later completion only backfills its checkpoint", () => {
+    const rows = buildTimelineRows([
+      turnStartedEvent({ seq: 1 }),
+      toolCallItemEvent({ seq: 2, tool: "read", type: "item/started" }),
+      toolCallItemEvent({
+        result: "ok",
+        seq: 3,
+        tool: "read",
+        type: "item/completed",
+      }),
+      turnCompletedEvent({ seq: 4 }),
+      turnCompletedEvent({ seq: 7, providerCheckpointId: "1" }),
+    ]);
+
+    expect(rows.filter((row) => row.kind === "turn")).toEqual([
+      expect.objectContaining({
+        status: "completed",
+        completedAt: 4,
+        sourceSeqEnd: 4,
+      }),
+    ]);
   });
 
   it.each(["read", "grep", "glob", "Read", "Grep", "Glob"])(

@@ -1,0 +1,8 @@
+{"ts":1794754122669,"run":1794754122515,"seq":5,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"image\":false}}}}"}
+{"ts":1794754122671,"run":1794754122515,"seq":7,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"sessionId\":\"fake-meta-74070-1\"}}"}
+{"ts":1794754122687,"run":1794754122515,"seq":17,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fake-meta-74070-1\",\"update\":{\"sessionUpdate\":\"session_info_update\",\"title\":\"FIRST 😀 مراجعة\",\"updatedAt\":\"2026-11-15T01:00:00Z\"}}}"}
+{"ts":1794754122688,"run":1794754122515,"seq":19,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"stopReason\":\"end_turn\"}}"}
+{"ts":1794754122736,"run":1794754122515,"seq":24,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"image\":false}}}}"}
+{"ts":1794754122736,"run":1794754122515,"seq":26,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}"}
+{"ts":1794754122752,"run":1794754122515,"seq":36,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fake-meta-74070-1\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"REDACTED_TEXT\"}}}}"}
+{"ts":1794754122752,"run":1794754122515,"seq":38,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"stopReason\":\"end_turn\"}}"}

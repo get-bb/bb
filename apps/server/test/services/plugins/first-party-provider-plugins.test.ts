@@ -91,7 +91,7 @@ const FIRST_PARTY_PROVIDER_DECLARATIONS = [
     displayName: "Grok Build",
     supportsThreadArchive: false,
     supportsThreadRename: false,
-    fork: "none",
+    fork: "checkpoint",
     supportsManualCompaction: true,
     supportsUsage: false,
     visibility: "installed",
@@ -319,6 +319,14 @@ describe("first-party provider plugins", () => {
             modelCatalogScope: "host",
           },
           composerActions: [skills, explicitSkills],
+        });
+        expect(clientFields("acp-grok")).toMatchObject({
+          capabilities: {
+            supportsNativeUserQuestion: true,
+            supportsSubagentMessaging: true,
+            supportsFork: true,
+            supportsSessionRewind: true,
+          },
         });
 
         const claude = harness.deps.providerRegistry.get("claude-code");

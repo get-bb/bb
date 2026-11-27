@@ -49,6 +49,7 @@ const providerCapabilitiesSchema = z.object({
   supportsThreadRename: z.boolean(),
   supportsServiceTier: z.boolean(),
   supportsNativeUserQuestion: z.boolean(),
+  supportsSubagentMessaging: z.boolean().optional(),
   supportsFork: z.boolean(),
   supportsSessionRewind: z.boolean(),
   permissionModes: z.array(permissionModeSchema).min(1),

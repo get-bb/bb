@@ -69,8 +69,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "A submitted plugin form leaves on its row only what the plugin's describeSubmission returned, and the whole description is absent when the plugin declares no describeSubmission or when that call throws or times out. Within one, an absent title means the presentation's completed label stands, an absent detail means the title is the whole row, and an absent payload means the row renders without handing anything to the plugin's own timeline renderer. bb never stores the form's payload or the submitted value, so these fields are the entire record of what happened.",
+      "A submitted plugin form leaves on its row only what the plugin's describeSubmission returned, and the whole description is absent when the plugin declares no describeSubmission or when that call throws or times out. Within one, an absent title means the presentation's completed label stands, an absent detail means the title is the whole row, and an absent payload means the row renders without handing anything to the plugin's own timeline renderer. bb never stores the form's payload or the submitted value, so these fields are the entire record of what happened. A rejected plan omits comments when the reviewer did not request changes.",
     fields: [
+      "threadPendingInteractionsResponseSchema.resolution.comments",
       "threadPendingInteractionsResponseSchema.resolution.description",
       "threadPendingInteractionsResponseSchema.resolution.description.detail",
       "threadPendingInteractionsResponseSchema.resolution.description.payload",
@@ -79,8 +80,9 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "The resolve route's body is the persisted resolution union, so it also admits the plugin_submitted arm and its description. No caller can send one: a plugin interaction is submitted through the respond route, and validatePendingInteractionResolution rejects every plugin interaction before a resolution is read. These four exist only because the request schema reuses the persisted shape.",
+      "The resolve route's body is the persisted resolution union, so it also admits the plugin_submitted arm and its description. No caller can send one: a plugin interaction is submitted through the respond route, and validatePendingInteractionResolution rejects every plugin interaction before a resolution is read. These exist only because the request schema reuses the persisted shape. Plan rejection comments are present only when the reviewer requested changes.",
     fields: [
+      "resolvePendingInteractionRequestSchema.comments",
       "resolvePendingInteractionRequestSchema.description",
       "resolvePendingInteractionRequestSchema.description.detail",
       "resolvePendingInteractionRequestSchema.description.payload",
@@ -172,15 +174,18 @@ const OPTIONAL_SERVER_FIELD_GROUPS: readonly OptionalServerFieldGroup[] = [
   },
   {
     reason:
-      "A user question omits shortLabel when its prompt is short enough to title the row itself, omits options when it takes free text only, and omits an option description when the option label needs no gloss. Each absence is the question's shape, not missing data.",
+      "A user question omits shortLabel when its prompt is short enough to title the row itself, omits options when it takes free text only, and omits an option description or preview when the option has no gloss or separate preview. Each absence is the question's shape, not missing data.",
     fields: [
       "threadPendingInteractionsResponseSchema.payload.questions.options",
       "threadPendingInteractionsResponseSchema.payload.questions.options.description",
+      "threadPendingInteractionsResponseSchema.payload.questions.options.preview",
       "threadPendingInteractionsResponseSchema.payload.questions.shortLabel",
       "threadTimelineResponseSchema.rows.questions.options",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.options",
       "threadTimelineResponseSchema.rows.questions.options.description",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.options.description",
+      "threadTimelineResponseSchema.rows.questions.options.preview",
+      "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.options.preview",
       "threadTimelineResponseSchema.rows.questions.shortLabel",
       "threadTimelineResponseSchema.timelinePage.olderRowUpdates.questions.shortLabel",
     ],

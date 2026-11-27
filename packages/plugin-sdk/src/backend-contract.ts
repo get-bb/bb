@@ -1465,6 +1465,10 @@ export interface PluginProviderCapabilities {
   /** The provider stores a thread name of its own, so BB forwards renames to
    * it. */
   supportsThreadRename: boolean;
+  /** The provider accepts a message to, or cancellation of, a running
+   * subagent from outside the spawning turn. Absent means those controls
+   * stay hidden. Experimental until the audit in docs/api_to_audit.md. */
+  experimental_supportsSubagentMessaging?: boolean;
   /** Permission modes the provider can actually run in. Non-empty, no
    * duplicates. */
   permissionModes: readonly PluginProviderPermissionMode[];

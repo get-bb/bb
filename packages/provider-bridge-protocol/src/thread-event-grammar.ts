@@ -78,6 +78,12 @@ export class ThreadEventGrammar {
           return OK;
         }
         if (state.completedTurnIds.has(turnId)) {
+          if (
+            event.providerCheckpointId !== undefined &&
+            event.providerCheckpointId.length > 0
+          ) {
+            return OK;
+          }
           return violation(
             THREAD_EVENT_GRAMMAR_RULES.turnSettlesOnce,
             `turn/completed for turn "${turnId}", which already completed`,

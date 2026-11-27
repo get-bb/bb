@@ -188,6 +188,7 @@ export default async function acpProvidersPlugin(
             command: agent.launch.command,
             args: agent.launch.args,
             env: agent.launch.env,
+            grokFork: agent.dialect === "grok",
           },
           { hostId, signal },
         );

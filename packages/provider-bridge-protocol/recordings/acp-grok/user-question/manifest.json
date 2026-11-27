@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "user-question",
+  "threadId": "grok-user-question",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-10",
+  "description": "The agent asks the user a question and continues with the answer.",
+  "note": "Synthetic Grok native single-select question with previews and an accepted answer.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 4,
+    "bridge→runtime": 11,
+    "provider→bridge": 5,
+    "bridge→provider": 4
+  }
+}

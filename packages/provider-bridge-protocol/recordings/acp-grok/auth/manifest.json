@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "auth",
+  "threadId": "grok-auth",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-16",
+  "description": "auth",
+  "note": "Advertised cached_token authentication, expired-credential rejection, and resume recovery.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 16,
+    "provider→bridge": 10,
+    "bridge→provider": 9
+  }
+}

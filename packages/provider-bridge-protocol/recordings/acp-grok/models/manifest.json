@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "models",
+  "threadId": "grok-models",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-15",
+  "description": "models",
+  "note": "Synthetic dynamic model/reasoning selection, per-model and missing context windows, unsupported effort, and continuity.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 25,
+    "provider→bridge": 13,
+    "bridge→provider": 10
+  }
+}

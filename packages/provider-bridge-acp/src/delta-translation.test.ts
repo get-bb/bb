@@ -356,6 +356,68 @@ describe("acp delta translation (bridge-shared invariants)", () => {
     );
   });
 
+  it("carries a Grok provider checkpoint through turn completion", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+
+    const events = harness.translate({
+      jsonrpc: "2.0",
+      method: ACP_TURN_COMPLETED_METHOD,
+      params: {
+        threadId: THREAD_ID,
+        stopReason: "end_turn",
+        providerCheckpointId: "7",
+      },
+    });
+
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "completed",
+        providerCheckpointId: "7",
+      }),
+    );
+  });
+
+  it("backfills the previous turn when the next boundary arrives", () => {
+    const harness = createHarness();
+    harness.translate(turnStartedEvent());
+    const first = harness.translate(turnCompletedEvent("end_turn"));
+    const firstCompletion = first.find(
+      (event) => event.type === "turn/completed",
+    );
+    expect(firstCompletion).not.toHaveProperty("providerCheckpointId");
+    const firstTurnId =
+      firstCompletion?.scope.kind === "turn"
+        ? firstCompletion.scope.turnId
+        : undefined;
+    expect(firstTurnId).toEqual(expect.any(String));
+    harness.translate(turnStartedEvent());
+    const second = harness.translate({
+      jsonrpc: "2.0",
+      method: ACP_TURN_COMPLETED_METHOD,
+      params: {
+        threadId: THREAD_ID,
+        stopReason: "end_turn",
+        priorProviderCheckpointId: "1",
+      },
+    });
+    expect(second).toContainEqual(
+      expect.objectContaining({
+        type: "turn/completed",
+        status: "completed",
+        scope: { kind: "turn", turnId: firstTurnId },
+        providerCheckpointId: "1",
+      }),
+    );
+    expect(
+      second.filter((event) => event.type === "turn/completed").at(-1),
+    ).toMatchObject({ status: "completed" });
+    expect(
+      second.filter((event) => event.type === "turn/completed").at(-1),
+    ).not.toHaveProperty("providerCheckpointId");
+  });
+
   it("settles both items at turn end when a non-terminal update changed the item type", () => {
     const harness = createHarness();
     harness.translate(turnStartedEvent());
@@ -3137,6 +3199,16 @@ describe("acp delta translation (dialects)", () => {
           label: "Read README first line",
         }),
       }),
+      expect.objectContaining({
+        type: "item/delegation/progress",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          childRef: "78d1cd3b-94d2-4c87-82a2-c83fe54712f1",
+          label: "Read README first line",
+          summary: "model default",
+        }),
+      }),
     ]);
 
     expect(
@@ -3181,6 +3253,280 @@ describe("acp delta translation (dialects)", () => {
         label: "Read README first line",
       }),
     ).toEqual([]);
+  });
+
+  function grokSpawnUpdate(args: {
+    toolCallId: string;
+    background: boolean;
+    status?: string;
+  }) {
+    return updateEvent({
+      sessionUpdate: "tool_call",
+      toolCallId: args.toolCallId,
+      title: "spawn_subagent",
+      status: args.status ?? "completed",
+      rawInput: {
+        description: "Audit the config loader",
+        subagent_type: "explore",
+        ...(args.background ? { run_in_background: true } : {}),
+      },
+      _meta: {
+        "x.ai/tool": { name: "spawn_subagent", kind: "other", version: 1 },
+      },
+    });
+  }
+
+  it("keeps a background grok spawn open until the child finishes", () => {
+    const harness = dialectHarness("grok");
+    const opened = harness.translate(
+      grokSpawnUpdate({ toolCallId: "call-spawn", background: true }),
+    );
+    harness.translate(
+      updateEvent({
+        sessionUpdate: "tool_call",
+        toolCallId: "call-shell",
+        title: "command",
+        kind: "execute",
+        status: "pending",
+        rawInput: { command: "ls" },
+      }),
+    );
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+    const settledSpawn = (events: ThreadEvent[]) =>
+      events.some(
+        (event) =>
+          (event.type === "item/completed" ||
+            event.type === "item/delegation/completed") &&
+          event.item.id === openedId,
+      );
+
+    const parentEnded = harness.translate(turnCompletedEvent("end_turn"));
+    expect(completedItems(parentEnded)).toEqual([
+      expect.objectContaining({
+        type: "commandExecution",
+        command: "ls",
+      }),
+    ]);
+    expect(settledSpawn(parentEnded)).toBe(false);
+
+    harness.translate(turnStartedEvent());
+    const nextTurn = harness.translate(turnCompletedEvent("end_turn"));
+    expect(settledSpawn(nextTurn)).toBe(false);
+
+    const failed = harness.translate({
+      jsonrpc: "2.0",
+      method: "error",
+      params: { threadId: THREAD_ID, message: "agent exploded" },
+    });
+    expect(settledSpawn(failed)).toBe(false);
+
+    const settled = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.noteDelegationCompletion(
+        THREAD_ID,
+        {
+          toolCallId: "call-spawn",
+          childRef: "child-1",
+          label: "Audit the config loader",
+        },
+        "completed",
+        "done",
+      ),
+    });
+    expect(settled).toEqual([
+      expect.objectContaining({
+        type: "item/delegation/completed",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          status: "completed",
+          childRef: "child-1",
+          label: "Audit the config loader",
+          background: true,
+        }),
+      }),
+    ]);
+    expect(
+      harness.assembler.assemble({
+        threadId: THREAD_ID,
+        deltas: harness.translator.noteDelegationCompletion(
+          THREAD_ID,
+          {
+            toolCallId: "call-spawn",
+            childRef: "child-1",
+            label: "Audit the config loader",
+          },
+          "completed",
+        ),
+      }),
+    ).toEqual([]);
+  });
+
+  it("settles an open background grok spawn when its session is replaced", () => {
+    const harness = dialectHarness("grok");
+    const opened = harness.translate(
+      grokSpawnUpdate({ toolCallId: "call-spawn", background: true }),
+    );
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+    harness.translator.noteDelegationReport(THREAD_ID, {
+      toolCallId: "call-spawn",
+      childRef: "child-1",
+      label: "Audit the config loader",
+      detail: "explore",
+    });
+
+    const settled = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.settleOpenDelegations(THREAD_ID),
+    });
+    expect(settled).toEqual([
+      expect.objectContaining({
+        type: "item/delegation/completed",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          status: "interrupted",
+          childRef: "child-1",
+          label: "Audit the config loader",
+          background: true,
+        }),
+      }),
+    ]);
+    expect(harness.translator.settleOpenDelegations(THREAD_ID)).toEqual([]);
+  });
+
+  it("publishes a background grok delegation report after the parent turn", () => {
+    const harness = dialectHarness("grok");
+    const opened = harness.translate(
+      grokSpawnUpdate({ toolCallId: "call-spawn", background: true }),
+    );
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+    harness.translate(turnCompletedEvent("end_turn"));
+
+    const reported = harness.assembler.assemble({
+      threadId: THREAD_ID,
+      deltas: harness.translator.noteDelegationReport(THREAD_ID, {
+        toolCallId: "call-spawn",
+        childRef: "child-1",
+        label: "Audit the config loader",
+        detail: "turn 2",
+      }),
+    });
+    expect(reported).toEqual([
+      expect.objectContaining({
+        type: "item/delegation/progress",
+        item: expect.objectContaining({
+          id: openedId,
+          type: "delegation",
+          status: "pending",
+          childRef: "child-1",
+          label: "Audit the config loader",
+          background: true,
+          summary: "turn 2",
+        }),
+      }),
+    ]);
+  });
+
+  it("does not reopen a background grok delegation for a later progress report", () => {
+    const harness = dialectHarness("grok");
+    harness.translate(
+      grokSpawnUpdate({ toolCallId: "call-spawn", background: true }),
+    );
+    const first = harness.translator.noteDelegationReport(THREAD_ID, {
+      toolCallId: "call-spawn",
+      childRef: "child-1",
+      label: "Audit the config loader",
+      detail: "explore",
+    });
+    expect(first.map((delta) => delta.kind)).toEqual([
+      "item.open",
+      "item.progress",
+    ]);
+    const progress = harness.translator.noteDelegationReport(THREAD_ID, {
+      toolCallId: "call-spawn",
+      childRef: "child-1",
+      label: "Audit the config loader",
+      detail: "turn 2",
+    });
+    expect(progress.map((delta) => delta.kind)).toEqual(["item.progress"]);
+  });
+
+  it("closes a failed or cancelled background grok spawn without a child", () => {
+    for (const status of ["failed", "cancelled"] as const) {
+      const harness = dialectHarness("grok");
+      const opened = harness.translate(
+        grokSpawnUpdate({
+          toolCallId: "call-spawn",
+          background: true,
+          status: "pending",
+        }),
+      );
+      const openedId =
+        opened[0]?.type === "item/started" ? opened[0].item.id : "";
+      const settled = harness.translate(
+        updateEvent({
+          sessionUpdate: "tool_call_update",
+          toolCallId: "call-spawn",
+          status,
+        }),
+      );
+      expect(settled).toEqual([
+        expect.objectContaining({
+          type: "item/delegation/completed",
+          item: expect.objectContaining({
+            id: openedId,
+            type: "delegation",
+            status: status === "failed" ? "failed" : "interrupted",
+            background: true,
+          }),
+        }),
+      ]);
+    }
+
+    const immediate = dialectHarness("grok").translate(
+      grokSpawnUpdate({
+        toolCallId: "call-spawn",
+        background: true,
+        status: "failed",
+      }),
+    );
+    expect(immediate).toEqual([
+      expect.objectContaining({
+        type: "item/delegation/completed",
+        item: expect.objectContaining({
+          type: "delegation",
+          status: "failed",
+          background: true,
+        }),
+      }),
+    ]);
+  });
+
+  it("still closes a foreground grok spawn when the parent turn ends", () => {
+    const harness = dialectHarness("grok");
+    const opened = harness.translate(
+      grokSpawnUpdate({
+        toolCallId: "call-spawn",
+        background: false,
+        status: "pending",
+      }),
+    );
+    const openedId =
+      opened[0]?.type === "item/started" ? opened[0].item.id : "";
+
+    expect(
+      completedItems(harness.translate(turnCompletedEvent("end_turn"))),
+    ).toEqual([
+      expect.objectContaining({
+        id: openedId,
+        type: "delegation",
+        background: false,
+      }),
+    ]);
   });
 
   it("opens a grok spawn_subagent call as a delegation", () => {

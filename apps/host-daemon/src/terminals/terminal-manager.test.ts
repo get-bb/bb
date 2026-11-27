@@ -223,6 +223,15 @@ function createFakeRuntime(): AgentRuntime {
     })),
     runTurn: vi.fn(async () => ({ status: "started" as const })),
     steerTurn: vi.fn(async () => steerTurnResult),
+    listSubagents: vi.fn(async () => []),
+    tellSubagent: vi.fn(async (args: { childRef: string }) => ({
+      childRef: args.childRef,
+      messageId: "message-1",
+    })),
+    cancelSubagent: vi.fn(async (args: { childRef: string }) => ({
+      childRef: args.childRef,
+      status: "cancelled" as const,
+    })),
     stopThread: vi.fn(async () => ({ providerCheckpointId: null })),
     clearThreadGoal: vi.fn(async () => ({ cleared: true })),
     stopBackgroundTask: vi.fn(async () => ({ stopped: true })),

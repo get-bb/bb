@@ -1327,6 +1327,20 @@ export function createDeltaAssembler(
       }
 
       case "turn.boundary": {
+        if (
+          delta.priorProviderCheckpointId !== undefined &&
+          state.lastTurnId !== undefined &&
+          state.lastTurnId !== state.currentTurnId
+        ) {
+          events.push({
+            type: "turn/completed",
+            threadId: UNSTAMPED_THREAD_ID,
+            providerThreadId: "",
+            scope: turnScope(state.lastTurnId),
+            status: "completed",
+            providerCheckpointId: delta.priorProviderCheckpointId,
+          });
+        }
         if (delta.providerTurnId !== undefined) {
           events.push({
             type: "turn/completed",
@@ -1870,6 +1884,7 @@ export function createDeltaAssembler(
             ...(delta.promptCacheTtlMs === undefined
               ? {}
               : { promptCacheTtlMs: delta.promptCacheTtlMs }),
+            ...(delta.models === undefined ? {} : { models: delta.models }),
           },
         });
         return;

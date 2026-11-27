@@ -161,7 +161,7 @@ export function pendingInteractionResolutionEquals(
 
   switch (left.decision) {
     case "deny":
-      return right.decision === "deny";
+      return right.decision === "deny" && left.comments === right.comments;
     case "allow_once":
       return (
         right.decision === "allow_once" && grantedResolutionEquals(left, right)
@@ -328,6 +328,17 @@ export function validatePendingInteractionResolution(
       400,
       "invalid_request",
       "Only an approval decision can resolve an approval interaction",
+    );
+  }
+  if (
+    "comments" in resolution &&
+    resolution.comments !== undefined &&
+    interaction.payload.subject.kind !== "plan"
+  ) {
+    throw new ApiError(
+      400,
+      "invalid_request",
+      "Approval comments are only supported when denying a plan",
     );
   }
   validateAvailableDecision(interaction, resolution.decision);

@@ -132,11 +132,26 @@ function updateProjectionTurnBounds(
   draft.turn.createdAt = Math.max(draft.turn.createdAt, update.createdAt);
 }
 
+function isProjectionTurnCheckpointBackfill(
+  draft: ProjectionTurnDraft,
+  event: TurnCompletedEvent,
+): boolean {
+  return (
+    draft.completionSequence !== null &&
+    draft.turn.status === "completed" &&
+    event.status === "completed" &&
+    event.providerCheckpointId !== undefined
+  );
+}
+
 function updateProjectionTurnCompletion(
   draft: ProjectionTurnDraft,
   event: TurnCompletedEvent,
   meta: EventMeta,
 ): void {
+  if (isProjectionTurnCheckpointBackfill(draft, event)) {
+    return;
+  }
   updateProjectionTurnBounds(draft, {
     threadId: event.threadId,
     sourceSeqStart: meta.seq,

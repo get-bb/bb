@@ -1,0 +1,7 @@
+{"ts":1794344651008,"run":1794344650435,"seq":5,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":false,\"promptCapabilities\":{\"image\":false}}}}"}
+{"ts":1794344651010,"run":1794344650435,"seq":7,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"sessionId\":\"fake-sess-4914\"}}"}
+{"ts":1794344651016,"run":1794344650435,"seq":19,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fake-sess-4914\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"REDACTED_TEXT\"}}}}"}
+{"ts":1794344651017,"run":1794344650435,"seq":21,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"result\":{\"status\":\"queued\"}}}"}
+{"ts":1794344651021,"run":1794344650435,"seq":26,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fake-sess-4914\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"REDACTED_TEXT\"}}}}"}
+{"ts":1794344651022,"run":1794344650435,"seq":27,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"result\":{\"status\":\"queued\"}}}"}
+{"ts":1794344651024,"run":1794344650435,"seq":35,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"stopReason\":\"cancelled\"}}"}

@@ -118,6 +118,7 @@ export interface SendJsonRpcRequestArgs<TResult> {
   resultSchema: z.ZodType<TResult>;
   timeoutMs?: number;
   afterTimeout?: PendingJsonRpcRequest;
+  cancelOnTimeout?: boolean;
 }
 
 interface SendJsonRpcResultArgs {
@@ -319,6 +320,15 @@ export function sendJsonRpcRequest<TResult>(
   const withId: JsonRpcMessage = { ...message, id };
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
+      if (args.cancelOnTimeout === true) {
+        try {
+          writeJsonRpcMessage(args.child, {
+            jsonrpc: "2.0",
+            method: "notifications/cancelled",
+            params: { requestId: id },
+          });
+        } catch {}
+      }
       if (args.afterTimeout === undefined) {
         args.pending.delete(id);
       } else {

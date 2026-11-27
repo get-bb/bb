@@ -1,0 +1,10 @@
+{"ts":1794826032337,"run":1794826032197,"seq":3,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"image\":false}},\"authMethods\":[{\"id\":\"cached_token\",\"name\":\"Sign in (cached_token)\"}]}}"}
+{"ts":1794826032338,"run":1794826032197,"seq":5,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":null}"}
+{"ts":1794826032338,"run":1794826032197,"seq":7,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{\"sessionId\":\"fake-sess-95394\"}}"}
+{"ts":1794826032341,"run":1794826032197,"seq":17,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"method\":\"session/update\",\"params\":{\"sessionId\":\"fake-sess-95394\",\"update\":{\"sessionUpdate\":\"agent_message_chunk\",\"content\":{\"type\":\"text\",\"text\":\"REDACTED_TEXT\"}}}}"}
+{"ts":1794826032343,"run":1794826032197,"seq":19,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"stopReason\":\"end_turn\"}}"}
+{"ts":1794826032700,"run":1794826032197,"seq":25,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"image\":false}},\"authMethods\":[{\"id\":\"cached_token\",\"name\":\"Sign in (cached_token)\"}]}}"}
+{"ts":1794826032700,"run":1794826032197,"seq":27,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"error\":{\"code\":-32000,\"message\":\"expired credentials\"}}"}
+{"ts":1794826032730,"run":1794826032197,"seq":31,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"protocolVersion\":1,\"agentCapabilities\":{\"loadSession\":true,\"promptCapabilities\":{\"image\":false}},\"authMethods\":[{\"id\":\"cached_token\",\"name\":\"Sign in (cached_token)\"}]}}"}
+{"ts":1794826032731,"run":1794826032197,"seq":33,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":null}"}
+{"ts":1794826032731,"run":1794826032197,"seq":35,"dir":"provider→bridge","line":"{\"jsonrpc\":\"2.0\",\"id\":2,\"result\":{}}"}

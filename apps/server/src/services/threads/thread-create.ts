@@ -252,10 +252,22 @@ function resolveForkPoint(
   if (sourceEnvironment === null) {
     return null;
   }
-  return resolveThreadForkPoint(deps, {
+  const point = resolveThreadForkPoint(deps, {
     sourceSeqEnd: args.sourceSeqEnd,
     sourceThread: args.sourceThread,
   });
+  const sourceCwd = sourceEnvironment.path;
+  if (
+    point === null ||
+    typeof sourceCwd !== "string" ||
+    sourceCwd.length === 0
+  ) {
+    return point;
+  }
+  return {
+    ...point,
+    descriptor: { ...point.descriptor, sourceCwd },
+  };
 }
 
 function assertForkSourceHost(

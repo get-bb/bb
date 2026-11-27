@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "plan-approval",
+  "threadId": "grok-plan-approval",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-10",
+  "description": "plan-approval",
+  "note": "Synthetic Grok plan approved once, then request-changes with exact comments.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 6,
+    "bridge→runtime": 17,
+    "provider→bridge": 8,
+    "bridge→provider": 6
+  }
+}

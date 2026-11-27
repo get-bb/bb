@@ -321,6 +321,31 @@ describe("ThreadPendingInteractionBanner request family", () => {
     );
   });
 
+  it("sends exact request-changes comments without including them in approval", () => {
+    renderBanner(planReview);
+    const comments = "Добавь focused test 😀\nPreserve Unicode.";
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Plan change requests" }),
+      {
+        target: { value: comments },
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Keep planning" }));
+    expect(mocks.resolveMutateAsync).toHaveBeenLastCalledWith({
+      threadId: "thr_1",
+      interactionId: "pint_plan",
+      resolution: { decision: "deny", comments },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve plan" }));
+    expect(mocks.resolveMutateAsync).toHaveBeenLastCalledWith({
+      threadId: "thr_1",
+      interactionId: "pint_plan",
+      resolution: { decision: "allow_once", grantedPermissions: null },
+    });
+  });
+
   it("allows collapsing a plan review and opens the next plan request independently", () => {
     const client = new QueryClient();
     const view = render(

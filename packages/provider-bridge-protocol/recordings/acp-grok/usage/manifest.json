@@ -1,0 +1,17 @@
+{
+  "provider": "acp-grok",
+  "cell": "usage",
+  "threadId": "grok-usage",
+  "scope": "thread",
+  "cliVersion": "grok 1.0.77 protocol shape / fake ACP fixture",
+  "recordedAt": "2026-11-15",
+  "description": "usage",
+  "note": "Synthetic cumulative per-model token/cost usage and automatic compaction reduction.",
+  "bridgeRuns": 1,
+  "lines": {
+    "runtime→bridge": 5,
+    "bridge→runtime": 29,
+    "provider→bridge": 13,
+    "bridge→provider": 5
+  }
+}

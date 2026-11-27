@@ -1,5 +1,10 @@
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { acpAgentProbeSchema, probeAcpAgent } from "./probe.js";
+
+const FAKE_AGENT_PATH = fileURLToPath(
+  new URL("./bridge/fake-acp-agent.mjs", import.meta.url),
+);
 
 describe("probeAcpAgent", () => {
   it("reports a missing agent instead of throwing", async () => {
@@ -90,5 +95,101 @@ describe("probeAcpAgent", () => {
     });
 
     expect(probe).toEqual({ reachable: true, fork: true });
+  });
+});
+
+describe("Grok extension fork probing", () => {
+  it("reports a working Grok extension fork", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      env: { FAKE_ACP_GROK_FORK: "1" },
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe).toEqual({
+      reachable: true,
+      fork: false,
+      extensionFork: true,
+      extensionRewind: false,
+    });
+    expect(acpAgentProbeSchema.safeParse(probe).success).toBe(true);
+  });
+
+  it("reports Grok rewind independently from extension fork support", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      env: {
+        FAKE_ACP_GROK_FORK: "1",
+        FAKE_ACP_GROK_CAPABILITIES: "1",
+      },
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe).toEqual({
+      reachable: true,
+      fork: false,
+      extensionFork: true,
+      extensionRewind: true,
+    });
+    expect(acpAgentProbeSchema.safeParse(probe).success).toBe(true);
+  });
+
+  it("reports an unavailable Grok extension fork without treating it as standard ACP support", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe).toEqual({
+      reachable: true,
+      fork: false,
+      extensionFork: false,
+      extensionRewind: false,
+    });
+  });
+
+  it("leaves fork support unchanged when authentication fails before the extension is called", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      env: {
+        FAKE_ACP_AUTH_METHODS: "cached_token",
+        FAKE_ACP_AUTH_REJECT: "expired",
+      },
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe.reachable).toBe(false);
+    expect(probe.reachable === false && probe.reason).toContain(
+      "expired credentials",
+    );
+    expect(probe).not.toHaveProperty("extensionFork");
+  });
+
+  it("leaves fork support unchanged when session setup fails before the extension is called", async () => {
+    const probe = await probeAcpAgent({
+      command: process.execPath,
+      args: [FAKE_AGENT_PATH],
+      env: { FAKE_ACP_SESSION_NEW_ERROR: "session setup timed out" },
+      cwd: process.cwd(),
+      grokFork: true,
+      timeoutMs: 10_000,
+    });
+
+    expect(probe).toEqual({
+      reachable: false,
+      reason: expect.stringContaining("session setup timed out"),
+    });
   });
 });

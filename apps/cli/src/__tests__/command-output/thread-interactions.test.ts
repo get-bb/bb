@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import type { ApprovalPendingInteractionPayload } from "@bb/domain";
 import {
   setupCommandOutputTestEnvironment,
   collectLogLines,
@@ -138,7 +139,18 @@ describe("bb thread interactions command output", () => {
         threadId: "thread-show-question",
         status: "resolved",
         resolvedAt: Date.now(),
-        payload: fixtures.makeUserQuestionPayload(),
+        payload: {
+          ...fixtures.makeUserQuestionPayload(),
+          questions: fixtures
+            .makeUserQuestionPayload()
+            .questions.map((question) => ({
+              ...question,
+              options: question.options?.map((option) => ({
+                ...option,
+                preview: `Preview ${option.label}`,
+              })),
+            })),
+        },
         resolution: {
           kind: "user_answer",
           answers: {
@@ -164,6 +176,8 @@ describe("bb thread interactions command output", () => {
     expect(lines).toContain("  Questions:");
     expect(lines).toContain("    - Path: Which deployment path?");
     expect(lines).toContain("      Options: Staging, Production");
+    expect(lines).toContain("      Preview (Staging): Preview Staging");
+    expect(lines).toContain("      Preview (Production): Preview Production");
     expect(lines).toContain("      Free text: allowed");
     expect(lines).toContain("Answers:");
     expect(lines).toContain(
@@ -778,6 +792,97 @@ describe("bb thread interactions command output", () => {
     expect(collectLogLines(vi.mocked(console.log))).toEqual([
       "Interaction int-deny submitted (denied); delivering to provider",
     ]);
+  });
+
+  it("bb thread interactions deny sends exact plan request-changes comments", async () => {
+    const comments = "Please include a focused test.\nСохрани Unicode 😀";
+    const payload: ApprovalPendingInteractionPayload = {
+      kind: "approval",
+      reason: null,
+      availableDecisions: ["allow_once", "deny"],
+      subject: {
+        kind: "plan",
+        itemId: "plan-1",
+        plan: "# Plan\n\n1. Implement",
+        planFilePath: null,
+      },
+    };
+    const getInteraction = vi.fn(async () =>
+      fixtures.makePendingInteraction({
+        id: "int-plan-changes",
+        providerId: "acp-grok",
+        threadId: "thread-plan-changes",
+        payload,
+      }),
+    );
+    const resolveInteraction = vi.fn(async () =>
+      fixtures.makePendingInteraction({
+        id: "int-plan-changes",
+        providerId: "acp-grok",
+        threadId: "thread-plan-changes",
+        payload,
+        status: "resolving",
+        resolution: { decision: "deny", comments },
+      }),
+    );
+    stubServerApi({
+      "v1.threads.:id.interactions.:interactionId.$get": getInteraction,
+      "v1.threads.:id.interactions.:interactionId.resolve.$post":
+        resolveInteraction,
+    });
+
+    await runCommand(
+      [
+        "thread",
+        "interactions",
+        "deny",
+        "int-plan-changes",
+        "thread-plan-changes",
+        "--comments",
+        comments,
+      ],
+      register,
+    );
+
+    expect(resolveInteraction).toHaveBeenCalledWith({
+      param: { id: "thread-plan-changes", interactionId: "int-plan-changes" },
+      json: { decision: "deny", comments },
+    });
+  });
+
+  it("bb thread interactions deny rejects comments for non-plan approvals", async () => {
+    const getInteraction = vi.fn(async () =>
+      fixtures.makePendingInteraction({
+        id: "int-command-comments",
+        providerId: "codex",
+        threadId: "thread-command-comments",
+      }),
+    );
+    const resolveInteraction = vi.fn();
+    stubServerApi({
+      "v1.threads.:id.interactions.:interactionId.$get": getInteraction,
+      "v1.threads.:id.interactions.:interactionId.resolve.$post":
+        resolveInteraction,
+    });
+
+    await expect(
+      runCommand(
+        [
+          "thread",
+          "interactions",
+          "deny",
+          "int-command-comments",
+          "thread-command-comments",
+          "--comments",
+          "Not a plan comment",
+        ],
+        register,
+      ),
+    ).rejects.toThrow("process.exit:1");
+    expect(resolveInteraction).not.toHaveBeenCalled();
+    expect(collectLogLines(vi.mocked(console.error)).join("\n")).toContain(
+      "--comments is only supported when denying a plan",
+    );
   });
 
   it("bb thread interactions deny errors when deny is unavailable", async () => {

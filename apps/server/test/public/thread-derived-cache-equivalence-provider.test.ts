@@ -85,6 +85,9 @@ const VALUE_CAPABILITY_CHANGES: {
     permissionModes: ["accept-edits", "auto", "full"],
   }),
   reasoningLevels: () => ({ reasoningLevels: ["medium", "high"] }),
+  experimental_supportsSubagentMessaging: () => ({
+    experimental_supportsSubagentMessaging: true,
+  }),
 };
 
 function changedDeclaration(

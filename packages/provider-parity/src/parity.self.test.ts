@@ -50,6 +50,7 @@ describe("recorded fixtures", () => {
     const providers = new Set(cells.map((cell) => cell.provider));
     expect([...providers].sort()).toEqual([
       "acp-cursor",
+      "acp-grok",
       "claude-code",
       "codex",
       "pi",

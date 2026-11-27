@@ -1453,7 +1453,7 @@ export function validatePluginProviderDeclaration(
     providerId: id,
     value: capabilities,
     scope: "capabilities.",
-    read: new Set(),
+    read: new Set(["experimental_supportsSubagentMessaging"]),
     renamed: MOVED_PROVIDER_CAPABILITY_FIELDS,
     verb: "moved",
   });
@@ -1490,6 +1490,14 @@ export function validatePluginProviderDeclaration(
     }
   }
   if (
+    capabilities.experimental_supportsSubagentMessaging !== undefined &&
+    typeof capabilities.experimental_supportsSubagentMessaging !== "boolean"
+  ) {
+    throw new Error(
+      `provider "${id}" capabilities.experimental_supportsSubagentMessaging must be a boolean`,
+    );
+  }
+  if (
     !(PROVIDER_FORK_VALUES as readonly string[]).includes(capabilities.fork)
   ) {
     throw new Error(
@@ -1503,6 +1511,9 @@ export function validatePluginProviderDeclaration(
     supportsManualCompaction: capabilities.supportsManualCompaction,
     supportsThreadArchive: capabilities.supportsThreadArchive,
     supportsThreadRename: capabilities.supportsThreadRename,
+    ...(capabilities.experimental_supportsSubagentMessaging === true
+      ? { experimental_supportsSubagentMessaging: true }
+      : {}),
     permissionModes: validateProviderLiteralArray({
       providerId: id,
       field: "capabilities.permissionModes",

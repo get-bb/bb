@@ -74,6 +74,9 @@ import type {
   RetryTurnResponse,
   SendMessageRequest,
   SendMessageResponse,
+  SubagentListResponse,
+  SubagentTellResponse,
+  SubagentCancelResponse,
   SendQueuedMessageRequest,
   SetQueuedMessageGroupBoundaryRequest,
   ThreadEventsQuery,
@@ -652,6 +655,21 @@ export interface ThreadQueueArea {
   list(args?: ThreadQueueListArgs): Promise<ThreadQueueListResult>;
 }
 
+export interface ThreadSubagentTellArgs extends ThreadActionArgs {
+  childRef: string;
+  text: string;
+}
+
+export interface ThreadSubagentCancelArgs extends ThreadActionArgs {
+  childRef: string;
+}
+
+export interface ThreadSubagentsArea {
+  list(args: ThreadActionArgs): Promise<SubagentListResponse>;
+  tell(args: ThreadSubagentTellArgs): Promise<SubagentTellResponse>;
+  cancel(args: ThreadSubagentCancelArgs): Promise<SubagentCancelResponse>;
+}
+
 export interface ThreadsArea {
   archive(args: ThreadActionArgs): Promise<ThreadArchiveResult>;
   archiveAll(args: ThreadActionArgs): Promise<ThreadArchiveAllResult>;
@@ -747,6 +765,7 @@ export interface ThreadsArea {
     args: ThreadPluginMetadataUpdateArgs,
   ): Promise<ThreadPluginMetadataResult>;
   queue: ThreadQueueArea;
+  subagents: ThreadSubagentsArea;
   interactions: ThreadInteractionsArea;
   list(args: ThreadListArgs): Promise<ThreadListResult>;
   listRunning(args?: { signal?: AbortSignal }): Promise<ThreadRunningResult>;
@@ -1218,6 +1237,39 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
   };
+  const subagents: ThreadSubagentsArea = {
+    async list(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].subagents.$get(
+          { param: { id: input.threadId } },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async tell(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].subagents.tell.$post(
+          {
+            param: { id: input.threadId },
+            json: { childRef: input.childRef, text: input.text },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+    async cancel(input) {
+      return transport.readJson(
+        transport.api.v1.threads[":id"].subagents.cancel.$post(
+          {
+            param: { id: input.threadId },
+            json: { childRef: input.childRef },
+          },
+          ...signalRequestArgs(input.signal),
+        ),
+      );
+    },
+  };
+
   const queuedMessages: ThreadQueuedMessagesArea = {
     async create(input) {
       const { threadId, ...json } = input;
@@ -1570,6 +1622,7 @@ export function createThreadsArea(args: CreateSdkAreaArgs): ThreadsArea {
       );
     },
     queue,
+    subagents,
     interactions,
     async list(input) {
       return transport.readJson(

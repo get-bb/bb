@@ -233,6 +233,10 @@ Use `--selected-model <model-id>` to discover its reasoning choices and include 
 - `bb thread interactions answer`
 - `bb thread interactions respond`
 - `bb thread interactions deny`
+- `bb thread subagents`
+- `bb thread subagents list`
+- `bb thread subagents tell`
+- `bb thread subagents cancel`
 
 ## environment
 

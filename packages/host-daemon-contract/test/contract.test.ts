@@ -509,6 +509,19 @@ const SETTLED_RESPONSE_RESULT_FIXTURES: SettledResponseResultFixtures = {
   "turn.submit": {
     trace: { spans: [{ name: "bridge.turnStarted", atMs: 4.2 }] },
   },
+  "subagent.list": {
+    subagents: [
+      {
+        childRef: "child-1",
+        parentToolCallId: "call-1",
+        label: "child",
+        subagentType: "general-purpose",
+        status: "running",
+      },
+    ],
+  },
+  "subagent.tell": { childRef: "child-1", messageId: "message-1" },
+  "subagent.cancel": { childRef: "child-1", status: "cancelled" },
   "thread.stop": { providerCheckpointId: null },
   "thread.storage.delete": { providerCheckpointId: null },
   "thread.goal.clear": { cleared: true },
@@ -653,6 +666,8 @@ function terminalDataBase64(byteLength: number): string {
 }
 
 const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
+  "hostDaemonCommandSchema.resolution.comments":
+    "a rejected plan carries request-changes comments only when the reviewer supplied them; absence is a plain rejection.",
   "hostDaemonCommandSchema.resolution.description":
     "the interaction.resolve command's resolution is the persisted union, so it also admits the plugin_submitted arm and the description a plugin's describeSubmission returned. It never reaches the wire: a plugin interaction is settled in the server against its waiting requestInput promise and never queues a daemon command, so an older daemon never sees the field.",
   "hostDaemonCommandSchema.resolution.description.detail":
@@ -713,6 +728,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "a user question omits options when it takes free text only; absence is the question's shape, not missing choices.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.questions.options.description":
     "a question option carries a description only when its label needs a gloss; absence means the label stands alone.",
+  "hostDaemonInteractiveRequestSchema.interaction.payload.questions.options.preview":
+    "a question option carries a preview only when the provider supplied one; absence means the option has no separate preview.",
   "hostDaemonInteractiveRequestSchema.interaction.payload.questions.shortLabel":
     "a user question omits shortLabel when its prompt is short enough to title the row itself.",
   "hostDaemonOnlineRpcCommandSchema.provider.declaredRoots.commands.project.skipIfManifest":
@@ -775,6 +792,8 @@ const INTENTIONAL_OPTIONAL_HOST_DAEMON_FIELDS: Record<string, string> = {
     "thread.start omits fork unless the new thread should clone an existing provider session; absent means a normal start.",
   "hostDaemonCommandSchema.fork.sourceProviderCheckpointId":
     "thread.start.fork names a checkpoint only when the clone should stop at an earlier source turn; absent means clone the session tip.",
+  "hostDaemonCommandSchema.fork.sourceCwd":
+    "thread.start.fork carries the source environment path when the clone runs on another bridge; absent means the destination bridge should use a live source session's directory.",
   "hostDaemonCommandSchema.inputGroups":
     "thread.start and turn.submit omit inputGroups for ordinary single user-message turns; presence preserves grouped user messages within one turn.",
   "hostDaemonOnlineRpcCommandSchema.selectedModel":
@@ -1115,7 +1134,7 @@ describe("host-daemon command schemas", () => {
   });
 
   it("uses the current host-daemon protocol version", () => {
-    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(285);
+    expect(HOST_DAEMON_PROTOCOL_VERSION).toBe(286);
     expect(HOST_ARTIFACT_MAX_BYTES).toBe(256 * 1024 * 1024);
   });
 
@@ -1160,7 +1179,8 @@ describe("host-daemon command schemas", () => {
     expect(contract.isCompatibleHostDaemonProtocolVersion(282)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(283)).toBe(false);
     expect(contract.isCompatibleHostDaemonProtocolVersion(284)).toBe(false);
-    expect(contract.isCompatibleHostDaemonProtocolVersion(285)).toBe(true);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(285)).toBe(false);
+    expect(contract.isCompatibleHostDaemonProtocolVersion(286)).toBe(true);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(247)).toBe(false);
     expect(contract.hostDaemonSupportsDesktopBrokerProof(248)).toBe(true);
   });

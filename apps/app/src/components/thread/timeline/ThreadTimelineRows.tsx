@@ -92,6 +92,7 @@ import {
 } from "./TimelineTitleView.js";
 import { WorkRowBody } from "./TimelineRowDetails.js";
 import { TimelineDetailScroll } from "./TimelineDetailScroll.js";
+import { SubagentActionControls } from "./SubagentActionControls.js";
 import { Button } from "@bb/shared-ui/button";
 import { Icon, type IconName } from "@bb/shared-ui/icon";
 import { presentationTintStyle } from "./presentation-display.js";
@@ -1528,6 +1529,7 @@ function DelegationRowBody({ row }: { row: TimelineViewDelegationWorkRow }) {
               unreadDividerPlacement={null}
             />
           ) : null}
+          <SubagentActionControls row={row} />
           {row.output.trim().length > 0 ? (
             <ConversationMessageContent
               attachments={null}

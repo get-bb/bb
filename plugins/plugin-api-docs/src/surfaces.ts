@@ -883,8 +883,8 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
         bullets: [
           "Bring any CLI agent into bb, with its own models and icon",
           "Run every thread started with it through a bridge the plugin ships",
-          "Report context usage, service tiers, and install status",
-          "Distinguish unknown reasoning from confirmed models with no selectable levels",
+          "Report usage, tiers, install status, and reasoning discovery",
+          "Hide subagent message and cancel controls unless that capability is set",
         ],
         apiSymbols: [
           "contextSnapshotSchema",
@@ -892,6 +892,7 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "ContextCategory",
           "ContextEntry",
           "PluginProviderDeclaration",
+          "PluginProviderCapabilities.experimental_supportsSubagentMessaging",
           "AvailableModel",
           "AvailableModel.reasoningDiscovery",
           "ModelServiceTier",
@@ -2005,7 +2006,12 @@ export const SURFACE_GROUPS: SurfaceGroup[] = [
           "Hosts that stack entries reveal one only after the entries above it are ready, holding the rest for at most 3 seconds behind a slow entry, which then appears in its place when it loads; a page waits for the lazy parts of the plugin that owns it. bb's own core contributions use the same helper.",
         ],
         apiSymbols: ["experimental_lazy", "ExperimentalLazyComponent"],
-        firstParty: ["Account Pooler [Experimental]", "Automations", "bb connect", "Git"],
+        firstParty: [
+          "Account Pooler [Experimental]",
+          "Automations",
+          "bb connect",
+          "Git",
+        ],
         experimental: true,
       },
       {

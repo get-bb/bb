@@ -88,6 +88,7 @@ export type AdapterCommand =
       cwd: string;
       sourceProviderThreadId: string;
       sourceProviderCheckpointId?: string;
+      sourceCwd?: string;
       options: ProviderExecutionContext;
       dynamicTools?: DynamicTool[];
       instructionMode: InstructionMode;
@@ -114,6 +115,20 @@ export type AdapterCommand =
       threadId: string;
       providerThreadId: string;
       activeTurnId: string | null;
+    }
+  | {
+      type: "subagent/list";
+      threadId: string;
+      providerThreadId: string;
+    }
+  | {
+      type: "subagent/tell" | "subagent/cancel";
+      threadId: string;
+      providerThreadId: string;
+      childRef: string;
+      text?: string;
+      clientRequestId: ClientTurnRequestId;
+      options: ProviderExecutionContext;
     }
   | {
       type: "thread/discard";

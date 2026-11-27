@@ -65,6 +65,90 @@
     "unhandled": 0,
     "grammarDrops": 0
   },
+  "acp-grok/auth": {
+    "events": 6,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/capability-discovery": {
+    "events": 0,
+    "rows": 0,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/commands-skills": {
+    "events": 20,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/compaction": {
+    "events": 16,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/fork": {
+    "events": 6,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/models": {
+    "events": 22,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/plan-approval": {
+    "events": 12,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/prompts": {
+    "events": 3,
+    "rows": 0,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/queue-interject": {
+    "events": 9,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/rewind": {
+    "events": 6,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/session-metadata": {
+    "events": 11,
+    "rows": 2,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/subagent": {
+    "events": 23,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/usage": {
+    "events": 27,
+    "rows": 3,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
+  "acp-grok/user-question": {
+    "events": 6,
+    "rows": 1,
+    "unhandled": 0,
+    "grammarDrops": 0
+  },
   "claude-code/approval-allow": {
     "events": 14,
     "rows": 2,
