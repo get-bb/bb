@@ -65,7 +65,11 @@ import {
   type SdkSessionOptions,
 } from "./sdk-session.js";
 import { MissingClaudeCliError } from "./missing-cli-error.js";
-import { claudeConfigDirectory, forkClaudeSession } from "./session-fork.js";
+import {
+  claudeConfigDirectory,
+  forkClaudeSession,
+  readClaudeForkBoundary,
+} from "./session-fork.js";
 import {
   createClaudeCodeBridgeModelListMemo,
   listClaudeCodeBridgeModels,
@@ -288,6 +292,7 @@ interface ThreadAttachment {
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
   approvedPlanPermissionMode: ClaudePermissionMode;
+  forkBoundary: string | null;
   providerThreadId?: string;
   publishedProviderCommands: string | null;
   sessionPermissionGrants: ClaudeSessionPermissionGrant[];
@@ -299,6 +304,7 @@ interface CreateThreadAttachmentArgs {
   permissionMode: ClaudePermissionMode;
   liveSettings: ClaudeLiveSessionSettings;
   approvedPlanPermissionMode: ClaudePermissionMode;
+  forkBoundary: string | null;
   providerThreadId?: string;
   sessionConstructionConfig: SessionConstructionConfig;
   sessionOptions: SdkSessionOptions;
@@ -548,7 +554,14 @@ function refreshSessionEnv(attachment: ThreadAttachment): void {
     ...buildClaudeFeatureEnv(
       attachment.sessionConstructionConfig.sessionOptions,
     ),
+    ...forkBoundaryEnv(attachment.forkBoundary),
   };
+}
+
+function forkBoundaryEnv(forkBoundary: string | null): NodeJS.ProcessEnv {
+  return forkBoundary === null
+    ? {}
+    : { CLAUDE_CODE_RESUME_SOURCE_ALIVE: forkBoundary };
 }
 
 async function applyPermissionSettings(
@@ -1167,6 +1180,7 @@ function createThreadAttachment(
     permissionMode: args.permissionMode,
     liveSettings: args.liveSettings,
     approvedPlanPermissionMode: args.approvedPlanPermissionMode,
+    forkBoundary: args.forkBoundary,
     ...(args.providerThreadId
       ? { providerThreadId: args.providerThreadId }
       : {}),
@@ -2497,12 +2511,16 @@ function attachThreadSession(
   id: string | number,
   params: SessionConstructionParams,
   providerThreadId: string,
-  resume: boolean,
+  resume: { forkBoundary: string | null } | null,
 ): void {
   const threadIdRef = { current: params.threadId };
-  const env = buildSessionEnv(readConfigEnvOverrides(params.config));
+  const forkBoundary = resume?.forkBoundary ?? null;
+  const env = {
+    ...buildSessionEnv(readConfigEnvOverrides(params.config)),
+    ...forkBoundaryEnv(forkBoundary),
+  };
   const sessionOptions = buildTrackedSessionOptions(params, env, threadIdRef);
-  if (!resume) {
+  if (resume === null) {
     sessionOptions.sessionId = providerThreadId;
   }
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
@@ -2520,13 +2538,17 @@ function attachThreadSession(
     permissionEscalation: params.permissionEscalation,
     permissionMode: params.permissionMode,
     approvedPlanPermissionMode: params.approvedPlanPermissionMode,
+    forkBoundary,
     providerThreadId,
     sessionConstructionConfig: toSessionConstructionConfig(params),
     sessionOptions,
     threadIdRef,
   });
   threadAttachments.set(params.threadId, attachment);
-  startResidentThreadSession(attachment, resume ? providerThreadId : undefined);
+  startResidentThreadSession(
+    attachment,
+    resume === null ? undefined : providerThreadId,
+  );
 
   sendThreadIdentity(params.threadId, providerThreadId);
   sendSessionReset(params.threadId);
@@ -2546,7 +2568,7 @@ async function handleThreadStart(
     });
   }
 
-  attachThreadSession(id, params, randomUUID(), false);
+  attachThreadSession(id, params, randomUUID(), null);
 }
 
 async function handleThreadResume(
@@ -2594,14 +2616,20 @@ async function handleThreadResume(
     return;
   }
 
-  if (existing) {
-    if (!existing.closing && existingSession) {
+  const forkBoundary =
+    existing?.providerThreadId === requestedProviderThreadId
+      ? existing.forkBoundary
+      : await readSessionForkBoundary(params, requestedProviderThreadId);
+  const replaced = threadAttachments.get(threadId);
+  if (replaced) {
+    const replacedSession = replaced.residentSession;
+    if (!replaced.closing && replacedSession) {
       emitSessionReplacement({
         providerThreadId: requestedProviderThreadId ?? null,
         reason:
           "Claude session restarted: construction-scoped settings changed",
         threadId,
-        threadSession: existingSession,
+        threadSession: replacedSession,
       });
     }
     await closeThreadSession({
@@ -2611,7 +2639,20 @@ async function handleThreadResume(
     });
   }
 
-  attachThreadSession(id, params, requestedProviderThreadId, true);
+  attachThreadSession(id, params, requestedProviderThreadId, { forkBoundary });
+}
+
+function readSessionForkBoundary(
+  params: SessionConstructionParams,
+  providerThreadId: string,
+): Promise<string | null> {
+  return readClaudeForkBoundary(
+    claudeConfigDirectory(
+      buildSessionEnv(readConfigEnvOverrides(params.config)),
+      params.cwd,
+    ),
+    providerThreadId,
+  );
 }
 
 async function handleThreadFork(
@@ -2630,6 +2671,7 @@ async function handleThreadFork(
   }
 
   let forkedProviderThreadId: string;
+  let forkBoundary: string | null;
   try {
     forkedProviderThreadId = await forkClaudeSession({
       configDirectory: claudeConfigDirectory(
@@ -2639,13 +2681,17 @@ async function handleThreadFork(
       sourceSessionId: params.sourceProviderThreadId,
       upToMessageId: params.sourceProviderCheckpointId,
     });
+    forkBoundary = await readSessionForkBoundary(
+      params,
+      forkedProviderThreadId,
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     sendError(id, -32000, message);
     return;
   }
 
-  attachThreadSession(id, params, forkedProviderThreadId, true);
+  attachThreadSession(id, params, forkedProviderThreadId, { forkBoundary });
 }
 
 async function toClaudeSessionParams(

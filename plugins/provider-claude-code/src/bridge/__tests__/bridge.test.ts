@@ -1413,6 +1413,115 @@ describe("bridge", () => {
     }
   });
 
+  it("resumes a forked Claude session with its fork time so it does not restore the source session's scheduled tasks", async () => {
+    const root = mkdtempSync(join(tmpdir(), "bb-claude-fork-"));
+    tempDirs.push(root);
+    const configDir = join(root, "config");
+    const transcriptDir = join(configDir, "projects", "-tmp-worktree");
+    mkdirSync(transcriptDir, { recursive: true });
+    const sourceSessionId = randomUUID();
+    const messageIds = [randomUUID(), randomUUID()];
+    writeFileSync(
+      join(transcriptDir, `${sourceSessionId}.jsonl`),
+      [
+        { role: "user", text: "schedule a job every minute" },
+        { role: "assistant", text: "scheduled" },
+      ]
+        .map((message, index) =>
+          JSON.stringify({
+            type: message.role,
+            uuid: messageIds[index],
+            parentUuid: index === 0 ? null : messageIds[index - 1],
+            sessionId: sourceSessionId,
+            cwd: "/tmp/worktree",
+            isSidechain: false,
+            timestamp: `2026-10-26T00:00:0${index}.000Z`,
+            message: { role: message.role, content: message.text },
+          }),
+        )
+        .join("\n") + "\n",
+    );
+    const bridge = createBridgeJsonRpcTestHarness(handleLine);
+    const queries: ControlledClaudeQuery[] = [];
+    queryMock.mockImplementation(() => {
+      const query = createControlledClaudeQuery();
+      queries.push(query);
+      return query;
+    });
+    const options = {
+      ...canonicalOptions({}),
+      envVars: { CLAUDE_CONFIG_DIR: configDir },
+    };
+    const resumedEnv = () =>
+      getLatestQueryOptions().env?.CLAUDE_CODE_RESUME_SOURCE_ALIVE;
+
+    try {
+      const beforeFork = new Date().toISOString();
+      bridge.sendRequest(1, "thread/fork", {
+        threadId: "side-chat",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        sourceProviderThreadId: sourceSessionId,
+        options,
+      });
+      const { providerThreadId } = z
+        .object({ providerThreadId: z.string() })
+        .parse((await bridge.waitForResponse(1)).result);
+      const afterFork = new Date().toISOString();
+      const forkTime = resumedEnv();
+      expect(getLatestQueryOptions().resume).toBe(providerThreadId);
+      expect(forkTime).toBeDefined();
+      expect(forkTime! >= beforeFork && forkTime! <= afterFork).toBe(true);
+
+      bridge.sendRequest(2, "turn/start", {
+        threadId: "side-chat",
+        providerThreadId,
+        clientRequestId: "creq_23456789ab",
+        input: [{ type: "text", text: "continue", mentions: [] }],
+        options: {
+          ...options,
+          envVars: { ...options.envVars, PLUGIN_ACCESS_TOKEN: "rotated" },
+        },
+      });
+      await bridge.flushWork();
+      expect(queries).toHaveLength(2);
+      expect(getLatestQueryOptions()).toMatchObject({
+        env: { PLUGIN_ACCESS_TOKEN: "rotated" },
+        resume: providerThreadId,
+      });
+      expect(resumedEnv()).toBe(forkTime);
+      await expect(readNextPromptText(getLatestQueryCall())).resolves.toBe(
+        "continue",
+      );
+      await bridge.waitForResponse(2);
+
+      bridge.sendRequest(3, "thread/resume", {
+        threadId: "side-chat-after-restart",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        providerThreadId,
+        options,
+      });
+      expect((await bridge.waitForResponse(3)).error).toBeUndefined();
+      expect(getLatestQueryOptions().resume).toBe(providerThreadId);
+      expect(resumedEnv()).toBe(forkTime);
+
+      bridge.sendRequest(4, "thread/resume", {
+        threadId: "source-thread",
+        cwd: "/tmp/worktree",
+        instructionMode: "append",
+        providerThreadId: sourceSessionId,
+        options,
+      });
+      expect((await bridge.waitForResponse(4)).error).toBeUndefined();
+      expect(getLatestQueryOptions().resume).toBe(sourceSessionId);
+      expect(resumedEnv()).toBeUndefined();
+    } finally {
+      queries.forEach((query) => query.finish());
+      bridge.restore();
+    }
+  });
+
   it("keeps manager sessions on a plain string system prompt", () => {
     const options = buildSessionOptions(
       {
