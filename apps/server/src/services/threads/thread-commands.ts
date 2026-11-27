@@ -14,6 +14,7 @@ import {
   ClientTurnRequestId,
   EnvironmentStatus,
   promptInputHasCommandMention,
+  threadScope,
 } from "@bb/domain";
 import {
   type HostDaemonCommand,
@@ -29,6 +30,7 @@ import {
   startLiveHostCommand,
 } from "../hosts/live-command.js";
 import {
+  appendSystemErrorEvent,
   getLastProviderThreadId,
   requireDispatchableProviderThreadId,
 } from "./thread-events.js";
@@ -561,6 +563,24 @@ export function dispatchArchivedThreadProviderArchiveCommand(
         { err: error, threadId: thread.id },
         "Live thread archive command failed",
       );
+      const current = getThread(deps.db, thread.id);
+      if (
+        current?.archivedAt !== thread.archivedAt ||
+        current.deletedAt !== null
+      ) {
+        return;
+      }
+      const providerName =
+        deps.providerRegistry.get(thread.providerId)?.info.displayName ??
+        thread.providerId;
+      appendSystemErrorEvent(deps, {
+        threadId: thread.id,
+        environmentId: environment.id,
+        scope: threadScope(),
+        code: "provider_archive_failed",
+        message: `Archived in bb, but archiving the ${providerName} session failed. Unarchive and archive the thread again to retry.`,
+        detail: error.message,
+      });
     },
   });
   return true;
