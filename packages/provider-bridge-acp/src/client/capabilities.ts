@@ -31,6 +31,7 @@ export interface AcpAgentCapabilities {
     delete: boolean;
     fork: boolean;
     additionalDirectories: boolean;
+    subagents: boolean;
   };
   logout: boolean;
   authMethods: AcpAuthMethod[];
@@ -158,6 +159,7 @@ export function readAcpAgentCapabilities(
       delete: isPresent(session, "delete"),
       fork: isPresent(session, "fork"),
       additionalDirectories: isPresent(session, "additionalDirectories"),
+      subagents: isPresent(session, "subagents"),
     },
     logout: isPresent(auth, "logout"),
     authMethods: decodeAuthMethods(initializeResult["authMethods"]),

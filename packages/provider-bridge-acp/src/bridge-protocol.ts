@@ -156,6 +156,7 @@ export const acpCompactionCompletedNotificationParamsSchema =
 export const acpUpdateNotificationParamsSchema = z
   .object({
     threadId: z.string().min(1),
+    sessionId: z.string().min(1).optional(),
     update: acpSessionUpdateSchema,
   })
   .passthrough();

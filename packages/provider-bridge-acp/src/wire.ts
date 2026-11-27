@@ -233,6 +233,32 @@ export function readOpenCodeCompactionUpdate(
   };
 }
 
+export const acpSubagentSpawnedUpdateSchema = z
+  .object({
+    sessionUpdate: z.literal("subagent_spawned"),
+    subagentSessionId: z.string().min(1),
+    name: acpOptionalString,
+    task: acpOptionalString,
+    capabilities: z.unknown().optional(),
+    _meta: z.unknown().optional(),
+  })
+  .passthrough();
+export type AcpSubagentSpawnedUpdate = z.infer<
+  typeof acpSubagentSpawnedUpdateSchema
+>;
+
+export const acpSubagentStateUpdateSchema = z
+  .object({
+    sessionUpdate: z.literal("subagent_state_update"),
+    subagentSessionId: z.string().min(1),
+    state: z.string().min(1),
+    _meta: z.unknown().optional(),
+  })
+  .passthrough();
+export type AcpSubagentStateUpdate = z.infer<
+  typeof acpSubagentStateUpdateSchema
+>;
+
 const acpOtherSessionUpdateSchema = z
   .object({
     sessionUpdate: z.string(),
@@ -245,6 +271,8 @@ export const acpSessionUpdateSchema = z.union([
   acpToolCallUpdateEventSchema,
   acpPlanUpdateSchema,
   acpUsageUpdateSchema,
+  acpSubagentSpawnedUpdateSchema,
+  acpSubagentStateUpdateSchema,
   acpOtherSessionUpdateSchema,
 ]);
 export type AcpSessionUpdate = z.infer<typeof acpSessionUpdateSchema>;

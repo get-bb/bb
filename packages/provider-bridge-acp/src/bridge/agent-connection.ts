@@ -358,16 +358,22 @@ function acpClientCapabilities(
   parameterizedModelPicker: boolean,
   fsAccess: boolean,
   elicitation: boolean,
+  subagents: boolean,
 ) {
+  const meta: Record<string, unknown> = {
+    ...(parameterizedModelPicker === true
+      ? { parameterizedModelPicker: true }
+      : {}),
+    ...(subagents === true ? { subagents: true } : {}),
+  };
   return {
     fs: { readTextFile: fsAccess, writeTextFile: fsAccess },
     terminal: false,
     auth: { terminal: true },
     session: { compaction: {} },
     ...(elicitation ? { elicitation: { form: {} } } : {}),
-    ...(parameterizedModelPicker === true
-      ? { _meta: { parameterizedModelPicker: true } }
-      : {}),
+    ...(subagents === true ? { subagents: true } : {}),
+    ...(Object.keys(meta).length > 0 ? { _meta: meta } : {}),
   };
 }
 
@@ -379,10 +385,12 @@ export async function requestAcpInitialize(
     parameterizedModelPicker,
     fsAccess,
     elicitation = false,
+    subagents = false,
   }: {
     parameterizedModelPicker: boolean;
     fsAccess: boolean;
     elicitation?: boolean;
+    subagents?: boolean;
   },
 ): Promise<AcpAgentCapabilities> {
   const result = await connection.request({
@@ -394,6 +402,7 @@ export async function requestAcpInitialize(
         parameterizedModelPicker,
         fsAccess,
         elicitation,
+        subagents,
       ),
     },
     resultSchema: z.unknown(),

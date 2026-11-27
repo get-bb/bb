@@ -34,6 +34,8 @@ const NORMALIZED_ACP_UPDATE_KINDS = new Set<string>([
   "usage_update",
   "session_info_update",
   "compaction_update",
+  "subagent_spawned",
+  "subagent_state_update",
 ]);
 
 const NOISE_ACP_UPDATE_KINDS = new Set<string>([
