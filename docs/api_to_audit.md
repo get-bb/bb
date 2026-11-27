@@ -2115,6 +2115,36 @@ stopped turn.
    should pick the provider answer too (it cannot without knowing each
    protocol) or keep only the warning and the message.
 
+## `experimental_planMcpElicitation`, `McpElicitationPlan` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_planMcpElicitation(params, { descriptionIsHeading })` maps an MCP
+`elicitation/create` request to a `user_question` payload. Form fields become
+questions (choices, multi-choices, booleans, text, numbers, and a text field
+named `<field>__other` or `<field>_other` folded into its choice question); a
+form without fields becomes an Accept or Decline question. The plan's
+`toResponse(resolution)` returns the MCP result or an `unmappable` reason. URL
+mode, a field bb cannot show, and more than `USER_QUESTION_MAX_QUESTIONS`
+questions give an `unsupported` plan with a reason. `descriptionIsHeading`
+uses a field's description as the question heading (omp's dialect).
+Core callers: the ACP bridge's `elicitation/create` handler
+(`packages/provider-bridge-acp`) and the Claude Code bridge's `onElicitation`
+(`plugins/provider-claude-code`). The `unanswered-interactions` contract test
+runs both through every unanswered cause. The Codex bridge does not use it:
+Codex forms open in the Codex plugin's own form (`provider-codex/mcp-elicitation`),
+which also shows Computer Use and tool-approval requests that a
+`user_question` cannot hold.
+
+**Audit before stabilizing.**
+
+1. **Field coverage is bb's.** A form with a field type the planner does not
+   know is unsupported. Decide whether a third-party bridge needs to extend the
+   field list or only to read the reason.
+2. **The Other folding is a naming convention** (`__other`, `_other`) taken
+   from omp. Decide whether it stays a planner default or becomes an option.
+3. **`descriptionIsHeading` is one dialect's presentation.** Decide whether the
+   presentation argument grows or the planner reads the heading from the
+   schema.
+
 ## `experimental_readBoundedLines` (`@get-bb/plugin-sdk/provider-bridge`)
 
 A newline-delimited line reader. It frames on LF only (never `readline`, which

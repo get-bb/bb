@@ -7,50 +7,58 @@ import {
   type UserQuestionPendingInteractionPayload,
   type UserQuestionPendingInteractionResolution,
 } from "@bb/domain";
-import { isJsonObject, readString } from "./session/decode.js";
-import type { AcpJsonObject } from "./session/session-types.js";
+import {
+  getStringProperty,
+  isRecord,
+  type StringRecord,
+} from "./provider-visibility-helpers.js";
 
-export type AcpElicitationResponse =
-  | { action: "accept"; content: Record<string, unknown> }
+export type McpElicitationContent = Record<
+  string,
+  string | number | boolean | string[]
+>;
+
+export type McpElicitationResponse =
+  | { action: "accept"; content: McpElicitationContent }
   | { action: "decline" }
   | { action: "cancel" };
 
-export interface AcpElicitationUnmappable {
+export interface McpElicitationUnmappable {
   unmappable: string;
 }
 
-export type AcpElicitationPlan =
+export type McpElicitationPlan =
   | {
       kind: "questions";
       payload: UserQuestionPendingInteractionPayload;
       toResponse(
         resolution: UserQuestionPendingInteractionResolution,
-      ): AcpElicitationResponse | AcpElicitationUnmappable;
+      ): McpElicitationResponse | McpElicitationUnmappable;
     }
   | { kind: "unsupported"; reason: string };
 
-interface AcpElicitationChoice {
+interface McpElicitationChoice {
   value: string;
   label: string;
   description?: string;
 }
 
-export interface AcpElicitationPresentation {
+export interface McpElicitationPresentation {
   descriptionIsHeading: boolean;
 }
 
-type AcpElicitationField =
-  | { kind: "choice"; choices: AcpElicitationChoice[] }
-  | { kind: "typedChoice"; choices: AcpElicitationChoice[] }
-  | { kind: "multiChoice"; choices: AcpElicitationChoice[] }
+type McpElicitationField =
+  | { kind: "choice"; choices: McpElicitationChoice[] }
+  | { kind: "typedChoice"; choices: McpElicitationChoice[] }
+  | { kind: "multiChoice"; choices: McpElicitationChoice[] }
   | { kind: "boolean" }
   | { kind: "text" }
   | { kind: "number"; integer: boolean };
 
 interface FormField {
   name: string;
-  schema: AcpJsonObject;
-  field: AcpElicitationField;
+  schema: StringRecord;
+  field: McpElicitationField;
   required: boolean;
 }
 
@@ -61,7 +69,7 @@ interface OtherCompanion {
 
 interface PlannedField {
   name: string;
-  field: AcpElicitationField;
+  field: McpElicitationField;
   required: boolean;
   other: OtherCompanion | null;
   question: PendingInteractionUserQuestionQuestion;
@@ -74,18 +82,18 @@ const CONFIRM_DECLINE_VALUE = "decline";
 const OTHER_COMPANION_SUFFIXES = ["__other", "_other"] as const;
 const OTHER_CHOICE_VALUE = "other";
 
-function readChoices(schema: AcpJsonObject): AcpElicitationChoice[] | null {
+function readChoices(schema: StringRecord): McpElicitationChoice[] | null {
   const titled = schema["oneOf"] ?? schema["anyOf"];
   if (Array.isArray(titled)) {
-    const choices: AcpElicitationChoice[] = [];
+    const choices: McpElicitationChoice[] = [];
     for (const entry of titled) {
-      if (!isJsonObject(entry) || typeof entry["const"] !== "string") {
+      if (!isRecord(entry) || typeof entry["const"] !== "string") {
         return null;
       }
-      const description = readString(entry, "description")?.trim();
+      const description = getStringProperty(entry, "description")?.trim();
       choices.push({
         value: entry["const"],
-        label: readString(entry, "title") ?? entry["const"],
+        label: getStringProperty(entry, "title") ?? entry["const"],
         ...(description ? { description } : {}),
       });
     }
@@ -96,7 +104,7 @@ function readChoices(schema: AcpJsonObject): AcpElicitationChoice[] | null {
     return null;
   }
   const names = Array.isArray(schema["enumNames"]) ? schema["enumNames"] : [];
-  const choices: AcpElicitationChoice[] = [];
+  const choices: McpElicitationChoice[] = [];
   values.forEach((value, index) => {
     if (typeof value !== "string" || value.trim() === "") {
       return;
@@ -110,11 +118,11 @@ function readChoices(schema: AcpJsonObject): AcpElicitationChoice[] | null {
   return choices.length > 0 ? choices : null;
 }
 
-function readField(schema: AcpJsonObject): AcpElicitationField | null {
-  const type = readString(schema, "type");
+function readField(schema: StringRecord): McpElicitationField | null {
+  const type = getStringProperty(schema, "type");
   if (type === "array") {
     const items = schema["items"];
-    const choices = isJsonObject(items) ? readChoices(items) : null;
+    const choices = isRecord(items) ? readChoices(items) : null;
     return choices ? { kind: "multiChoice", choices } : null;
   }
   const choices = readChoices(schema);
@@ -136,7 +144,7 @@ function readField(schema: AcpJsonObject): AcpElicitationField | null {
 }
 
 function readRequiredNames(schema: unknown): Set<string> {
-  const required = isJsonObject(schema) ? schema["required"] : undefined;
+  const required = isRecord(schema) ? schema["required"] : undefined;
   return new Set(
     Array.isArray(required)
       ? required.filter((name): name is string => typeof name === "string")
@@ -173,9 +181,9 @@ function otherCompanionFor(
 }
 
 function shownField(
-  field: AcpElicitationField,
+  field: McpElicitationField,
   other: OtherCompanion | null,
-): AcpElicitationField | null {
+): McpElicitationField | null {
   if (field.kind !== "choice" && field.kind !== "multiChoice") {
     return field;
   }
@@ -190,15 +198,16 @@ function shownField(
 
 function questionFor(
   name: string,
-  schema: AcpJsonObject,
-  field: AcpElicitationField,
+  schema: StringRecord,
+  field: McpElicitationField,
   required: boolean,
   other: OtherCompanion | null,
   message: string | undefined,
-  presentation: AcpElicitationPresentation,
+  presentation: McpElicitationPresentation,
 ): PendingInteractionUserQuestionQuestion {
-  const label = readString(schema, "title")?.trim() || name;
-  const description = readString(schema, "description")?.trim() || undefined;
+  const label = getStringProperty(schema, "title")?.trim() || name;
+  const description =
+    getStringProperty(schema, "description")?.trim() || undefined;
   const heading = presentation.descriptionIsHeading ? description : undefined;
   const detail = presentation.descriptionIsHeading ? undefined : description;
   const lead = message !== undefined && message !== label ? message : undefined;
@@ -252,7 +261,7 @@ function questionFor(
 }
 
 function matchTypedChoice(
-  choices: readonly AcpElicitationChoice[],
+  choices: readonly McpElicitationChoice[],
   typed: string,
 ): string | null {
   const wanted = typed.toLowerCase();
@@ -268,7 +277,7 @@ function matchTypedChoice(
 function otherContent(
   entry: PlannedField,
   typed: string,
-): Record<string, unknown> | null {
+): McpElicitationContent | null {
   if (entry.other === null) {
     return null;
   }
@@ -283,7 +292,7 @@ function otherContent(
 function contentFor(
   entry: PlannedField,
   answer: PendingInteractionUserAnswer | undefined,
-): Record<string, unknown> | null {
+): McpElicitationContent | null {
   const selected = answer?.selected ?? [];
   const typed = answer?.freeText?.trim() || undefined;
   if (selected.length === 0 && typed === undefined) {
@@ -350,7 +359,7 @@ function contentFor(
   }
 }
 
-function planConfirmation(message: string | undefined): AcpElicitationPlan {
+function planConfirmation(message: string | undefined): McpElicitationPlan {
   const payload: UserQuestionPendingInteractionPayload = {
     kind: "user_question",
     questions: [
@@ -383,24 +392,24 @@ function planConfirmation(message: string | undefined): AcpElicitationPlan {
   };
 }
 
-export function planAcpElicitation(
+export function planMcpElicitation(
   params: unknown,
-  presentation: AcpElicitationPresentation,
-): AcpElicitationPlan {
-  if (!isJsonObject(params)) {
+  presentation: McpElicitationPresentation,
+): McpElicitationPlan {
+  if (!isRecord(params)) {
     return { kind: "unsupported", reason: "the request was malformed" };
   }
-  const mode = readString(params, "mode");
-  if (mode !== "form") {
+  const mode = params["mode"];
+  if (mode !== undefined && mode !== "form") {
     return {
       kind: "unsupported",
-      reason: `bb does not offer the "${mode ?? "unknown"}" elicitation mode`,
+      reason: `bb does not offer the "${typeof mode === "string" ? mode : "unknown"}" elicitation mode`,
     };
   }
-  const message = readString(params, "message")?.trim() || undefined;
+  const message = getStringProperty(params, "message")?.trim() || undefined;
   const schema = params["requestedSchema"];
-  const properties = isJsonObject(schema) ? schema["properties"] : undefined;
-  const entries = isJsonObject(properties) ? Object.entries(properties) : [];
+  const properties = isRecord(schema) ? schema["properties"] : undefined;
+  const entries = isRecord(properties) ? Object.entries(properties) : [];
   if (entries.length === 0) {
     return planConfirmation(message);
   }
@@ -408,8 +417,8 @@ export function planAcpElicitation(
   const requiredNames = readRequiredNames(schema);
   const fields: FormField[] = [];
   for (const [name, fieldSchema] of entries) {
-    const field = isJsonObject(fieldSchema) ? readField(fieldSchema) : null;
-    if (name.trim() === "" || !isJsonObject(fieldSchema) || !field) {
+    const field = isRecord(fieldSchema) ? readField(fieldSchema) : null;
+    if (name.trim() === "" || !isRecord(fieldSchema) || !field) {
       return {
         kind: "unsupported",
         reason: `bb cannot show the field "${name}"`,
@@ -482,7 +491,7 @@ export function planAcpElicitation(
     kind: "questions",
     payload: payload.data,
     toResponse(resolution) {
-      const content: Record<string, unknown> = {};
+      const content: McpElicitationContent = {};
       for (const entry of planned) {
         const answered = contentFor(entry, resolution.answers[entry.name]);
         if (!answered) {

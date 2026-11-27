@@ -760,14 +760,23 @@ describeBridge(
   ),
 );
 
-const claudeCanUseToolSchema = z.object({
+const claudeQueryCallSchema = z.object({
   options: z.object({
     canUseTool: z.function({
       input: [z.string(), z.unknown(), z.unknown()],
       output: z.promise(z.unknown()),
     }),
+    onElicitation: z.function({
+      input: [z.unknown(), z.unknown()],
+      output: z.promise(z.unknown()),
+    }),
   }),
 });
+
+type ClaudeAsk = (
+  options: z.infer<typeof claudeQueryCallSchema>["options"],
+  signal: AbortSignal,
+) => Promise<ProviderAnswer>;
 
 const claudePermissionResultSchema = z.union([
   z.object({ behavior: z.literal("deny"), message: z.string() }),
@@ -798,10 +807,41 @@ function controlledClaudeQuery() {
   };
 }
 
-async function runClaude(
-  tool: { name: string; input: unknown },
-  reply: Reply,
-): Promise<Observation> {
+function claudeTool(name: string, input: unknown): ClaudeAsk {
+  return async ({ canUseTool }, signal) => {
+    const result = claudePermissionResultSchema.parse(
+      await canUseTool(name, input, {
+        requestId: "control-request",
+        signal,
+        toolUseID: "tool-question",
+      }),
+    );
+    return result.behavior === "deny"
+      ? { kind: "error", message: result.message }
+      : { kind: "answer", value: result };
+  };
+}
+
+function claudeForm(request: unknown): ClaudeAsk {
+  return async ({ onElicitation }, signal) => {
+    try {
+      return {
+        kind: "answer",
+        value: await onElicitation(request, {
+          requestId: "control-request",
+          signal,
+        }),
+      };
+    } catch (error) {
+      return {
+        kind: "error",
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+  };
+}
+
+async function runClaude(ask: ClaudeAsk, reply: Reply): Promise<Observation> {
   const handleLine = await loadHandleLine(
     "plugins/provider-claude-code/src/bridge/bridge.ts",
   );
@@ -822,14 +862,10 @@ async function runClaude(
       options: ACCEPT_EDITS_OPTIONS,
     });
     await harness.waitForResponse(1);
-    const { canUseTool } = claudeCanUseToolSchema.parse(
-      queryMock.mock.calls.at(-1)?.[0],
-    ).options;
-    const resultPromise = canUseTool(tool.name, tool.input, {
-      requestId: "control-request",
-      signal: abort.signal,
-      toolUseID: "tool-question",
-    });
+    const answerPromise = ask(
+      claudeQueryCallSchema.parse(queryMock.mock.calls.at(-1)?.[0]).options,
+      abort.signal,
+    );
     if (reply.kind === "stop") {
       const request = await waitForInteractionRequest(harness);
       abort.abort();
@@ -838,15 +874,9 @@ async function runClaude(
       const request = await waitForInteractionRequest(harness);
       answerRuntimeRequest(handleLine, request, reply.body(request));
     }
-    const result = claudePermissionResultSchema.parse(await resultPromise);
+    const answer = await answerPromise;
     await harness.flushWork();
-    return {
-      answer:
-        result.behavior === "deny"
-          ? { kind: "error", message: result.message }
-          : { kind: "answer", value: result },
-      warnings: warningsFor(harness.messages, threadId),
-    };
+    return { answer, warnings: warningsFor(harness.messages, threadId) };
   } finally {
     harness.sendRequest(99, "thread/stop", {
       threadId,
@@ -920,11 +950,53 @@ const CLAUDE_TOOLS: Record<
   },
 };
 
+const CLAUDE_MCP_FORM = {
+  serverName: "deploy",
+  message: "Choose a deployment destination",
+  mode: "form",
+  requestedSchema: {
+    type: "object",
+    properties: {
+      destination: { type: "string", enum: ["staging", "production"] },
+    },
+    required: ["destination"],
+  },
+};
+
+const CLAUDE_MCP_FORM_SURFACE: Surface = {
+  "unshowable-request": () =>
+    runClaude(
+      claudeForm({
+        serverName: "auth",
+        message: "Sign in",
+        mode: "url",
+        url: "https://example.com/sign-in",
+      }),
+      NONE,
+    ),
+  "runtime-error": () => runClaude(claudeForm(CLAUDE_MCP_FORM), RUNTIME_ERROR),
+  "unreadable-resolution": () =>
+    runClaude(claudeForm(CLAUDE_MCP_FORM), UNREADABLE),
+  "unmappable-answer": () =>
+    runClaude(
+      claudeForm(CLAUDE_MCP_FORM),
+      runtimeResult({
+        kind: "user_answer",
+        answers: { destination: { selected: ["nowhere"] } },
+      }),
+    ),
+  withdrawn: {
+    unreachable:
+      "the Claude Code bridge withdraws an MCP form only when Claude Code cancels the request itself, and then nothing reads the answer",
+  },
+  "turn-stopped": () => runClaude(claudeForm(CLAUDE_MCP_FORM), STOP),
+};
+
 describeBridge(
   "Claude Code",
-  ["AskUserQuestion", "ExitPlanMode", "WebFetch"],
-  Object.fromEntries(
-    Object.entries(CLAUDE_TOOLS).map(
+  ["AskUserQuestion", "ExitPlanMode", "WebFetch", "MCP elicitation"],
+  Object.fromEntries([
+    ...Object.entries(CLAUDE_TOOLS).map(
       ([name, { input, invalidInput, misfit }]) => [
         name,
         {
@@ -934,17 +1006,20 @@ describeBridge(
                   unreachable:
                     "bb shows any tool's permission request with its raw input",
                 }
-              : () => runClaude({ name, input: invalidInput }, NONE),
-          "runtime-error": () => runClaude({ name, input }, RUNTIME_ERROR),
-          "unreadable-resolution": () => runClaude({ name, input }, UNREADABLE),
-          "unmappable-answer": () => runClaude({ name, input }, misfit),
+              : () => runClaude(claudeTool(name, invalidInput), NONE),
+          "runtime-error": () =>
+            runClaude(claudeTool(name, input), RUNTIME_ERROR),
+          "unreadable-resolution": () =>
+            runClaude(claudeTool(name, input), UNREADABLE),
+          "unmappable-answer": () => runClaude(claudeTool(name, input), misfit),
           withdrawn: {
             unreachable:
               "the Claude Code bridge never withdraws an open question; Claude's canUseTool waits for it",
           },
-          "turn-stopped": () => runClaude({ name, input }, STOP),
+          "turn-stopped": () => runClaude(claudeTool(name, input), STOP),
         } satisfies Surface,
       ],
     ),
-  ),
+    ["MCP elicitation", CLAUDE_MCP_FORM_SURFACE],
+  ]),
 );

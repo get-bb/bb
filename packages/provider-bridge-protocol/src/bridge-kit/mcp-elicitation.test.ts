@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { planAcpElicitation } from "./elicitation.js";
+import { planMcpElicitation } from "./mcp-elicitation.js";
 
 function planGeneric(params: unknown) {
-  return planAcpElicitation(params, { descriptionIsHeading: false });
+  return planMcpElicitation(params, { descriptionIsHeading: false });
 }
 
 function planOmp(params: unknown) {
-  return planAcpElicitation(params, { descriptionIsHeading: true });
+  return planMcpElicitation(params, { descriptionIsHeading: true });
 }
 
 function form(
@@ -61,14 +61,14 @@ function droidQuestion(index: number) {
   };
 }
 
-function questions(plan: ReturnType<typeof planAcpElicitation>) {
+function questions(plan: ReturnType<typeof planMcpElicitation>) {
   if (plan.kind !== "questions") {
     throw new Error(`expected questions, got ${JSON.stringify(plan)}`);
   }
   return plan;
 }
 
-describe("planAcpElicitation", () => {
+describe("planMcpElicitation", () => {
   it("turns each field kind into a question and decodes the answers back to typed content", () => {
     const plan = questions(
       planGeneric(
@@ -611,6 +611,25 @@ describe("planAcpElicitation", () => {
     expect(planGeneric(form(ompQuestions(11), "Pick", []))).toEqual({
       kind: "unsupported",
       reason: "bb shows at most 10 questions and this form has 11",
+    });
+  });
+
+  it("reads a request without a mode as a form, as MCP does", () => {
+    const { mode: _mode, ...withoutMode } = form({
+      approved: { type: "boolean" },
+    });
+    const plan = planGeneric(withoutMode);
+    expect(plan.kind).toBe("questions");
+    expect(
+      plan.kind === "questions" &&
+        plan.toResponse({
+          kind: "user_answer",
+          answers: { approved: { selected: ["true"] } },
+        }),
+    ).toEqual({ action: "accept", content: { approved: true } });
+    expect(planGeneric({ ...withoutMode, mode: 7 })).toEqual({
+      kind: "unsupported",
+      reason: 'bb does not offer the "unknown" elicitation mode',
     });
   });
 

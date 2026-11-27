@@ -28,18 +28,24 @@ import {
   runBridgeRequest,
   shouldAutoDenyInteractiveRequest,
   experimental_buildProviderCliEnv as buildProviderCliEnv,
+  type BridgeJsonRpcResponse,
   type BridgeToolCallRequest,
+  type McpElicitationPlan,
   type UnansweredInteractionCause,
   experimental_defineProviderBridge,
+  experimental_planMcpElicitation as planMcpElicitation,
   experimental_unansweredInteractionErrorMessage,
   experimental_unansweredInteractionWarning,
+  userQuestionInteractionOutcomeSchema,
 } from "@get-bb/plugin-sdk/provider-bridge";
 import { randomUUID } from "node:crypto";
 import { join as joinPath, resolve as resolvePath } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   type CanUseTool,
+  type ElicitationResult,
   type HookCallback,
+  type OnElicitation,
   type PermissionResult,
   type SDKMessage,
 } from "@anthropic-ai/claude-agent-sdk";
@@ -230,9 +236,17 @@ interface PendingUserQuestionRequest extends PendingInteractiveRequestBase {
   kind: "user_question";
 }
 
+type PendingToolRequest = PendingPermissionRequest | PendingUserQuestionRequest;
+
+interface PendingMcpElicitationRequest {
+  kind: "mcp_elicitation";
+  plan: Extract<McpElicitationPlan, { kind: "questions" }>;
+  settle: (result: ElicitationResult | Error) => void;
+}
+
 type PendingInteractiveRequest =
-  | PendingPermissionRequest
-  | PendingUserQuestionRequest;
+  | PendingToolRequest
+  | PendingMcpElicitationRequest;
 
 interface ClaudeSessionPermissionGrant {
   permissions: PendingInteractionGrantedPermissionProfile;
@@ -1815,6 +1829,10 @@ function resolvePendingInteractiveRequests(
 ): void {
   for (const [requestId, pending] of threadSession.pendingInteractiveRequests) {
     withdrawInteractiveRequest(threadSession, requestId);
+    if (pending.kind === "mcp_elicitation") {
+      pending.settle({ action: "cancel" });
+      continue;
+    }
     pending.resolve({
       behavior: "deny",
       interrupt: true,
@@ -1936,7 +1954,7 @@ function buildUserQuestionRequestParams(
 }
 
 function decodePendingInteractiveResponse(
-  pending: PendingInteractiveRequest,
+  pending: PendingToolRequest,
   result: unknown,
 ):
   | { response: ClaudeInteractiveResponse }
@@ -1966,7 +1984,7 @@ function decodePendingInteractiveResponse(
 }
 
 function buildInteractivePermissionResult(
-  pending: PendingInteractiveRequest,
+  pending: PendingToolRequest,
   response: ClaudeInteractiveResponse,
 ): PermissionResult {
   switch (pending.kind) {
@@ -2167,6 +2185,109 @@ function createForwardUserQuestionRequest(
           providerThreadId: args.providerThreadId,
           turnId: null,
           payload,
+        },
+      });
+    });
+}
+
+function mcpElicitationErrorWithoutUser(
+  threadId: string,
+  cause: UnansweredInteractionCause,
+): Error {
+  sendThreadDeltas(threadId, [
+    experimental_unansweredInteractionWarning({
+      cause,
+      answer: { kind: "error" },
+    }),
+  ]);
+  return new Error(experimental_unansweredInteractionErrorMessage(cause));
+}
+
+function mcpElicitationResult(
+  threadId: string,
+  plan: PendingMcpElicitationRequest["plan"],
+  response: BridgeJsonRpcResponse,
+): ElicitationResult | Error {
+  if ("error" in response) {
+    return mcpElicitationErrorWithoutUser(threadId, {
+      kind: "runtime-error",
+      message: response.error.message ?? "the interaction failed",
+    });
+  }
+  const outcome = userQuestionInteractionOutcomeSchema.safeParse({
+    payload: plan.payload,
+    resolution: response.result,
+  });
+  if (!outcome.success) {
+    return mcpElicitationErrorWithoutUser(threadId, {
+      kind: "unreadable-resolution",
+    });
+  }
+  const result = plan.toResponse(outcome.data.resolution);
+  if ("unmappable" in result) {
+    return mcpElicitationErrorWithoutUser(threadId, {
+      kind: "unmappable-answer",
+      detail: result.unmappable,
+    });
+  }
+  return result;
+}
+
+function createOnElicitation(threadIdRef: ThreadIdRef): OnElicitation {
+  return (request, { signal }) =>
+    new Promise<ElicitationResult>((resolve, reject) => {
+      const threadId = threadIdRef.current;
+      const attachment = threadAttachments.get(threadId);
+      const threadSession = attachment?.residentSession;
+      if (!threadSession) {
+        reject(new Error("Thread session not found"));
+        return;
+      }
+      if (attachment?.closing || threadSession.closing || signal.aborted) {
+        resolve({ action: "cancel" });
+        return;
+      }
+      const plan = planMcpElicitation(request, { descriptionIsHeading: false });
+      if (plan.kind === "unsupported") {
+        reject(
+          mcpElicitationErrorWithoutUser(threadId, {
+            kind: "unshowable-request",
+            detail: plan.reason,
+          }),
+        );
+        return;
+      }
+
+      const requestId = nextInteractiveRequestId();
+      const onAbort = (): void => {
+        if (withdrawInteractiveRequest(threadSession, requestId)) {
+          resolve({ action: "cancel" });
+        }
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+      threadSession.pendingInteractiveRequests.set(requestId, {
+        kind: "mcp_elicitation",
+        plan,
+        settle: (result) => {
+          signal.removeEventListener("abort", onAbort);
+          if (result instanceof Error) {
+            reject(result);
+          } else {
+            resolve(result);
+          }
+        },
+      });
+
+      send({
+        jsonrpc: "2.0",
+        id: requestId,
+        method: BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+        params: {
+          threadId,
+          providerThreadId:
+            threadSession.attachment.providerThreadId ?? threadId,
+          turnId: null,
+          payload: plan.payload,
         },
       });
     });
@@ -2506,6 +2627,7 @@ function attachThreadSession(
     sessionOptions.sessionId = providerThreadId;
   }
   sessionOptions.canUseTool = createCanUseTool(threadIdRef);
+  sessionOptions.onElicitation = createOnElicitation(threadIdRef);
   if (params.dynamicTools && params.dynamicTools.length > 0) {
     const mcpServer = buildBridgeMcpServer(
       params.dynamicTools,
@@ -2949,6 +3071,10 @@ function handleParsedMessage(parsed: unknown): void {
     const pending = threadSession.pendingInteractiveRequests.get(response.id)!;
     threadSession.pendingInteractiveRequests.delete(response.id);
     const threadId = threadSession.attachment.threadIdRef.current;
+    if (pending.kind === "mcp_elicitation") {
+      pending.settle(mcpElicitationResult(threadId, pending.plan, response));
+      return;
+    }
     if ("error" in response) {
       pending.resolve(
         denyWithoutUser(threadId, pending.itemId, {

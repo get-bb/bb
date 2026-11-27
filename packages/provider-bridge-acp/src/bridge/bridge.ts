@@ -38,6 +38,7 @@ import {
   decodeToolCallResponsePayload,
   experimental_defineProviderBridge,
   mimeTypeFromExtension,
+  planMcpElicitation,
   runBridgeRequest,
   buildProviderCliEnv,
   unansweredInteractionErrorMessage,
@@ -92,7 +93,6 @@ import {
   applyOpenCodeSessionPermissions,
   openCodeUsesSessionPermissions,
 } from "./opencode-session-permissions.js";
-import { planAcpElicitation } from "../elicitation.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -2001,7 +2001,7 @@ function handleElicitationRequest(
     answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
-  const plan = planAcpElicitation(params, {
+  const plan = planMcpElicitation(params, {
     descriptionIsHeading:
       session.dialect.elicitationDescriptionIsHeading === true,
   });
