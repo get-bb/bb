@@ -2115,6 +2115,65 @@ stopped turn.
    should pick the provider answer too (it cannot without knowing each
    protocol) or keep only the warning and the message.
 
+## `experimental_planMcpElicitation`, `McpElicitationPlan`, `McpElicitationQuestions`, `McpElicitationRequester`, `McpElicitationStep` (`@get-bb/plugin-sdk/provider-bridge`)
+
+`experimental_planMcpElicitation(params, requester)` maps an MCP
+`elicitation/create` request to a `user_question` payload. Form fields become
+questions (choices, multi-choices, booleans, text, numbers); a form without
+fields becomes an Accept or Decline question. Each question prompt states the
+field's limits (`minimum`/`maximum`, `minLength`/`maxLength`,
+`minItems`/`maxItems`) and its `email`, `uri`, `date` or `date-time` format.
+The plan's `toResponse(resolution)` returns a step: the MCP result, an
+`unmappable` reason for an answer the card could not have sent, or `next`, a
+further question to ask before the result. An answer outside a field's limits,
+or a typed number that is not a JSON number, gives `next`: the same form again,
+with the problem on its first question, because the card cannot check limits
+before submit. Formats are shown but not checked: Zod's validators are stricter
+than JSON Schema formats (`admin@localhost`), so the MCP server checks them.
+URL mode, a field bb cannot show, limits no answer can meet, and more than
+`USER_QUESTION_MAX_QUESTIONS` questions give an `unsupported` plan with a
+reason.
+
+`requester` says who asks:
+
+- `{ kind: "mcp_server", serverName }`: an MCP server's form. The first
+  question of each step starts with "Requested by MCP server `<name>`". A form
+  with fields first asks
+  "Fill in the form" or "Decline", because a `user_question` card has no
+  Decline of its own; Decline answers `decline` for this form only. Cancel on
+  the card stops the turn, as for every provider request ("A provider's request
+  cannot be cancelled; stop the turn instead" in
+  `apps/server/src/services/interactions/pending-interactions.ts`), and the
+  bridge then answers `cancel`.
+- `{ kind: "agent", descriptionIsHeading }`: an agent's own question sent as a
+  form (ACP). A text field named `<field>__other` (omp) or `<field>_other`
+  (Droid) is folded into its choice question. `descriptionIsHeading` uses a
+  field's description as the question heading (omp's dialect). No server line
+  and no Decline step: these are the agent's questions, like Claude Code's
+  `AskUserQuestion`.
+
+Core callers: the ACP bridge's `elicitation/create` handler
+(`packages/provider-bridge-acp`, `agent`) and the Claude Code bridge's
+`onElicitation` (`plugins/provider-claude-code`, `mcp_server`, with the SDK's
+`serverName`). The `unanswered-interactions` contract test runs both through
+every unanswered cause. The Codex bridge does not use it: Codex forms open in
+the Codex plugin's own form (`provider-codex/mcp-elicitation`), which also
+shows Computer Use and tool-approval requests that a `user_question` cannot
+hold, and which has its own Decline button.
+
+**Audit before stabilizing.**
+
+1. **Field coverage is bb's.** A form with a field type the planner does not
+   know is unsupported. Decide whether a third-party bridge needs to extend the
+   field list or only to read the reason.
+2. **Decline is a separate step.** If the `user_question` card gets a Decline
+   action of its own, drop the `next` step and the "Fill in the form" question.
+3. **The Other folding is a naming convention** (`__other`, `_other`) taken
+   from omp and Droid. Decide whether it stays tied to `agent`.
+4. **Asking again loses the other answers.** The repeated form is a new
+   interaction, so the card starts empty. If the card learns to check limits,
+   drop the repeat.
+
 ## `experimental_readBoundedLines` (`@get-bb/plugin-sdk/provider-bridge`)
 
 A newline-delimited line reader. It frames on LF only (never `readline`, which

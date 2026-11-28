@@ -38,10 +38,12 @@ import {
   decodeToolCallResponsePayload,
   experimental_defineProviderBridge,
   mimeTypeFromExtension,
+  planMcpElicitation,
   runBridgeRequest,
   buildProviderCliEnv,
   unansweredInteractionErrorMessage,
   unansweredInteractionWarning,
+  type McpElicitationQuestions,
 } from "@bb/provider-bridge-protocol/bridge-kit";
 import type {
   BridgeJsonRpcResponse,
@@ -92,7 +94,6 @@ import {
   applyOpenCodeSessionPermissions,
   openCodeUsesSessionPermissions,
 } from "./opencode-session-permissions.js";
-import { planAcpElicitation } from "../elicitation.js";
 import {
   buildAcpPermissionInteractionPayload,
   resolveAcpPermissionDecision,
@@ -2001,7 +2002,8 @@ function handleElicitationRequest(
     answerWithoutUser(session, responder, COMPACTION_QUESTION_CAUSE);
     return;
   }
-  const plan = planAcpElicitation(params, {
+  const plan = planMcpElicitation(params, {
+    kind: "agent",
     descriptionIsHeading:
       session.dialect.elicitationDescriptionIsHeading === true,
   });
@@ -2015,6 +2017,14 @@ function handleElicitationRequest(
   if (session.activePromptKind === null) {
     openAgentTurn(session);
   }
+  askElicitation(session, responder, plan);
+}
+
+function askElicitation(
+  session: AcpThreadSession,
+  responder: AcpAgentRequestResponder,
+  plan: McpElicitationQuestions,
+): void {
   const withdrawal = new AbortController();
   session.pendingElicitations.set(responder, withdrawal);
   void sendRuntimeRequest(
@@ -2039,15 +2049,19 @@ function handleElicitationRequest(
         });
         return;
       }
-      const response = plan.toResponse(resolution.data);
-      if ("unmappable" in response) {
+      const step = plan.toResponse(resolution.data);
+      if ("next" in step) {
+        askElicitation(session, responder, step.next);
+        return;
+      }
+      if ("unmappable" in step) {
         answerWithoutUser(session, responder, {
           kind: "unmappable-answer",
-          detail: response.unmappable,
+          detail: step.unmappable,
         });
         return;
       }
-      responder.result(response);
+      responder.result(step);
     })
     .catch((error: unknown) => {
       if (!session.pendingElicitations.delete(responder)) {
