@@ -60,6 +60,14 @@ it. During the grace it still counts as live, so its environment and machine
 are not retired under it. A thread start still in flight is stopped as soon as
 it is archived.
 
+When the provider supports archive (Codex), bb also archives the provider
+session once the thread has no running turn. If that fails, the thread stays
+archived in bb and its timeline gets a `provider_archive_failed` system error
+with the failure as its detail. Unarchive and archive the thread to send the
+provider archive again; archive on a thread that is already archived does not
+send it. A late failure from an archive that was undone, or replaced by a
+newer archive, is not recorded.
+
 ### Background sweeps
 
 The server runs its periodic sweep jobs (`PERIODIC_SWEEP_JOBS` in
