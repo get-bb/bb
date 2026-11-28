@@ -2455,7 +2455,6 @@ export function PromptBoxInternal({
           return;
         }
         nextEditor.commands.focus();
-        normalizeCollapsedDomSelectionToTextNode(nextEditor);
         syncTriggerState(nextEditor);
         scheduleRevealEditorSelection();
         isRestoringAppliedMentionRef.current = false;
