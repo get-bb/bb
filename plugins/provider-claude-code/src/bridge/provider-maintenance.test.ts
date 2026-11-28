@@ -48,6 +48,10 @@ describe("Claude Code provider maintenance", () => {
               resets_at: null,
             },
           ],
+          model_scoped: [
+            { display_name: "Sonnet", utilization: 90, resets_at: null },
+            { display_name: "Opus", utilization: 40, resets_at: null },
+          ],
         },
         account,
       ),
@@ -60,6 +64,56 @@ describe("Claude Code provider maintenance", () => {
         { label: "Current session", usedPercent: 12 },
         { label: "Weekly limit", usedPercent: 55 },
         { label: "Sonnet", usedPercent: 30 },
+      ],
+    });
+  });
+
+  it.each([
+    ["absent", undefined],
+    ["empty", []],
+    ["aggregate-only", [{ kind: "weekly_all", percent: 55 }]],
+  ])("keeps per-model weekly usage when limits are %s", (_case, limits) => {
+    expect(
+      __testing.normalizeUsage(
+        {
+          five_hour: { utilization: 12, resets_at: null },
+          seven_day: { utilization: 55, resets_at: null },
+          limits,
+          model_scoped: [
+            {
+              display_name: " Sonnet ",
+              utilization: 23.7,
+              resets_at: "2026-12-01T12:00:00Z",
+            },
+            { display_name: "sonnet", utilization: 80, resets_at: null },
+            { display_name: "Opus", utilization: 140, resets_at: "invalid" },
+            { display_name: "", utilization: 20, resets_at: null },
+            { display_name: "Unknown", utilization: null, resets_at: null },
+            { display_name: "Malformed", utilization: "20", resets_at: null },
+            null,
+          ],
+        },
+        { apiProvider: "firstParty" },
+      ),
+    ).toMatchObject({
+      status: "ok",
+      windows: [
+        { label: "Current session", usedPercent: 12 },
+        { label: "Weekly limit", usedPercent: 55 },
+        {
+          kind: "weekly",
+          model: "sonnet",
+          label: "Sonnet",
+          usedPercent: 24,
+          resetsAt: "2026-12-01T12:00:00.000Z",
+        },
+        {
+          kind: "weekly",
+          model: "opus",
+          label: "Opus",
+          usedPercent: 100,
+          resetsAt: null,
+        },
       ],
     });
   });

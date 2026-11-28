@@ -392,6 +392,15 @@ const claudeUsageResponseSchema = z
       .array(claudeScopedUsageLimitSchema.nullable().catch(null))
       .nullish()
       .catch([]),
+    model_scoped: z
+      .array(
+        claudeUsageWindowSchema
+          .extend({ display_name: z.string().trim().min(1) })
+          .nullable()
+          .catch(null),
+      )
+      .nullish()
+      .catch([]),
   })
   .passthrough();
 
@@ -455,10 +464,27 @@ function normalizeUsage(raw: unknown, account: AccountInfo): ProviderUsage {
       ...accountFields(account),
     };
   }
+  const modelWindows = scopedWindows(parsed.data.limits);
+  if (modelWindows.length === 0) {
+    modelWindows.push(
+      ...scopedWindows(
+        parsed.data.model_scoped?.map((window) =>
+          window === null
+            ? null
+            : {
+                kind: "weekly_scoped",
+                scope: { model: { display_name: window.display_name } },
+                percent: window.utilization,
+                resets_at: window.resets_at,
+              },
+        ),
+      ),
+    );
+  }
   const windows = [
     usageWindow(parsed.data.five_hour, "Current session", "five-hour"),
     usageWindow(parsed.data.seven_day, "Weekly limit", "weekly"),
-    ...scopedWindows(parsed.data.limits),
+    ...modelWindows,
   ].filter((window): window is ProviderUsageWindow => window !== null);
   const plan = claudePlan(account);
   return {
