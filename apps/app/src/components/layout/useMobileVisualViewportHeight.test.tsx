@@ -25,14 +25,14 @@ class FakeVisualViewport extends EventTarget implements VisualViewport {
 function VisualViewportShell({
   shellKey = "initial",
   portaledShelf = false,
-  restoreImmediatelyOnKeyboardDismissal = true,
+  settleIOSViewport = true,
 }: {
   shellKey?: string;
   portaledShelf?: boolean;
-  restoreImmediatelyOnKeyboardDismissal?: boolean;
+  settleIOSViewport?: boolean;
 }) {
   const [shell, setShell] = useState<HTMLDivElement | null>(null);
-  useMobileVisualViewportHeight(shell, restoreImmediatelyOnKeyboardDismissal);
+  useMobileVisualViewportHeight(shell, settleIOSViewport);
   return (
     <div>
       <div key={shellKey} ref={setShell} data-testid="shell">
@@ -125,6 +125,44 @@ async function flushScheduledViewportPass() {
   });
 }
 
+function withKeyboardViewport(
+  run: (fixture: {
+    visualViewport: FakeVisualViewport;
+    editor: HTMLElement;
+    shell: HTMLElement;
+    root: HTMLElement;
+    setLayoutHeight: (height: number) => void;
+    resizeVisualViewport: (height: number) => void;
+  }) => Promise<void>,
+  { height = 852, settleIOSViewport = true } = {},
+) {
+  const visualViewport = new FakeVisualViewport();
+  visualViewport.height = height;
+  visualViewport.offsetTop = 0;
+  let layoutHeight = 852;
+  return withElementClientHeight(
+    document.body,
+    () => layoutHeight,
+    () =>
+      withFakeVisualViewport(visualViewport, async () => {
+        render(<VisualViewportShell settleIOSViewport={settleIOSViewport} />);
+        await run({
+          visualViewport,
+          editor: screen.getByTestId("editor"),
+          shell: screen.getByTestId("shell"),
+          root: document.body,
+          setLayoutHeight: (height) => {
+            layoutHeight = height;
+          },
+          resizeVisualViewport: (height) => {
+            visualViewport.height = height;
+            visualViewport.dispatchEvent(new Event("resize"));
+          },
+        });
+      }),
+  );
+}
+
 beforeEach(() => {
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
 });
@@ -139,32 +177,38 @@ describe("useMobileVisualViewportHeight", () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     visualViewport.height = 874;
-    await withElementClientHeight(document.body, () => 874, async () => {
-      await withFakeVisualViewport(visualViewport, async () => {
-        const { rerender, unmount } = render(<VisualViewportShell />);
-        const previousShell = screen.getByTestId("shell");
-        rerender(<VisualViewportShell shellKey="thread" />);
-        const currentShell = screen.getByTestId("shell");
+    await withElementClientHeight(
+      document.body,
+      () => 874,
+      async () => {
+        await withFakeVisualViewport(visualViewport, async () => {
+          const { rerender, unmount } = render(<VisualViewportShell />);
+          const previousShell = screen.getByTestId("shell");
+          rerender(<VisualViewportShell shellKey="thread" />);
+          const currentShell = screen.getByTestId("shell");
 
-        act(() => {
-          screen.getByTestId("editor").focus();
-          visualViewport.height = 539;
-          visualViewport.dispatchEvent(new Event("resize"));
-        });
-        await waitFor(() => expect(currentShell.style.height).toBe("539px"));
-        expect(previousShell.isConnected).toBe(false);
-        expect(previousShell.style.height).toBe("");
+          act(() => {
+            screen.getByTestId("editor").focus();
+            visualViewport.height = 539;
+            visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() => expect(currentShell.style.height).toBe("539px"));
+          expect(previousShell.isConnected).toBe(false);
+          expect(previousShell.style.height).toBe("");
 
-        act(() => {
-          screen.getByTestId("editor").blur();
-          visualViewport.height = 874;
-          visualViewport.dispatchEvent(new Event("resize"));
+          act(() => {
+            screen.getByTestId("editor").blur();
+            visualViewport.height = 874;
+            visualViewport.dispatchEvent(new Event("resize"));
+          });
+          await waitFor(() => expect(currentShell.style.height).toBe(""));
+          unmount();
+          expect(
+            document.body.style.getPropertyValue("--bb-shell-height"),
+          ).toBe("");
         });
-        await waitFor(() => expect(currentShell.style.height).toBe(""));
-        unmount();
-        expect(document.body.style.getPropertyValue("--bb-shell-height")).toBe("");
-      });
-    });
+      },
+    );
   });
 
   it("publishes the corrected height where a body-portaled panel can inherit it", async () => {
@@ -175,9 +219,7 @@ describe("useMobileVisualViewportHeight", () => {
       () => 560,
       async () => {
         await withFakeVisualViewport(visualViewport, async () => {
-          const { unmount } = render(
-            <VisualViewportShell portaledShelf />,
-          );
+          const { unmount } = render(<VisualViewportShell portaledShelf />);
           const shelf = await screen.findByTestId("secondary-panel-shelf");
 
           expect(shelf.parentElement).toBe(document.body);
@@ -240,11 +282,7 @@ describe("useMobileVisualViewportHeight", () => {
           () => shellContainingBlockHeight,
           async () =>
             withFakeVisualViewport(visualViewport, async () => {
-              render(
-                <VisualViewportShell
-                  restoreImmediatelyOnKeyboardDismissal={false}
-                />,
-              );
+              render(<VisualViewportShell settleIOSViewport={false} />);
               const shell = screen.getByTestId("shell");
               const viewportStyleRoot = document.body;
               const editor = screen.getByTestId("editor");
@@ -301,50 +339,131 @@ describe("useMobileVisualViewportHeight", () => {
     );
   });
 
-  it("compensates when Safari leaves the visual viewport panned", async () => {
-    const visualViewport = new FakeVisualViewport();
-    visualViewport.offsetTop = 0;
-    await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell />);
-      expect(window.scrollTo).not.toHaveBeenCalled();
+  it("resets layout scrolling and compensates for the remaining Safari pan", async () => {
+    try {
+      await withKeyboardViewport(async ({ editor, visualViewport, shell }) => {
+        vi.mocked(window.scrollTo).mockImplementation(() => {
+          vi.stubGlobal("scrollY", 0);
+        });
+        act(() => editor.focus());
+        act(() => {
+          vi.stubGlobal("scrollY", 75);
+          visualViewport.offsetTop = 30;
+          visualViewport.dispatchEvent(new Event("scroll"));
+        });
+        expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+        expect(shell.style.top).toBe("30px");
+        expect(shell.style.height).toBe("852px");
+      });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("clears the shell on blur when the viewport has already recovered", async () => {
+    await withKeyboardViewport(async (viewport) => {
+      act(() => {
+        viewport.editor.focus();
+        viewport.resizeVisualViewport(552);
+      });
+      expect(viewport.shell.style.height).toBe("552px");
 
       act(() => {
-        visualViewport.offsetTop = 340;
-        visualViewport.dispatchEvent(new Event("scroll"));
+        viewport.visualViewport.height = 852;
+        viewport.editor.blur();
       });
-      await waitFor(() => expect(window.scrollTo).toHaveBeenCalledWith(0, 0));
-      expect(screen.getByTestId("shell").style.top).toBe("340px");
-      expect(screen.getByTestId("shell").style.height).toBe("500px");
+      expect(viewport.shell.style.height).toBe("");
+      expect(viewport.shell.style.top).toBe("");
+      expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+        "",
+      );
     });
   });
 
-  it("restores the shell immediately when keyboard focus leaves", async () => {
-    const visualViewport = new FakeVisualViewport();
-    visualViewport.offsetTop = 0;
-    await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell />);
-      const shell = screen.getByTestId("shell");
-      const editor = screen.getByTestId("editor");
+  it.each([
+    { dismissal: "after blur", focus: "blur", restoredHeight: 852 },
+    {
+      dismissal: "with the editor still focused",
+      focus: "retain",
+      restoredHeight: 852,
+    },
+    {
+      dismissal: "to a shorter viewport after blur",
+      focus: "blur",
+      restoredHeight: 830,
+    },
+    {
+      dismissal: "when another editor takes focus during dismissal",
+      focus: "refocus",
+      restoredHeight: 852,
+    },
+  ])(
+    "recovers from an early resize $dismissal",
+    async ({ focus, restoredHeight }) => {
+      const visualViewport = new FakeVisualViewport();
+      visualViewport.height = 852;
+      visualViewport.offsetTop = 0;
+      await withElementClientHeight(
+        document.body,
+        () => 852,
+        () =>
+          withFakeVisualViewport(visualViewport, async () => {
+            render(<VisualViewportShell />);
+            const shell = screen.getByTestId("shell");
+            const root = document.body;
+            const editor = screen.getByTestId("editor");
+            const otherEditor = screen.getByTestId("other-editor");
 
-      act(() => {
-        visualViewport.height = 300;
-        visualViewport.dispatchEvent(new Event("resize"));
-      });
-      await waitFor(() => expect(shell.style.height).toBe("300px"));
+            act(() => {
+              editor.focus();
+              visualViewport.height = 552;
+              visualViewport.dispatchEvent(new Event("resize"));
+            });
+            await flushScheduledViewportPass();
+            expect(shell.style.height).toBe("552px");
+            expect(root.style.getPropertyValue("--bb-shell-height")).toBe(
+              "552px",
+            );
+            expect(
+              root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+            ).toBe("0px");
 
-      act(() => editor.focus());
-      act(() => editor.blur());
-      expect(shell.style.height).toBe("");
-      expect(shell.style.top).toBe("");
+            act(() => {
+              if (focus !== "retain") editor.blur();
+              visualViewport.dispatchEvent(new Event("resize"));
+            });
+            await flushScheduledViewportPass();
+            expect(shell.style.height).toBe("552px");
+            expect(root.style.getPropertyValue("--bb-shell-height")).toBe(
+              "552px",
+            );
+            if (focus === "refocus") {
+              act(() => otherEditor.focus());
+              await flushScheduledViewportPass();
+              expect(shell.style.height).toBe("552px");
+            }
+            visualViewport.height = restoredHeight;
+            const expectedOverride =
+              restoredHeight === 852 ? "" : `${restoredHeight}px`;
 
-      act(() => {
-        visualViewport.height = 500;
-        visualViewport.dispatchEvent(new Event("resize"));
-      });
-      await waitFor(() => expect(shell.style.height).toBe("500px"));
-      expect(shell.style.top).toBe("0px");
-    });
-  });
+            await waitFor(() => {
+              expect(shell.style.height).toBe(expectedOverride);
+              expect(root.style.getPropertyValue("--bb-shell-height")).toBe(
+                expectedOverride,
+              );
+              expect(
+                root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+              ).toBe("");
+            });
+            expect(document.activeElement).toBe(
+              { retain: editor, blur: document.body, refocus: otherEditor }[
+                focus
+              ],
+            );
+          }),
+      );
+    },
+  );
 
   it("keeps the shortened shell when focus moves between keyboard targets", async () => {
     const visualViewport = new FakeVisualViewport();
@@ -369,74 +488,271 @@ describe("useMobileVisualViewportHeight", () => {
     });
   });
 
-  it("collapses the bottom safe-area inset while the keyboard is open", async () => {
-    const visualViewport = new FakeVisualViewport();
-    visualViewport.offsetTop = 0;
-    await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell />);
-      const viewportStyleRoot = document.body;
-      const editor = screen.getByTestId("editor");
-      expect(
-        viewportStyleRoot.style.getPropertyValue(
-          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
-        ),
-      ).toBe("");
-
+  it("recovers when blur precedes the first keyboard-sized sample", async () => {
+    await withKeyboardViewport(async (viewport) => {
       act(() => {
-        editor.focus();
+        viewport.editor.focus();
+        viewport.editor.blur();
+        viewport.resizeVisualViewport(552);
       });
       await flushScheduledViewportPass();
-      expect(
-        viewportStyleRoot.style.getPropertyValue(
-          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
-        ),
-      ).toBe("");
+      expect(viewport.shell.style.height).toBe("552px");
 
-      act(() => {
-        visualViewport.height = 500 - KEYBOARD_OPEN_MIN_SHRINK_PX;
-        visualViewport.dispatchEvent(new Event("resize"));
+      viewport.visualViewport.height = 852;
+      await waitFor(() => {
+        expect(viewport.shell.style.height).toBe("");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "",
+        );
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
       });
-      await flushScheduledViewportPass();
-      expect(
-        viewportStyleRoot.style.getPropertyValue(
-          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
-        ),
-      ).toBe("0px");
-
-      act(() => {
-        editor.blur();
-      });
-      await flushScheduledViewportPass();
-      expect(
-        viewportStyleRoot.style.getPropertyValue(
-          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
-        ),
-      ).toBe("");
     });
+  });
+
+  it("applies the current viewport after a same-width layout resize during dismissal", async () => {
+    await withKeyboardViewport(async (viewport) => {
+      act(() => {
+        viewport.editor.focus();
+        viewport.resizeVisualViewport(552);
+      });
+      await flushScheduledViewportPass();
+      expect(viewport.shell.style.height).toBe("552px");
+
+      act(() => {
+        viewport.editor.blur();
+        viewport.setLayoutHeight(750);
+        viewport.resizeVisualViewport(730);
+        window.dispatchEvent(new Event("resize"));
+      });
+      await waitFor(() => {
+        expect(viewport.shell.style.height).toBe("730px");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "730px",
+        );
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+      });
+    });
+  });
+
+  it("keeps reconciling after pageshow when an editor autofocuses", async () => {
+    vi.useFakeTimers({
+      toFake: ["performance", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    try {
+      await withKeyboardViewport(async (viewport) => {
+        act(() => {
+          vi.advanceTimersByTime(400);
+        });
+        expect(vi.getTimerCount()).toBe(0);
+
+        act(() => {
+          viewport.visualViewport.height = 552;
+          window.dispatchEvent(
+            new PageTransitionEvent("pageshow", { persisted: true }),
+          );
+        });
+        expect(viewport.shell.style.height).toBe("552px");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "552px",
+        );
+
+        act(() => {
+          viewport.editor.focus();
+          viewport.visualViewport.height = 852;
+          vi.advanceTimersByTime(32);
+        });
+        expect(viewport.shell.style.height).toBe("");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "",
+        );
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+        expect(document.activeElement).toBe(viewport.editor);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("recovers from a late dismissal reading after sustained editor focus", async () => {
+    vi.useFakeTimers({
+      toFake: ["performance", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    try {
+      await withKeyboardViewport(async (viewport) => {
+        act(() => {
+          viewport.editor.focus();
+          viewport.resizeVisualViewport(552);
+          vi.advanceTimersByTime(1_700);
+        });
+
+        act(() => {
+          viewport.resizeVisualViewport(552);
+          vi.advanceTimersByTime(510);
+        });
+        expect(viewport.shell.style.height).toBe("552px");
+
+        act(() => {
+          viewport.visualViewport.height = 852;
+          vi.advanceTimersByTime(32);
+        });
+        expect(viewport.shell.style.height).toBe("");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "",
+        );
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+        expect(document.activeElement).toBe(viewport.editor);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops sampling an unchanged keyboard-sized viewport at the settle cap", async () => {
+    vi.useFakeTimers({
+      toFake: ["performance", "requestAnimationFrame", "cancelAnimationFrame"],
+    });
+    try {
+      await withKeyboardViewport(async (viewport) => {
+        act(() => {
+          viewport.editor.focus();
+          viewport.resizeVisualViewport(552);
+          vi.advanceTimersByTime(1_000);
+        });
+        expect(vi.getTimerCount()).toBe(1);
+        act(() => {
+          vi.advanceTimersByTime(600);
+        });
+        expect(vi.getTimerCount()).toBe(0);
+        expect(viewport.shell.style.height).toBe("552px");
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("collapses the bottom safe-area inset while the keyboard is open", async () => {
+    await withKeyboardViewport(
+      async ({ editor, resizeVisualViewport, root }) => {
+        act(() => editor.focus());
+        expect(
+          root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+
+        act(() => resizeVisualViewport(852 - KEYBOARD_OPEN_MIN_SHRINK_PX));
+        expect(
+          root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("0px");
+
+        act(() => editor.blur());
+        expect(
+          root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+      },
+    );
   });
 
   it("does not collapse the inset for a URL bar that only shrinks a little", async () => {
-    const visualViewport = new FakeVisualViewport();
-    visualViewport.offsetTop = 0;
-    await withFakeVisualViewport(visualViewport, async () => {
-      render(<VisualViewportShell />);
-      const viewportStyleRoot = document.body;
-      act(() => {
-        screen.getByTestId("editor").focus();
-      });
-      await flushScheduledViewportPass();
-      act(() => {
-        visualViewport.height = 500 - (KEYBOARD_OPEN_MIN_SHRINK_PX - 1);
-        visualViewport.dispatchEvent(new Event("resize"));
-      });
-      await flushScheduledViewportPass();
-      expect(
-        viewportStyleRoot.style.getPropertyValue(
-          SHELL_SAFE_AREA_BOTTOM_PROPERTY,
-        ),
-      ).toBe("");
-    });
+    await withKeyboardViewport(
+      async ({ editor, resizeVisualViewport, root }) => {
+        act(() => {
+          editor.focus();
+          resizeVisualViewport(852 - (KEYBOARD_OPEN_MIN_SHRINK_PX - 1));
+        });
+        expect(
+          root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+      },
+    );
   });
+
+  it("handles native keyboard resize and post-dismissal viewport pan on non-iOS", async () => {
+    await withKeyboardViewport(
+      async (viewport) => {
+        act(() => viewport.editor.focus());
+        act(() => {
+          viewport.setLayoutHeight(552);
+          viewport.resizeVisualViewport(552);
+          window.dispatchEvent(new Event("resize"));
+        });
+        await flushScheduledViewportPass();
+        expect(viewport.shell.style.height).toBe("");
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("0px");
+
+        act(() => viewport.editor.blur());
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+
+        act(() => {
+          viewport.setLayoutHeight(852);
+          viewport.visualViewport.offsetTop = 30;
+          viewport.resizeVisualViewport(852);
+          window.dispatchEvent(new Event("resize"));
+        });
+        await flushScheduledViewportPass();
+        expect(viewport.shell.style.top).toBe("30px");
+        expect(viewport.shell.style.height).toBe("852px");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "852px",
+        );
+      },
+      { settleIOSViewport: false },
+    );
+  });
+
+  it("keeps the inset on hardware-keyboard focus in an already clipped viewport", async () => {
+    await withKeyboardViewport(
+      async (viewport) => {
+        expect(viewport.shell.style.height).toBe("730px");
+        act(() => viewport.editor.focus());
+        await flushScheduledViewportPass();
+        expect(viewport.shell.style.height).toBe("730px");
+        expect(
+          viewport.root.style.getPropertyValue(SHELL_SAFE_AREA_BOTTOM_PROPERTY),
+        ).toBe("");
+      },
+      { height: 730 },
+    );
+  });
+
+  it.each(["from rest", "after keyboard dismissal"])(
+    "ignores a full-height unfocused viewport pan %s",
+    async (history) => {
+      await withKeyboardViewport(async (viewport) => {
+        if (history === "after keyboard dismissal") {
+          act(() => {
+            viewport.editor.focus();
+            viewport.resizeVisualViewport(552);
+          });
+          expect(viewport.shell.style.height).toBe("552px");
+          act(() => viewport.editor.blur());
+        }
+
+        act(() => {
+          viewport.visualViewport.height = 852;
+          viewport.visualViewport.offsetTop = 30;
+          viewport.visualViewport.dispatchEvent(new Event("scroll"));
+        });
+        await flushScheduledViewportPass();
+        expect(document.activeElement).toBe(document.body);
+        expect(viewport.shell.style.height).toBe("");
+        expect(viewport.shell.style.top).toBe("");
+        expect(viewport.root.style.getPropertyValue("--bb-shell-height")).toBe(
+          "",
+        );
+      });
+    },
+  );
 
   it("leaves pinch-zoom pans alone", async () => {
     const visualViewport = new FakeVisualViewport();
@@ -484,7 +800,7 @@ describe("useMobileVisualViewportHeight", () => {
     });
   });
 
-  it("reads the containing block only when the layout viewport can change", async () => {
+  it("caches the containing block between layout changes outside iOS", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     let containingBlockReads = 0;
@@ -496,7 +812,7 @@ describe("useMobileVisualViewportHeight", () => {
       },
       async () =>
         withFakeVisualViewport(visualViewport, async () => {
-          render(<VisualViewportShell />);
+          render(<VisualViewportShell settleIOSViewport={false} />);
           const shell = screen.getByTestId("shell");
           expect(shell.style.height).toBe("500px");
           const readsAfterMount = containingBlockReads;
@@ -543,7 +859,7 @@ describe("useMobileVisualViewportHeight", () => {
     );
   });
 
-  it("ignores visual viewport pans without a keyboard or an applied override", async () => {
+  it("ignores visual viewport pans without editor focus or a height mismatch", async () => {
     const visualViewport = new FakeVisualViewport();
     visualViewport.offsetTop = 0;
     await withElementClientHeight(
@@ -573,7 +889,7 @@ describe("useMobileVisualViewportHeight", () => {
             visualViewport.dispatchEvent(new Event("scroll"));
           });
           await waitFor(() => expect(shell.style.top).toBe("340px"));
-          expect(window.scrollTo).toHaveBeenCalledWith(0, 0);
+          expect(window.scrollTo).not.toHaveBeenCalled();
         }),
     );
   });
