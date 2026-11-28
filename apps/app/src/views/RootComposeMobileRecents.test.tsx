@@ -10,7 +10,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { Profiler, useState, type ReactNode } from "react";
 import { Provider, createStore } from "jotai";
 import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 import { MemoryRouter } from "react-router-dom";
@@ -146,9 +146,59 @@ function makeIdleThread(
 
 afterEach(() => {
   cleanup();
+  delete document.documentElement.dataset.bbIosTextScale;
+  document.documentElement.style.removeProperty("font-size");
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   vi.useRealTimers();
   vi.clearAllMocks();
+});
+
+describe("first-paint mobile recents", () => {
+  it.each([
+    [16, "1", 16],
+    [16, "3.571", 6],
+    [20, "1", 13],
+    [20, "3.571", 5],
+    [32, "1", 9],
+    [32, "3.571", 4],
+  ])(
+    "mounts only viewport rows on the first commit at a %spx root and %s scale",
+    (rootFontSize, scale, count) => {
+      vi.stubGlobal("innerHeight", 900);
+      document.documentElement.style.fontSize = `${rootFontSize}px`;
+      document.documentElement.dataset.bbIosTextScale = scale;
+      const threads = Array.from({ length: 20 }, (_, index) =>
+        makeThread({ id: `thr_recent${index}` }),
+      );
+      const committedRowCounts: number[] = [];
+      const { container } = render(
+        <TestProviders>
+          <Profiler
+            id="mobile-recents"
+            onRender={() => {
+              committedRowCounts.push(
+                document.querySelectorAll(
+                  "[data-root-compose-mobile-recents] li",
+                ).length,
+              );
+            }}
+          >
+            <RootComposeMobileRecents
+              highlightedThreadId={null}
+              projectNamesById={new Map()}
+              providersById={new Map()}
+              showCreatingRow={false}
+              threads={threads}
+            />
+          </Profiler>
+        </TestProviders>,
+      );
+
+      expect(committedRowCounts[0]).toBe(count);
+      expect(container.querySelectorAll("li")).toHaveLength(20);
+    },
+  );
 });
 
 describe("mobile recents hierarchy interaction", () => {

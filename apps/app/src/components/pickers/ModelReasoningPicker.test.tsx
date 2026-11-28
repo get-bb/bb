@@ -959,8 +959,8 @@ describe("ModelReasoningPicker", () => {
     expect(menu.className).toContain("overflow-hidden");
 
     const scrollers = [
-      ...(menu.className.includes("overflow-y-auto") ? [menu] : []),
-      ...menu.querySelectorAll<HTMLElement>("[class*='overflow-y-auto']"),
+      ...(menu.classList.contains("overflow-y-auto") ? [menu] : []),
+      ...menu.querySelectorAll<HTMLElement>(".overflow-y-auto"),
     ];
     expect(scrollers).toHaveLength(1);
 
@@ -979,9 +979,10 @@ describe("ModelReasoningPicker", () => {
     );
 
     expect(screen.getByRole("dialog").className).not.toContain("100dvh");
+    const models = await screen.findByRole("listbox", { name: "Models" });
     expect(
-      (await screen.findByRole("listbox", { name: "Models" })).className,
-    ).not.toContain("max-h-");
+      [...models.classList].some((name) => name.startsWith("max-h-")),
+    ).toBe(false);
   });
 
   it("commits a provider tab immediately and keeps its models selectable", async () => {
@@ -1396,6 +1397,32 @@ describe("ModelReasoningPicker", () => {
     fireEvent.change(search, { target: { value: "o4" } });
 
     expect(list.scrollTop).toBe(0);
+  });
+
+  it("returns the scrollable drawer body to the first search result at large text sizes", async () => {
+    document.documentElement.dataset.bbIosTextScale = "3.571";
+    try {
+      renderPicker({ compact: true, modelOptions: manyCodexModels });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Provider, model and reasoning" }),
+      );
+
+      const list = await screen.findByRole("listbox", { name: "Models" });
+      const drawerBody = list.parentElement;
+      if (!drawerBody) throw new Error("Missing model picker body");
+      drawerBody.scrollTop = 120;
+
+      fireEvent.change(screen.getByPlaceholderText("Search models"), {
+        target: { value: "o4" },
+      });
+
+      expect(drawerBody.scrollTop).toBe(0);
+      expect(list.contains(screen.getByRole("option", { name: /o4/iu }))).toBe(
+        true,
+      );
+    } finally {
+      delete document.documentElement.dataset.bbIosTextScale;
+    }
   });
 
   it("resets retained mobile browse state after the drawer closes", () => {

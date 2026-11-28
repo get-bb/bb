@@ -51,10 +51,23 @@ import { usePromptDraftInputThreadIds } from "@/hooks/usePromptDraftStorage";
 import { useThreadListEntryStatus } from "@/hooks/useThreadListEntryStatus";
 import { mobileRecentsCollapsedThreadIdsAtom } from "./mobile-recents-collapse";
 
-export const MOBILE_RECENT_ROW_HEIGHT_PX = 60;
-export const MOBILE_RECENT_LABEL_HEIGHT_PX = 24;
+const MOBILE_RECENT_ROW_HEIGHT_REM = 3.75;
+const MOBILE_RECENT_LABEL_HEIGHT_REM = 1.5;
+const MOBILE_RECENT_ROW_STYLE = {
+  height: `calc(${MOBILE_RECENT_ROW_HEIGHT_REM}rem * max(1, var(--bb-ios-font-scale, 1)))`,
+};
 
-const MOBILE_RECENT_ROW_HEIGHT_CLASS = "h-15";
+export function readMobileRecentMetrics() {
+  const root = document.documentElement;
+  const rootFontSize = Number.parseFloat(getComputedStyle(root).fontSize) || 16;
+  const scale = Math.max(1, Number(root.dataset.bbIosTextScale) || 1);
+  const baseRowHeight = MOBILE_RECENT_ROW_HEIGHT_REM * rootFontSize;
+  return {
+    rowHeight: baseRowHeight * scale,
+    labelHeight: MOBILE_RECENT_LABEL_HEIGHT_REM * rootFontSize * scale,
+    minimumLeadingSpace: baseRowHeight,
+  };
+}
 
 type ThreadListEntryComparator = (
   left: ThreadListEntry,
@@ -218,8 +231,8 @@ export function getMobileRecentAncestorIds({
   return ancestorIds;
 }
 
-function getFirstPaintMobileRecentRowCount(): number {
-  return Math.ceil(window.innerHeight / MOBILE_RECENT_ROW_HEIGHT_PX) + 1;
+function getFirstPaintMobileRecentRowCount(viewportHeight: number): number {
+  return Math.ceil(viewportHeight / readMobileRecentMetrics().rowHeight) + 1;
 }
 
 export function getMobileRecentThreads({
@@ -311,10 +324,12 @@ function MobileRecentThreadRow({
             link !== null &&
             touch.clientX < link.getBoundingClientRect().left;
         }}
-        style={{ paddingLeft: getSidebarThreadRowPaddingLeft(depth) }}
+        style={{
+          ...MOBILE_RECENT_ROW_STYLE,
+          paddingLeft: getSidebarThreadRowPaddingLeft(depth),
+        }}
         className={cn(
           "flex select-none items-center gap-2.5 rounded-md pr-2",
-          MOBILE_RECENT_ROW_HEIGHT_CLASS,
           highlighted && "bg-surface-selected",
         )}
       >
@@ -361,10 +376,7 @@ function MobileRecentThreadRow({
               event.preventDefault();
             }
           }}
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-2.5 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
-            MOBILE_RECENT_ROW_HEIGHT_CLASS,
-          )}
+          className="flex h-full min-w-0 flex-1 items-center gap-2.5 rounded-md text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         >
           <span className="min-w-0 flex-1 space-y-0.5">
             <span className="flex min-w-0 items-center gap-1.5">
@@ -450,7 +462,10 @@ export function RootComposeMobileRecents({
   const hasMountedAllRows = useDeferredValue(true, false);
   const renderedThreads = hasMountedAllRows
     ? recentThreads
-    : recentThreads.slice(0, getFirstPaintMobileRecentRowCount());
+    : recentThreads.slice(
+        0,
+        getFirstPaintMobileRecentRowCount(window.innerHeight),
+      );
 
   if (!showCreatingRow && recentThreads.length === 0) {
     return null;
@@ -474,10 +489,8 @@ export function RootComposeMobileRecents({
       {showCreatingRow ? (
         <div
           role="status"
-          className={cn(
-            "flex items-center gap-2.5 rounded-md px-2 text-sm text-muted-foreground",
-            MOBILE_RECENT_ROW_HEIGHT_CLASS,
-          )}
+          className="flex items-center gap-2.5 rounded-md px-2 text-sm text-muted-foreground"
+          style={MOBILE_RECENT_ROW_STYLE}
         >
           <span className="min-w-0 flex-1 truncate">Creating thread</span>
           <span className="flex size-6 shrink-0 items-center justify-center">

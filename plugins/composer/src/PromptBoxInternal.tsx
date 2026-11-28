@@ -3364,7 +3364,8 @@ export function PromptBoxInternal({
           data-promptbox-main=""
           className={cn(
             "min-h-0 overflow-hidden transition-opacity duration-[180ms] motion-reduce:transition-none",
-            showCompactLayout && "relative flex h-12 items-center",
+            showCompactLayout &&
+              "relative flex h-(--compact-editor-height) items-center",
             showVoiceActionGroup && "pointer-events-none",
           )}
         >

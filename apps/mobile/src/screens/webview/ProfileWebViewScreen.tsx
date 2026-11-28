@@ -20,7 +20,13 @@ import {
   useState,
   type Ref,
 } from "react";
-import { AppState, BackHandler, Platform, View } from "react-native";
+import {
+  AppState,
+  BackHandler,
+  Platform,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { WebViewKeyboardFrame } from "./WebViewKeyboardFrame";
 import { WebView, type WebViewProps } from "react-native-webview";
@@ -49,6 +55,7 @@ import { Button, EmptyStatePanel, Spinner, Text, toast } from "@/ui";
 import { describeError } from "@/lib/describe-error";
 import { Linking } from "react-native";
 import { useShellBridge } from "./useShellBridge";
+import { buildIosTextSizeScript } from "./ios-text-size";
 import {
   SHELL_NATIVE_DOWNLOADS_SUPPORTED,
   useShellFileSaver,
@@ -64,6 +71,7 @@ export function ProfileWebViewScreen() {
   const { tokens } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { fontScale } = useWindowDimensions();
   const params = useLocalSearchParams<{ profileId?: string; path?: string }>();
   const { status, profiles, activeProfile, connection, setActiveProfile } =
     useProfiles();
@@ -88,6 +96,15 @@ export function ProfileWebViewScreen() {
     scope: string;
     path: string;
   } | null>(null);
+
+  const iosTextSizeScript =
+    Platform.OS === "ios" ? buildIosTextSizeScript(fontScale) : "";
+
+  useEffect(() => {
+    if (iosTextSizeScript) {
+      webViewRef.current?.injectJavaScript(iosTextSizeScript);
+    }
+  }, [iosTextSizeScript]);
 
   const loadScope =
     profile === null
@@ -380,10 +397,9 @@ export function ProfileWebViewScreen() {
               })(); true;`
             : undefined
         }
-        injectedJavaScriptBeforeContentLoaded={buildBridgeInjectionScript(
-          handshake,
-          servers,
-        )}
+        injectedJavaScriptBeforeContentLoaded={
+          buildBridgeInjectionScript(handshake, servers) + iosTextSizeScript
+        }
         onMessage={(event) => {
           canGoBack.current = event.nativeEvent.canGoBack;
           bridge.onMessage(event);
@@ -433,11 +449,14 @@ export function ProfileWebViewScreen() {
           const path = shellPathFromUrl(state.url, profile.serverUrl);
           if (path !== null) rememberPath(path);
         }}
-        onLoadEnd={() =>
+        onLoadEnd={() => {
+          if (iosTextSizeScript) {
+            webViewRef.current?.injectJavaScript(iosTextSizeScript);
+          }
           setLoad((previous) =>
             previous.kind === "loading" ? { kind: "ready" } : previous,
-          )
-        }
+          );
+        }}
         onError={(event) =>
           setLoad({
             kind: "failed",
