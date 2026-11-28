@@ -544,7 +544,9 @@ describe("useMobileVisualViewportHeight", () => {
     });
     try {
       await withKeyboardViewport(async (viewport) => {
-        act(() => vi.advanceTimersByTime(400));
+        act(() => {
+          vi.advanceTimersByTime(400);
+        });
         expect(vi.getTimerCount()).toBe(0);
 
         act(() => {
@@ -625,7 +627,9 @@ describe("useMobileVisualViewportHeight", () => {
           vi.advanceTimersByTime(1_000);
         });
         expect(vi.getTimerCount()).toBe(1);
-        act(() => vi.advanceTimersByTime(600));
+        act(() => {
+          vi.advanceTimersByTime(600);
+        });
         expect(vi.getTimerCount()).toBe(0);
         expect(viewport.shell.style.height).toBe("552px");
       });
