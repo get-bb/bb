@@ -981,6 +981,30 @@ function focusEditorAtEnd(editor: Editor): void {
   editor.view.focus();
 }
 
+function normalizeCollapsedDomSelectionToTextNode(editor: Editor): void {
+  const { selection } = editor.state;
+  if (!selection.empty) return;
+  const domSelection = editor.view.dom.ownerDocument.getSelection();
+  if (
+    !domSelection ||
+    !domSelection.isCollapsed ||
+    !editor.view.dom.contains(domSelection.focusNode) ||
+    domSelection.focusNode?.nodeType === Node.TEXT_NODE
+  ) {
+    return;
+  }
+
+  const before = editor.view.domAtPos(selection.head, -1);
+  if (before.node.nodeType === Node.TEXT_NODE) {
+    domSelection.collapse(before.node, before.offset);
+    return;
+  }
+  const after = editor.view.domAtPos(selection.head, 1);
+  if (after.node.nodeType === Node.TEXT_NODE) {
+    domSelection.collapse(after.node, after.offset);
+  }
+}
+
 const SAFARI_POST_COMPOSITION_KEYDOWN_WINDOW_MS = 500;
 
 function isIPadOSWebKit(): boolean {
@@ -2422,6 +2446,7 @@ export function PromptBoxInternal({
       const nextValue = promptEditorValueFromDoc(appliedEditor.state.doc);
       lastSyncedEditorValueRef.current = nextValue;
       onChangeRef.current(nextValue.text, nextValue.mentions);
+      normalizeCollapsedDomSelectionToTextNode(appliedEditor);
 
       requestAnimationFrame(() => {
         const nextEditor = editorRef.current;
@@ -2430,6 +2455,7 @@ export function PromptBoxInternal({
           return;
         }
         nextEditor.commands.focus();
+        normalizeCollapsedDomSelectionToTextNode(nextEditor);
         syncTriggerState(nextEditor);
         scheduleRevealEditorSelection();
         isRestoringAppliedMentionRef.current = false;

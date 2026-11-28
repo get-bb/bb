@@ -6185,6 +6185,13 @@ describe("ComposerBox command typeahead submit", () => {
     description: "Review a PR",
     argumentHint: null,
   };
+  const builtinSubmitCases = [
+    { name: "clear", sends: true },
+    { name: "compact", sends: true },
+    { name: "handoff", sends: true },
+    { name: "goal", sends: false },
+    { name: "loop", sends: false },
+  ] as const;
 
   function renderCommandPromptBox(
     suggestion: ProviderCommandSuggestion,
@@ -6235,13 +6242,17 @@ describe("ComposerBox command typeahead submit", () => {
     await waitFor(() => expect(screen.queryByText(name)).not.toBeNull());
   }
 
-  it.each([
-    { name: "clear", sends: true },
-    { name: "compact", sends: true },
-    { name: "handoff", sends: true },
-    { name: "goal", sends: false },
-    { name: "loop", sends: false },
-  ])(
+  function expectCaretAfterTrailingSpace() {
+    const editor = getPromptEditorElement();
+    const selection = window.getSelection();
+    expect(selection?.isCollapsed).toBe(true);
+    expect(editor.contains(selection?.focusNode ?? null)).toBe(true);
+    expect(selection?.focusNode?.nodeType).toBe(Node.TEXT_NODE);
+    expect(selection?.focusNode?.textContent).toBe(" ");
+    expect(selection?.focusOffset).toBe(1);
+  }
+
+  it.each(builtinSubmitCases)(
     "selecting builtin /$name with Enter submits: $sends",
     async ({ name, sends }) => {
       const { changes, onSubmit, promptBoxRef } = renderCommandPromptBox(
@@ -6273,16 +6284,13 @@ describe("ComposerBox command typeahead submit", () => {
           },
         ],
       });
+      if (!sends) {
+        expectCaretAfterTrailingSpace();
+      }
     },
   );
 
-  it.each([
-    { name: "clear", sends: true },
-    { name: "compact", sends: true },
-    { name: "handoff", sends: true },
-    { name: "goal", sends: false },
-    { name: "loop", sends: false },
-  ])(
+  it.each(builtinSubmitCases)(
     "clicking builtin /$name in the menu submits: $sends",
     async ({ name, sends }) => {
       const { changes, onSubmit, promptBoxRef } = renderCommandPromptBox(
@@ -6303,6 +6311,9 @@ describe("ComposerBox command typeahead submit", () => {
         name,
         origin: "builtin",
       });
+      if (!sends) {
+        expectCaretAfterTrailingSpace();
+      }
     },
   );
 
@@ -6340,8 +6351,9 @@ describe("ComposerBox command typeahead submit", () => {
     });
   });
 
-  it("does not submit when builtin /compact or /goal is selected with Tab", async () => {
-    for (const suggestion of [compactSuggestion, goalSuggestion]) {
+  it.each([compactSuggestion, goalSuggestion])(
+    "does not submit when builtin /$name is selected with Tab",
+    async (suggestion) => {
       const { changes, onSubmit, promptBoxRef } =
         renderCommandPromptBox(suggestion);
       await openCommandMenu(
@@ -6357,16 +6369,22 @@ describe("ComposerBox command typeahead submit", () => {
 
       expect(onSubmit).not.toHaveBeenCalled();
       expect(latestChange(changes)?.value).toBe(`/${suggestion.name} `);
-      cleanup();
-    }
-  });
+      expectCaretAfterTrailingSpace();
+    },
+  );
 
-  it("inserts builtin /goal without submitting on a coarse-pointer tap", async () => {
+  it("inserts builtin /goal and places the caret in the trailing space on a coarse-pointer tap", async () => {
     const restoreMatchMedia = mockPointerCoarse(true);
     try {
       const { changes, onSubmit, promptBoxRef } =
         renderCommandPromptBox(goalSuggestion);
       await openCommandMenu(promptBoxRef, "/goal", "goal");
+
+      const paragraph = getPromptEditorElement().querySelector("p");
+      if (paragraph === null) {
+        throw new Error("Expected prompt editor paragraph");
+      }
+      window.getSelection()?.collapse(paragraph, paragraph.childNodes.length);
 
       const button = screen.getByRole("button", { name: /goal/ });
       await act(async () => {
@@ -6396,25 +6414,37 @@ describe("ComposerBox command typeahead submit", () => {
           },
         ],
       });
+      expectCaretAfterTrailingSpace();
     } finally {
       restoreMatchMedia();
     }
   });
 
-  it("does not auto-submit a builtin skill or $ trigger command", async () => {
-    const builtinSkill: ProviderCommandSuggestion = {
+  it.each([
+    {
+      label: "builtin skill on /",
+      source: "skill" as const,
+      trigger: "/" as const,
+    },
+    {
+      label: "builtin command on $",
+      source: "command" as const,
+      trigger: "$" as const,
+    },
+  ])("does not auto-submit a $label", async ({ source, trigger }) => {
+    const suggestion: ProviderCommandSuggestion = {
       kind: "command",
       name: "clear",
-      source: "skill",
+      source,
       origin: "builtin",
-      description: "Skill named clear",
+      description: "Non-immediate clear",
       argumentHint: null,
     };
     const { changes, onSubmit, promptBoxRef } = renderCommandPromptBox(
-      builtinSkill,
+      suggestion,
       ["/", "$"],
     );
-    await openCommandMenu(promptBoxRef, "$clear", "clear");
+    await openCommandMenu(promptBoxRef, `${trigger}clear`, "clear");
 
     await act(async () => {
       fireEvent.keyDown(getPromptEditorElement(), { key: "Enter" });
@@ -6422,7 +6452,7 @@ describe("ComposerBox command typeahead submit", () => {
     await act(async () => {});
 
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(latestChange(changes)?.value).toBe("$clear ");
+    expect(latestChange(changes)?.value).toBe(`${trigger}clear `);
   });
 });
 
