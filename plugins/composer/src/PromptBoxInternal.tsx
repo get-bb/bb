@@ -89,6 +89,7 @@ import { areDraftsEqual, isDraftEmpty } from "./composer-draft";
 import {
   commandMentionTarget,
   compareMentions,
+  isImmediateBuiltinCommand,
   mentionInRange,
   sameMention,
   shiftMention,
@@ -3012,11 +3013,15 @@ export function PromptBoxInternal({
   const chooseSuggestion = useCallback(
     (item: TypeaheadSuggestion) => {
       applyTrigger(item);
-      if (item.kind === "command" && item.origin === "builtin") {
+      if (
+        item.kind === "command" &&
+        activeTrigger?.kind === "command" &&
+        isImmediateBuiltinCommand(item, activeTrigger.char)
+      ) {
         setPendingCommandSubmit(true);
       }
     },
-    [applyTrigger],
+    [activeTrigger, applyTrigger],
   );
 
   const submitModifierPrompt = useCallback(() => {

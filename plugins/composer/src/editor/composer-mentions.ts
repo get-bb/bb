@@ -84,6 +84,27 @@ export function compareMentions(
   return left.from - right.from || left.to - right.to;
 }
 
+const IMMEDIATE_BUILTIN_COMMANDS: ReadonlySet<string> = new Set([
+  "clear",
+  "compact",
+  "handoff",
+]);
+
+export function isImmediateBuiltinCommand(
+  command: Pick<
+    ExperimentalComposerCommandSuggestion,
+    "name" | "origin" | "source"
+  >,
+  trigger: ExperimentalComposerCommandTrigger,
+): boolean {
+  return (
+    trigger === "/" &&
+    command.origin === "builtin" &&
+    command.source === "command" &&
+    IMMEDIATE_BUILTIN_COMMANDS.has(command.name)
+  );
+}
+
 export function commandMentionTarget(
   command: Pick<
     ExperimentalComposerCommandSuggestion,
