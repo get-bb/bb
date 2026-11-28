@@ -1,12 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { planMcpElicitation } from "./mcp-elicitation.js";
+import {
+  planMcpElicitation,
+  type McpElicitationQuestions,
+} from "./mcp-elicitation.js";
 
 function planGeneric(params: unknown) {
-  return planMcpElicitation(params, { descriptionIsHeading: false });
+  return planMcpElicitation(params, {
+    kind: "agent",
+    descriptionIsHeading: false,
+  });
 }
 
 function planOmp(params: unknown) {
-  return planMcpElicitation(params, { descriptionIsHeading: true });
+  return planMcpElicitation(params, {
+    kind: "agent",
+    descriptionIsHeading: true,
+  });
+}
+
+function planServer(params: unknown, serverName = "deploy") {
+  return planMcpElicitation(params, { kind: "mcp_server", serverName });
 }
 
 function form(
@@ -66,6 +79,44 @@ function questions(plan: ReturnType<typeof planMcpElicitation>) {
     throw new Error(`expected questions, got ${JSON.stringify(plan)}`);
   }
   return plan;
+}
+
+function pick(value: string) {
+  return {
+    kind: "user_answer" as const,
+    answers: { confirm: { selected: [value] } },
+  };
+}
+
+function serverForm(params: unknown) {
+  const step = questions(planServer(params)).toResponse(pick("answer"));
+  if (!("next" in step)) {
+    throw new Error(
+      `expected the form after the gate, got ${JSON.stringify(step)}`,
+    );
+  }
+  return step.next;
+}
+
+function askedAgain(step: ReturnType<McpElicitationQuestions["toResponse"]>) {
+  if (!("next" in step)) {
+    throw new Error(`expected the form again, got ${JSON.stringify(step)}`);
+  }
+  return step.next.payload.questions[0]?.prompt
+    .split("\n")
+    .find((line) => line.startsWith("Your answer"));
+}
+
+function typed(answers: Record<string, string>) {
+  return {
+    kind: "user_answer" as const,
+    answers: Object.fromEntries(
+      Object.entries(answers).map(([id, freeText]) => [
+        id,
+        { selected: [], freeText },
+      ]),
+    ),
+  };
 }
 
 describe("planMcpElicitation", () => {
@@ -163,22 +214,20 @@ describe("planMcpElicitation", () => {
     });
   });
 
-  it("reports an answer that does not fit its field instead of declining for the user", () => {
+  it("asks again for a typed number it cannot read, and reports an answer the card could not have sent", () => {
     const plan = questions(planGeneric(form({ retries: { type: "integer" } })));
-    const unmappable = {
-      unmappable: 'the answer to "retries" does not fit that field',
-    };
-    for (const freeText of ["many", "2.5"]) {
-      expect(
-        plan.toResponse({
-          kind: "user_answer",
-          answers: { retries: { selected: [], freeText } },
-        }),
-      ).toEqual(unmappable);
-    }
-    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual(
-      unmappable,
+    expect(askedAgain(plan.toResponse(typed({ retries: "many" })))).toBe(
+      'Your answer to "retries" must be a number. Answer again.',
     );
+    expect(askedAgain(plan.toResponse(typed({ retries: "0x10" })))).toBe(
+      'Your answer to "retries" must be a number. Answer again.',
+    );
+    expect(askedAgain(plan.toResponse(typed({ retries: "2.5" })))).toBe(
+      'Your answer to "retries" must be a whole number. Answer again.',
+    );
+    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
+      unmappable: 'the answer to "retries" does not fit that field',
+    });
   });
 
   it("asks for a typed answer when a choice has more options than the card can list, and matches it by value or label", () => {
@@ -656,6 +705,246 @@ describe("planMcpElicitation", () => {
     expect(planGeneric(form({ nested: { type: "object" } }))).toEqual({
       kind: "unsupported",
       reason: 'bb cannot show the field "nested"',
+    });
+  });
+
+  it("names the MCP server that asks on every step of its form", () => {
+    expect(
+      questions(planServer(form({}, "Show letters from outside senders?")))
+        .payload.questions[0]?.prompt,
+    ).toBe(
+      "Requested by MCP server `deploy`\n\nShow letters from outside senders?",
+    );
+    const fields = form({ approved: { type: "boolean", title: "Approve" } });
+    expect(questions(planServer(fields)).payload.questions[0]?.prompt).toBe(
+      "Requested by MCP server `deploy`\n\nPick a plan\n\nThe form asks for: Approve",
+    );
+    expect(serverForm(fields).payload.questions[0]?.prompt).toBe(
+      "Requested by MCP server `deploy`\n\nPick a plan\n\nApprove",
+    );
+    expect(
+      questions(planServer(form({}, "Go?"), "gmail`\n\nfake")).payload
+        .questions[0]?.prompt,
+    ).toBe("Requested by MCP server `gmailfake`\n\nGo?");
+    expect(
+      questions(planGeneric(form({}, "Go?"))).payload.questions[0]?.prompt,
+    ).toBe("Go?");
+    const { message: _message, ...withoutMessage } = form({});
+    expect(
+      questions(planServer(withoutMessage)).payload.questions[0]?.prompt,
+    ).toBe(
+      "Requested by MCP server `deploy`\n\nThe MCP server is asking you to confirm.",
+    );
+  });
+
+  it("lets the user decline an MCP server's form with fields before filling it in", () => {
+    const plan = questions(
+      planServer(
+        form({
+          destination: { type: "string", enum: ["staging", "production"] },
+          dryRun: { type: "boolean", title: "Dry run" },
+        }),
+      ),
+    );
+    expect(plan.payload.questions).toEqual([
+      {
+        id: "confirm",
+        prompt:
+          "Requested by MCP server `deploy`\n\nPick a plan\n\nThe form asks for: destination, Dry run",
+        multiSelect: false,
+        options: [
+          { value: "answer", label: "Fill in the form" },
+          { value: "decline", label: "Decline" },
+        ],
+        allowFreeText: false,
+        required: true,
+      },
+    ]);
+    expect(plan.toResponse(pick("decline"))).toEqual({ action: "decline" });
+    expect(plan.toResponse({ kind: "user_answer", answers: {} })).toEqual({
+      unmappable: "the answer was neither Fill in the form nor Decline",
+    });
+    const filled = serverForm(
+      form({
+        destination: { type: "string", enum: ["staging", "production"] },
+        dryRun: { type: "boolean", title: "Dry run" },
+      }),
+    );
+    expect(filled.payload.questions.map((question) => question.id)).toEqual([
+      "destination",
+      "dryRun",
+    ]);
+    expect(
+      filled.toResponse({
+        kind: "user_answer",
+        answers: {
+          destination: { selected: ["staging"] },
+          dryRun: { selected: ["true"] },
+        },
+      }),
+    ).toEqual({
+      action: "accept",
+      content: { destination: "staging", dryRun: true },
+    });
+    expect(
+      questions(planGeneric(form({ dryRun: { type: "boolean" } }))).payload
+        .questions[0]?.id,
+    ).toBe("dryRun");
+  });
+
+  it("keeps an MCP server's <field>_other text field as its own question with its own label", () => {
+    const params = form(
+      {
+        reason: { type: "string", enum: ["spam", "other"], title: "Reason" },
+        reason_other: { type: "string", title: "Details for the report" },
+      },
+      "Report this letter",
+      ["reason"],
+    );
+    expect(
+      serverForm(params).payload.questions.map((question) => [
+        question.id,
+        question.shortLabel,
+        question.allowFreeText,
+      ]),
+    ).toEqual([
+      ["reason", "Reason", false],
+      ["reason_other", "Details for the report", true],
+    ]);
+    expect(
+      questions(planGeneric(params)).payload.questions.map(
+        (question) => question.id,
+      ),
+    ).toEqual(["reason"]);
+  });
+
+  it("states each field's limits in its question and asks again after an answer outside them", () => {
+    const plan = serverForm(
+      form({
+        age: { type: "integer", title: "Age", minimum: 18, maximum: 120 },
+        ratio: { type: "number", title: "Ratio", maximum: 1 },
+        code: { type: "string", title: "Code", minLength: 4, maxLength: 6 },
+        email: { type: "string", title: "Email", format: "email" },
+        day: { type: "string", title: "Day", format: "date" },
+        tags: {
+          type: "array",
+          title: "Tags",
+          minItems: 2,
+          maxItems: 3,
+          items: { enum: ["a", "b", "c", "d"] },
+        },
+      }),
+    );
+    expect(
+      plan.payload.questions.map((question) =>
+        question.prompt.split("\n").at(-1),
+      ),
+    ).toEqual([
+      "Enter a whole number from 18 to 120.",
+      "Enter a number of at most 1.",
+      "Enter 4 to 6 characters.",
+      "Enter an email address.",
+      "Enter a date as YYYY-MM-DD.",
+      "Choose 2 to 3 options.",
+    ]);
+    const valid = {
+      age: { selected: [], freeText: "30" },
+      ratio: { selected: [], freeText: "0.5" },
+      code: { selected: [], freeText: "abcd" },
+      email: { selected: [], freeText: "a@example.com" },
+      day: { selected: [], freeText: "2026-11-28" },
+      tags: { selected: ["a", "b"] },
+    };
+    expect(plan.toResponse({ kind: "user_answer", answers: valid })).toEqual({
+      action: "accept",
+      content: {
+        age: 30,
+        ratio: 0.5,
+        code: "abcd",
+        email: "a@example.com",
+        day: "2026-11-28",
+        tags: ["a", "b"],
+      },
+    });
+    const cases: [string, { selected: string[]; freeText?: string }, string][] =
+      [
+        ["age", { selected: [], freeText: "17" }, "must be at least 18"],
+        ["age", { selected: [], freeText: "121" }, "must be at most 120"],
+        ["ratio", { selected: [], freeText: "1.5" }, "must be at most 1"],
+        [
+          "code",
+          { selected: [], freeText: "abc" },
+          "must be at least 4 characters",
+        ],
+        [
+          "code",
+          { selected: [], freeText: "abcdefg" },
+          "must be at most 6 characters",
+        ],
+        [
+          "tags",
+          { selected: ["a", "b", "c", "d"] },
+          "must be at most 3 options",
+        ],
+        ["tags", { selected: ["a"] }, "must be at least 2 options"],
+      ];
+    for (const [field, answer, problem] of cases) {
+      const step = plan.toResponse({
+        kind: "user_answer",
+        answers: { ...valid, [field]: answer },
+      });
+      const label = field[0]?.toUpperCase() + field.slice(1);
+      expect(askedAgain(step)).toBe(
+        `Your answer to "${label}" ${problem}. Answer again.`,
+      );
+      if ("next" in step) {
+        expect(step.next.payload.questions[0]?.prompt).toMatch(
+          /^Requested by MCP server `deploy`\n\nYour answer to /,
+        );
+        expect(
+          step.next.toResponse({ kind: "user_answer", answers: valid }),
+        ).toMatchObject({ action: "accept" });
+        expect(step.next.payload.questions.slice(1)).toEqual(
+          plan.payload.questions.slice(1),
+        );
+      }
+    }
+    expect(
+      plan.toResponse({
+        kind: "user_answer",
+        answers: {
+          ...valid,
+          email: { selected: [], freeText: "admin@localhost" },
+        },
+      }),
+    ).toMatchObject({
+      action: "accept",
+      content: { email: "admin@localhost" },
+    });
+  });
+
+  it("refuses a form whose limits cannot be met", () => {
+    expect(
+      planServer(form({ age: { type: "integer", minimum: 5, maximum: 1 } })),
+    ).toEqual({
+      kind: "unsupported",
+      reason: 'bb cannot show the field "age"',
+    });
+    expect(
+      planServer(
+        form({
+          tags: { type: "array", minItems: 3, items: { enum: ["a", "b"] } },
+        }),
+      ),
+    ).toEqual({
+      kind: "unsupported",
+      reason: 'bb cannot show the field "tags"',
+    });
+    expect(
+      planServer(form({ essay: { type: "string", minLength: 5000 } })),
+    ).toEqual({
+      kind: "unsupported",
+      reason: 'bb cannot show the field "essay"',
     });
   });
 });

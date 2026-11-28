@@ -171,9 +171,10 @@ async function waitUntil<T>(
 
 async function waitForInteractionRequest(
   harness: BridgeJsonRpcTestHarness,
+  index = 0,
 ): Promise<BridgeJsonRpcOutputMessage> {
   return waitUntil(
-    () => harness.messages.find(isInteractionRequest),
+    () => harness.messages.filter(isInteractionRequest)[index],
     "the forwarded interaction/request",
     harness,
   );
@@ -841,7 +842,11 @@ function claudeForm(request: unknown): ClaudeAsk {
   };
 }
 
-async function runClaude(ask: ClaudeAsk, reply: Reply): Promise<Observation> {
+async function runClaude(
+  ask: ClaudeAsk,
+  reply: Reply,
+  steps: readonly ReplyBody[] = [],
+): Promise<Observation> {
   const handleLine = await loadHandleLine(
     "plugins/provider-claude-code/src/bridge/bridge.ts",
   );
@@ -866,12 +871,26 @@ async function runClaude(ask: ClaudeAsk, reply: Reply): Promise<Observation> {
       claudeQueryCallSchema.parse(queryMock.mock.calls.at(-1)?.[0]).options,
       abort.signal,
     );
+    for (const [index, body] of steps.entries()) {
+      answerRuntimeRequest(
+        handleLine,
+        await waitForInteractionRequest(harness, index),
+        body,
+      );
+    }
     if (reply.kind === "stop") {
-      const request = await waitForInteractionRequest(harness);
-      abort.abort();
+      const request = await waitForInteractionRequest(harness, steps.length);
+      harness.sendRequest(3, "thread/stop", {
+        threadId,
+        providerThreadId: threadId,
+        intent: "interrupt",
+        activeTurnId: null,
+      });
+      await harness.waitForResponse(3);
       answerRuntimeRequest(handleLine, request, STOPPED_REPLY);
+      abort.abort();
     } else if (reply.kind === "runtime") {
-      const request = await waitForInteractionRequest(harness);
+      const request = await waitForInteractionRequest(harness, steps.length);
       answerRuntimeRequest(handleLine, request, reply.body(request));
     }
     const answer = await answerPromise;
@@ -963,6 +982,17 @@ const CLAUDE_MCP_FORM = {
   },
 };
 
+const FILL_IN_THE_FORM: ReplyBody = {
+  result: {
+    kind: "user_answer",
+    answers: { confirm: { selected: ["answer"] } },
+  },
+};
+
+function runClaudeForm(reply: Reply): Promise<Observation> {
+  return runClaude(claudeForm(CLAUDE_MCP_FORM), reply, [FILL_IN_THE_FORM]);
+}
+
 const CLAUDE_MCP_FORM_SURFACE: Surface = {
   "unshowable-request": () =>
     runClaude(
@@ -974,12 +1004,10 @@ const CLAUDE_MCP_FORM_SURFACE: Surface = {
       }),
       NONE,
     ),
-  "runtime-error": () => runClaude(claudeForm(CLAUDE_MCP_FORM), RUNTIME_ERROR),
-  "unreadable-resolution": () =>
-    runClaude(claudeForm(CLAUDE_MCP_FORM), UNREADABLE),
+  "runtime-error": () => runClaudeForm(RUNTIME_ERROR),
+  "unreadable-resolution": () => runClaudeForm(UNREADABLE),
   "unmappable-answer": () =>
-    runClaude(
-      claudeForm(CLAUDE_MCP_FORM),
+    runClaudeForm(
       runtimeResult({
         kind: "user_answer",
         answers: { destination: { selected: ["nowhere"] } },
@@ -989,7 +1017,7 @@ const CLAUDE_MCP_FORM_SURFACE: Surface = {
     unreachable:
       "the Claude Code bridge withdraws an MCP form only when Claude Code cancels the request itself, and then nothing reads the answer",
   },
-  "turn-stopped": () => runClaude(claudeForm(CLAUDE_MCP_FORM), STOP),
+  "turn-stopped": () => runClaudeForm(STOP),
 };
 
 describeBridge(

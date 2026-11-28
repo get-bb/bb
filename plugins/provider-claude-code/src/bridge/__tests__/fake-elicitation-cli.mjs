@@ -1,7 +1,13 @@
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
-const [, , resultPath, elicitationJson] = process.argv;
+const [, , resultPath, elicitationJson, cancelTriggerPath] = process.argv;
+
+const cancelWatch = setInterval(() => {
+  if (!existsSync(cancelTriggerPath)) return;
+  clearInterval(cancelWatch);
+  send({ type: "control_cancel_request", request_id: "elicitation-1" });
+}, 20);
 
 function send(message) {
   process.stdout.write(`${JSON.stringify(message)}\n`);

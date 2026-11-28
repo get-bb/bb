@@ -30,7 +30,8 @@ import {
   experimental_buildProviderCliEnv as buildProviderCliEnv,
   type BridgeJsonRpcResponse,
   type BridgeToolCallRequest,
-  type McpElicitationPlan,
+  type McpElicitationQuestions,
+  type McpElicitationStep,
   type UnansweredInteractionCause,
   experimental_defineProviderBridge,
   experimental_planMcpElicitation as planMcpElicitation,
@@ -240,7 +241,8 @@ type PendingToolRequest = PendingPermissionRequest | PendingUserQuestionRequest;
 
 interface PendingMcpElicitationRequest {
   kind: "mcp_elicitation";
-  plan: Extract<McpElicitationPlan, { kind: "questions" }>;
+  plan: McpElicitationQuestions;
+  ask: (plan: McpElicitationQuestions) => void;
   settle: (result: ElicitationResult | Error) => void;
 }
 
@@ -2203,11 +2205,11 @@ function mcpElicitationErrorWithoutUser(
   return new Error(experimental_unansweredInteractionErrorMessage(cause));
 }
 
-function mcpElicitationResult(
+function mcpElicitationStep(
   threadId: string,
-  plan: PendingMcpElicitationRequest["plan"],
+  plan: McpElicitationQuestions,
   response: BridgeJsonRpcResponse,
-): ElicitationResult | Error {
+): Exclude<McpElicitationStep, { unmappable: string }> | Error {
   if ("error" in response) {
     return mcpElicitationErrorWithoutUser(threadId, {
       kind: "runtime-error",
@@ -2223,14 +2225,14 @@ function mcpElicitationResult(
       kind: "unreadable-resolution",
     });
   }
-  const result = plan.toResponse(outcome.data.resolution);
-  if ("unmappable" in result) {
+  const step = plan.toResponse(outcome.data.resolution);
+  if ("unmappable" in step) {
     return mcpElicitationErrorWithoutUser(threadId, {
       kind: "unmappable-answer",
-      detail: result.unmappable,
+      detail: step.unmappable,
     });
   }
-  return result;
+  return step;
 }
 
 function createOnElicitation(threadIdRef: ThreadIdRef): OnElicitation {
@@ -2247,7 +2249,10 @@ function createOnElicitation(threadIdRef: ThreadIdRef): OnElicitation {
         resolve({ action: "cancel" });
         return;
       }
-      const plan = planMcpElicitation(request, { descriptionIsHeading: false });
+      const plan = planMcpElicitation(request, {
+        kind: "mcp_server",
+        serverName: request.serverName,
+      });
       if (plan.kind === "unsupported") {
         reject(
           mcpElicitationErrorWithoutUser(threadId, {
@@ -2258,38 +2263,50 @@ function createOnElicitation(threadIdRef: ThreadIdRef): OnElicitation {
         return;
       }
 
-      const requestId = nextInteractiveRequestId();
+      let requestId: string | null = null;
       const onAbort = (): void => {
-        if (withdrawInteractiveRequest(threadSession, requestId)) {
+        if (
+          requestId !== null &&
+          withdrawInteractiveRequest(threadSession, requestId)
+        ) {
           resolve({ action: "cancel" });
         }
       };
+      const settle = (result: ElicitationResult | Error): void => {
+        signal.removeEventListener("abort", onAbort);
+        if (result instanceof Error) {
+          reject(result);
+        } else {
+          resolve(result);
+        }
+      };
+      const ask = (current: McpElicitationQuestions): void => {
+        if (attachment.closing || threadSession.closing || signal.aborted) {
+          settle({ action: "cancel" });
+          return;
+        }
+        requestId = nextInteractiveRequestId();
+        threadSession.pendingInteractiveRequests.set(requestId, {
+          kind: "mcp_elicitation",
+          plan: current,
+          ask,
+          settle,
+        });
+        send({
+          jsonrpc: "2.0",
+          id: requestId,
+          method: BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
+          params: {
+            threadId,
+            providerThreadId:
+              threadSession.attachment.providerThreadId ?? threadId,
+            turnId: null,
+            payload: current.payload,
+          },
+        });
+      };
       signal.addEventListener("abort", onAbort, { once: true });
-      threadSession.pendingInteractiveRequests.set(requestId, {
-        kind: "mcp_elicitation",
-        plan,
-        settle: (result) => {
-          signal.removeEventListener("abort", onAbort);
-          if (result instanceof Error) {
-            reject(result);
-          } else {
-            resolve(result);
-          }
-        },
-      });
-
-      send({
-        jsonrpc: "2.0",
-        id: requestId,
-        method: BRIDGE_INBOUND_REQUEST_METHODS.interactionRequest,
-        params: {
-          threadId,
-          providerThreadId:
-            threadSession.attachment.providerThreadId ?? threadId,
-          turnId: null,
-          payload: plan.payload,
-        },
-      });
+      ask(plan);
     });
 }
 
@@ -3072,7 +3089,12 @@ function handleParsedMessage(parsed: unknown): void {
     threadSession.pendingInteractiveRequests.delete(response.id);
     const threadId = threadSession.attachment.threadIdRef.current;
     if (pending.kind === "mcp_elicitation") {
-      pending.settle(mcpElicitationResult(threadId, pending.plan, response));
+      const step = mcpElicitationStep(threadId, pending.plan, response);
+      if (!(step instanceof Error) && "next" in step) {
+        pending.ask(step.next);
+      } else {
+        pending.settle(step);
+      }
       return;
     }
     if ("error" in response) {

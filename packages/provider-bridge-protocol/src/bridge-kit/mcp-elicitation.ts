@@ -1,4 +1,5 @@
 import {
+  USER_QUESTION_MAX_FREE_TEXT_LENGTH,
   USER_QUESTION_MAX_OPTIONS,
   USER_QUESTION_MAX_QUESTIONS,
   userQuestionPendingInteractionPayloadSchema,
@@ -27,14 +28,25 @@ export interface McpElicitationUnmappable {
   unmappable: string;
 }
 
+export type McpElicitationRequester =
+  | { kind: "agent"; descriptionIsHeading: boolean }
+  | { kind: "mcp_server"; serverName: string };
+
+export interface McpElicitationQuestions {
+  kind: "questions";
+  payload: UserQuestionPendingInteractionPayload;
+  toResponse(
+    resolution: UserQuestionPendingInteractionResolution,
+  ): McpElicitationStep;
+}
+
+export type McpElicitationStep =
+  | McpElicitationResponse
+  | McpElicitationUnmappable
+  | { next: McpElicitationQuestions };
+
 export type McpElicitationPlan =
-  | {
-      kind: "questions";
-      payload: UserQuestionPendingInteractionPayload;
-      toResponse(
-        resolution: UserQuestionPendingInteractionResolution,
-      ): McpElicitationResponse | McpElicitationUnmappable;
-    }
+  | McpElicitationQuestions
   | { kind: "unsupported"; reason: string };
 
 interface McpElicitationChoice {
@@ -43,17 +55,30 @@ interface McpElicitationChoice {
   description?: string;
 }
 
-export interface McpElicitationPresentation {
-  descriptionIsHeading: boolean;
+interface Bounds {
+  min: number | null;
+  max: number | null;
 }
+
+const TEXT_FORMAT_HINTS = {
+  email: "Enter an email address.",
+  uri: "Enter a URL.",
+  date: "Enter a date as YYYY-MM-DD.",
+  "date-time":
+    "Enter a date and time with a time zone, for example 2026-01-31T09:30:00Z.",
+} as const;
+
+const JSON_NUMBER = /^-?\d+(\.\d+)?([eE][+-]?\d+)?$/;
+
+type TextFormat = keyof typeof TEXT_FORMAT_HINTS;
 
 type McpElicitationField =
   | { kind: "choice"; choices: McpElicitationChoice[] }
   | { kind: "typedChoice"; choices: McpElicitationChoice[] }
-  | { kind: "multiChoice"; choices: McpElicitationChoice[] }
+  | { kind: "multiChoice"; choices: McpElicitationChoice[]; items: Bounds }
   | { kind: "boolean" }
-  | { kind: "text" }
-  | { kind: "number"; integer: boolean };
+  | { kind: "text"; length: Bounds; format: TextFormat | null }
+  | { kind: "number"; integer: boolean; range: Bounds };
 
 interface FormField {
   name: string;
@@ -69,6 +94,7 @@ interface OtherCompanion {
 
 interface PlannedField {
   name: string;
+  label: string;
   field: McpElicitationField;
   required: boolean;
   other: OtherCompanion | null;
@@ -78,6 +104,7 @@ interface PlannedField {
 const CONFIRM_QUESTION_ID = "confirm";
 const CONFIRM_ACCEPT_VALUE = "accept";
 const CONFIRM_DECLINE_VALUE = "decline";
+const GATE_ANSWER_VALUE = "answer";
 
 const OTHER_COMPANION_SUFFIXES = ["__other", "_other"] as const;
 const OTHER_CHOICE_VALUE = "other";
@@ -118,12 +145,52 @@ function readChoices(schema: StringRecord): McpElicitationChoice[] | null {
   return choices.length > 0 ? choices : null;
 }
 
+function readBound(
+  schema: StringRecord,
+  key: string,
+  count: boolean,
+): number | null {
+  const value = schema[key];
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return null;
+  }
+  return count && (!Number.isInteger(value) || value < 0) ? null : value;
+}
+
+function readBounds(
+  schema: StringRecord,
+  minKey: string,
+  maxKey: string,
+  count: boolean,
+): Bounds | null {
+  const bounds = {
+    min: readBound(schema, minKey, count),
+    max: readBound(schema, maxKey, count),
+  };
+  return bounds.min !== null && bounds.max !== null && bounds.min > bounds.max
+    ? null
+    : bounds;
+}
+
+function isTextFormat(value: string): value is TextFormat {
+  return Object.hasOwn(TEXT_FORMAT_HINTS, value);
+}
+
+function readTextFormat(schema: StringRecord): TextFormat | null {
+  const format = getStringProperty(schema, "format");
+  return format !== undefined && isTextFormat(format) ? format : null;
+}
+
 function readField(schema: StringRecord): McpElicitationField | null {
   const type = getStringProperty(schema, "type");
   if (type === "array") {
     const items = schema["items"];
     const choices = isRecord(items) ? readChoices(items) : null;
-    return choices ? { kind: "multiChoice", choices } : null;
+    const bounds = readBounds(schema, "minItems", "maxItems", true);
+    if (!choices || !bounds || (bounds.min ?? 0) > choices.length) {
+      return null;
+    }
+    return { kind: "multiChoice", choices, items: bounds };
   }
   const choices = readChoices(schema);
   if (choices) {
@@ -132,12 +199,19 @@ function readField(schema: StringRecord): McpElicitationField | null {
   switch (type) {
     case "boolean":
       return { kind: "boolean" };
-    case "string":
-      return { kind: "text" };
+    case "string": {
+      const length = readBounds(schema, "minLength", "maxLength", true);
+      return length && (length.min ?? 0) <= USER_QUESTION_MAX_FREE_TEXT_LENGTH
+        ? { kind: "text", length, format: readTextFormat(schema) }
+        : null;
+    }
     case "number":
-      return { kind: "number", integer: false };
-    case "integer":
-      return { kind: "number", integer: true };
+    case "integer": {
+      const range = readBounds(schema, "minimum", "maximum", false);
+      return range
+        ? { kind: "number", integer: type === "integer", range }
+        : null;
+    }
     default:
       return null;
   }
@@ -172,7 +246,9 @@ function otherCompanionFor(
     if (
       companion?.field.kind === "text" &&
       !companion.required &&
-      companion.schema["format"] === undefined
+      companion.schema["format"] === undefined &&
+      companion.field.length.min === null &&
+      companion.field.length.max === null
     ) {
       return { name: companion.name, choice };
     }
@@ -180,20 +256,103 @@ function otherCompanionFor(
   return null;
 }
 
+function foldOtherCompanions(
+  fields: readonly FormField[],
+): Map<string, OtherCompanion> {
+  const fieldsByName = new Map(fields.map((entry) => [entry.name, entry]));
+  const companions = new Map<string, OtherCompanion>();
+  const foldedNames = new Set<string>();
+  for (const entry of fields) {
+    if (foldedNames.has(entry.name)) {
+      continue;
+    }
+    const other = otherCompanionFor(entry, fieldsByName);
+    if (other !== null && !foldedNames.has(other.name)) {
+      companions.set(entry.name, other);
+      foldedNames.add(other.name);
+    }
+  }
+  return companions;
+}
+
 function shownField(
   field: McpElicitationField,
   other: OtherCompanion | null,
 ): McpElicitationField | null {
-  if (field.kind !== "choice" && field.kind !== "multiChoice") {
-    return field;
+  if (field.kind === "choice") {
+    const choices = field.choices.filter(
+      (option) => other === null || option.value !== other.choice,
+    );
+    return choices.length <= USER_QUESTION_MAX_OPTIONS
+      ? { kind: "choice", choices }
+      : { kind: "typedChoice", choices };
   }
-  const choices = field.choices.filter(
-    (option) => other === null || option.value !== other.choice,
-  );
-  if (choices.length <= USER_QUESTION_MAX_OPTIONS) {
-    return { kind: field.kind, choices };
+  if (field.kind === "multiChoice") {
+    const choices = field.choices.filter(
+      (option) => other === null || option.value !== other.choice,
+    );
+    return choices.length <= USER_QUESTION_MAX_OPTIONS
+      ? { ...field, choices }
+      : null;
   }
-  return field.kind === "choice" ? { kind: "typedChoice", choices } : null;
+  return field;
+}
+
+function plural(count: number, noun: string): string {
+  return `${count} ${noun}${count === 1 ? "" : "s"}`;
+}
+
+function boundsHint(
+  bounds: Bounds,
+  verb: string,
+  noun: (count: number) => string,
+): string | null {
+  const { min, max } = bounds;
+  if (min !== null && max !== null) {
+    return min === max
+      ? `${verb} exactly ${noun(min)}.`
+      : `${verb} ${min} to ${noun(max)}.`;
+  }
+  if (min !== null) return `${verb} at least ${noun(min)}.`;
+  if (max !== null) return `${verb} at most ${noun(max)}.`;
+  return null;
+}
+
+function numberHint(field: { integer: boolean; range: Bounds }): string {
+  const kind = field.integer ? "a whole number" : "a number";
+  const { min, max } = field.range;
+  if (min !== null && max !== null)
+    return `Enter ${kind} from ${min} to ${max}.`;
+  if (min !== null) return `Enter ${kind} of at least ${min}.`;
+  if (max !== null) return `Enter ${kind} of at most ${max}.`;
+  return `Enter ${kind}.`;
+}
+
+function fieldHints(field: McpElicitationField): string[] {
+  switch (field.kind) {
+    case "typedChoice":
+      return [
+        `One of: ${field.choices.map((choice) => choice.label).join(", ")}`,
+      ];
+    case "number":
+      return [numberHint(field)];
+    case "text":
+      return [
+        boundsHint(field.length, "Enter", (count) =>
+          plural(count, "character"),
+        ),
+        field.format === null ? null : TEXT_FORMAT_HINTS[field.format],
+      ].filter((hint): hint is string => hint !== null);
+    case "multiChoice": {
+      const hint = boundsHint(field.items, "Choose", (count) =>
+        plural(count, "option"),
+      );
+      return hint === null ? [] : [hint];
+    }
+    case "choice":
+    case "boolean":
+      return [];
+  }
 }
 
 function questionFor(
@@ -202,26 +361,14 @@ function questionFor(
   field: McpElicitationField,
   required: boolean,
   other: OtherCompanion | null,
-  message: string | undefined,
-  presentation: McpElicitationPresentation,
+  descriptionIsHeading: boolean,
 ): PendingInteractionUserQuestionQuestion {
   const label = getStringProperty(schema, "title")?.trim() || name;
   const description =
     getStringProperty(schema, "description")?.trim() || undefined;
-  const heading = presentation.descriptionIsHeading ? description : undefined;
-  const detail = presentation.descriptionIsHeading ? undefined : description;
-  const lead = message !== undefined && message !== label ? message : undefined;
-  const lines = [
-    ...(lead ? [lead, ""] : []),
-    label,
-    ...(detail ? [detail] : []),
-    ...(field.kind === "typedChoice"
-      ? [`One of: ${field.choices.map((choice) => choice.label).join(", ")}`]
-      : []),
-    ...(field.kind === "number"
-      ? [field.integer ? "Enter a whole number." : "Enter a number."]
-      : []),
-  ];
+  const heading = descriptionIsHeading ? description : undefined;
+  const detail = descriptionIsHeading ? undefined : description;
+  const lines = [label, ...(detail ? [detail] : []), ...fieldHints(field)];
   const base = {
     id: name,
     prompt: lines.join("\n"),
@@ -289,98 +436,175 @@ function otherContent(
   };
 }
 
+function outsideBounds(
+  value: number,
+  bounds: Bounds,
+  what: (limit: number) => string,
+): string | null {
+  if (bounds.min !== null && value < bounds.min) {
+    return `must be at least ${what(bounds.min)}`;
+  }
+  if (bounds.max !== null && value > bounds.max) {
+    return `must be at most ${what(bounds.max)}`;
+  }
+  return null;
+}
+
+type FieldAnswer =
+  | { content: McpElicitationContent }
+  | { misfit: string }
+  | { retry: string };
+
 function contentFor(
   entry: PlannedField,
   answer: PendingInteractionUserAnswer | undefined,
-): McpElicitationContent | null {
+): FieldAnswer {
+  const misfit = {
+    misfit: `the answer to "${entry.name}" does not fit that field`,
+  };
+  const accept = (content: McpElicitationContent | null): FieldAnswer =>
+    content === null ? misfit : { content };
   const selected = answer?.selected ?? [];
   const typed = answer?.freeText?.trim() || undefined;
   if (selected.length === 0 && typed === undefined) {
-    return entry.required ? null : {};
+    return entry.required ? misfit : { content: {} };
   }
   const { field, name } = entry;
   switch (field.kind) {
     case "choice": {
       const [value] = selected;
       if (value === undefined) {
-        return typed === undefined ? null : otherContent(entry, typed);
+        return accept(typed === undefined ? null : otherContent(entry, typed));
       }
       if (!field.choices.some((choice) => choice.value === value)) {
-        return null;
+        return misfit;
       }
-      return {
+      return accept({
         [name]: value,
         ...(typed !== undefined && entry.other !== null
           ? { [entry.other.name]: typed }
           : {}),
-      };
+      });
     }
     case "multiChoice": {
       const allowed = new Set(field.choices.map((choice) => choice.value));
       if (!selected.every((value) => allowed.has(value))) {
-        return null;
+        return misfit;
       }
       const other = typed === undefined ? null : entry.other;
       const values = [...selected, ...(other?.choice ? [other.choice] : [])];
-      return {
+      const count = outsideBounds(values.length, field.items, (limit) =>
+        plural(limit, "option"),
+      );
+      if (count !== null && (values.length > 0 || entry.required)) {
+        return { retry: count };
+      }
+      return accept({
         ...(values.length > 0 ? { [name]: values } : {}),
         ...(other !== null && typed !== undefined
           ? { [other.name]: typed }
           : {}),
-      };
+      });
     }
     case "boolean": {
       const [value] = selected;
       return value === "true" || value === "false"
-        ? { [name]: value === "true" }
-        : null;
+        ? accept({ [name]: value === "true" })
+        : misfit;
     }
     case "typedChoice": {
       if (typed === undefined) {
-        return null;
+        return misfit;
       }
       const match = matchTypedChoice(field.choices, typed);
-      return match === null ? otherContent(entry, typed) : { [name]: match };
+      return accept(
+        match === null ? otherContent(entry, typed) : { [name]: match },
+      );
     }
-    case "text":
-      return typed === undefined ? null : { [name]: typed };
+    case "text": {
+      if (typed === undefined) {
+        return misfit;
+      }
+      const length = outsideBounds([...typed].length, field.length, (limit) =>
+        plural(limit, "character"),
+      );
+      return length === null ? accept({ [name]: typed }) : { retry: length };
+    }
     case "number": {
       if (typed === undefined) {
-        return null;
+        return misfit;
+      }
+      if (!JSON_NUMBER.test(typed)) {
+        return { retry: "must be a number" };
       }
       const parsed = Number(typed);
-      if (!Number.isFinite(parsed)) {
-        return null;
+      if (field.integer && !Number.isInteger(parsed)) {
+        return { retry: "must be a whole number" };
       }
-      return field.integer && !Number.isInteger(parsed)
-        ? null
-        : { [name]: parsed };
+      const range = outsideBounds(parsed, field.range, String);
+      return range === null ? accept({ [name]: parsed }) : { retry: range };
     }
   }
 }
 
-function planConfirmation(message: string | undefined): McpElicitationPlan {
-  const payload: UserQuestionPendingInteractionPayload = {
+function requesterLine(requester: McpElicitationRequester): string[] {
+  if (requester.kind !== "mcp_server") {
+    return [];
+  }
+  const name = requester.serverName.replace(/[`\r\n]/g, "").trim();
+  return [
+    name === ""
+      ? "Requested by an MCP server"
+      : `Requested by MCP server \`${name}\``,
+  ];
+}
+
+function choiceQuestion(
+  prompt: string,
+  options: { value: string; label: string }[],
+): UserQuestionPendingInteractionPayload {
+  return {
     kind: "user_question",
     questions: [
       {
         id: CONFIRM_QUESTION_ID,
-        prompt: message ?? "The agent is asking you to confirm.",
+        prompt,
         multiSelect: false,
-        options: [
-          { value: CONFIRM_ACCEPT_VALUE, label: "Accept" },
-          { value: CONFIRM_DECLINE_VALUE, label: "Decline" },
-        ],
+        options,
         allowFreeText: false,
         required: true,
       },
     ],
   };
+}
+
+function selectedChoice(
+  resolution: UserQuestionPendingInteractionResolution,
+): string | undefined {
+  return resolution.answers[CONFIRM_QUESTION_ID]?.selected[0];
+}
+
+function planConfirmation(
+  message: string | undefined,
+  requester: McpElicitationRequester,
+): McpElicitationPlan {
   return {
     kind: "questions",
-    payload,
+    payload: choiceQuestion(
+      [
+        ...requesterLine(requester),
+        message ??
+          (requester.kind === "mcp_server"
+            ? "The MCP server is asking you to confirm."
+            : "The agent is asking you to confirm."),
+      ].join("\n\n"),
+      [
+        { value: CONFIRM_ACCEPT_VALUE, label: "Accept" },
+        { value: CONFIRM_DECLINE_VALUE, label: "Decline" },
+      ],
+    ),
     toResponse(resolution) {
-      const selected = resolution.answers[CONFIRM_QUESTION_ID]?.selected[0];
+      const selected = selectedChoice(resolution);
       if (selected === CONFIRM_ACCEPT_VALUE) {
         return { action: "accept", content: {} };
       }
@@ -392,9 +616,43 @@ function planConfirmation(message: string | undefined): McpElicitationPlan {
   };
 }
 
+function planDeclineGate(
+  message: string | undefined,
+  requester: McpElicitationRequester,
+  labels: readonly string[],
+  form: McpElicitationQuestions,
+): McpElicitationQuestions {
+  return {
+    kind: "questions",
+    payload: choiceQuestion(
+      [
+        ...requesterLine(requester),
+        ...(message ? [message] : []),
+        `The form asks for: ${labels.join(", ")}`,
+      ].join("\n\n"),
+      [
+        { value: GATE_ANSWER_VALUE, label: "Fill in the form" },
+        { value: CONFIRM_DECLINE_VALUE, label: "Decline" },
+      ],
+    ),
+    toResponse(resolution) {
+      const selected = selectedChoice(resolution);
+      if (selected === GATE_ANSWER_VALUE) {
+        return { next: form };
+      }
+      if (selected === CONFIRM_DECLINE_VALUE) {
+        return { action: "decline" };
+      }
+      return {
+        unmappable: "the answer was neither Fill in the form nor Decline",
+      };
+    },
+  };
+}
+
 export function planMcpElicitation(
   params: unknown,
-  presentation: McpElicitationPresentation,
+  requester: McpElicitationRequester,
 ): McpElicitationPlan {
   if (!isRecord(params)) {
     return { kind: "unsupported", reason: "the request was malformed" };
@@ -411,7 +669,7 @@ export function planMcpElicitation(
   const properties = isRecord(schema) ? schema["properties"] : undefined;
   const entries = isRecord(properties) ? Object.entries(properties) : [];
   if (entries.length === 0) {
-    return planConfirmation(message);
+    return planConfirmation(message, requester);
   }
 
   const requiredNames = readRequiredNames(schema);
@@ -432,19 +690,13 @@ export function planMcpElicitation(
     });
   }
 
-  const fieldsByName = new Map(fields.map((entry) => [entry.name, entry]));
-  const companions = new Map<string, OtherCompanion>();
-  const foldedNames = new Set<string>();
-  for (const entry of fields) {
-    if (foldedNames.has(entry.name)) {
-      continue;
-    }
-    const other = otherCompanionFor(entry, fieldsByName);
-    if (other !== null && !foldedNames.has(other.name)) {
-      companions.set(entry.name, other);
-      foldedNames.add(other.name);
-    }
-  }
+  const companions =
+    requester.kind === "agent"
+      ? foldOtherCompanions(fields)
+      : new Map<string, OtherCompanion>();
+  const foldedNames = new Set(
+    [...companions.values()].map((other) => other.name),
+  );
   const shown = fields.filter((entry) => !foldedNames.has(entry.name));
   if (shown.length > USER_QUESTION_MAX_QUESTIONS) {
     return {
@@ -453,6 +705,8 @@ export function planMcpElicitation(
     };
   }
 
+  const descriptionIsHeading =
+    requester.kind === "agent" && requester.descriptionIsHeading;
   const planned: PlannedField[] = [];
   for (const entry of shown) {
     const other = companions.get(entry.name) ?? null;
@@ -463,8 +717,11 @@ export function planMcpElicitation(
         reason: `bb cannot show the field "${entry.name}"`,
       };
     }
+    const label =
+      getStringProperty(entry.schema, "title")?.trim() || entry.name;
     planned.push({
       name: entry.name,
+      label,
       field,
       required: entry.required,
       other,
@@ -474,34 +731,70 @@ export function planMcpElicitation(
         field,
         entry.required,
         other,
-        planned.length === 0 ? message : undefined,
-        presentation,
+        descriptionIsHeading,
       ),
     });
   }
 
-  const payload = userQuestionPendingInteractionPayloadSchema.safeParse({
+  const messageLead =
+    message !== undefined && message !== planned[0]?.label ? [message] : [];
+  const payloadWith = (
+    notice: string | null,
+  ): UserQuestionPendingInteractionPayload => ({
     kind: "user_question",
-    questions: planned.map((entry) => entry.question),
+    questions: planned.map(({ question }, index) =>
+      index === 0
+        ? {
+            ...question,
+            prompt: [
+              ...requesterLine(requester),
+              ...(notice === null ? [] : [notice]),
+              ...messageLead,
+              question.prompt,
+            ].join("\n\n"),
+          }
+        : question,
+    ),
   });
+  const payload = userQuestionPendingInteractionPayloadSchema.safeParse(
+    payloadWith(null),
+  );
   if (!payload.success) {
     return { kind: "unsupported", reason: "the form could not be shown" };
   }
-  return {
+  const formWith = (
+    data: UserQuestionPendingInteractionPayload,
+  ): McpElicitationQuestions => ({
     kind: "questions",
-    payload: payload.data,
+    payload: data,
     toResponse(resolution) {
       const content: McpElicitationContent = {};
       for (const entry of planned) {
         const answered = contentFor(entry, resolution.answers[entry.name]);
-        if (!answered) {
+        if ("misfit" in answered) {
+          return { unmappable: answered.misfit };
+        }
+        if ("retry" in answered) {
           return {
-            unmappable: `the answer to "${entry.name}" does not fit that field`,
+            next: formWith(
+              payloadWith(
+                `Your answer to "${entry.label}" ${answered.retry}. Answer again.`,
+              ),
+            ),
           };
         }
-        Object.assign(content, answered);
+        Object.assign(content, answered.content);
       }
       return { action: "accept", content };
     },
-  };
+  });
+  const form = formWith(payload.data);
+  return requester.kind === "mcp_server"
+    ? planDeclineGate(
+        message,
+        requester,
+        planned.map((entry) => entry.question.shortLabel ?? entry.name),
+        form,
+      )
+    : form;
 }
