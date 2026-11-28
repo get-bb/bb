@@ -578,7 +578,7 @@ export function dispatchArchivedThreadProviderArchiveCommand(
         environmentId: environment.id,
         scope: threadScope(),
         code: "provider_archive_failed",
-        message: `Archived in bb, but archiving the ${providerName} session failed. Unarchive and archive the thread again to retry.`,
+        message: `Archiving the ${providerName} session failed. Unarchive and archive again to retry.`,
         detail: error.message,
       });
     },

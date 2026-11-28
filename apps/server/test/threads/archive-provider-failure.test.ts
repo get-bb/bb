@@ -89,12 +89,23 @@ describe("provider archive failure", () => {
         .toEqual([
           {
             code: "provider_archive_failed",
-            message: expect.stringContaining(
-              "Unarchive and archive the thread again",
-            ),
+            message: expect.stringContaining("Unarchive and archive"),
             detail: "thread already has an active writer",
           },
         ]);
+      const timeline = await harness.app.request(
+        `/api/v1/threads/${thread.id}/timeline`,
+      );
+      const { rows } = (await timeline.json()) as {
+        rows: { systemKind?: string; title?: string; detail?: string }[];
+      };
+      expect(rows.filter((row) => row.systemKind === "error")).toEqual([
+        expect.objectContaining({
+          title:
+            "Archiving the Codex session failed. Unarchive and archive again to retry.",
+          detail: "thread already has an active writer",
+        }),
+      ]);
       expect(getThread(harness.db, thread.id)).toMatchObject({
         archivedAt: expect.any(Number),
         status: "idle",
